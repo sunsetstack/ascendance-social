@@ -222,6 +222,7 @@ export class Server {
     apiRouter.use("/favorites", this.favoriteRoutes.getRouter());
     apiRouter.use("/messaging", this.messagingRoutes.getRouter());
     apiRouter.use("/communities", this.communityRoutes.getRouter());
+    apiRouter.use("/telemetry", this.telemetryRoutes.getRouter());
 
     this.app.use("/api", apiRouter);
 
