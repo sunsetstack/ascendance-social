@@ -6,7 +6,7 @@ import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
 import { UserRepository } from "@/repositories/user.repository";
 import { UnitOfWork } from "@/database/UnitOfWork";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 
 @injectable()
 export class LeaveCommunityCommandHandler implements ICommandHandler<LeaveCommunityCommand, void> {
@@ -22,24 +22,24 @@ export class LeaveCommunityCommandHandler implements ICommandHandler<LeaveCommun
 
 		const user = await this.userRepository.findByPublicId(userPublicId);
 		if (!user) {
-			throw createError("NotFoundError", "User not found");
+			throw Errors.notFound("User");
 		}
 		const userId = user._id as Types.ObjectId;
 
 		const community = await this.communityRepository.findByPublicId(communityPublicId);
 		if (!community) {
-			throw createError("NotFoundError", "Community not found");
+			throw Errors.notFound("Community");
 		}
 		const communityId = community._id as Types.ObjectId;
 
 		const member = await this.communityMemberRepository.findByCommunityAndUser(communityId, userId);
 		if (!member) {
-			throw createError("ValidationError", "User is not a member of this community");
+			throw Errors.validation("User is not a member of this community");
 		}
 
-		await this.uow.executeInTransaction(async (session) => {
+		await this.uow.executeInTransaction(async () => {
 			// 1. Remove Member
-			await this.communityMemberRepository.deleteByCommunityAndUser(communityId, userId, session);
+			await this.communityMemberRepository.deleteByCommunityAndUser(communityId, userId);
 
 			// 2. Update User Cache (Remove from array)
 			await this.userRepository.update(
@@ -48,15 +48,13 @@ export class LeaveCommunityCommandHandler implements ICommandHandler<LeaveCommun
 					$pull: {
 						joinedCommunities: { _id: communityId },
 					},
-				},
-				session
+				}
 			);
 
 			// 3. Decrement Member Count
 			await this.communityRepository.findOneAndUpdate(
 				{ _id: communityId },
-				{ $inc: { "stats.memberCount": -1 } },
-				session
+				{ $inc: { "stats.memberCount": -1 } }
 			);
 		});
 	}

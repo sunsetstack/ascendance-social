@@ -1,8 +1,8 @@
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
-import { ClientSession, Model } from "mongoose";
+import { Model } from "mongoose";
 import { IUser, IUserPreference } from "@/types";
-import { createError , wrapError } from "@/utils/errors";
+import { Errors , wrapError } from "@/utils/errors";
 import { UserRepository } from "./user.repository";
 import { TOKENS } from "@/types/tokens";
 
@@ -23,7 +23,7 @@ export class UserPreferenceRepository extends BaseRepository<IUserPreference> {
 			if (error instanceof Error) {
 				throw wrapError(error);
 			} else {
-				throw createError("UnknownError", String(error));
+				throw Errors.internal(String(error));
 			}
 		}
 	}
@@ -43,7 +43,7 @@ export class UserPreferenceRepository extends BaseRepository<IUserPreference> {
 			if (error instanceof Error) {
 				throw wrapError(error);
 			} else {
-				throw createError("UnknownError", String(error));
+				throw Errors.internal(String(error));
 			}
 		}
 	}
@@ -79,12 +79,13 @@ export class UserPreferenceRepository extends BaseRepository<IUserPreference> {
 			if (error instanceof Error) {
 				throw wrapError(error);
 			}
-			throw createError("UnknownError", String(error));
+			throw Errors.internal(String(error));
 		}
 	}
 
-	async deleteManyByUserId(userId: string, session?: ClientSession): Promise<number> {
+	async deleteManyByUserId(userId: string): Promise<number> {
 		try {
+			const session = this.getSession();
 			const result = await this.model
 				.deleteMany({ userId })
 				.session(session || null)
@@ -95,7 +96,7 @@ export class UserPreferenceRepository extends BaseRepository<IUserPreference> {
 			if (error instanceof Error) {
 				throw wrapError(error);
 			} else {
-				throw createError("UnknownError", String(error));
+				throw Errors.internal(String(error));
 			}
 		}
 	}

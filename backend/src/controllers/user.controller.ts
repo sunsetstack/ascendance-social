@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { AuthService } from "@/services/auth.service";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { injectable, inject } from "tsyringe";
 import {
   accessCookieOptions,
@@ -47,14 +47,33 @@ import { GetFollowingResult } from "@/application/queries/users/getFollowing/get
 import { RequestPasswordResetCommand } from "@/application/commands/users/requestPasswordReset/RequestPasswordResetCommand";
 import { ResetPasswordCommand } from "@/application/commands/users/resetPassword/ResetPasswordCommand";
 import { VerifyEmailCommand } from "@/application/commands/users/verifyEmail/VerifyEmailCommand";
-import { PaginationOptions } from "@/types";
+import { TypedRequest } from "@/types";
 import { streamPaginatedResponse } from "@/utils/streamResponse";
+import type {
+  ChangePasswordBody,
+  DeleteAccountBody,
+  HandleParams,
+  HandleSuggestionsQuery as HandleSuggestionsQueryParams,
+  LoginBody,
+  PublicIdParams as UserPublicIdParams,
+  PublicUserListQuery,
+  RegistrationBody,
+  RequestPasswordResetBody,
+  ResetPasswordBody,
+  UpdateProfileBody,
+  UsersQuery,
+  VerifyEmailBody,
+  WhoToFollowQuery,
+} from "@/utils/schemas/user.schemas";
 
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 
 /** Threshold for enabling streaming responses (items) */
-const STREAM_THRESHOLD = 100;
+import { STREAM_THRESHOLD } from "@/utils/post-helpers";
+
+type EmptyParams = Record<string, never>;
+type EmptyBody = Record<string, never>;
 
 /**
  * When using Dependency Injection in Express, there's a common
@@ -95,14 +114,12 @@ export class UserController {
     username: string;
     isAdmin: boolean;
   } {
-    const withAdmin = user as { isAdmin?: boolean };
     return {
       publicId: user.publicId,
       email: user.email,
       handle: user.handle,
       username: user.username,
-      isAdmin:
-        typeof withAdmin.isAdmin === "boolean" ? withAdmin.isAdmin : false,
+      isAdmin: "isAdmin" in user ? Boolean(user.isAdmin) : false,
     };
   }
 
@@ -130,12 +147,15 @@ export class UserController {
   private requireAuthenticatedUserPublicId(req: Request): string {
     const userPublicId = req.decodedUser?.publicId;
     if (!userPublicId) {
-      throw createError("AuthenticationError", "Authentication required");
+      throw Errors.authentication("Authentication required");
     }
     return userPublicId;
   }
 
-  register = async (req: Request, res: Response) => {
+  register = async (
+    req: TypedRequest<EmptyParams, RegistrationBody>,
+    res: Response,
+  ) => {
     const { handle, username, email, password } = req.body;
     const { ip, userAgent } = this.getRequestContext(req);
     const command = new RegisterUserCommand(
@@ -162,14 +182,14 @@ export class UserController {
   getMe = async (req: Request, res: Response, next: NextFunction) => {
     const { decodedUser } = req;
     if (!decodedUser?.publicId) {
-      return next(createError("UnauthorizedError", "User not authenticated."));
+      return next(Errors.authentication("User not authenticated."));
     }
-    const query = new GetMeQuery(decodedUser.publicId as string);
+    const query = new GetMeQuery(decodedUser.publicId);
     const { user } = await this.queryBus.execute<GetMeResult>(query);
     res.status(200).json(user);
   };
 
-  login = async (req: Request, res: Response) => {
+  login = async (req: TypedRequest<EmptyParams, LoginBody>, res: Response) => {
     const { email, password } = req.body;
     const { user, accessToken, refreshToken } = await this.authService.login(
       email,
@@ -183,7 +203,7 @@ export class UserController {
   refresh = async (req: Request, res: Response, next: NextFunction) => {
     const refreshToken = req.cookies?.[authCookieNames.refreshToken];
     if (typeof refreshToken !== "string" || refreshToken.length === 0) {
-      return next(createError("AuthenticationError", "Refresh token missing"));
+      return next(Errors.authentication("Refresh token missing"));
     }
 
     const {
@@ -232,38 +252,35 @@ export class UserController {
     res.status(200).json({ message: "Logged out successfully" });
   };
 
-  updateProfile = async (req: Request, res: Response, next: NextFunction) => {
+  updateProfile = async (
+    req: TypedRequest<EmptyParams, UpdateProfileBody>,
+    res: Response,
+  ) => {
     const { decodedUser } = req;
     const userData = req.body;
-    if (
-      userData.password ||
-      userData.email ||
-      userData.isAdmin ||
-      userData.avatar ||
-      userData.cover
-    ) {
-      return next(createError("ValidationError", "You can not do that."));
-    }
     if (!decodedUser) {
-      return next(createError("UnauthorizedError", "User not authenticated."));
+      throw Errors.authentication("User not authenticated.");
     }
     if (!decodedUser.publicId)
-      return next(createError("UnauthorizedError", "User not authenticated."));
+      throw Errors.authentication("User not authenticated.");
 
     const command = new UpdateProfileCommand(decodedUser.publicId, userData);
     const updatedUser = await this.commandBus.dispatch<PublicUserDTO>(command);
     res.status(200).json(updatedUser);
   };
 
-  changePassword = async (req: Request, res: Response, next: NextFunction) => {
+  changePassword = async (
+    req: TypedRequest<EmptyParams, ChangePasswordBody>,
+    res: Response,
+  ) => {
     const { decodedUser } = req;
     const { currentPassword, newPassword } = req.body; // already validated by Zod middleware
 
     if (!decodedUser) {
-      return next(createError("UnauthorizedError", "User not authenticated."));
+      throw Errors.authentication("User not authenticated.");
     }
     if (!decodedUser.publicId)
-      return next(createError("UnauthorizedError", "User not authenticated."));
+      throw Errors.authentication("User not authenticated.");
 
     const command = new ChangePasswordCommand(
       decodedUser.publicId,
@@ -281,15 +298,20 @@ export class UserController {
 
   updateAvatar = async (req: Request, res: Response, next: NextFunction) => {
     const { decodedUser } = req;
-    const file = req.file?.path;
-    if (!file) throw createError("ValidationError", "No file provided");
+    const fileBuffer = req.file?.buffer;
+    if (!fileBuffer) throw Errors.validation("No file provided");
     if (!decodedUser) {
-      return next(createError("UnauthorizedError", "User not authenticated."));
+      throw Errors.authentication("User not authenticated.");
     }
     if (!decodedUser.publicId)
-      return next(createError("UnauthorizedError", "User not authenticated."));
+      throw Errors.authentication("User not authenticated.");
 
-    const command = new UpdateAvatarCommand(decodedUser.publicId, file);
+    const command = new UpdateAvatarCommand(
+      decodedUser.publicId,
+      fileBuffer,
+      req.file?.originalname,
+      req.file?.mimetype,
+    );
     const updatedUserDTO =
       await this.commandBus.dispatch<PublicUserDTO>(command);
 
@@ -298,22 +320,30 @@ export class UserController {
 
   updateCover = async (req: Request, res: Response, next: NextFunction) => {
     const { decodedUser } = req;
-    const file = req.file?.path;
-    if (!file) throw createError("ValidationError", "No file provided");
+    const fileBuffer = req.file?.buffer;
+    if (!fileBuffer) throw Errors.validation("No file provided");
     if (!decodedUser) {
-      return next(createError("UnauthorizedError", "User not authenticated."));
+      throw Errors.authentication("User not authenticated.");
     }
     if (!decodedUser.publicId)
-      return next(createError("UnauthorizedError", "User not authenticated."));
+      throw Errors.authentication("User not authenticated.");
 
-    const command = new UpdateCoverCommand(decodedUser.publicId, file);
+    const command = new UpdateCoverCommand(
+      decodedUser.publicId,
+      fileBuffer,
+      req.file?.originalname,
+      req.file?.mimetype,
+    );
     const updatedUserDTO =
       await this.commandBus.dispatch<PublicUserDTO>(command);
 
     res.status(200).json(updatedUserDTO);
   };
 
-  getUserByHandle = async (req: Request, res: Response): Promise<void> => {
+  getUserByHandle = async (
+    req: TypedRequest<HandleParams>,
+    res: Response,
+  ): Promise<void> => {
     const { handle } = req.params;
     const query = new GetUserByHandleQuery(handle);
     const userDTO = await this.queryBus.execute<PublicUserDTO>(query);
@@ -321,7 +351,10 @@ export class UserController {
     res.status(200).json(userDTO);
   };
 
-  getUserByPublicId = async (req: Request, res: Response): Promise<void> => {
+  getUserByPublicId = async (
+    req: TypedRequest<UserPublicIdParams>,
+    res: Response,
+  ): Promise<void> => {
     const { publicId } = req.params;
     const query = new GetUserByPublicIdQuery(publicId);
     const userDTO = await this.queryBus.execute<PublicUserDTO>(query);
@@ -332,7 +365,10 @@ export class UserController {
   /**
    * Follow a user by their public ID
    */
-  followUserByPublicId = async (req: Request, res: Response): Promise<void> => {
+  followUserByPublicId = async (
+    req: TypedRequest<UserPublicIdParams>,
+    res: Response,
+  ): Promise<void> => {
     const { publicId } = req.params;
     const followerPublicId = this.requireAuthenticatedUserPublicId(req);
 
@@ -345,7 +381,7 @@ export class UserController {
    * Unfollow a user by their public ID
    */
   unfollowUserByPublicId = async (
-    req: Request,
+    req: TypedRequest<UserPublicIdParams>,
     res: Response,
   ): Promise<void> => {
     const { publicId } = req.params;
@@ -359,7 +395,10 @@ export class UserController {
   /**
    * Check if current user follows another user
    */
-  checkFollowStatus = async (req: Request, res: Response): Promise<void> => {
+  checkFollowStatus = async (
+    req: TypedRequest<UserPublicIdParams>,
+    res: Response,
+  ): Promise<void> => {
     const { publicId } = req.params;
     const followerPublicId = this.requireAuthenticatedUserPublicId(req);
 
@@ -368,41 +407,55 @@ export class UserController {
     res.status(200).json({ isFollowing });
   };
 
-  getFollowers = async (req: Request, res: Response): Promise<void> => {
+  getFollowers = async (
+    req: TypedRequest<UserPublicIdParams, EmptyBody, PublicUserListQuery>,
+    res: Response,
+  ): Promise<void> => {
     const { publicId } = req.params;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
+    const { page, limit } = req.query;
 
     const query = new GetFollowersQuery(publicId, page, limit);
     const result = await this.queryBus.execute<GetFollowersResult>(query);
 
     if (result.users.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(res, result.users, {
-        total: result.total,
-        page: result.page,
-        limit: result.limit,
-        totalPages: result.totalPages,
-      }, { arrayKey: "users" });
+      streamPaginatedResponse(
+        res,
+        result.users,
+        {
+          total: result.total,
+          page: result.page,
+          limit: result.limit,
+          totalPages: result.totalPages,
+        },
+        { arrayKey: "users" },
+      );
     } else {
       res.status(200).json(result);
     }
   };
 
-  getFollowing = async (req: Request, res: Response): Promise<void> => {
+  getFollowing = async (
+    req: TypedRequest<UserPublicIdParams, EmptyBody, PublicUserListQuery>,
+    res: Response,
+  ): Promise<void> => {
     const { publicId } = req.params;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
+    const { page, limit } = req.query;
 
     const query = new GetFollowingQuery(publicId, page, limit);
     const result = await this.queryBus.execute<GetFollowingResult>(query);
 
     if (result.users.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(res, result.users, {
-        total: result.total,
-        page: result.page,
-        limit: result.limit,
-        totalPages: result.totalPages,
-      }, { arrayKey: "users" });
+      streamPaginatedResponse(
+        res,
+        result.users,
+        {
+          total: result.total,
+          page: result.page,
+          limit: result.limit,
+          totalPages: result.totalPages,
+        },
+        { arrayKey: "users" },
+      );
     } else {
       res.status(200).json(result);
     }
@@ -416,7 +469,10 @@ export class UserController {
     res.status(200).json(result.accountInfo);
   };
 
-  deleteMyAccount = async (req: Request, res: Response): Promise<void> => {
+  deleteMyAccount = async (
+    req: TypedRequest<EmptyParams, DeleteAccountBody>,
+    res: Response,
+  ): Promise<void> => {
     const userPublicId = this.requireAuthenticatedUserPublicId(req);
     const { password } = req.body;
 
@@ -428,7 +484,10 @@ export class UserController {
     res.status(200).json({ message: "Account deleted successfully" });
   };
 
-  requestPasswordReset = async (req: Request, res: Response) => {
+  requestPasswordReset = async (
+    req: TypedRequest<EmptyParams, RequestPasswordResetBody>,
+    res: Response,
+  ) => {
     const { email } = req.body;
     const command = new RequestPasswordResetCommand(email);
     await this.commandBus.dispatch(command);
@@ -438,23 +497,31 @@ export class UserController {
     });
   };
 
-  resetPassword = async (req: Request, res: Response) => {
+  resetPassword = async (
+    req: TypedRequest<EmptyParams, ResetPasswordBody>,
+    res: Response,
+  ) => {
     const { token, newPassword } = req.body;
     const command = new ResetPasswordCommand(token, newPassword);
     await this.commandBus.dispatch(command);
     res.status(200).json({ message: "Password reset successful" });
   };
 
-  verifyEmail = async (req: Request, res: Response) => {
+  verifyEmail = async (
+    req: TypedRequest<EmptyParams, VerifyEmailBody>,
+    res: Response,
+  ) => {
     const { email, token } = req.body;
     const command = new VerifyEmailCommand(email, token);
     const user = await this.commandBus.dispatch(command);
     res.status(200).json(user);
   };
 
-  getUsers = async (req: Request, res: Response) => {
-    const options = { ...req.query } as unknown as PaginationOptions;
-    const query = new GetUsersQuery(options);
+  getUsers = async (
+    req: TypedRequest<EmptyParams, EmptyBody, UsersQuery>,
+    res: Response,
+  ) => {
+    const query = new GetUsersQuery(req.query);
     const result = await this.queryBus.execute(query);
     res.status(200).json(result);
   };
@@ -475,30 +542,29 @@ export class UserController {
     res.status(200).json(result);
   };
 
-  getWhoToFollow = async (req: Request, res: Response, next: NextFunction) => {
+  getWhoToFollow = async (
+    req: TypedRequest<EmptyParams, EmptyBody, WhoToFollowQuery>,
+    res: Response,
+    next: NextFunction,
+  ) => {
     const { decodedUser } = req;
     if (!decodedUser?.publicId) {
-      return next(createError("UnauthorizedError", "User not authenticated."));
+      return next(Errors.authentication("User not authenticated."));
     }
 
-    const limit = parseInt(req.query.limit as string) || 5;
-    if (limit > 20) {
-      return next(createError("ValidationError", "Limit cannot exceed 20"));
-    }
+    const { limit } = req.query;
 
-    const query = new GetWhoToFollowQuery(
-      decodedUser.publicId as string,
-      limit,
-    );
+    const query = new GetWhoToFollowQuery(decodedUser.publicId, limit);
     const result = await this.queryBus.execute<GetWhoToFollowResult>(query);
 
     res.status(200).json(result);
   };
 
-  getHandleSuggestions = async (req: Request, res: Response) => {
-    const queryValue = typeof req.query.q === "string" ? req.query.q : "";
-    const context = req.query.context as HandleSuggestionContext;
-    const limit = parseInt(req.query.limit as string) || 8;
+  getHandleSuggestions = async (
+    req: TypedRequest<EmptyParams, EmptyBody, HandleSuggestionsQueryParams>,
+    res: Response,
+  ) => {
+    const { q: queryValue, context, limit } = req.query;
     const viewerPublicId = req.decodedUser?.publicId;
 
     const query = new GetHandleSuggestionsQuery(

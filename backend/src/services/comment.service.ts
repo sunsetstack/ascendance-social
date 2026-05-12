@@ -2,7 +2,7 @@ import { CommentRepository } from "@/repositories/comment.repository";
 import { PostRepository } from "@/repositories/post.repository";
 import { UserRepository } from "@/repositories/user.repository";
 import { UnitOfWork } from "@/database/UnitOfWork";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { IComment, TransformedComment } from "@/types";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
@@ -30,24 +30,21 @@ export class CommentService {
   ): Promise<TransformedComment> {
     // Validate
     if (!content.trim()) {
-      throw createError("ValidationError", "Comment content cannot be empty");
+      throw Errors.validation("Comment content cannot be empty");
     }
 
     if (content.length > 500) {
-      throw createError(
-        "ValidationError",
-        "Comment cannot exceed 500 characters",
-      );
+      throw Errors.validation("Comment cannot exceed 500 characters");
     }
 
     const post = await this.postRepository.findByPublicId(postPublicId);
     if (!post) {
-      throw createError("NotFoundError", "Post not found");
+      throw Errors.notFound("Post");
     }
 
     let createdCommentId: string;
 
-    await this.unitOfWork.executeInTransaction(async (session) => {
+    await this.unitOfWork.executeInTransaction(async () => {
       // create comment
       const comment = await this.commentRepository.create(
         {
@@ -55,7 +52,6 @@ export class CommentService {
           postId: post._id as mongoose.Types.ObjectId,
           userId: new mongoose.Types.ObjectId(userId),
         } as Partial<IComment>,
-        session,
       );
 
       createdCommentId = comment._id.toString();
@@ -64,7 +60,6 @@ export class CommentService {
       await this.postRepository.updateCommentCount(
         (post._id as mongoose.Types.ObjectId).toString(),
         1,
-        session,
       );
     });
 
@@ -73,10 +68,7 @@ export class CommentService {
       createdCommentId!,
     );
     if (!populatedComment) {
-      throw createError(
-        "InternalServerError",
-        "Failed to load comment after creation",
-      );
+      throw Errors.internal("Failed to load comment after creation");
     }
     return populatedComment;
   }
@@ -87,7 +79,7 @@ export class CommentService {
     content: string,
   ) {
     const user = await this.userRepository.findByPublicId(userPublicId);
-    if (!user) throw createError("NotFoundError", "User not found");
+    if (!user) throw Errors.notFound("User");
     return this.createComment(user.id, postPublicId, content);
   }
 
@@ -100,7 +92,7 @@ export class CommentService {
     // Validate post exists
     const post = await this.postRepository.findByPublicId(postPublicId);
     if (!post) {
-      throw createError("NotFoundError", "Post not found");
+      throw Errors.notFound("Post");
     }
 
     return await this.commentRepository.getCommentsByPostId(
@@ -119,14 +111,11 @@ export class CommentService {
   ): Promise<TransformedComment> {
     // Validate input
     if (!content.trim()) {
-      throw createError("ValidationError", "Comment content cannot be empty");
+      throw Errors.validation("Comment content cannot be empty");
     }
 
     if (content.length > 500) {
-      throw createError(
-        "ValidationError",
-        "Comment cannot exceed 500 characters",
-      );
+      throw Errors.validation("Comment cannot exceed 500 characters");
     }
 
     // Check if comment exists and user owns it
@@ -135,23 +124,21 @@ export class CommentService {
       userId,
     );
     if (!isOwner && !isAdmin) {
-      throw createError(
-        "ForbiddenError",
+      throw Errors.forbidden(
         "You can only edit your own comments",
       );
     }
 
     let updatedComment: TransformedComment | null = null;
 
-    await this.unitOfWork.executeInTransaction(async (session) => {
+    await this.unitOfWork.executeInTransaction(async () => {
       updatedComment = await this.commentRepository.updateComment(
         commentId,
         content.trim(),
-        session,
       );
 
       if (!updatedComment) {
-        throw createError("NotFoundError", "Comment not found");
+        throw Errors.notFound("Comment");
       }
     });
 
@@ -164,19 +151,19 @@ export class CommentService {
     content: string,
   ) {
     const user = await this.userRepository.findByPublicId(userPublicId);
-    if (!user) throw createError("NotFoundError", "User not found");
+    if (!user) throw Errors.notFound("User");
     return this.updateComment(commentId, user.id, content, user.isAdmin);
   }
 
   async deleteComment(commentId: string, userId: string): Promise<void> {
     const comment = await this.commentRepository.findById(commentId);
     if (!comment) {
-      throw createError("NotFoundError", "Comment not found");
+      throw Errors.notFound("Comment");
     }
 
     const post = await this.postRepository.findById(comment.postId.toString());
     if (!post) {
-      throw createError("NotFoundError", "Associated post not found");
+      throw Errors.notFound("Post");
     }
     const hydratedPost = await this.postRepository.findByPublicId(
       post.publicId,
@@ -189,27 +176,25 @@ export class CommentService {
     const isPostOwner = postOwnerInternalId === userId;
 
     if (!isCommentOwner && !isPostOwner) {
-      throw createError(
-        "ForbiddenError",
+      throw Errors.forbidden(
         "You can only delete your own comments or comments on your posts",
       );
     }
 
-    await this.unitOfWork.executeInTransaction(async (session) => {
-      await this.commentRepository.deleteComment(commentId, session);
+    await this.unitOfWork.executeInTransaction(async () => {
+      await this.commentRepository.deleteComment(commentId);
 
       // decrement comment count on post
       await this.postRepository.updateCommentCount(
         comment.postId.toString(),
         -1,
-        session,
       );
     });
   }
 
   async deleteCommentByPublicId(commentId: string, userPublicId: string) {
     const user = await this.userRepository.findByPublicId(userPublicId);
-    if (!user) throw createError("NotFoundError", "User not found");
+    if (!user) throw Errors.notFound("User");
     return this.deleteComment(commentId, user.id);
   }
 
@@ -222,7 +207,7 @@ export class CommentService {
   ) {
     const user = await this.userRepository.findByPublicId(userPublicId);
     if (!user) {
-      throw createError("NotFoundError", "User not found");
+      throw Errors.notFound("User");
     }
     return await this.commentRepository.getCommentsByUserId(
       user.id,
@@ -251,9 +236,8 @@ export class CommentService {
 
   async deleteCommentsByPostId(
     postId: string,
-    session?: mongoose.ClientSession,
   ): Promise<number> {
-    return await this.commentRepository.deleteCommentsByPostId(postId, session);
+    return await this.commentRepository.deleteCommentsByPostId(postId);
   }
 
   /**
@@ -273,7 +257,7 @@ export class CommentService {
   ) {
     const comment = await this.commentRepository.findById(commentId);
     if (!comment) {
-      throw createError("NotFoundError", "Comment not found");
+      throw Errors.notFound("Comment");
     }
     return await this.commentRepository.getCommentReplies(
       commentId,

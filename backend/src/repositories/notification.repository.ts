@@ -1,4 +1,4 @@
-import { ClientSession, Model } from "mongoose";
+import { Model } from "mongoose";
 import { INotification } from "@/types";
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
@@ -11,7 +11,8 @@ export class NotificationRepository extends BaseRepository<INotification> {
 		super(model);
 	}
 
-	async create(notificationData: Partial<INotification>, session?: ClientSession): Promise<INotification> {
+	async create(notificationData: Partial<INotification>): Promise<INotification> {
+		const session = this.getSession();
 		const notification = new this.model(notificationData);
 		await notification.save({ session });
 		return notification;
@@ -24,13 +25,13 @@ export class NotificationRepository extends BaseRepository<INotification> {
 	 * @param skip - number of notifications to skip for pagination (default: 0)
 	 */
 	async getNotifications(userId: string, limit: number = 50, skip: number = 0): Promise<INotification[]> {
-		return (await this.model
+		return await this.model
 			.find({ userId })
 			.sort({ timestamp: -1 })
 			.skip(skip)
 			.limit(limit)
-			.lean()
-			.exec()) as unknown as INotification[];
+			.lean<INotification[]>()
+			.exec();
 	}
 
 	/**
@@ -45,15 +46,15 @@ export class NotificationRepository extends BaseRepository<INotification> {
 		beforeTimestamp: Date,
 		limit: number = 20,
 	): Promise<INotification[]> {
-		return (await this.model
+		return await this.model
 			.find({
 				userId,
 				timestamp: { $lt: beforeTimestamp }, // older than cursor
 			})
 			.sort({ timestamp: -1 }) // most recent first (within the older set)
 			.limit(limit)
-			.lean()
-			.exec()) as unknown as INotification[];
+			.lean<INotification[]>()
+			.exec();
 	}
 
 	/**
@@ -66,7 +67,7 @@ export class NotificationRepository extends BaseRepository<INotification> {
 
 	async markAsRead(notificationId: string, userId: string) {
 		if (!notificationId || !/^[0-9a-fA-F]{24}$/.test(notificationId)) {
-			console.warn(`[NotificationRepository] Invalid notificationId format: ${notificationId}`);
+			logger.warn(`[NotificationRepository] Invalid notificationId format: ${notificationId}`);
 			return null;
 		}
 		logger.info(`[NotificationRepository] markAsRead start id=${notificationId} userId=${userId}`);
@@ -76,7 +77,7 @@ export class NotificationRepository extends BaseRepository<INotification> {
 				.lean<INotification>()
 				.exec();
 			if (!updated) {
-				console.warn(
+				logger.warn(
 					`[NotificationRepository] markAsRead miss (not found or ownership mismatch) id=${notificationId} userId=${userId}`,
 				);
 			} else {
@@ -86,7 +87,7 @@ export class NotificationRepository extends BaseRepository<INotification> {
 			}
 			return updated;
 		} catch (e) {
-			console.error(`[NotificationRepository] markAsRead error id=${notificationId} userId=${userId}:`, e);
+			logger.error(`[NotificationRepository] markAsRead error id=${notificationId} userId=${userId}:`, e);
 			throw e;
 		}
 	}
@@ -120,7 +121,8 @@ export class NotificationRepository extends BaseRepository<INotification> {
 		return result.deletedCount;
 	}
 
-	async deleteManyByUserId(userId: string, session?: ClientSession): Promise<number> {
+	async deleteManyByUserId(userId: string): Promise<number> {
+		const session = this.getSession();
 		const result = await this.model
 			.deleteMany({ userId })
 			.session(session || null)
@@ -128,7 +130,8 @@ export class NotificationRepository extends BaseRepository<INotification> {
 		return result.deletedCount || 0;
 	}
 
-	async deleteManyByActorId(actorId: string, session?: ClientSession): Promise<number> {
+	async deleteManyByActorId(actorId: string): Promise<number> {
+		const session = this.getSession();
 		const result = await this.model
 			.deleteMany({ actorId })
 			.session(session || null)

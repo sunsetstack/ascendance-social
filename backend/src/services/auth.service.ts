@@ -7,7 +7,7 @@ import {
   AdminUserDTO,
   AuthenticatedUserDTO,
 } from "@/services/dto.service";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { DecodedUser, IUser } from "@/types";
 import { AuthSessionService } from "@/services/auth-session.service";
 import { TOKENS } from "@/types/tokens";
@@ -68,7 +68,7 @@ export class AuthService {
       typeof user.comparePassword !== "function" ||
       !(await user.comparePassword(password))
     ) {
-      throw createError("AuthenticationError", "Invalid email or password");
+      throw Errors.authentication("Invalid email or password");
     }
 
     const userDTO = user.isAdmin
@@ -121,7 +121,7 @@ export class AuthService {
     const user = await this.userRepository.findByPublicId(session.publicId);
     if (!user) {
       await this.authSessionService.revokeSession(session.sid);
-      throw createError("AuthenticationError", "User not found");
+      throw Errors.authentication("User not found");
     }
 
     const userDTO = user.isAdmin
@@ -169,8 +169,7 @@ export class AuthService {
   async revokeSessionByAccessToken(accessToken: string): Promise<void> {
     const payload = this.verifyAccessToken(accessToken);
     if (!payload.sid) {
-      throw createError(
-        "AuthenticationError",
+      throw Errors.authentication(
         "Missing session identifier in access token",
       );
     }
@@ -217,14 +216,14 @@ export class AuthService {
     try {
       const decoded = jwt.verify(token, this.getJwtSecret());
       if (typeof decoded !== "object" || decoded === null) {
-        throw createError("AuthenticationError", "Invalid access token");
+        throw Errors.authentication("Invalid access token");
       }
       return decoded as DecodedUser;
     } catch (error) {
       if (error instanceof Error && error.name === "TokenExpiredError") {
-        throw createError("AuthenticationError", "Access token expired");
+        throw Errors.authentication("Access token expired");
       }
-      throw createError("AuthenticationError", "Invalid access token");
+      throw Errors.authentication("Invalid access token");
     }
   }
 
@@ -236,7 +235,7 @@ export class AuthService {
   private getJwtSecret(): string {
     const secret = process.env.JWT_SECRET;
     if (!secret) {
-      throw createError("ConfigError", "JWT secret is not configured");
+      throw Errors.internal("JWT secret is not configured");
     }
     return secret;
   }
@@ -251,8 +250,7 @@ export class AuthService {
       !Number.isFinite(this.refreshTokenTtlSeconds) ||
       this.refreshTokenTtlSeconds <= 0
     ) {
-      throw createError(
-        "ConfigError",
+      throw Errors.internal(
         "Invalid refresh token TTL configuration",
       );
     }
@@ -269,8 +267,7 @@ export class AuthService {
       !Number.isFinite(this.accessTokenTtlSeconds) ||
       this.accessTokenTtlSeconds <= 0
     ) {
-      throw createError(
-        "ConfigError",
+      throw Errors.internal(
         "Invalid access token TTL configuration",
       );
     }

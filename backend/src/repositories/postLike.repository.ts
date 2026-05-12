@@ -1,8 +1,8 @@
-import { ClientSession, Model, Types } from "mongoose";
+import { Model, Types } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
 import { IPostLike } from "@/types";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
@@ -11,25 +11,26 @@ export class PostLikeRepository extends BaseRepository<IPostLike> {
 		super(model);
 	}
 
-	async addLike(postId: string, userId: string, session?: ClientSession): Promise<boolean> {
+	async addLike(postId: string, userId: string): Promise<boolean> {
 		const payload = {
 			postId: this.normalizeId(postId, "postId"),
 			userId: this.normalizeId(userId, "userId"),
 		};
 
 		try {
+			const session = this.getSession();
 			await this.model.create([payload], { session });
 			return true;
 		} catch (error: unknown) {
-			const err = error as Record<string, unknown>;
-			if (err?.code === 11000) {
+			if (typeof error === 'object' && error !== null && 'code' in error && error.code === 11000) {
 				return false;
 			}
-			throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to persist post like");
+			throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to persist post like");
 		}
 	}
 
-	async removeLike(postId: string, userId: string, session?: ClientSession): Promise<boolean> {
+	async removeLike(postId: string, userId: string): Promise<boolean> {
+		const session = this.getSession();
 		const normalizedPostId = this.normalizeId(postId, "postId");
 		const normalizedUserId = this.normalizeId(userId, "userId");
 		const query = this.model.deleteOne({ postId: normalizedPostId, userId: normalizedUserId });
@@ -38,7 +39,8 @@ export class PostLikeRepository extends BaseRepository<IPostLike> {
 		return (result.deletedCount ?? 0) > 0;
 	}
 
-	async hasUserLiked(postId: string, userId: string, session?: ClientSession): Promise<boolean> {
+	async hasUserLiked(postId: string, userId: string): Promise<boolean> {
+		const session = this.getSession();
 		const normalizedPostId = this.normalizeId(postId, "postId");
 		const normalizedUserId = this.normalizeId(userId, "userId");
 		const query = this.model.exists({ postId: normalizedPostId, userId: normalizedUserId });
@@ -47,7 +49,8 @@ export class PostLikeRepository extends BaseRepository<IPostLike> {
 		return Boolean(exists);
 	}
 
-	async removeLikesByUser(userId: string, session?: ClientSession): Promise<number> {
+	async removeLikesByUser(userId: string): Promise<number> {
+		const session = this.getSession();
 		const normalizedUserId = this.normalizeId(userId, "userId");
 		const query = this.model.deleteMany({ userId: normalizedUserId });
 		if (session) query.session(session);
@@ -55,7 +58,8 @@ export class PostLikeRepository extends BaseRepository<IPostLike> {
 		return result.deletedCount ?? 0;
 	}
 
-	async removeLikesByPost(postId: string, session?: ClientSession): Promise<number> {
+	async removeLikesByPost(postId: string): Promise<number> {
+		const session = this.getSession();
 		const normalizedPostId = this.normalizeId(postId, "postId");
 		const query = this.model.deleteMany({ postId: normalizedPostId });
 		if (session) query.session(session);
@@ -63,14 +67,16 @@ export class PostLikeRepository extends BaseRepository<IPostLike> {
 		return result.deletedCount ?? 0;
 	}
 
-	async countLikesByUser(userId: string, session?: ClientSession): Promise<number> {
+	async countLikesByUser(userId: string): Promise<number> {
+		const session = this.getSession();
 		const normalizedUserId = this.normalizeId(userId, "userId");
 		const query = this.model.countDocuments({ userId: normalizedUserId });
 		if (session) query.session(session);
 		return await query.exec();
 	}
 
-	async countLikesForPost(postId: string, session?: ClientSession): Promise<number> {
+	async countLikesForPost(postId: string): Promise<number> {
+		const session = this.getSession();
 		const normalizedPostId = this.normalizeId(postId, "postId");
 		const query = this.model.countDocuments({ postId: normalizedPostId });
 		if (session) query.session(session);
@@ -100,7 +106,9 @@ export class PostLikeRepository extends BaseRepository<IPostLike> {
 		]);
 
 		return {
-			postIds: likes.map((like) => like.postId as Types.ObjectId),
+			postIds: likes.map((like) => 
+				like.postId instanceof Types.ObjectId ? like.postId : new Types.ObjectId(String(like.postId))
+			),
 			total,
 		};
 	}
@@ -112,7 +120,7 @@ export class PostLikeRepository extends BaseRepository<IPostLike> {
 		try {
 			return new Types.ObjectId(String(id));
 		} catch {
-			throw createError("ValidationError", `${field} is not a valid ObjectId`);
+			throw Errors.validation(`${field} is not a valid ObjectId`);
 		}
 	}
 }

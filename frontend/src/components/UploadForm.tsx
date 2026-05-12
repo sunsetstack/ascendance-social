@@ -6,55 +6,55 @@ import CreatePost from "./CreatePost";
 import { useTranslation } from "react-i18next";
 
 const UploadForm: React.FC<UploadFormProps> = ({ onClose }) => {
-	const { t } = useTranslation();
-	const theme = useTheme();
+  const { t } = useTranslation();
+  const theme = useTheme();
 
-	return (
-		<Modal
-			open={true}
-			onClose={onClose}
-			aria-labelledby="create-post-modal"
-			sx={{
-				display: "flex",
-				alignItems: "center",
-				justifyContent: "center",
-			}}
-		>
-			<Box
-				sx={{
-					position: "relative",
-					width: "100%",
-					maxWidth: 600,
-					bgcolor: "background.paper",
-					borderRadius: 2,
-					boxShadow: 24,
-					maxHeight: "90vh",
-					overflow: "auto",
-				}}
-			>
-				{/* Modal Header */}
-				<Box
-					sx={{
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "space-between",
-						p: 2,
-						borderBottom: `1px solid ${theme.palette.divider}`,
-					}}
-				>
-					<Typography variant="h6" fontWeight={600}>
-						{t("nav.create_post")}
-					</Typography>
-					<IconButton onClick={onClose} size="small">
-						<CloseIcon />
-					</IconButton>
-				</Box>
+  return (
+    <Modal
+      open={true}
+      onClose={onClose}
+      aria-labelledby="create-post-modal"
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Box
+        sx={{
+          position: "relative",
+          width: "100%",
+          maxWidth: 600,
+          bgcolor: "background.paper",
+          borderRadius: 2,
+          boxShadow: 24,
+          maxHeight: "90vh",
+          overflow: "auto",
+        }}
+      >
+        {/* Modal Header */}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            p: 2,
+            borderBottom: `1px solid ${theme.palette.divider}`,
+          }}
+        >
+          <Typography variant="h6" fontWeight={600}>
+            {t("nav.create_post")}
+          </Typography>
+          <IconButton onClick={onClose} size="small">
+            <CloseIcon />
+          </IconButton>
+        </Box>
 
-				{/* CreatePost Component */}
-				<CreatePost onClose={onClose} />
-			</Box>
-		</Modal>
-	);
+        {/* CreatePost Component */}
+        <CreatePost onClose={onClose} />
+      </Box>
+    </Modal>
+  );
 };
 
 export default UploadForm;

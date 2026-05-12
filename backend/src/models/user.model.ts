@@ -256,6 +256,7 @@ userSchema.methods.canViewPost = function (post: IPost | { canBeViewedBy?: (user
 
 // Transform the user object when serialized to JSON
 userSchema.set("toJSON", {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	transform: (_doc, ret: any) => {
 		// 1. Handle ID (Safe to assume _id exists on the object)
 		if (ret._id) {

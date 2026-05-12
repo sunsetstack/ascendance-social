@@ -1,14 +1,28 @@
 import { RedisClientType } from "redis";
 import { performance } from "perf_hooks";
 import { INotification } from "@/types";
+import { NotificationPlain } from "@/types/customNotifications/notifications.types";
+import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
+import { normalizeNotificationPlain } from "@/utils/notification-plain";
 import { redisLogger } from "@/utils/winston";
 
-type RedisHash = { [key: string]: string | number | Buffer };
-
-interface NotificationHash extends RedisHash {
+/**
+ * Minimal required fields from a Redis notification hash.
+ * The `data` field holds the full JSON-serialised notification.
+ */
+interface NotificationHash {
   data: string;
   isRead: string;
   timestamp: string;
+}
+
+function isNotificationHash(val: unknown): val is NotificationHash {
+  return (
+    typeof val === "object" &&
+    val !== null &&
+    "data" in val &&
+    typeof (val as Record<string, unknown>).data === "string"
+  );
 }
 
 export class RedisNotificationModule {
@@ -19,9 +33,9 @@ export class RedisNotificationModule {
     notification: INotification,
     maxCount = 200,
   ): Promise<void> {
-    const listKey = `notifications:user:${userId}`;
+    const listKey = CacheKeyBuilder.getNotificationListKey(userId);
     const notificationId = String(notification._id);
-    const hashKey = `notification:${notificationId}`;
+    const hashKey = CacheKeyBuilder.getNotificationHashKey(notificationId);
 
     const start = performance.now();
     const pipeline = this.client.multi();
@@ -47,7 +61,7 @@ export class RedisNotificationModule {
     notifications: INotification[],
     maxCount = 200,
   ): Promise<void> {
-    const listKey = `notifications:user:${userId}`;
+    const listKey = CacheKeyBuilder.getNotificationListKey(userId);
     const start = performance.now();
 
     await this.client.del(listKey);
@@ -55,7 +69,7 @@ export class RedisNotificationModule {
 
     for (const notification of notifications) {
       const notificationId = String(notification._id);
-      const hashKey = `notification:${notificationId}`;
+      const hashKey = CacheKeyBuilder.getNotificationHashKey(notificationId);
 
       pipeline.hSet(hashKey, {
         data: JSON.stringify(notification),
@@ -82,8 +96,8 @@ export class RedisNotificationModule {
     userId: string,
     page = 1,
     limit = 20,
-  ): Promise<INotification[]> {
-    const listKey = `notifications:user:${userId}`;
+  ): Promise<NotificationPlain[]> {
+    const listKey = CacheKeyBuilder.getNotificationListKey(userId);
     const start = (page - 1) * limit;
     const end = start + limit - 1;
     const startPerf = performance.now();
@@ -109,27 +123,31 @@ export class RedisNotificationModule {
 
       const pipeline = this.client.multi();
       for (const id of notificationIds) {
-        pipeline.hGetAll(`notification:${id}`);
+        pipeline.hGetAll(CacheKeyBuilder.getNotificationHashKey(id));
       }
-      const results = (await pipeline.exec()) as unknown as NotificationHash[];
+      // pipeline.exec() returns an array matching the commands issued.
+      // Each hGetAll yields Record<string, string> | null.
+      const results = (await pipeline.exec()) as (Record<string, string> | null)[];
 
       if (!results) {
         redisLogger.warn("Pipeline returned null results", { userId });
         return [];
       }
 
-      const notifications: INotification[] = results
-        .map((hash) => {
-          if (!hash || !hash.data) return null;
+      const notifications: NotificationPlain[] = results
+        .map((raw): NotificationPlain | null => {
+          if (!isNotificationHash(raw)) return null;
           try {
-            const notification = JSON.parse(hash.data) as INotification;
-            notification.isRead = hash.isRead === "1";
+            const parsed: unknown = JSON.parse(raw.data);
+            const notification = normalizeNotificationPlain(parsed);
+            if (!notification) return null;
+            notification.isRead = raw.isRead === "1";
             return notification;
           } catch {
             return null;
           }
         })
-        .filter((n): n is INotification => n !== null);
+        .filter((n): n is NotificationPlain => n !== null);
 
       const duration = performance.now() - startPerf;
       redisLogger.info("getUserNotifications success", {
@@ -152,40 +170,53 @@ export class RedisNotificationModule {
     start = 0,
     end = -1,
   ): Promise<string[]> {
-    return this.client.lRange(`notifications:user:${userId}`, start, end);
+    return this.client.lRange(
+      CacheKeyBuilder.getNotificationListKey(userId),
+      start,
+      end,
+    );
   }
 
   async markNotificationRead(notificationId: string): Promise<void> {
-    await this.client.hSet(`notification:${notificationId}`, "isRead", "1");
+    await this.client.hSet(
+      CacheKeyBuilder.getNotificationHashKey(notificationId),
+      "isRead",
+      "1",
+    );
   }
 
   async markNotificationsRead(notificationIds: string[]): Promise<void> {
-    if (notificationIds.length === 0) {
-      return;
-    }
+    if (notificationIds.length === 0) return;
 
     const pipeline = this.client.multi();
     for (const id of notificationIds) {
-      pipeline.hSet(`notification:${id}`, "isRead", "1");
+      pipeline.hSet(CacheKeyBuilder.getNotificationHashKey(id), "isRead", "1");
     }
     await pipeline.exec();
   }
 
   async getUnreadNotificationCount(userId: string): Promise<number> {
-    const listKey = `notifications:user:${userId}`;
-    const notificationIds = await this.client.lRange(listKey, 0, -1);
+    const listKey = CacheKeyBuilder.getNotificationListKey(userId);
+    try {
+      const notificationIds = await this.client.lRange(listKey, 0, -1);
 
-    let unreadCount = 0;
-    const pipeline = this.client.multi();
-    for (const id of notificationIds) {
-      pipeline.hGet(`notification:${id}`, "isRead");
+      const pipeline = this.client.multi();
+      for (const id of notificationIds) {
+        pipeline.hGet(CacheKeyBuilder.getNotificationHashKey(id), "isRead");
+      }
+      const results = await pipeline.exec();
+
+      let unreadCount = 0;
+      for (const result of results) {
+        if (result === "0") unreadCount++;
+      }
+      return unreadCount;
+    } catch (error) {
+      redisLogger.error("getUnreadNotificationCount failed", {
+        userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
-    const results = await pipeline.exec();
-
-    for (const result of results) {
-      if (result === "0") unreadCount++;
-    }
-
-    return unreadCount;
   }
 }

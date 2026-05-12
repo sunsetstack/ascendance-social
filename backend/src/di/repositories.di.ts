@@ -11,7 +11,7 @@ import { CommentLikeRepository } from "@/repositories/commentLike.repository";
 import { UserActionRepository } from "@/repositories/userAction.repository";
 import { TagRepository } from "@/repositories/tag.repository";
 import { FollowRepository } from "@/repositories/follow.repository";
-import { NotificationRepository } from "@/repositories/notification.respository";
+import { NotificationRepository } from "@/repositories/notification.repository";
 import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
 import { ConversationRepository } from "@/repositories/conversation.repository";

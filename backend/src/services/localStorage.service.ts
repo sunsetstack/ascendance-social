@@ -5,7 +5,7 @@ import { pipeline } from "stream/promises";
 import { Readable } from "stream";
 import { IImageStorageService, ImageUploadInput } from "@/types";
 import { injectable } from "tsyringe";
-import { createError, wrapError } from "@/utils/errors";
+import { Errors, wrapError } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 
 @injectable()
@@ -107,7 +107,7 @@ export class LocalStorageService implements IImageStorageService {
       } else if (input.stream) {
         sourceStream = input.stream;
       } else {
-        throw createError("ValidationError", "No image data provided");
+        throw Errors.validation("No image data provided");
       }
 
       // Use stream pipeline for efficient writing
@@ -255,12 +255,12 @@ export class LocalStorageService implements IImageStorageService {
         return null;
       }
     })();
-    if (!parsed) throw createError("StorageError", "Invalid URL");
+    if (!parsed) throw Errors.storage("Invalid URL");
     const pathname = decodeURIComponent(parsed.pathname);
 
     const publicId = this.extractPublicId(pathname);
     if (!publicId)
-      throw createError("StorageError", "Could not extract publicId from URL");
+      throw Errors.storage("Could not extract publicId from URL");
 
     // validate filename and ownerPublicId
     const safeFileName = this.validateFileName(publicId);
@@ -274,7 +274,7 @@ export class LocalStorageService implements IImageStorageService {
       return { result: "skipped" };
     }
     if (stat.isSymbolicLink()) {
-      throw createError("StorageError", "Refusing to remove symlink");
+      throw Errors.storage("Refusing to remove symlink");
     }
 
     await fs.promises.unlink(assetPath);
@@ -349,7 +349,7 @@ export class LocalStorageService implements IImageStorageService {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
     if (!uuidV4Regex.test(cleaned)) {
-      throw createError("SecurityError", "Invalid user identifier format");
+      throw Errors.validation("Invalid user identifier format");
     }
 
     return cleaned;
@@ -364,7 +364,7 @@ export class LocalStorageService implements IImageStorageService {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(png|jpg|jpeg|webp)$/i;
 
     if (!fileNameRegex.test(cleaned)) {
-      throw createError("SecurityError", "Invalid file name format");
+      throw Errors.validation("Invalid file name format");
     }
 
     return cleaned;
@@ -378,7 +378,7 @@ export class LocalStorageService implements IImageStorageService {
 
     // check if resolved path escapes base directory
     if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-      throw createError("SecurityError", "Path traversal attempt detected");
+      throw Errors.validation("Path traversal attempt detected");
     }
 
     return resolvedPath;

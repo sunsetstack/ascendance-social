@@ -1,4 +1,3 @@
-import { ClientSession } from "mongoose";
 import { FeedPost, IPost, PaginationOptions, PaginationResult } from "@/types";
 
 /**
@@ -7,21 +6,18 @@ import { FeedPost, IPost, PaginationOptions, PaginationResult } from "@/types";
  */
 export interface IPostReadRepository {
   // single post lookups
-  findById(id: string, session?: ClientSession): Promise<IPost | null>;
+  findById(id: string): Promise<IPost | null>;
   findInternalIdByPublicId(publicId: string): Promise<string | null>;
   findOneByPublicId(
     publicId: string,
-    session?: ClientSession,
   ): Promise<IPost | null>;
   findByIdWithPopulates(
     id: string,
-    session?: ClientSession,
   ): Promise<IPost | null>;
   findByPublicId(
     publicId: string,
-    session?: ClientSession,
   ): Promise<IPost | null>;
-  findBySlug(slug: string, session?: ClientSession): Promise<IPost | null>;
+  findBySlug(slug: string): Promise<IPost | null>;
   // batch lookups
   findPostsByIds(ids: string[], viewerPublicId?: string): Promise<FeedPost[]>;
   findPostsByPublicIds(publicIds: string[]): Promise<FeedPost[]>;
@@ -47,7 +43,6 @@ export interface IPostReadRepository {
   // paginated queries
   findWithPagination(
     options: PaginationOptions,
-    session?: ClientSession,
   ): Promise<PaginationResult<FeedPost>>;
 
   // single post by arbitrary filter

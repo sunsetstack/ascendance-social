@@ -6,6 +6,7 @@ import { AuthFactory } from "../middleware/authentication.middleware";
 import { ValidationMiddleware } from "../middleware/validation.middleware";
 import {
   createCommunitySchema,
+  communityPaginationQuerySchema,
   updateCommunitySchema,
   communityPublicIdSchema,
   communitySlugSchema,
@@ -51,6 +52,9 @@ export class CommunityRoutes {
     this.router.get(
       "/me",
       this.auth,
+      new ValidationMiddleware({
+        query: communityPaginationQuerySchema,
+      }).validate(),
       asyncHandler(this.communityController.getUserCommunities),
     );
 
@@ -74,6 +78,9 @@ export class CommunityRoutes {
     this.router.get(
       "/:id/feed",
       this.optionalAuth,
+      new ValidationMiddleware({
+        query: communityPaginationQuerySchema,
+      }).validate(),
       new ValidationMiddleware({ params: communityPublicIdSchema }).validate(),
       asyncHandler(this.communityController.getCommunityFeed),
     );
@@ -82,6 +89,9 @@ export class CommunityRoutes {
     this.router.get(
       "/:slug/members",
       this.optionalAuth,
+      new ValidationMiddleware({
+        query: communityPaginationQuerySchema,
+      }).validate(),
       new ValidationMiddleware({ params: communitySlugSchema }).validate(),
       asyncHandler(this.communityController.getCommunityMembers),
     );

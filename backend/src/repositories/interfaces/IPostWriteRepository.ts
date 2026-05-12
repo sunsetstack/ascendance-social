@@ -1,4 +1,4 @@
-import mongoose, { ClientSession } from "mongoose";
+import mongoose from "mongoose";
 import { IPost } from "@/types";
 
 /**
@@ -7,18 +7,18 @@ import { IPost } from "@/types";
  */
 export interface IPostWriteRepository {
 	// CRUD operations
-	create(item: Partial<IPost>, session?: ClientSession): Promise<IPost>;
-	update(id: string, item: Partial<IPost>, session?: ClientSession): Promise<IPost | null>;
-	delete(id: string, session?: ClientSession): Promise<boolean>;
+	create(item: Partial<IPost>): Promise<IPost>;
+	update(id: string, item: Partial<IPost>): Promise<IPost | null>;
+	delete(id: string): Promise<boolean>;
 
 	// counter updates
-	incrementViewCount(postId: mongoose.Types.ObjectId, session?: ClientSession): Promise<void>;
-	updateCommentCount(postId: string, increment: number, session?: ClientSession): Promise<void>;
-	updateLikeCount(postId: string, increment: number, session?: ClientSession): Promise<void>;
-	updateRepostCount(postId: string, increment: number, session?: ClientSession): Promise<void>;
+	incrementViewCount(postId: mongoose.Types.ObjectId): Promise<void>;
+	updateCommentCount(postId: string, increment: number): Promise<void>;
+	updateLikeCount(postId: string, increment: number): Promise<void>;
+	updateRepostCount(postId: string, increment: number): Promise<void>;
 
 	// bulk operations
-	deleteManyByUserId(userId: string, session?: ClientSession): Promise<number>;
+	deleteManyByUserId(userId: string): Promise<number>;
 
 	// author snapshot sync
 	updateAuthorSnapshot(

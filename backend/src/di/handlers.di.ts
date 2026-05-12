@@ -40,7 +40,7 @@ import { UserUsernameChangedHandler } from "@/application/events/user/user-usern
 import { CreateCommentCommand } from "@/application/commands/comments/createComment/createComment.command";
 import { CreateCommentCommandHandler } from "@/application/commands/comments/createComment/create-comment.handler";
 import { DeleteCommentCommand } from "@/application/commands/comments/deleteComment/deleteComment.command";
-import { DeleteCommentCommandHandler } from "@/application/commands/comments/createComment/delete-comment.handler";
+import { DeleteCommentCommandHandler } from "@/application/commands/comments/deleteComment/delete-comment.handler";
 import { LikeCommentCommand } from "@/application/commands/comments/likeComment/likeComment.command";
 import { LikeCommentCommandHandler } from "@/application/commands/comments/likeComment/like-comment.handler";
 import { MessageSentHandler } from "@/application/events/message/message-sent.handler";

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Box, Button, Container, TextField, Typography, Alert, Paper } from "@mui/material";
 import { useForgotPassword } from "../hooks/user/useUserForgotPassword";
+import { devError } from "@/lib/devLogger";
 
 const ForgotPassword = () => {
 	const [email, setEmail] = useState<string>("");
@@ -26,7 +27,7 @@ const ForgotPassword = () => {
 		try {
 			await requestReset({ email });
 		} catch (error) {
-			console.error("Forgot password error:", error);
+			devError("Forgot password error:", error);
 			setErrorMessage(error instanceof Error ? error.message : "An error occurred. Please try again.");
 		}
 	};

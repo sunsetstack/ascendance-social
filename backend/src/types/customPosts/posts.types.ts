@@ -1,4 +1,4 @@
-import mongoose, { ClientSession, Document } from "mongoose";
+import mongoose, { Document } from "mongoose";
 import { IImage } from "@/types/customImages/images.types";
 import { IUser } from "../customUsers/user.types";
 
@@ -35,7 +35,6 @@ export interface CreatePostAttachmentInput {
 	originalName: string;
 	userInternalId: string;
 	userPublicId: string;
-	session: ClientSession;
 }
 
 export interface AttachmentSummary {
@@ -56,7 +55,6 @@ export interface RemoveAttachmentInput {
 	requesterPublicId: string;
 	ownerInternalId?: string;
 	ownerPublicId?: string;
-	session: ClientSession;
 }
 
 export interface RemoveAttachmentResult {
@@ -67,7 +65,6 @@ export interface RemoveAttachmentResult {
 
 export interface RemoveAttachmentRecordInput {
 	imageId: string;
-	session: ClientSession;
 }
 
 export interface RemoveAttachmentRecordResult {

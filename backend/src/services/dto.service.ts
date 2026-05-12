@@ -89,141 +89,278 @@ export interface CommunityMemberDTO {
   joinedAt: Date;
 }
 
-type RawPostInput = Record<string, unknown>;
-
 @injectable()
 export class DTOService {
   /**
-   * Converts a raw post document to PostDTO
-   * Handles both Mongo documents and aggregation results
+   * Converts a post document or aggregation result to PostDTO.
+   *
+   * Accepts two distinct input shapes:
+   * - FeedPost: a plain aggregation result with resolved user, tags, image, and community.
+   * - IPost: a Mongoose Document with author snapshot and ObjectId references.
+   *
+   * Each path reads directly from the typed input without internal assertions.
    */
-  toPostDTO(post: IPost | FeedPost | RawPostInput): PostDTO {
-    const p = post as RawPostInput;
-    const tags = Array.isArray(p.tags)
-      ? p.tags.map((tag: unknown) => {
+  toPostDTO(post: IPost | FeedPost): PostDTO {
+    if (this.isFeedPost(post)) {
+      return this.feedPostToDTO(post);
+    }
+    return this.iPostToDTO(post);
+  }
+
+  /**
+   * Discriminator: FeedPost has `userPublicId` set by the aggregation projection.
+   * IPost (Mongoose Document) does not have this field.
+   */
+  private isFeedPost(post: IPost | FeedPost): post is FeedPost {
+    return "userPublicId" in post;
+  }
+
+  /**
+   * Maps a FeedPost (plain aggregation result) to PostDTO.
+   * All fields on FeedPost are already resolved — no secondary lookups needed.
+   */
+  private feedPostToDTO(post: FeedPost): PostDTO {
+    const tags = post.tags.map((t) => t.tag).filter(Boolean);
+
+    const image =
+      post.image?.url && post.image?.publicId
+        ? { url: post.image.url, publicId: post.image.publicId }
+        : null;
+
+    const url = post.image?.url ?? undefined;
+    const imagePublicId = post.image?.publicId ?? undefined;
+
+    return {
+      publicId: post.publicId,
+      body: post.body,
+      slug: post.slug,
+      type: "original",
+      repostCount: 0,
+      repostOf: undefined,
+      image,
+      url,
+      imagePublicId,
+      tags,
+      likes: post.likes,
+      commentsCount: post.commentsCount,
+      viewsCount: post.viewsCount,
+      createdAt: post.createdAt,
+      user: {
+        publicId: post.user.publicId,
+        handle: post.user.handle,
+        username: post.user.username,
+        avatar: post.user.avatar,
+      },
+      community: this.buildFeedPostCommunity(post.community),
+    };
+  }
+
+  /**
+   * Maps an IPost Mongoose Document to PostDTO.
+   * Reads from the embedded author snapshot and resolves ObjectId-based fields
+   * that may be populated by the caller.
+   */
+  private iPostToDTO(post: IPost): PostDTO {
+    // post.toObject() has a narrow return type in Mongoose that does not include
+    // schema fields. We cast once here at the Mongoose boundary to access all
+    // document fields. This is the correct single-point-of-cast pattern.
+    const rawObj = (post.toObject ? post.toObject() : post) as Record<string, unknown>;
+
+    // Tags may be populated objects or raw ObjectIds from the schema
+    const tags = Array.isArray(rawObj.tags)
+      ? (rawObj.tags as unknown[]).map((tag: unknown) => {
           if (typeof tag === "string") return tag;
           if (tag && typeof tag === "object" && "tag" in tag)
-            return (tag as { tag: unknown }).tag as string;
+            return String((tag as { tag: unknown }).tag);
           return "";
         })
       : [];
 
+    // Image may be a populated object when the caller uses .populate("image")
+    const imageRef = rawObj.image as unknown;
     const imageData =
-      p.image && typeof p.image === "object"
-        ? (p.image as { url?: string; publicId?: string })
+      imageRef && typeof imageRef === "object" && !("_bsontype" in imageRef)
+        ? (imageRef as { url?: string; publicId?: string })
         : null;
-    const url = imageData?.url || undefined;
-    const imagePublicId = imageData?.publicId || undefined;
-
-    // Create nested image object if image exists
+    const url = imageData?.url ?? undefined;
+    const imagePublicId = imageData?.publicId ?? undefined;
     const image =
-      imageData && url && imagePublicId
-        ? { url, publicId: imagePublicId }
+      url && imagePublicId ? { url, publicId: imagePublicId } : null;
+
+    const userSnapshot = this.resolveIPostUserSnapshot(rawObj);
+
+    const repostOf = this.buildIPostRepostOf(rawObj);
+
+    const communityRef = (rawObj.communityId ?? rawObj.community) as unknown;
+    const community =
+      communityRef &&
+      typeof communityRef === "object" &&
+      !("_bsontype" in communityRef)
+        ? this.buildCommunityFromRef(
+            communityRef as {
+              publicId?: string;
+              name?: string;
+              slug?: string;
+              avatar?: string;
+            },
+          )
         : null;
-    const likeCount = Array.isArray(p.likes)
-      ? (p.likes as unknown[]).length
-      : typeof p.likes === "number"
-        ? p.likes
-        : typeof p.likesCount === "number"
-          ? p.likesCount
-          : 0;
-
-    const userSnapshot = this.resolvePostUserSnapshot(p);
-
-    const repostOf = this.buildRepostOf(p.repostOf as RawPostInput | undefined);
 
     return {
-      publicId: p.publicId as string,
-      body: p.body as string,
-      slug: p.slug as string,
-      type: (p.type as "original" | "repost") ?? "original",
-      repostCount: (p.repostCount as number) ?? 0,
-      repostOf: repostOf,
-      // Nested format
+      publicId: rawObj.publicId as string,
+      body: rawObj.body as string | undefined,
+      slug: rawObj.slug as string | undefined,
+      type: (rawObj.type as "original" | "repost") ?? "original",
+      repostCount: (rawObj.repostCount as number) ?? 0,
+      repostOf,
       image,
-      // Legacy flat format for backward compatibility
       url,
       imagePublicId,
       tags: tags.filter(Boolean),
-      likes: likeCount,
-      commentsCount: (p.commentsCount as number) ?? 0,
-      viewsCount: (p.viewsCount as number) ?? 0,
-      createdAt: p.createdAt as Date,
-      isLikedByViewer: p.isLikedByViewer as boolean | undefined,
-      isFavoritedByViewer: p.isFavoritedByViewer as boolean | undefined,
-      isRepostedByViewer: p.isRepostedByViewer as boolean | undefined,
-      user: {
-        publicId: userSnapshot.publicId,
-        handle: userSnapshot.handle,
-        username: userSnapshot.username,
-        avatar: userSnapshot.avatar,
-      },
-      community: this.buildCommunity(
-        (p.community ?? p.communityId) as RawPostInput | undefined,
-      ),
+      likes: (rawObj.likesCount as number) ?? 0,
+      commentsCount: (rawObj.commentsCount as number) ?? 0,
+      viewsCount: (rawObj.viewsCount as number) ?? 0,
+      createdAt: rawObj.createdAt as Date,
+      user: userSnapshot,
+      community,
     };
   }
 
-  private buildCommunity(source: RawPostInput | undefined | null) {
-    if (!source || typeof source !== "object") return null;
-    const publicId = this.pickString(source.publicId);
-    if (!publicId) return null;
+  private buildFeedPostCommunity(
+    community: FeedPost["community"],
+  ): PostDTO["community"] {
+    if (!community) return null;
     return {
-      publicId,
-      name: this.pickString(source.name) || "",
-      slug: this.pickString(source.slug) || "",
-      avatar: this.pickString(source.avatar) || undefined,
+      publicId: community.publicId,
+      name: community.name,
+      slug: community.slug,
+      avatar: community.avatar,
     };
   }
 
-  private buildRepostOf(source: RawPostInput | undefined) {
-    if (!source) return undefined;
-    const imageData =
-      source.image && typeof source.image === "object"
-        ? (source.image as { url?: string; publicId?: string })
-        : null;
-    const image =
-      imageData?.url && imageData?.publicId
-        ? { url: imageData.url, publicId: imageData.publicId }
-        : null;
-    const userSnapshot = this.resolvePostUserSnapshot(source);
-
-    // calculate likes count from the source
-    const likesCount = Array.isArray(source.likes)
-      ? source.likes.length
-      : typeof source.likes === "number"
-        ? source.likes
-        : typeof source.likesCount === "number"
-          ? source.likesCount
-          : 0;
-
+  private buildCommunityFromRef(source: {
+    publicId?: string;
+    name?: string;
+    slug?: string;
+    avatar?: string;
+  }): PostDTO["community"] {
+    if (!source.publicId) return null;
     return {
-      publicId: source.publicId as string,
-      user: {
-        publicId: userSnapshot.publicId,
-        handle: userSnapshot.handle,
-        username: userSnapshot.username,
-        avatar: userSnapshot.avatar,
-      },
-      body: source.body as string,
-      slug: source.slug as string,
-      image,
-      likes: likesCount,
-      repostCount: (source.repostCount as number) ?? 0,
-      commentsCount: (source.commentsCount as number) ?? 0,
+      publicId: source.publicId,
+      name: source.name ?? "",
+      slug: source.slug ?? "",
+      avatar: source.avatar,
     };
   }
 
-  private resolvePostUserSnapshot(post: RawPostInput) {
-    const normalizedUser = this.normalizeUserLike(post?.user);
-    if (normalizedUser) {
-      return normalizedUser;
+  private resolveIPostUserSnapshot(rawObj: Record<string, unknown>): {
+    publicId: string;
+    handle: string;
+    username: string;
+    avatar: string;
+  } {
+    // Prefer a populated user object (when caller uses .populate("user"))
+    const userRef = rawObj.user;
+    if (
+      userRef &&
+      typeof userRef === "object" &&
+      !("_bsontype" in userRef)
+    ) {
+      const u = userRef as {
+        publicId?: string;
+        handle?: string;
+        username?: string;
+        avatar?: string;
+      };
+      if (u.publicId) {
+        return {
+          publicId: u.publicId,
+          handle: u.handle ?? "",
+          username: u.username ?? "",
+          avatar: u.avatar ?? "",
+        };
+      }
     }
 
-    return this.normalizeAuthorLike(post?.author);
+    // Fall back to the embedded author snapshot
+    const author = (rawObj.author ?? {}) as {
+      publicId?: string;
+      handle?: string;
+      username?: string;
+      displayName?: string;
+      avatarUrl?: string;
+    };
+    return {
+      publicId: author.publicId ?? "",
+      handle: author.handle ?? "",
+      username: author.username ?? author.displayName ?? "",
+      avatar: author.avatarUrl ?? "",
+    };
   }
 
-  private normalizeUserLike(candidate: unknown) {
+  private buildIPostRepostOf(
+    rawObj: Record<string, unknown>,
+  ): PostDTO["repostOf"] {
+    const repostRef = rawObj.repostOf;
+    if (
+      !repostRef ||
+      typeof repostRef !== "object" ||
+      "_bsontype" in repostRef
+    ) {
+      return undefined;
+    }
+
+    const r = repostRef as {
+      publicId?: string;
+      body?: string;
+      slug?: string;
+      likesCount?: number;
+      repostCount?: number;
+      commentsCount?: number;
+      author?: {
+        publicId?: string;
+        handle?: string;
+        username?: string;
+        displayName?: string;
+        avatarUrl?: string;
+      };
+      image?: { url?: string; publicId?: string } | null;
+    };
+
+    if (!r.publicId) return undefined;
+
+    const image =
+      r.image?.url && r.image?.publicId
+        ? { url: r.image.url, publicId: r.image.publicId }
+        : null;
+
+    return {
+      publicId: r.publicId,
+      user: {
+        publicId: r.author?.publicId ?? "",
+        handle: r.author?.handle ?? "",
+        username: r.author?.username ?? r.author?.displayName ?? "",
+        avatar: r.author?.avatarUrl ?? "",
+      },
+      body: r.body,
+      slug: r.slug,
+      image,
+      likes: r.likesCount ?? 0,
+      repostCount: r.repostCount ?? 0,
+      commentsCount: r.commentsCount ?? 0,
+    };
+  }
+
+  /**
+   * Normalizes an unknown candidate object into a user snapshot shape.
+   * Used for community member population and similar populated references.
+   */
+  private normalizeUserLike(candidate: unknown): {
+    publicId: string;
+    handle: string;
+    username: string;
+    avatar: string;
+  } | null {
     if (!candidate || typeof candidate !== "object") {
       return null;
     }
@@ -247,26 +384,12 @@ export class DTOService {
     };
   }
 
-  private normalizeAuthorLike(author: unknown) {
-    const source =
-      author && typeof author === "object"
-        ? (author as Record<string, unknown>)
-        : ({} as Record<string, unknown>);
-    return {
-      publicId: this.pickString(source.publicId) || "",
-      handle: this.pickString(source.handle) || "",
-      username: this.pickString(source.username ?? source.displayName) || "",
-      avatar: this.pickString(source.avatarUrl) || "",
-    };
-  }
-
-  private pickString(value: unknown): string | "" {
+  private pickString(value: unknown): string {
     if (typeof value === "string" && value.trim().length > 0) {
       return value;
     }
     return "";
   }
-
   toCommunityDTO(
     community: ICommunity,
     options?: {

@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { loginRequest, LoginResponse } from "../../api/userApi";
 import { toast } from "react-toastify";
 import { useAuth } from "../context/useAuth";
+import { devError } from "@/lib/devLogger";
 
 export const useLogin = () => {
 	const queryClient = useQueryClient();
@@ -23,7 +24,7 @@ export const useLogin = () => {
 		onError: (error) => {
 			console.log(error);
 			toast.error(`Login failed: ${error.message || "Invalid credentials or server error"}`);
-			console.error("Login mutation failed:", error);
+			devError("Login mutation failed:", error);
 		},
 	});
 };

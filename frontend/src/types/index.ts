@@ -246,6 +246,12 @@ export interface Notification {
   isRead: boolean;
 }
 
+export interface NotificationPage {
+  data: Notification[];
+  hasMore: boolean;
+  nextCursor?: string;
+}
+
 export interface MessageAttachment {
   url: string;
   type: string;
@@ -286,14 +292,20 @@ export interface ConversationSummaryDTO {
   title?: string;
 }
 
-export interface MessagingUpdatePayload {
-  type: "message_sent" | "message_status_updated";
-  conversationId: string;
-  messageId?: string;
-  senderId: string;
-  timestamp: string;
-  status?: "delivered" | "read";
-}
+export type MessagingUpdatePayload =
+  | {
+      type: "message_sent";
+      conversationId: string;
+      messageId?: string;
+      senderId: string;
+      timestamp: string;
+    }
+  | {
+      type: "message_status_updated";
+      conversationId: string;
+      timestamp: string;
+      status: "delivered" | "read";
+    };
 
 export interface UserUserResult {
   useCurrentUser: () => IUser | null;

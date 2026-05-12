@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { inject, injectable } from "tsyringe";
 import { CommandBus } from "@/application/common/buses/command.bus";
 import { QueryBus } from "@/application/common/buses/query.bus";
@@ -16,18 +16,38 @@ import { SearchPostsByTagsQuery } from "@/application/queries/post/searchPostsBy
 import { GetAllTagsQuery } from "@/application/queries/tags/getAllTags/getAllTags.query";
 import { GetUserByHandleQuery } from "@/application/queries/users/getUserByUsername/getUserByUsername.query";
 import { Errors } from "@/utils/errors";
-import { PostDTO, PaginationResult, ITag, UserPostsResult } from "@/types";
+import {
+  ITag,
+  PaginationResult,
+  PostDTO,
+  TypedRequest,
+  UserPostsResult,
+} from "@/types";
 import { streamPaginatedResponse } from "@/utils/streamResponse";
 import { safeFireAndForget } from "@/utils/helpers";
 import { PublicUserDTO } from "@/services/dto.service";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import type {
+  CreatePostBody,
+  HandlePostsQuery,
+  ListPostsQuery,
+  PublicIdParams as PostPublicIdParams,
+  RepostBody,
+  SearchByTagsQuery as SearchByTagsQueryParams,
+  SlugParams,
+  UserPostsQuery,
+} from "@/utils/schemas/post.schemas";
+import type { HandleParams as UserHandleParams } from "@/utils/schemas/user.schemas";
 
 /** Regex to strip file extensions (e.g., .png, .jpg) from slugs/IDs */
 const FILE_EXTENSION_REGEX = /\.[a-z0-9]{2,5}$/i;
 
 /** Threshold for enabling streaming responses (items) */
-const STREAM_THRESHOLD = 100;
+import { STREAM_THRESHOLD } from "@/utils/post-helpers";
+
+type EmptyParams = Record<string, never>;
+type EmptyBody = Record<string, never>;
 
 @injectable()
 export class PostController {
@@ -36,11 +56,13 @@ export class PostController {
     @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
   ) {}
 
-  createPost = async (req: Request, res: Response): Promise<void> => {
+  createPost = async (
+    req: TypedRequest<EmptyParams, CreatePostBody>,
+    res: Response,
+  ): Promise<void> => {
     const { decodedUser, file } = req;
     // Zod validation middleware has already processed and validated req.body
-    const bodyText = req.body.body;
-    const communityPublicId = req.body.communityPublicId;
+    const { body: bodyText, communityPublicId } = req.body;
 
     if (!file && (!bodyText || bodyText.trim().length === 0)) {
       throw Errors.validation("Provide either an image or body text", {
@@ -53,28 +75,30 @@ export class PostController {
     }
 
     const originalName = file?.originalname || `post-${Date.now()}`;
-    
-    // Use buffer from memory storage (preferred) or fall back to file path
+
+    // Use buffer from memory storage
     const command = new CreatePostCommand(
       decodedUser.publicId,
       bodyText,
       undefined,
-      file?.path, // Legacy: file path (only set if disk storage is used)
+      undefined,
       originalName,
       communityPublicId,
-      file?.buffer, // New: buffer from memory storage
+      file?.buffer,
       file?.mimetype,
     );
-    const postDTO = (await this.commandBus.dispatch(command)) as PostDTO;
+    const postDTO = await this.commandBus.dispatch<PostDTO>(command);
     res.status(201).json(postDTO);
   };
 
-  listPosts = async (req: Request, res: Response): Promise<void> => {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 9;
+  listPosts = async (
+    req: TypedRequest<EmptyParams, EmptyBody, ListPostsQuery>,
+    res: Response,
+  ): Promise<void> => {
+    const { page, limit } = req.query;
 
     // Get authenticated user's publicId if available
-    const userId = (req as any).decodedUser?.publicId;
+    const userId = req.decodedUser?.publicId;
     logger.info(
       "listPosts called with page:",
       page,
@@ -101,14 +125,11 @@ export class PostController {
   };
 
   getPostsByUserPublicId = async (
-    req: Request,
+    req: TypedRequest<PostPublicIdParams, EmptyBody, UserPostsQuery>,
     res: Response,
   ): Promise<void> => {
     const { publicId } = req.params;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const sortBy = (req.query.sortBy as string) || "createdAt";
-    const sortOrder = (req.query.sortOrder as "asc" | "desc") || "desc";
+    const { page, limit, sortBy, sortOrder } = req.query;
 
     const query = new GetPostsByUserQuery(
       publicId,
@@ -132,14 +153,11 @@ export class PostController {
   };
 
   getLikedPostsByUserPublicId = async (
-    req: Request,
+    req: TypedRequest<PostPublicIdParams, EmptyBody, UserPostsQuery>,
     res: Response,
   ): Promise<void> => {
     const { publicId } = req.params;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const sortBy = (req.query.sortBy as string) || "createdAt";
-    const sortOrder = (req.query.sortOrder as "asc" | "desc") || "desc";
+    const { page, limit, sortBy, sortOrder } = req.query;
     const viewerPublicId = req.decodedUser?.publicId;
 
     const query = new GetLikedPostsByUserQuery(
@@ -164,10 +182,12 @@ export class PostController {
     }
   };
 
-  getPostsByHandle = async (req: Request, res: Response): Promise<void> => {
+  getPostsByHandle = async (
+    req: TypedRequest<UserHandleParams, EmptyBody, HandlePostsQuery>,
+    res: Response,
+  ): Promise<void> => {
     const { handle } = req.params;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
+    const { page, limit } = req.query;
 
     const userQuery = new GetUserByHandleQuery(handle);
     const user = await this.queryBus.execute<PublicUserDTO>(userQuery);
@@ -178,7 +198,10 @@ export class PostController {
     res.status(200).json(posts);
   };
 
-  getPostBySlug = async (req: Request, res: Response): Promise<void> => {
+  getPostBySlug = async (
+    req: TypedRequest<SlugParams>,
+    res: Response,
+  ): Promise<void> => {
     const { slug } = req.params;
     const viewerPublicId = req.decodedUser?.publicId;
     const sanitizedSlug = slug.replace(FILE_EXTENSION_REGEX, "");
@@ -202,7 +225,10 @@ export class PostController {
     res.status(200).json(post);
   };
 
-  getPostByPublicId = async (req: Request, res: Response): Promise<void> => {
+  getPostByPublicId = async (
+    req: TypedRequest<PostPublicIdParams>,
+    res: Response,
+  ): Promise<void> => {
     logger.info("getPostByPublicId called");
     const { publicId } = req.params;
     const viewerPublicId = req.decodedUser?.publicId;
@@ -225,13 +251,12 @@ export class PostController {
     res.status(200).json(postDTO);
   };
 
-  searchByTags = async (req: Request, res: Response): Promise<void> => {
-    const { tags } = req.query;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const tagArray = tags
-      ? (tags as string).split(",").filter((tag) => tag.trim() !== "")
-      : [];
+  searchByTags = async (
+    req: TypedRequest<EmptyParams, EmptyBody, SearchByTagsQueryParams>,
+    res: Response,
+  ): Promise<void> => {
+    const { tags, page, limit } = req.query;
+    const tagArray = tags.split(",").filter((tag) => tag.trim() !== "");
 
     const query = new SearchPostsByTagsQuery(tagArray, page, limit);
     const postDTO =
@@ -249,13 +274,16 @@ export class PostController {
     }
   };
 
-  listTags = async (_req: Request, res: Response): Promise<void> => {
+  listTags = async (_req: TypedRequest, res: Response): Promise<void> => {
     const query = new GetAllTagsQuery();
     const result = await this.queryBus.execute<ITag[]>(query);
     res.json(result);
   };
 
-  deletePost = async (req: Request, res: Response): Promise<void> => {
+  deletePost = async (
+    req: TypedRequest<PostPublicIdParams>,
+    res: Response,
+  ): Promise<void> => {
     const { publicId } = req.params;
     const { decodedUser } = req;
 
@@ -272,7 +300,10 @@ export class PostController {
     res.status(200).json(result);
   };
 
-  repostPost = async (req: Request, res: Response): Promise<void> => {
+  repostPost = async (
+    req: TypedRequest<PostPublicIdParams, RepostBody>,
+    res: Response,
+  ): Promise<void> => {
     const { publicId } = req.params;
     const { decodedUser } = req;
 
@@ -281,17 +312,20 @@ export class PostController {
     }
 
     const sanitizedPublicId = publicId.replace(FILE_EXTENSION_REGEX, "");
-    const body = req.body?.body as string | undefined;
+    const { body } = req.body;
     const command = new RepostPostCommand(
       decodedUser.publicId,
       sanitizedPublicId,
       body,
     );
-    const postDTO = (await this.commandBus.dispatch(command)) as PostDTO;
+    const postDTO = await this.commandBus.dispatch<PostDTO>(command);
     res.status(201).json(postDTO);
   };
 
-  unrepostPost = async (req: Request, res: Response): Promise<void> => {
+  unrepostPost = async (
+    req: TypedRequest<PostPublicIdParams>,
+    res: Response,
+  ): Promise<void> => {
     const { publicId } = req.params;
     const { decodedUser } = req;
 

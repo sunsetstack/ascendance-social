@@ -1,8 +1,14 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { inject, injectable } from "tsyringe";
 import { FavoriteService } from "@/services/favorite.service";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
+import { TypedRequest } from "@/types";
 import { TOKENS } from "@/types/tokens";
+import type { PublicIdParams as PostPublicIdParams } from "@/utils/schemas/post.schemas";
+import type { PublicUserListQuery } from "@/utils/schemas/user.schemas";
+
+type EmptyParams = Record<string, never>;
+type EmptyBody = Record<string, never>;
 
 @injectable()
 export class FavoriteController {
@@ -14,13 +20,13 @@ export class FavoriteController {
   /**
    *  Add a post to the logged-in user's favorites list.
    */
-  addFavorite = async (req: Request, res: Response) => {
+  addFavorite = async (
+    req: TypedRequest<PostPublicIdParams>,
+    res: Response,
+  ) => {
     const actorPublicId = req.decodedUser?.publicId;
     if (!actorPublicId) {
-      throw createError(
-        "AuthenticationError",
-        "User must be logged in to favorite a post",
-      );
+      throw Errors.authentication("User must be logged in to favorite a post");
     }
 
     const sanitizedPostId = req.params.publicId.replace(
@@ -38,11 +44,13 @@ export class FavoriteController {
   /**
    * Remove a post from the logged-in user's favorites list.
    */
-  removeFavorite = async (req: Request, res: Response) => {
+  removeFavorite = async (
+    req: TypedRequest<PostPublicIdParams>,
+    res: Response,
+  ) => {
     const actorPublicId = req.decodedUser?.publicId;
     if (!actorPublicId) {
-      throw createError(
-        "AuthenticationError",
+      throw Errors.authentication(
         "User must be logged in to unfavorite a post",
       );
     }
@@ -62,17 +70,16 @@ export class FavoriteController {
   /**
    * Get the list of favorited posts for a specific user profile.
    */
-  getFavorites = async (req: Request, res: Response) => {
+  getFavorites = async (
+    req: TypedRequest<EmptyParams, EmptyBody, PublicUserListQuery>,
+    res: Response,
+  ) => {
     const viewerPublicId = req.decodedUser?.publicId;
     if (!viewerPublicId) {
-      throw createError(
-        "AuthenticationError",
-        "User must be logged in to view favorites",
-      );
+      throw Errors.authentication("User must be logged in to view favorites");
     }
 
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
+    const { page, limit } = req.query;
 
     const favorites = await this.favoriteService.getFavoritesForViewer(
       viewerPublicId,

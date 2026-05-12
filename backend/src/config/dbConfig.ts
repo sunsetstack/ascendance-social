@@ -37,7 +37,7 @@ export class DatabaseConfig {
       await mongoose.connect(this.uri, opts);
       logger.info("Database connected");
       this.registerConnectionEvents();
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.error({ err, attempt }, `Connection attempt ${attempt} failed`);
       if (attempt < this.maxRetries) {
         logger.info(`Retrying in ${this.retryInterval}ms…`);

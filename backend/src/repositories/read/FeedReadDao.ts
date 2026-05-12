@@ -13,7 +13,7 @@ import {
 } from "@/types";
 import { decodeCursor, encodeCursor } from "@/utils/cursorCodec";
 import { TOKENS } from "@/types/tokens";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 
 type ProjectedFeedPost = FeedPost & {
   _id?: mongoose.Types.ObjectId;
@@ -48,13 +48,13 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
     }
 
     if (typeof id !== "string" || id.length === 0) {
-      throw createError("ValidationError", `${field} is not a valid ObjectId`);
+      throw Errors.validation(`${field} is not a valid ObjectId`);
     }
 
     try {
       return new mongoose.Types.ObjectId(id);
     } catch {
-      throw createError("ValidationError", `${field} is not a valid ObjectId`);
+      throw Errors.validation(`${field} is not a valid ObjectId`);
     }
   }
 
@@ -107,7 +107,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
             ],
           };
         } catch {
-          return { data: [], hasMore: false as boolean };
+          return { data: [], hasMore: false };
         }
       }
 
@@ -226,9 +226,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       const data = results.map(({ _id, ...rest }) => rest);
       return { data, hasMore, nextCursor };
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
           "failed to generate cursor feed",
       );
     }
@@ -331,9 +329,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       const currentPage = Math.floor(skip / limit) + 1;
       return { data: results, total, page: currentPage, limit, totalPages };
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
           "failed to build ranked feed",
       );
     }
@@ -453,9 +449,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       return { data: results, total, page: currentPage, limit, totalPages };
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
           "failed to build trending feed",
       );
     }
@@ -502,9 +496,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       console.info(`New feed generated with ${results.length} results`);
       return { data: results, total, page: currentPage, limit, totalPages };
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
           "failed to build new feed",
       );
     }
@@ -588,9 +580,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       return await this.model.aggregate<TrendingTag>(pipeline).exec();
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
           "failed to compute trending tags",
       );
     }
@@ -714,9 +704,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       return { data, hasMore, nextCursor, prevCursor };
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
           "failed to build cursor-paginated feed",
       );
     }
@@ -897,9 +885,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       const data = results.map(({ _id, ...rest }) => rest);
       return { data, hasMore, nextCursor, prevCursor };
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
           "failed to build cursor-paginated trending feed",
       );
     }
@@ -1074,9 +1060,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       const data = results.map(({ _id, ...rest }) => rest);
       return { data, hasMore, nextCursor, prevCursor };
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
           "failed to build cursor-paginated ranked feed",
       );
     }
@@ -1140,9 +1124,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       return { data, total, page, limit, totalPages };
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
           "failed to fetch feed with facet",
       );
     }
@@ -1271,9 +1253,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       return { data, total, page, limit, totalPages };
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
           "failed to fetch trending feed with facet",
       );
     }

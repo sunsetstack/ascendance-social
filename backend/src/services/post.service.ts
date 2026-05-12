@@ -4,8 +4,8 @@ import { PostLikeRepository } from "@/repositories/postLike.repository";
 import { UserRepository } from "@/repositories/user.repository";
 import { TagRepository } from "@/repositories/tag.repository";
 import { DTOService } from "./dto.service";
-import { createError, wrapError } from "@/utils/errors";
-import { IPostWithId, ITag, PaginationResult, PostDTO } from "@/types";
+import { Errors, wrapError } from "@/utils/errors";
+import { ITag, PaginationResult, PostDTO, toObjectId } from "@/types";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
 import { TagService } from "./tag.service";
 import { logger } from "@/utils/winston";
@@ -34,7 +34,7 @@ export class PostService {
   ): Promise<PostDTO> {
     const post = await this.postRepository.findByPublicId(publicId);
     if (!post) {
-      throw createError("NotFoundError", "Post not found");
+      throw Errors.notFound("Post not found");
     }
     const dto = this.dtoService.toPostDTO(post);
 
@@ -44,7 +44,7 @@ export class PostService {
 
     // Add viewer-specific fields if viewer is logged in
     if (viewerPublicId) {
-      const postInternalId = (post as IPostWithId)._id?.toString();
+      const postInternalId = toObjectId(post._id).toString();
       const viewerInternalId =
         await this.userRepository.findInternalIdByPublicId(viewerPublicId);
 
@@ -54,18 +54,15 @@ export class PostService {
       });
 
       if (postInternalId && viewerInternalId) {
-        dto.isLikedByViewer = await this.postLikeRepository.hasUserLiked(
-          postInternalId,
-          viewerInternalId,
-        );
+        const [hasLiked, favoriteRecord] = await Promise.all([
+          this.postLikeRepository.hasUserLiked(postInternalId, viewerInternalId),
+          this.favoriteRepository.findByUserAndPost(viewerInternalId, postInternalId),
+        ]);
+        dto.isLikedByViewer = hasLiked;
         logger.info("[PostService.getPostByPublicId] like match:", {
           isLikedByViewer: dto.isLikedByViewer,
         });
 
-        const favoriteRecord = await this.favoriteRepository.findByUserAndPost(
-          viewerInternalId,
-          postInternalId,
-        );
         dto.isFavoritedByViewer = !!favoriteRecord;
         logger.info("[PostService.getPostByPublicId] favoriteRecord:", {
           isFavoritedByViewer: !!favoriteRecord,
@@ -85,7 +82,7 @@ export class PostService {
   async getPostBySlug(slug: string): Promise<PostDTO> {
     const post = await this.postRepository.findBySlug(slug);
     if (!post) {
-      throw createError("NotFoundError", "Post not found");
+      throw Errors.notFound("Post not found");
     }
     return this.dtoService.toPostDTO(post);
   }
@@ -100,9 +97,7 @@ export class PostService {
     });
     return {
       ...result,
-      data: result.data.map((entry) =>
-        this.dtoService.toPostDTO(entry as unknown as Record<string, unknown>),
-      ),
+      data: result.data.map((entry) => this.dtoService.toPostDTO(entry)),
     };
   }
 
@@ -117,9 +112,7 @@ export class PostService {
     });
     return {
       ...result,
-      data: result.data.map((entry) =>
-        this.dtoService.toPostDTO(entry as unknown as Record<string, unknown>),
-      ),
+      data: result.data.map((entry) => this.dtoService.toPostDTO(entry)),
     };
   }
 
@@ -140,9 +133,7 @@ export class PostService {
 
     return {
       ...result,
-      data: result.data.map((entry) =>
-        this.dtoService.toPostDTO(entry as unknown as Record<string, unknown>),
-      ),
+      data: result.data.map((entry) => this.dtoService.toPostDTO(entry)),
     };
   }
 

@@ -4,7 +4,7 @@ import type { RedisService } from "../redis.service";
 import type { DTOService } from "../dto.service";
 import type { FeedEnrichmentService } from "./feed-enrichment.service";
 import type { FeedCoreService } from "./feed-core.service";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { CacheConfig } from "@/config/cacheConfig";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
@@ -92,8 +92,7 @@ export class FeedReadService {
       };
     } catch (error) {
       console.error("Failed to generate personalized feed:", error);
-      throw createError(
-        "UnknownError",
+      throw Errors.internal(
         `Could not generate personalized feed for user ${userId}: ${(error as Error).message}`,
       );
     }

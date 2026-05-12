@@ -2,7 +2,7 @@ import mongoose, { ClientSession } from "mongoose";
 import { injectable } from "tsyringe";
 import { logger } from "@/utils/winston";
 import {
-  createError,
+  Errors,
   getErrorMessage,
   getErrorCode,
   getErrorLabels,
@@ -96,7 +96,7 @@ export class UnitOfWork {
 
   constructor() {
     if (!mongoose.connection.readyState) {
-      throw createError("DatabaseError", "Database connection not established");
+      throw Errors.database("Database connection not established");
     }
     // allow up to 50 concurrent transactions
     const maxConcurrent = parseInt(
@@ -161,7 +161,6 @@ export class UnitOfWork {
                 message: getErrorMessage(error).substring(0, 100),
               },
             );
-            await session.endSession();
             await this.backoffWithJitter(
               attempt,
               cfg.baseDelayMs,

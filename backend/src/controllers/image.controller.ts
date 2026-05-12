@@ -1,5 +1,7 @@
-import { injectable } from "tsyringe";
 import { PostController } from "./post.controller";
 
-@injectable()
-export class ImageController extends PostController {}
+/**
+ * ImageController is a semantic alias for PostController.
+ * Image routes share the same handler logic as post routes.
+ */
+export { PostController as ImageController };

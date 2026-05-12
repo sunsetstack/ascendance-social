@@ -1,4 +1,4 @@
-import { ClientSession, Types } from "mongoose";
+import { Types } from "mongoose";
 import { injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
 import { ICommunity } from "@/types";
@@ -56,7 +56,7 @@ export class CommunityRepository extends BaseRepository<ICommunity> {
 		return this.model.findOne({ publicId }).exec();
 	}
 
-	async decrementMemberCountsByIds(ids: (string | Types.ObjectId)[], session?: ClientSession): Promise<void> {
+	async decrementMemberCountsByIds(ids: (string | Types.ObjectId)[]): Promise<void> {
 		const normalizedIds = Array.from(
 			new Set(
 				ids
@@ -69,6 +69,7 @@ export class CommunityRepository extends BaseRepository<ICommunity> {
 			return;
 		}
 
+		const session = this.getSession();
 		const query = this.model.updateMany({ _id: { $in: normalizedIds } }, { $inc: { "stats.memberCount": -1 } });
 		if (session) {
 			query.session(session);

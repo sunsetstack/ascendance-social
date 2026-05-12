@@ -1,13 +1,13 @@
 import { injectable } from "tsyringe";
 import { ICommandHandler } from "../interfaces/command-handler.interface";
 import { ICommand } from "../interfaces/command.interface";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 
 
 @injectable()
 export class CommandBus {
   // Registering handlers in a map with command's name as key. 
-  private handlers = new Map<string, ICommandHandler<ICommand, any>>(); 
+  private handlers = new Map<string, unknown>(); 
 
   /**
    * Registers a command handler for a specific command type.
@@ -19,7 +19,8 @@ export class CommandBus {
  
   register<TCommand extends ICommand, TResult>(
     // commandType should be a class constructor that can create instances of TCommand
-    // new(...args: []) is a constructor signature that takes an array of arguments. 
+    // new(...args: any[]) is a constructor signature that takes an array of arguments. 
+    // any[] is explicitly required here due to TypeScript constructor variance (unknown[] fails).
     commandType: { new(...args: any[]): TCommand}, 
 
     // An instance of a command handler. 
@@ -28,9 +29,8 @@ export class CommandBus {
   ) : void
   {
     // Registering the handler in the handlers map. 
-    // handler is explicitly cast as ICommandHandler<ICommand, any> to ensure type compatbility within the map. 
-    // That way, even if commands have different TCommand and TResult, they can be stored in the map. 
-    this.handlers.set(commandType.name, handler as ICommandHandler<ICommand, any>);
+    // Types are verified at boundary (by generics), so internal map uses unknown
+    this.handlers.set(commandType.name, handler);
   }
 
   /**
@@ -43,14 +43,14 @@ export class CommandBus {
     //.constructor.name retrieves the name of the class that created the command 
     // It guarantees the correct handler is found based on the class name. 
     // 'command' itself has no property 'name'. 
-    const handler = this.handlers.get(command.constructor.name); 
+    const handler = this.handlers.get(command.constructor.name) as ICommandHandler<ICommand, TResult> | undefined; 
     
 
     if(!handler){
-      throw createError("InternalServerError", `No handler found for command ${command.constructor.name}`);
+      throw Errors.internal(`No handler found for command ${command.constructor.name}`);
     }
 
-    return handler.execute(command) as Promise<TResult>;
+    return handler.execute(command);
   }
 
 }

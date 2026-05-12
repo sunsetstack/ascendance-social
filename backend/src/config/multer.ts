@@ -1,5 +1,5 @@
 import multer from "multer";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 
 /**
  * Multer configuration using memory storage for streaming uploads.
@@ -17,7 +17,7 @@ const fileFilter = (req: unknown, file: Express.Multer.File, cb: multer.FileFilt
 	if (allowedMimeTypes.includes(file.mimetype)) {
 		cb(null, true);
 	} else {
-		cb(createError("ValidationError", "Invalid file type. Only jpg, jpeg, png, and webp are allowed."));
+		cb(Errors.validation("Invalid file type. Only jpg, jpeg, png, and webp are allowed."));
 	}
 };
 

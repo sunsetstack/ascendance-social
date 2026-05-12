@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { inject, injectable } from "tsyringe";
 import { RedisService } from "@/services/redis.service";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
 
 export interface BloomFilterOptions {
@@ -35,9 +35,7 @@ export class BloomFilterService {
 
     const result = await pipeline.exec();
     if (!result) {
-      throw createError(
-        "DatabaseError",
-        "Bloom filter read pipeline returned empty result",
+      throw Errors.database("Bloom filter read pipeline returned empty result",
       );
     }
 
@@ -60,8 +58,7 @@ export class BloomFilterService {
 
     if (ttlSeconds !== undefined) {
       if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) {
-        throw createError(
-          "ValidationError",
+        throw Errors.validation(
           "Bloom filter TTL must be a positive number",
         );
       }
@@ -70,17 +67,14 @@ export class BloomFilterService {
 
     const result = await pipeline.exec();
     if (!result) {
-      throw createError(
-        "DatabaseError",
-        "Bloom filter write pipeline returned empty result",
+      throw Errors.database("Bloom filter write pipeline returned empty result",
       );
     }
   }
 
   private computeShape(options: BloomFilterOptions): BloomFilterShape {
     if (!Number.isFinite(options.expectedItems) || options.expectedItems <= 0) {
-      throw createError(
-        "ValidationError",
+      throw Errors.validation(
         "Bloom filter expectedItems must be a positive number",
       );
     }
@@ -89,8 +83,7 @@ export class BloomFilterService {
       options.falsePositiveRate <= 0 ||
       options.falsePositiveRate >= 1
     ) {
-      throw createError(
-        "ValidationError",
+      throw Errors.validation(
         "Bloom filter falsePositiveRate must be between 0 and 1",
       );
     }

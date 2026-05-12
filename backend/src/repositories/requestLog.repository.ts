@@ -2,7 +2,7 @@ import { injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
 import { IRequestLog, PaginationOptions, PaginationResult, CursorPaginationResult } from "@/types";
 import { RequestLogModel } from "@/models/requestLog.model";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { encodeCursor, decodeCursor } from "@/utils/cursorCodec";
 import mongoose from "mongoose";
 
@@ -44,7 +44,7 @@ export class RequestLogRepository extends BaseRepository<IRequestLog> {
 				.find(queryFilter)
 				.sort({ timestamp: -1, _id: -1 })
 				.limit(limit + 1)
-				.lean()
+				.lean<IRequestLog[]>()
 				.exec();
 
 			const hasMore = logs.length > limit;
@@ -54,18 +54,18 @@ export class RequestLogRepository extends BaseRepository<IRequestLog> {
 			if (hasMore && data.length > 0) {
 				const lastItem = data[data.length - 1];
 				nextCursor = encodeCursor({
-					timestamp: (lastItem.timestamp as Date).toISOString(),
-					_id: (lastItem._id as mongoose.Types.ObjectId).toString(),
+					timestamp: lastItem.timestamp instanceof Date ? lastItem.timestamp.toISOString() : new Date(String(lastItem.timestamp)).toISOString(),
+					_id: String(lastItem._id),
 				});
 			}
 
 			return {
-				data: data as unknown as IRequestLog[],
+				data,
 				hasMore,
 				nextCursor,
 			};
 		} catch (error) {
-			throw createError("DatabaseError", (error as Error).message);
+			throw Errors.database(error instanceof Error ? error.message : String(error));
 		}
 	}
 
@@ -81,13 +81,13 @@ export class RequestLogRepository extends BaseRepository<IRequestLog> {
 		const cursor = this.model
 			.find({ timestamp: { $gte: startDate, $lte: endDate } })
 			.sort({ timestamp: -1 })
-			.lean()
+			.lean<IRequestLog>()
 			.cursor({ batchSize });
 
 		let batch: IRequestLog[] = [];
 		
 		for await (const doc of cursor) {
-			batch.push(doc as unknown as IRequestLog);
+			batch.push(doc);
 			if (batch.length >= batchSize) {
 				yield batch;
 				batch = [];
@@ -108,12 +108,12 @@ export class RequestLogRepository extends BaseRepository<IRequestLog> {
 			const sort = { [sortBy]: sortOrder };
 
 			const [data, total] = await Promise.all([
-				this.model.find(filter).sort(sort).skip(skip).limit(limit).lean().exec(),
+				this.model.find(filter).sort(sort).skip(skip).limit(limit).lean<IRequestLog[]>().exec(),
 				this.model.countDocuments(filter),
 			]);
 
 			return {
-				data: data as unknown as IRequestLog[],
+				data,
 				total,
 				page,
 				limit,
@@ -121,40 +121,40 @@ export class RequestLogRepository extends BaseRepository<IRequestLog> {
 			};
 		} catch (error) {
 			if (error instanceof Error) {
-				throw createError("DatabaseError", error.message);
+				throw Errors.database(error.message);
 			}
-			throw createError("DatabaseError", String(error));
+			throw Errors.database(String(error));
 		}
 	}
 
 	async findRecentLogs(limit = 100): Promise<IRequestLog[]> {
-		return (await this.model.find().sort({ timestamp: -1 }).limit(limit).lean().exec()) as unknown as IRequestLog[];
+		return await this.model.find().sort({ timestamp: -1 }).limit(limit).lean<IRequestLog[]>().exec();
 	}
 
 	async findLogsByDateRange(startDate: Date, endDate: Date): Promise<IRequestLog[]> {
-		return (await this.model
+		return await this.model
 			.find({ timestamp: { $gte: startDate, $lte: endDate } })
 			.sort({ timestamp: -1 })
-			.lean()
-			.exec()) as unknown as IRequestLog[];
+			.lean<IRequestLog[]>()
+			.exec();
 	}
 
 	async findLogsByUserId(userId: string, limit = 50): Promise<IRequestLog[]> {
-		return (await this.model
+		return await this.model
 			.find({ "metadata.userId": userId })
 			.sort({ timestamp: -1 })
 			.limit(limit)
-			.lean()
-			.exec()) as unknown as IRequestLog[];
+			.lean<IRequestLog[]>()
+			.exec();
 	}
 
 	async findLogsByStatusCode(statusCode: number, limit = 100): Promise<IRequestLog[]> {
-		return (await this.model
+		return await this.model
 			.find({ "metadata.statusCode": statusCode })
 			.sort({ timestamp: -1 })
 			.limit(limit)
-			.lean()
-			.exec()) as unknown as IRequestLog[];
+			.lean<IRequestLog[]>()
+			.exec();
 	}
 
 	async getAverageResponseTime(startDate?: Date, endDate?: Date): Promise<number> {

@@ -1,13 +1,15 @@
 import { inject, injectable } from "tsyringe";
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { GetForYouFeedQuery } from "./getForYouFeed.query";
-import {
+import type {
   IPostReadRepository,
-  IUserReadRepository, IFeedReadDao } from "@/repositories/interfaces";
+  IUserReadRepository,
+  IFeedReadDao,
+} from "@/repositories/interfaces";
 import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
 import { RedisService } from "@/services/redis.service";
 import { EventBus } from "@/application/common/buses/event.bus";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { errorLogger, redisLogger } from "@/utils/winston";
 import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
 import {
@@ -26,7 +28,8 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
   PaginatedFeedResult
 > {
   constructor(
-    @inject(TOKENS.Repositories.FeedReadDao) private readonly feedReadDao: IFeedReadDao,
+    @inject(TOKENS.Repositories.FeedReadDao)
+    private readonly feedReadDao: IFeedReadDao,
     @inject(TOKENS.Repositories.PostRead)
     private postReadRepository: IPostReadRepository,
     @inject(TOKENS.Repositories.UserRead)
@@ -104,7 +107,7 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
 
       const user = await this.userReadRepository.findByPublicId(userId);
       if (!user) {
-        throw createError("NotFoundError", "User not found");
+        throw Errors.notFound("User");
       }
       const topTags = await this.userPreferenceRepository.getTopUserTags(
         String(user._id),
@@ -164,7 +167,7 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
         userId,
         error: error instanceof Error ? error.message : String(error),
       });
-      throw createError("FeedError", "Could not generate For You feed.");
+      throw Errors.internal("Could not generate For You feed.");
     }
   }
 
@@ -316,7 +319,7 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
   ) {
     const user = await this.userReadRepository.findByPublicId(userId);
     if (!user) {
-      throw createError("NotFoundError", "User not found");
+      throw Errors.notFound("User");
     }
     const topTags = await this.userPreferenceRepository.getTopUserTags(
       String(user._id),

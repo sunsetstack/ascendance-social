@@ -7,7 +7,7 @@ import { TOKENS } from "@/types/tokens";
 
 @injectable()
 export class EventBus {
-  private subscriptions: Map<string, IEventHandler<IEvent>[]> = new Map();
+  private subscriptions: Map<string, unknown[]> = new Map();
 
   constructor(
     @inject(TOKENS.Repositories.Outbox)
@@ -25,7 +25,7 @@ export class EventBus {
   ): void {
     const eventName = eventType.name;
     const handlers = this.subscriptions.get(eventName) || [];
-    handlers.push(handler as IEventHandler<IEvent>);
+    handlers.push(handler);
     this.subscriptions.set(eventName, handlers);
   }
 
@@ -34,16 +34,14 @@ export class EventBus {
    * @param event - The event instance to be published.
    */
   async publish<TEvent extends IEvent>(event: TEvent): Promise<void> {
-    const handlers = this.subscriptions.get(event.constructor.name) || [];
+    const handlers = (this.subscriptions.get(event.constructor.name) || []) as IEventHandler<TEvent>[];
 
     await Promise.all(handlers.map((handler) => handler.handle(event)));
   }
 
-  /**
-   * Publishes an event by its type name and raw payload (used by outbox worker).
-   */
-  async publishByType(eventType: string, eventPayload: any): Promise<void> {
-    const handlers = this.subscriptions.get(eventType) || [];
+  async publishByType(eventType: string, eventPayload: unknown): Promise<void> {
+    // Cast to structural handler to pass the unknown payload to its handle method safely
+    const handlers = (this.subscriptions.get(eventType) || []) as { handle: (event: unknown) => Promise<void> }[];
     await Promise.all(handlers.map((handler) => handler.handle(eventPayload)));
   }
 
@@ -64,7 +62,6 @@ export class EventBus {
     await this.outboxRepository.saveEvent(
       event.constructor.name,
       event,
-      session,
     );
   }
 }

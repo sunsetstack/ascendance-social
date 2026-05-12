@@ -1,3 +1,10 @@
+/**
+ * Union of valid per-user Redis feed types.
+ * Only covers feeds stored under the `feed:{type}:{userId}` key pattern.
+ * Global feeds (trending, new) use their own dedicated key builders.
+ */
+export type RedisFeedType = "for_you";
+
 export class CacheKeyBuilder {
 	static readonly PREFIXES = {
 		USER_BATCH: "user_batch",
@@ -12,6 +19,8 @@ export class CacheKeyBuilder {
 		USER_FEED: "user_feed",
 		USER_FOR_YOU: "user_for_you_feed",
 		FOLLOWING_IDS: "following_ids",
+		NOTIFICATION_LIST: "notifications:user",
+		NOTIFICATION_HASH: "notification",
 	};
 
 	static getUserBatchKey(userPublicIds: string[]): string {
@@ -78,7 +87,7 @@ export class CacheKeyBuilder {
 		return `${this.PREFIXES.FOLLOWING_IDS}:${userId}`;
 	}
 
-	static getRedisFeedKey(feedType: string, userId: string): string {
+	static getRedisFeedKey(feedType: RedisFeedType, userId: string): string {
 		return `${this.PREFIXES.REDIS_FEED}:${feedType}:${userId}`;
 	}
 
@@ -112,5 +121,13 @@ export class CacheKeyBuilder {
 
 	static getTrendingTagsPrefix(): string {
 		return `${this.PREFIXES.TRENDING_TAGS}`;
+	}
+
+	static getNotificationListKey(userId: string): string {
+		return `${this.PREFIXES.NOTIFICATION_LIST}:${userId}`;
+	}
+
+	static getNotificationHashKey(id: string): string {
+		return `${this.PREFIXES.NOTIFICATION_HASH}:${id}`;
 	}
 }

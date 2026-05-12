@@ -3,7 +3,7 @@ import * as chai from "chai";
 import { expect } from "chai";
 import chaiAsPromised from "chai-as-promised";
 import sinon, { SinonStubbedInstance } from "sinon";
-import { ClientSession, Types } from "mongoose";
+import { Types } from "mongoose";
 import { FavoriteService } from "@/services/favorite.service";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
 import { UserRepository } from "@/repositories/user.repository";
@@ -21,7 +21,6 @@ describe("FavoriteService", () => {
 	let userRepository: SinonStubbedInstance<UserRepository>;
 	let postRepository: SinonStubbedInstance<PostRepository>;
 	let dtoService: SinonStubbedInstance<DTOService>;
-	let session: ClientSession;
 
 	beforeEach(() => {
 		favoriteRepository = sinon.createStubInstance(FavoriteRepository);
@@ -29,7 +28,6 @@ describe("FavoriteService", () => {
 		userRepository = sinon.createStubInstance(UserRepository);
 		postRepository = sinon.createStubInstance(PostRepository);
 		dtoService = sinon.createStubInstance(DTOService);
-		session = {} as ClientSession;
 
 		service = new FavoriteService(
 			favoriteRepository as unknown as FavoriteRepository,
@@ -39,7 +37,7 @@ describe("FavoriteService", () => {
 			dtoService as unknown as DTOService,
 		);
 
-		unitOfWork.executeInTransaction.callsFake(async (callback) => callback(session));
+		unitOfWork.executeInTransaction.callsFake(async (callback) => callback());
 	});
 
 	afterEach(() => {
@@ -56,7 +54,7 @@ describe("FavoriteService", () => {
 
 			await service.addFavorite(userId, postId);
 
-			expect(favoriteRepository.findByUserAndPost.calledWith(userId, postId, session)).to.be.true;
+			expect(favoriteRepository.findByUserAndPost.calledWith(userId, postId)).to.be.true;
 			expect(favoriteRepository.create.calledOnce).to.be.true;
 			expect(unitOfWork.executeInTransaction.calledOnce).to.be.true;
 		});
@@ -92,7 +90,7 @@ describe("FavoriteService", () => {
 
 			await service.removeFavorite(userId, postId);
 
-			expect(favoriteRepository.remove.calledWith(userId, postId, session)).to.be.true;
+			expect(favoriteRepository.remove.calledWith(userId, postId)).to.be.true;
 			expect(unitOfWork.executeInTransaction.calledOnce).to.be.true;
 		});
 

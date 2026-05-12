@@ -9,7 +9,7 @@ import { FollowRepository } from "@/repositories/follow.repository";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { ColdStartFeedGeneratedEvent } from "@/application/events/ColdStartFeedGenerated.event";
 import { CursorPaginationResult, FeedPost } from "@/types";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { RedisService } from "@/services/redis.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
@@ -42,7 +42,7 @@ export class FeedCoreService {
   ): Promise<CursorPaginationResult<FeedPost>> {
     const user = await this.userReadRepository.findByPublicId(userPublicId);
     if (!user) {
-      throw createError("NotFoundError", "User not found");
+      throw Errors.notFound("User");
     }
 
     const [topTags, followingIds] = await Promise.all([

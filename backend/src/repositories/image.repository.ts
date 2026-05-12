@@ -1,7 +1,7 @@
-import mongoose, { Model, ClientSession, Types } from "mongoose";
+import mongoose, { Model, Types } from "mongoose";
 import { BaseRepository } from "./base.repository";
 import { IImage } from "@/types";
-import { createError, isNamedError } from "@/utils/errors";
+import { Errors, isNamedError } from "@/utils/errors";
 import { inject, injectable } from "tsyringe";
 import { logger } from "@/utils/winston";
 import { escapeRegex } from "@/utils/sanitizers";
@@ -35,7 +35,7 @@ export class ImageRepository extends BaseRepository<IImage> {
 			return doc ? doc._id.toString() : null;
 		} catch (error) {
 			console.error(`Error in findInternalIdByPublicId for publicId: ${publicId}`, error);
-			throw createError("DatabaseError", (error as Error).message);
+			throw Errors.database(error instanceof Error ? error.message : String(error));
 		}
 	}
 
@@ -43,13 +43,13 @@ export class ImageRepository extends BaseRepository<IImage> {
 	 * Finds an image by its ID and populates related fields.
 	 *
 	 * @param {string} id - The ID of the image.
-	 * @param {ClientSession} [session] - Optional MongoDB transaction session.
 	 * @returns {Promise<IImage | null>} - The found image or null if not found.
 	 */
-	async findById(id: string, session?: ClientSession): Promise<IImage | null> {
+	async findById(id: string): Promise<IImage | null> {
 		try {
+			const session = this.getSession();
 			if (!mongoose.Types.ObjectId.isValid(id)) {
-				throw createError("ValidationError", "Invalid image ID");
+				throw Errors.validation("Invalid image ID");
 			}
 			const query = this.model.findById(id).populate("user", "publicId handle username avatar");
 
@@ -61,7 +61,7 @@ export class ImageRepository extends BaseRepository<IImage> {
 			if (isNamedError(error) && error.name === "ValidationError") {
 				throw error;
 			}
-			throw createError("DatabaseError", (error as Error).message);
+			throw Errors.database(error instanceof Error ? error.message : String(error));
 		}
 	}
 
@@ -70,17 +70,17 @@ export class ImageRepository extends BaseRepository<IImage> {
 	 * Supports MongoDB transactions if a session is provided.
 	 *
 	 * @param {string} userId - The ID of the user whose images will be deleted.
-	 * @param {ClientSession} [session] - Optional MongoDB transaction session.
 	 * @returns {Promise<void>} - Resolves when deletion is complete.
 	 */
-	async deleteMany(userId: string, session?: ClientSession): Promise<void> {
+	async deleteMany(userId: string): Promise<void> {
 		try {
+			const session = this.getSession();
 			const query = this.model.deleteMany({ user: userId });
 			if (session) query.session(session);
 			const result = await query.exec();
 			logger.info(`result from await query.exec() : ${result} `);
 		} catch (error) {
-			throw createError("DatabaseError", (error as Error).message);
+			throw Errors.database(error instanceof Error ? error.message : String(error));
 		}
 	}
 }

@@ -3,7 +3,7 @@ import { IQueryHandler } from "@/application/common/interfaces/query-handler.int
 import { GetCommunityMembersQuery } from "./getCommunityMembers.query";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { PaginationResult } from "@/types";
 import { DTOService, CommunityMemberDTO } from "@/services/dto.service";
 import { TOKENS } from "@/types/tokens";
@@ -21,7 +21,7 @@ export class GetCommunityMembersQueryHandler implements IQueryHandler<GetCommuni
 
 		const community = await this.communityRepository.findBySlug(communitySlug);
 		if (!community) {
-			throw createError("NotFoundError", "Community not found");
+			throw Errors.notFound("Community");
 		}
 
 		const skip = (page - 1) * limit;

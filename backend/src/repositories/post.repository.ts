@@ -1,4 +1,4 @@
-import mongoose, { ClientSession, Model, PipelineStage } from "mongoose";
+import mongoose, { Model, PipelineStage } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
 import {
@@ -10,7 +10,7 @@ import {
   CursorPaginationResult,
   FeedPost,
 } from "@/types";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { TagRepository } from "./tag.repository";
 import { decodeCursor, encodeCursor } from "@/utils/cursorCodec";
 import { TOKENS } from "@/types/tokens";
@@ -67,7 +67,7 @@ export class PostRepository extends BaseRepository<IPost> {
       const results = await this.model.aggregate<FeedPost>(pipeline).exec();
       return results;
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to search posts by text");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
@@ -78,13 +78,14 @@ export class PostRepository extends BaseRepository<IPost> {
     return doc ? String(doc._id) : null;
   }
 
-  async findOneByPublicId(publicId: string, session?: ClientSession): Promise<IPost | null> {
+  async findOneByPublicId(publicId: string): Promise<IPost | null> {
     try {
+      const session = this.getSession();
       const query = this.model.findOne({ publicId });
       if (session) query.session(session);
       return await query.exec();
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to find post by publicId");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
@@ -92,7 +93,7 @@ export class PostRepository extends BaseRepository<IPost> {
     try {
       return await this.model.findOne(filter).exec();
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to find post by filter");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
@@ -105,23 +106,25 @@ export class PostRepository extends BaseRepository<IPost> {
     return this.model.countDocuments({ communityId }).exec();
   }
 
-  async incrementViewCount(postId: mongoose.Types.ObjectId, session?: ClientSession): Promise<void> {
+  async incrementViewCount(postId: mongoose.Types.ObjectId): Promise<void> {
     try {
+      const session = this.getSession();
       const query = this.model.findOneAndUpdate({ _id: postId }, { $inc: { viewsCount: 1 } }, { new: true });
       if (session) query.session(session);
       await query.exec();
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to increment post view count");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
-  async updateRepostCount(postId: string, increment: number, session?: ClientSession): Promise<void> {
+  async updateRepostCount(postId: string, increment: number): Promise<void> {
     try {
+      const session = this.getSession();
       const query = this.model.updateOne({ _id: postId }, { $inc: { repostCount: increment } });
       if (session) query.session(session);
       await query.exec();
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to update repost count");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
@@ -131,8 +134,9 @@ export class PostRepository extends BaseRepository<IPost> {
     };
   }
 
-  async findByIdWithPopulates(id: string, session?: ClientSession): Promise<IPost | null> {
+  async findByIdWithPopulates(id: string): Promise<IPost | null> {
     try {
+      const session = this.getSession();
       const query = this.model
         .findById(id)
         .populate("tags", "tag")
@@ -141,7 +145,7 @@ export class PostRepository extends BaseRepository<IPost> {
       if (session) query.session(session);
       return await query.exec();
     } catch (err: unknown) {
-      throw createError("DatabaseError", (err instanceof Error ? err.message : String(err)) ?? "failed to load post by id");
+      throw Errors.database((err instanceof Error ? err.message : String(err)));
     }
   }
 
@@ -162,7 +166,7 @@ export class PostRepository extends BaseRepository<IPost> {
       const results = await this.model.aggregate<FeedPost>(pipeline).exec();
       return results;
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to find posts by ids");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
@@ -182,12 +186,13 @@ export class PostRepository extends BaseRepository<IPost> {
       const results = await this.model.aggregate<FeedPost>(pipeline).exec();
       return results;
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to find posts by public ids");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
-  async findByPublicId(publicId: string, session?: ClientSession): Promise<IPost | null> {
+  async findByPublicId(publicId: string): Promise<IPost | null> {
     try {
+      const session = this.getSession();
       const query = this.model
         .findOne({ publicId })
         .populate("tags", "tag")
@@ -206,12 +211,13 @@ export class PostRepository extends BaseRepository<IPost> {
       if (session) query.session(session);
       return await query.exec();
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to load post");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
-  async findBySlug(slug: string, session?: ClientSession): Promise<IPost | null> {
+  async findBySlug(slug: string): Promise<IPost | null> {
     try {
+      const session = this.getSession();
       const query = this.model
         .findOne({ slug })
         .populate("tags", "tag")
@@ -220,7 +226,7 @@ export class PostRepository extends BaseRepository<IPost> {
       if (session) query.session(session);
       return await query.exec();
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to load post by slug");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
@@ -234,7 +240,7 @@ export class PostRepository extends BaseRepository<IPost> {
         .collection("users")
         .findOne({ publicId: userPublicId }, { projection: { _id: 1 } });
       if (!userDoc) {
-        throw createError("NotFoundError", "User not found");
+        throw Errors.notFound("User");
       }
 
       const userId = this.normalizeObjectId(userDoc._id, "user._id");
@@ -267,12 +273,13 @@ export class PostRepository extends BaseRepository<IPost> {
         totalPages: Math.ceil(total / limit),
       };
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to load posts by user");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
-  async findWithPagination(options: PaginationOptions, session?: ClientSession): Promise<PaginationResult<FeedPost>> {
+  async findWithPagination(options: PaginationOptions): Promise<PaginationResult<FeedPost>> {
     try {
+      const session = this.getSession();
       const { page = 1, limit = 20, sortBy = "createdAt", sortOrder = "desc" } = options;
       const skip = (page - 1) * limit;
       const sort = this.buildSort(sortBy, sortOrder);
@@ -307,7 +314,7 @@ export class PostRepository extends BaseRepository<IPost> {
         totalPages: Math.ceil(total / limit),
       };
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to paginate posts");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
@@ -343,46 +350,50 @@ export class PostRepository extends BaseRepository<IPost> {
         totalPages: Math.ceil(total / limit),
       };
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to load posts by tags");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
-  async updateCommentCount(postId: string, increment: number, session?: ClientSession): Promise<void> {
+  async updateCommentCount(postId: string, increment: number): Promise<void> {
     try {
+      const session = this.getSession();
       const query = this.model.findByIdAndUpdate(postId, { $inc: { commentsCount: increment } }, { session });
       await query.exec();
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to update post comment count");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
-  async updateLikeCount(postId: string, increment: number, session?: ClientSession): Promise<void> {
+  async updateLikeCount(postId: string, increment: number): Promise<void> {
     try {
+      const session = this.getSession();
       const query = this.model.findByIdAndUpdate(postId, { $inc: { likesCount: increment } }, { session });
       await query.exec();
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to update post like count");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
-  async runAggregation<R = any>(pipeline: PipelineStage[], session?: ClientSession): Promise<R[]> {
+  async runAggregation<R = unknown>(pipeline: PipelineStage[]): Promise<R[]> {
     try {
+      const session = this.getSession();
       const aggregation = this.model.aggregate(pipeline);
       if (session) aggregation.session(session);
       return await aggregation.exec();
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to execute aggregation");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
-  async deleteManyByUserId(userId: string, session?: ClientSession): Promise<number> {
+  async deleteManyByUserId(userId: string): Promise<number> {
     try {
+      const session = this.getSession();
       const query = this.model.deleteMany({ user: userId });
       if (session) query.session(session);
       const result = await query.exec();
       return result.deletedCount || 0;
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to delete posts by user");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
@@ -426,7 +437,7 @@ export class PostRepository extends BaseRepository<IPost> {
 
       return result.modifiedCount || 0;
     } catch (error: unknown) {
-      throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to update author snapshot");
+      throw Errors.database((error instanceof Error ? error.message : String(error)));
     }
   }
 
@@ -436,13 +447,13 @@ export class PostRepository extends BaseRepository<IPost> {
     }
 
     if (typeof id !== "string" || id.length === 0) {
-      throw createError("ValidationError", `${field} is not a valid ObjectId`);
+      throw Errors.validation(`${field} is not a valid ObjectId`);
     }
 
     try {
       return new mongoose.Types.ObjectId(id);
     } catch {
-      throw createError("ValidationError", `${field} is not a valid ObjectId`);
+      throw Errors.validation(`${field} is not a valid ObjectId`);
     }
   }
 

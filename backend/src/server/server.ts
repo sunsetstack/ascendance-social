@@ -76,7 +76,7 @@ export class Server {
    * Initializes middleware for the Express app.
    */
   private initializeMiddlewares(): void {
-    this.app.set("trust proxy", true);
+    this.app.set("trust proxy", 1);
     this.app.use(helmet());
 
     // CORS setup
@@ -162,11 +162,11 @@ export class Server {
 
     const limiter = rateLimit({
       windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 15000,
+      max: 300,
       message: "Too many requests, please try again after 15 minutes",
       standardHeaders: true,
       legacyHeaders: false,
-      keyGenerator: (req) => getClientIp(req as Request),
+      keyGenerator: (req: Request) => getClientIp(req),
       skip: (req) => req.path === "/metrics" || req.path === "/health",
     });
     this.app.use(limiter);
@@ -179,9 +179,9 @@ export class Server {
       next();
     });
 
-    this.app.use(cookieParser() as any); // Parsing cookies
-    this.app.use(express.json()); // Parsing JSON request bodies
-    this.app.use(express.urlencoded({ extended: true })); // Handling URL-encoded payloads
+    this.app.use(cookieParser()); // Parsing cookies
+    this.app.use(express.json({ limit: "1mb" })); // Parsing JSON request bodies
+    this.app.use(express.urlencoded({ extended: true, limit: "1mb" })); // Handling URL-encoded payloads
 
     // Loggers
     this.app.use(logBehaviour); // Logs basic request/response info
@@ -222,30 +222,15 @@ export class Server {
     apiRouter.use("/favorites", this.favoriteRoutes.getRouter());
     apiRouter.use("/messaging", this.messagingRoutes.getRouter());
     apiRouter.use("/communities", this.communityRoutes.getRouter());
+    apiRouter.use("/telemetry", this.telemetryRoutes.getRouter());
 
     this.app.use("/api", apiRouter);
 
-    // Catch-all route for debugging
+    // Catch-all 404 route
     this.app.use("*", (req, res) => {
       logger.info(`[Backend] 404 - Unmatched route: ${req.method} ${req.path}`);
       res.status(404).json({
         error: "Route not found",
-        method: req.method,
-        path: req.path,
-        availableRoutes: [
-          "/health",
-          "/api/users",
-          "/api/images",
-          "/api/posts",
-          "/api/search",
-          "/api/admin",
-          "/api/notifications",
-          "/api/feed",
-          "/api/favorites/images/:imageId/ (POST/DELETE)",
-          "/api/favorites/user (GET)",
-          "/api/messaging/conversations",
-          "/api/messaging/messages",
-        ],
       });
     });
   }
@@ -281,6 +266,10 @@ export class Server {
    * @param {number} port - The port number to listen on.
    */
   public start(server: http.Server, port: number): void {
+    server.timeout = 30000;
+    server.headersTimeout = 31000;
+    server.keepAliveTimeout = 65000;
+
     server.listen(port, () => {
       logger.info(`[Server] Server running on port ${port}`);
     });

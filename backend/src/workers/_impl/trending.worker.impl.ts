@@ -8,6 +8,11 @@ import { FeedPost } from "@/types";
 import { logger } from "@/utils/winston";
 import type { IFeedReadDao } from "@/repositories/interfaces";
 import { TOKENS } from "@/types/tokens";
+import type {
+  XPendingRangeEntry,
+  XClaimEntry,
+  XClaimReply,
+} from "@/services/redis/redis-stream.module";
 
 /** Handles trending feed updates and calculations
  * This worker uses a classic write-behind cache pattern. It runs the expensive mongo aggregation once
@@ -331,42 +336,42 @@ export class TrendingWorker {
   /** reclaim messages that are pending (XPENDING) and idle for > RECLAIM_MIN_IDLE_MS using helpers */
   private async reclaimStalledMessages(): Promise<void> {
     try {
-      const pendingSummary = (await this.redisService.xPendingRange(
-        this.STREAM,
-        this.GROUP,
-        "-",
-        "+",
-        1000,
-      )) as Array<{
-        id: string;
-        idle: number;
-        consumer: string;
-        deliveryCount: number;
-      }>;
+      const pendingSummary: XPendingRangeEntry[] =
+        await this.redisService.xPendingRange(
+          this.STREAM,
+          this.GROUP,
+          "-",
+          "+",
+          1000,
+        );
 
       if (!pendingSummary || pendingSummary.length === 0) return;
 
       const toClaim: string[] = [];
       for (const item of pendingSummary) {
-        // item.idle is ms
-        if (item.idle >= this.RECLAIM_MIN_IDLE_MS) {
+        if (item.millisecondsSinceLastDelivery >= this.RECLAIM_MIN_IDLE_MS) {
           toClaim.push(item.id);
         }
       }
 
       if (toClaim.length === 0) return;
 
-      const claimed = (await this.redisService.xClaim(
+      const claimResult: XClaimReply = await this.redisService.xClaim(
         this.STREAM,
         this.GROUP,
         this.CONSUMER,
         this.RECLAIM_MIN_IDLE_MS,
         toClaim,
-      )) as Array<{ id: string; message: Record<string, string> }>;
+      );
+
+      // xClaim may return null for IDs that disappeared between XPENDING and XCLAIM
+      const claimed = claimResult.filter(
+        (msg): msg is XClaimEntry => msg !== null,
+      );
 
       for (const msg of claimed) {
         try {
-          await this.handleStreamMessage(msg.id, msg.message);
+          await this.handleStreamMessage(String(msg.id), msg.message as Record<string, string>);
         } catch (err) {
           logger.error("[trending] error handling reclaimed message", {
             id: msg.id,

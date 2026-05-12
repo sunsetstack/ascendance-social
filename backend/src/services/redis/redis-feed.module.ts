@@ -1,8 +1,16 @@
 import { RedisClientType } from "redis";
-import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
+import { CacheKeyBuilder, RedisFeedType } from "@/utils/cache/CacheKeyBuilder";
 import { decodeCursor, encodeCursor } from "@/utils/cursorCodec";
 import { redisLogger } from "@/utils/winston";
 
+/** How long per-user feed ZSETs live in Redis (1 hour). */
+const FEED_TTL_SECONDS = 3600;
+
+/**
+ * Cursor payload written by this module. Decode-side accepts the full
+ * superset of score aliases so cursors issued by DB-backed feed queries
+ * (rankScore, trendScore) remain compatible with Redis-backed feeds.
+ */
 type CursorPayload = {
   score?: number;
   rankScore?: number;
@@ -19,12 +27,12 @@ export class RedisFeedModule {
     userId: string,
     postId: string,
     timestamp: number,
-    feedType = "for_you",
+    feedType: RedisFeedType = "for_you",
   ): Promise<void> {
     const feedKey = CacheKeyBuilder.getRedisFeedKey(feedType, userId);
     const pipeline = this.client.multi();
     pipeline.zAdd(feedKey, { score: timestamp, value: postId });
-    pipeline.expire(feedKey, 3600);
+    pipeline.expire(feedKey, FEED_TTL_SECONDS);
     await pipeline.exec();
   }
 
@@ -32,7 +40,7 @@ export class RedisFeedModule {
     userIds: string[],
     postId: string,
     timestamp: number,
-    feedType = "for_you",
+    feedType: RedisFeedType = "for_you",
   ): Promise<void> {
     if (userIds.length === 0) return;
 
@@ -40,7 +48,7 @@ export class RedisFeedModule {
     for (const userId of userIds) {
       const feedKey = CacheKeyBuilder.getRedisFeedKey(feedType, userId);
       pipeline.zAdd(feedKey, { score: timestamp, value: postId });
-      pipeline.expire(feedKey, 3600);
+      pipeline.expire(feedKey, FEED_TTL_SECONDS);
     }
     await pipeline.exec();
   }
@@ -49,7 +57,7 @@ export class RedisFeedModule {
     userId: string,
     page: number,
     limit: number,
-    feedType = "for_you",
+    feedType: RedisFeedType = "for_you",
   ): Promise<string[]> {
     const feedKey = CacheKeyBuilder.getRedisFeedKey(feedType, userId);
     const start = (page - 1) * limit;
@@ -87,7 +95,7 @@ export class RedisFeedModule {
     userId: string,
     limit: number,
     cursor?: string,
-    feedType = "for_you",
+    feedType: RedisFeedType = "for_you",
   ): Promise<{
     ids: string[];
     hasMore: boolean;
@@ -104,48 +112,17 @@ export class RedisFeedModule {
       maxScoreValue !== undefined && maxScoreValue !== null
         ? String(maxScoreValue)
         : "+inf";
-    const maxId = String(decoded?._id || decoded?.id || "");
+    const maxId = String(decoded?._id ?? decoded?.id ?? "");
 
-    const rawResults = await this.client.zRangeWithScores(
-      key,
-      maxScore,
-      "-inf",
-      {
-        BY: "SCORE",
-        REV: true,
-        LIMIT: { offset: 0, count: Math.max(limit * 2, limit + 10) },
-      } as { BY: "SCORE"; REV: true; LIMIT: { offset: number; count: number } },
+    return this.paginateZSet(key, limit, maxScore, maxId, cursor, (score, id) =>
+      encodeCursor({ score, _id: id }),
     );
-
-    let filtered = rawResults;
-    if (cursor && maxId) {
-      const cursorScore = Number(maxScore);
-      filtered = rawResults.filter((item) => {
-        if (item.score < cursorScore) return true;
-        if (item.score === cursorScore) {
-          return item.value < maxId;
-        }
-        return false;
-      });
-    }
-
-    const hasMore = filtered.length > limit;
-    const sliced = filtered.slice(0, limit);
-    const ids = sliced.map((item) => item.value);
-
-    let nextCursor: string | undefined;
-    if (sliced.length > 0) {
-      const last = sliced[sliced.length - 1];
-      nextCursor = encodeCursor({ score: last.score, _id: last.value });
-    }
-
-    return { ids, hasMore, nextCursor };
   }
 
   async removeFromFeed(
     userId: string,
     postId: string,
-    feedType = "for_you",
+    feedType: RedisFeedType = "for_you",
   ): Promise<void> {
     await this.client.zRem(
       CacheKeyBuilder.getRedisFeedKey(feedType, userId),
@@ -156,7 +133,7 @@ export class RedisFeedModule {
   async removeFromFeedsBatch(
     userIds: string[],
     postId: string,
-    feedType = "for_you",
+    feedType: RedisFeedType = "for_you",
   ): Promise<void> {
     if (userIds.length === 0) return;
 
@@ -167,11 +144,11 @@ export class RedisFeedModule {
     await pipeline.exec();
   }
 
-  async invalidateFeed(userId: string, feedType = "for_you"): Promise<void> {
+  async invalidateFeed(userId: string, feedType: RedisFeedType = "for_you"): Promise<void> {
     await this.client.del(CacheKeyBuilder.getRedisFeedKey(feedType, userId));
   }
 
-  async getFeedSize(userId: string, feedType = "for_you"): Promise<number> {
+  async getFeedSize(userId: string, feedType: RedisFeedType = "for_you"): Promise<number> {
     return await this.client.zCard(
       CacheKeyBuilder.getRedisFeedKey(feedType, userId),
     );
@@ -220,39 +197,71 @@ export class RedisFeedModule {
       decoded?.trendScore !== undefined && decoded?.trendScore !== null
         ? String(decoded.trendScore)
         : "+inf";
-    const maxId = String(decoded?._id || "");
+    const maxId = String(decoded?._id ?? "");
 
-    const rawResults = await this.client.zRangeWithScores(
-      key,
-      maxScore,
-      "-inf",
-      {
-        BY: "SCORE",
-        REV: true,
-        LIMIT: { offset: 0, count: Math.max(limit * 2, limit + 10) },
-      } as { BY: "SCORE"; REV: true; LIMIT: { offset: number; count: number } },
+    return this.paginateZSet(key, limit, maxScore, maxId, cursor, (score, id) =>
+      encodeCursor({ trendScore: score, _id: id }),
     );
+  }
 
-    let filtered = rawResults;
-    if (cursor && maxId) {
-      const cursorScore = Number(maxScore);
-      filtered = rawResults.filter((item) => {
-        if (item.score < cursorScore) return true;
-        if (item.score === cursorScore) {
-          return item.value < maxId;
-        }
-        return false;
+  /**
+   * Shared cursor-pagination logic for Redis sorted sets (score-based, descending).
+   * Handles the zRangeWithScores fetch, tie-break filtering, slice, and next-cursor encoding.
+   */
+  private async paginateZSet(
+    key: string,
+    limit: number,
+    maxScore: string,
+    maxId: string,
+    cursor: string | undefined,
+    buildNextCursor: (score: number, id: string) => string,
+  ): Promise<{ ids: string[]; hasMore: boolean; nextCursor?: string }> {
+    type ZRangeWithScoresReply = Awaited<
+      ReturnType<RedisClientType["zRangeWithScores"]>
+    >;
+
+    const fetchCount = Math.max(limit * 2, limit + 10);
+    const filtered: ZRangeWithScoresReply = [];
+    let offset = 0;
+
+    while (filtered.length <= limit) {
+      const batch = await this.client.zRangeWithScores(key, maxScore, "-inf", {
+        BY: "SCORE" as const,
+        REV: true as const,
+        LIMIT: { offset, count: fetchCount },
       });
+
+      if (batch.length === 0) {
+        break;
+      }
+
+      const eligible =
+        cursor && maxId
+          ? batch.filter((item) => {
+              const cursorScore = Number(maxScore);
+              if (item.score < cursorScore) return true;
+              if (item.score === cursorScore) return item.value < maxId;
+              return false;
+            })
+          : batch;
+
+      filtered.push(...eligible);
+
+      if (!cursor || filtered.length > limit || batch.length < fetchCount) {
+        break;
+      }
+
+      offset += fetchCount;
     }
 
     const hasMore = filtered.length > limit;
     const sliced = filtered.slice(0, limit);
-    const ids = sliced.map((item) => item.value);
+    const ids = sliced.map((item: ZRangeWithScoresReply[number]) => item.value);
 
     let nextCursor: string | undefined;
     if (sliced.length > 0) {
       const last = sliced[sliced.length - 1];
-      nextCursor = encodeCursor({ trendScore: last.score, _id: last.value });
+      nextCursor = buildNextCursor(last.score, last.value);
     }
 
     return { ids, hasMore, nextCursor };
@@ -286,3 +295,4 @@ export class RedisFeedModule {
     return await this.client.expire(key, seconds);
   }
 }
+

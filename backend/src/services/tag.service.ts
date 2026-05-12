@@ -1,5 +1,5 @@
 import { inject, injectable } from "tsyringe";
-import mongoose, { ClientSession } from "mongoose";
+import mongoose from "mongoose";
 import { TagRepository } from "@/repositories/tag.repository";
 import { RedisService } from "./redis.service";
 import { ITag } from "@/types/index";
@@ -33,7 +33,6 @@ export class TagService {
    */
   async ensureTagsExist(
     tagNames: string[],
-    session?: ClientSession,
   ): Promise<ITag[]> {
     if (!tagNames.length) {
       return [];
@@ -44,7 +43,7 @@ export class TagService {
     ).filter(Boolean);
     if (unique.length === 0) return [];
 
-    const existing = await this.tagRepository.findByTags(unique, session);
+    const existing = await this.tagRepository.findByTags(unique);
     const existingMap = new Map(existing.map((t) => [t.tag, t]));
 
     const tagDocs: ITag[] = [...existing];
@@ -59,7 +58,6 @@ export class TagService {
               count: 0,
               modifiedAt: new Date(),
             } as Partial<ITag>,
-            session,
           ),
         ),
       );
@@ -89,7 +87,6 @@ export class TagService {
    */
   async incrementUsage(
     tagIds: mongoose.Types.ObjectId[],
-    session?: ClientSession,
   ): Promise<void> {
     if (!tagIds.length) return;
 
@@ -99,7 +96,6 @@ export class TagService {
         this.tagRepository.findOneAndUpdate(
           { _id: tagId },
           { $inc: { count: 1 }, $set: { modifiedAt: now } },
-          session,
         ),
       ),
     );
@@ -179,7 +175,6 @@ export class TagService {
    */
   async decrementUsage(
     tagIds: mongoose.Types.ObjectId[],
-    session?: ClientSession,
   ): Promise<void> {
     if (!tagIds.length) return;
 
@@ -189,7 +184,6 @@ export class TagService {
         this.tagRepository.findOneAndUpdate(
           { _id: tagId },
           { $inc: { count: -1 }, $set: { modifiedAt: now } },
-          session,
         ),
       ),
     );

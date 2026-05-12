@@ -12,6 +12,7 @@ import {
 	CommentThreadResponse,
 } from "../../api/commentsApi";
 import { IComment, CommentCreateDto, CommentUpdateDto, CommentsPaginationResponse } from "../../types";
+import { devError } from "@/lib/devLogger";
 
 export const useCommentsByPostId = (postPublicId: string, limit: number = 10) => {
 	return useInfiniteQuery<CommentsPaginationResponse, Error>({
@@ -98,7 +99,7 @@ export const useCreateComment = () => {
 			}
 		},
 		onError: (error: Error) => {
-			console.error("Error creating comment:", error);
+			devError("Error creating comment:", error);
 		},
 	});
 };
@@ -118,7 +119,7 @@ export const useUpdateComment = () => {
 			});
 		},
 		onError: (error: Error) => {
-			console.error("Error updating comment:", error);
+			devError("Error updating comment:", error);
 		},
 	});
 };
@@ -172,7 +173,7 @@ export const useDeleteComment = () => {
 			}
 		},
 		onError: (error: Error) => {
-			console.error("Error deleting comment:", error);
+			devError("Error deleting comment:", error);
 		},
 	});
 };
@@ -222,7 +223,7 @@ export const useLikeComment = () => {
 			});
 		},
 		onError: (error: Error) => {
-			console.error("Error liking comment:", error);
+			devError("Error liking comment:", error);
 		},
 	});
 };

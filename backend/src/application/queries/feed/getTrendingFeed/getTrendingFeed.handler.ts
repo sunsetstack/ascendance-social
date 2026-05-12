@@ -1,22 +1,16 @@
 import { inject, injectable } from "tsyringe";
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { GetTrendingFeedQuery } from "./getTrendingFeed.query";
-import {
+import type {
   IPostReadRepository,
-  IUserReadRepository, IFeedReadDao } from "@/repositories/interfaces";
+  IUserReadRepository,
+  IFeedReadDao,
+} from "@/repositories/interfaces";
 import { RedisService } from "@/services/redis.service";
 import { DTOService } from "@/services/dto.service";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { redisLogger } from "@/utils/winston";
-import {
-  FeedPost,
-  PaginatedFeedResult,
-  IPost,
-  IImage,
-  ITag,
-  UserLookupData,
-  PostMeta,
-} from "@/types";
+import { FeedPost, PaginatedFeedResult, IPost, IImage, ITag } from "@/types";
 import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
 import { TOKENS } from "@/types/tokens";
 
@@ -26,7 +20,8 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
   PaginatedFeedResult
 > {
   constructor(
-    @inject(TOKENS.Repositories.FeedReadDao) private readonly feedReadDao: IFeedReadDao,
+    @inject(TOKENS.Repositories.FeedReadDao)
+    private readonly feedReadDao: IFeedReadDao,
     @inject(TOKENS.Repositories.PostRead)
     private postReadRepository: IPostReadRepository,
     @inject(TOKENS.Repositories.UserRead)
@@ -196,7 +191,7 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
       redisLogger.error("Trending feed error", {
         error: error instanceof Error ? error.message : String(error),
       });
-      throw createError("FeedError", "Could not generate trending feed.");
+      throw Errors.internal("Could not generate trending feed.");
     }
   }
 

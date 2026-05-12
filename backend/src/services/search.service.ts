@@ -3,7 +3,7 @@ import { TagRepository } from "@/repositories/tag.repository";
 import { UserRepository } from "@/repositories/user.repository";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { PostDTO } from "@/types";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 import {
@@ -74,7 +74,7 @@ export class SearchService {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw createError("InternalServerError", message, {
+      throw Errors.internal(message, {
         context: { function: "searchAll", query },
       });
     }

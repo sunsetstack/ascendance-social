@@ -5,6 +5,8 @@ export class UpdateAvatarCommand implements ICommand {
 
 	constructor(
 		public readonly userPublicId: string,
-		public readonly filePath: string
+		public readonly fileBuffer: Buffer,
+		public readonly originalName?: string,
+		public readonly mimeType?: string,
 	) {}
 }

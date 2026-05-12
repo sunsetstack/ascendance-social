@@ -6,25 +6,30 @@ import mongoose, {
 } from "mongoose";
 import { IRepository } from "@/types";
 import { handleMongoError } from "@/utils/errors";
-import { logger } from "@/utils/winston";
+import { sessionALS } from "@/database/UnitOfWork";
 
 /**
  * BaseRepository provides generic CRUD operations for MongoDB models.
  * It serves as the foundation for all other repositories.
+ * It exposes a getSessioon() method that retrieves the current Mongoose session from the AsyncLocalStorage context and passes it to subclasses
  */
 export abstract class BaseRepository<
   T extends mongoose.Document,
 > implements IRepository<T> {
   constructor(protected readonly model: mongoose.Model<T>) {}
 
+  protected getSession(): ClientSession | undefined {
+    return sessionALS.getStore() ?? undefined;
+  }
+
   /**
    * Creates a new document in the database.
    * @param item - The data to create.
-   * @param session - (Optional) Mongoose session for transactions.
    * @returns The created document.
    */
-  async create(item: Partial<T>, session?: ClientSession): Promise<T> {
+  async create(item: Partial<T>): Promise<T> {
     try {
+      const session = this.getSession();
       const doc = new this.model(item);
       return await doc.save({ session });
     } catch (error) {
@@ -36,15 +41,11 @@ export abstract class BaseRepository<
    * Updates a document by ID.
    * @param id - The document ID to update.
    * @param item - The update operations.
-   * @param session - (Optional) Mongoose session for transactions.
    * @returns The updated document or null if not found.
    */
-  async update(
-    id: string,
-    item: Partial<T>,
-    session?: ClientSession,
-  ): Promise<T | null> {
+  async update(id: string, item: Partial<T>): Promise<T | null> {
     try {
+      const session = this.getSession();
       const query = this.model.findByIdAndUpdate(
         id,
         { $set: item },
@@ -60,15 +61,14 @@ export abstract class BaseRepository<
   /**
    * Deletes a document by ID.
    * @param id - The document ID to delete.
-   * @param session - (Optional) Mongoose session for transactions.
    * @returns True if deleted, false otherwise.
    */
-  async delete(id: string, session?: ClientSession): Promise<boolean> {
+  async delete(id: string): Promise<boolean> {
     try {
+      const session = this.getSession();
       const query = this.model.findOneAndDelete({ _id: id });
       if (session) query.session(session);
       const result = await query.exec();
-      logger.info(`result from execution of delete: ${result}`);
       return result !== null;
     } catch (error) {
       handleMongoError(error);
@@ -78,15 +78,14 @@ export abstract class BaseRepository<
   /**
    * Finds a document by ID.
    * @param id - The document ID to search for.
-   * @param session - (Optional) Mongoose session for transactions.
    * @returns The document or null if not found.
    */
   async findById(
     id: string,
-    session?: ClientSession,
     options?: { selectPassword?: boolean },
   ): Promise<T | null> {
     try {
+      const session = this.getSession();
       const query = this.model.findById(id);
       if (session) query.session(session);
       if (options?.selectPassword) {
@@ -104,9 +103,9 @@ export abstract class BaseRepository<
   async findOneAndUpdate(
     filter: FilterQuery<T>,
     update: UpdateQuery<T>,
-    session?: ClientSession,
   ): Promise<T | ModifyResult<T> | null> {
     try {
+      const session = this.getSession();
       const query = this.model.findOneAndUpdate(filter, update, { new: true });
       if (session) query.session(session);
       return await query.exec();
@@ -118,14 +117,11 @@ export abstract class BaseRepository<
   /**
    * Counts documents matching the given filter.
    * @param filter - The query filter.
-   * @param session - (Optional) Mongoose session for transactions.
    * @returns The number of matching documents.
    */
-  async countDocuments(
-    filter: FilterQuery<T> = {},
-    session?: ClientSession,
-  ): Promise<number> {
+  async countDocuments(filter: FilterQuery<T> = {}): Promise<number> {
     try {
+      const session = this.getSession();
       const query = this.model.countDocuments(filter);
       if (session) query.session(session);
       return await query.exec();

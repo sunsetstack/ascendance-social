@@ -1,4 +1,5 @@
 import { IImage, IPost, Notification } from "../types";
+import { devWarn } from "@/lib/devLogger";
 
 type RawRecord = Record<string, unknown>;
 
@@ -178,7 +179,7 @@ export function mapImage(rawInput: unknown): IImage {
 	const post = mapPost(rawInput);
 
 	if (!post.url) {
-		console.warn("mapImage called on post without image:", post.publicId);
+		devWarn("mapImage called on post without image:", post.publicId);
 	}
 
 	return post as IImage;

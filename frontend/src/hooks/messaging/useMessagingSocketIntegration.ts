@@ -3,23 +3,51 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "../context/useSocket";
 import { MessagingUpdatePayload, MessageDTO, ConversationMessagesResponse } from "../../types";
 import type { InfiniteData } from "@tanstack/react-query";
+import { useAuth } from "../context/useAuth";
 
-function isMessagingUpdatePayload(value: unknown): value is MessagingUpdatePayload {
+type MessageSentPayload = Extract<MessagingUpdatePayload, { type: "message_sent" }>;
+type MessageStatusPayload = Extract<MessagingUpdatePayload, { type: "message_status_updated" }>;
+
+function hasMessagingUpdateBaseFields(
+	value: unknown,
+): value is { type: unknown; conversationId: string; timestamp: string } {
 	if (typeof value !== "object" || value === null) {
 		return false;
 	}
 
-	const candidate = value as Partial<MessagingUpdatePayload>;
+	const candidate = value as Record<string, unknown>;
+	return typeof candidate.conversationId === "string" && typeof candidate.timestamp === "string";
+}
+
+function isMessageSentPayload(value: unknown): value is MessageSentPayload {
+	if (!hasMessagingUpdateBaseFields(value)) {
+		return false;
+	}
+
+	const candidate = value as Record<string, unknown>;
+	return candidate.type === "message_sent" && typeof candidate.senderId === "string";
+}
+
+function isMessageStatusPayload(value: unknown): value is MessageStatusPayload {
+	if (!hasMessagingUpdateBaseFields(value)) {
+		return false;
+	}
+
+	const candidate = value as Record<string, unknown>;
 	return (
-		(candidate.type === "message_sent" || candidate.type === "message_status_updated") &&
-		typeof candidate.conversationId === "string" &&
-		typeof candidate.timestamp === "string"
+		candidate.type === "message_status_updated" &&
+		(candidate.status === "delivered" || candidate.status === "read")
 	);
+}
+
+function isMessagingUpdatePayload(value: unknown): value is MessagingUpdatePayload {
+	return isMessageSentPayload(value) || isMessageStatusPayload(value);
 }
 
 export const useMessagingSocketIntegration = (): void => {
 	const socket = useSocket();
 	const queryClient = useQueryClient();
+	const { user } = useAuth();
 
 	useEffect(() => {
 		if (!socket) return;
@@ -27,11 +55,12 @@ export const useMessagingSocketIntegration = (): void => {
 		const handleMessagingUpdate = (payload: unknown) => {
 			if (!isMessagingUpdatePayload(payload)) return;
 
-			const { conversationId, status } = payload;
+			const { conversationId } = payload;
 
 			queryClient.invalidateQueries({ queryKey: ["messaging", "conversations"], exact: false });
 			if (conversationId) {
-				if (payload.type === "message_status_updated" && status) {
+				if (payload.type === "message_status_updated") {
+					const { status } = payload;
 					queryClient.setQueriesData<InfiniteData<ConversationMessagesResponse>>(
 						{ queryKey: ["messaging", "conversation", conversationId], exact: false },
 						(existing) => {
@@ -54,26 +83,35 @@ export const useMessagingSocketIntegration = (): void => {
 							return { ...existing, pages: updatedPages };
 						},
 					);
+					return;
 				}
 
-				queryClient.invalidateQueries({
-					predicate: (query) => {
-						const key = query.queryKey;
-						return (
-							Array.isArray(key) && key[0] === "messaging" && key[1] === "conversation" && key[2] === conversationId
-						);
-					},
-				});
+				if (payload.senderId !== user?.publicId) {
+					queryClient.invalidateQueries({
+						predicate: (query) => {
+							const key = query.queryKey;
+							return (
+								Array.isArray(key) &&
+								key[0] === "messaging" &&
+								key[1] === "conversation" &&
+								key[2] === conversationId
+							);
+						},
+					});
 
-				queryClient.refetchQueries({
-					predicate: (query) => {
-						const key = query.queryKey;
-						return (
-							Array.isArray(key) && key[0] === "messaging" && key[1] === "conversation" && key[2] === conversationId
-						);
-					},
-					type: "active",
-				});
+					queryClient.refetchQueries({
+						predicate: (query) => {
+							const key = query.queryKey;
+							return (
+								Array.isArray(key) &&
+								key[0] === "messaging" &&
+								key[1] === "conversation" &&
+								key[2] === conversationId
+							);
+						},
+						type: "active",
+					});
+				}
 			}
 		};
 
@@ -82,5 +120,5 @@ export const useMessagingSocketIntegration = (): void => {
 		return () => {
 			socket.off("messaging_update", handleMessagingUpdate);
 		};
-	}, [socket, queryClient]);
+	}, [socket, queryClient, user?.publicId]);
 };

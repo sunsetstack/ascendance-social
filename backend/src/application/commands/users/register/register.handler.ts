@@ -2,7 +2,8 @@ import { inject, injectable } from "tsyringe";
 import { RegisterUserCommand } from "./register.command";
 import type { IUserWriteRepository } from "@/repositories/interfaces/IUserWriteRepository";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
-import { createError, wrapError } from "@/utils/errors";
+import { Errors, wrapError } from "@/utils/errors";
+import { UserFactory } from "@/utils/user.factory";
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { DTOService, AuthenticatedUserDTO } from "@/services/dto.service";
 import { EmailService } from "@/services/email.service";
@@ -12,8 +13,7 @@ import {
   USERNAME_BLOOM_OPTIONS,
 } from "@/config/bloomConfig";
 import { logger } from "@/utils/winston";
-import crypto from "crypto";
-import mongoose from "mongoose";
+
 import { TOKENS } from "@/types/tokens";
 
 export interface RegisterUserResult {
@@ -39,56 +39,32 @@ export class RegisterUserCommandHandler implements ICommandHandler<
 
   async execute(command: RegisterUserCommand): Promise<RegisterUserResult> {
     try {
-      const emailVerificationToken = this.generateVerificationToken();
-      const emailVerificationExpires = this.getVerificationExpiry();
-      const usernameTrimmed = command.username.trim();
-      const usernameMayExist = await this.usernameMayExist(usernameTrimmed);
+      const userPayload = UserFactory.createFromRegistration({
+        handle: command.handle,
+        username: command.username,
+        email: command.email,
+        password: command.password,
+        avatar: command.avatar,
+        cover: command.cover,
+        ip: command.ip,
+      });
+
+      const usernameMayExist = await this.usernameMayExist(userPayload.username);
       if (usernameMayExist) {
         const existingUser =
-          await this.userReadRepository.findByUsername(usernameTrimmed);
+          await this.userReadRepository.findByUsername(userPayload.username);
         if (existingUser) {
-          throw createError("ValidationError", "Username is already taken");
+          throw Errors.validation("Username is already taken");
         }
       }
 
-      const handleTrimmed = command.handle.trim();
-
-      const session = await mongoose.startSession();
-      session.startTransaction();
-      let user;
-      try {
-        user = await this.userWriteRepository.create(
-          {
-            handle: handleTrimmed,
-            handleNormalized: handleTrimmed.toLowerCase(),
-            username: usernameTrimmed,
-            email: command.email,
-            password: command.password,
-            avatar: command.avatar || "",
-            cover: command.cover || "",
-            registrationIp: command.ip,
-            lastIp: command.ip,
-            lastActive: new Date(),
-            isEmailVerified: false,
-            emailVerificationToken,
-            emailVerificationExpires,
-          },
-          session,
-        );
-
-        await session.commitTransaction();
-      } catch (error) {
-        await session.abortTransaction();
-        throw error;
-      } finally {
-        session.endSession();
-      }
+      const user = await this.userWriteRepository.create(userPayload);
 
       await this.emailService.sendEmailVerification(
         user.email,
-        emailVerificationToken,
+        userPayload.emailVerificationToken,
       );
-      await this.seedUsernameBloom(usernameTrimmed);
+      await this.seedUsernameBloom(userPayload.username);
 
       const userDTO = this.dtoService.toAuthenticatedUserDTO(user);
       return { user: userDTO };
@@ -96,19 +72,8 @@ export class RegisterUserCommandHandler implements ICommandHandler<
       if (error instanceof Error) {
         throw wrapError(error);
       }
-      throw createError("UnknownError", "An unknown error occurred");
+      throw Errors.internal("An unknown error occurred");
     }
-  }
-
-  private generateVerificationToken(): string {
-    const value = crypto.randomInt(0, 100000);
-    return value.toString().padStart(5, "0");
-  }
-
-  private getVerificationExpiry(): Date {
-    const ttlMinutes =
-      Number(process.env.EMAIL_VERIFICATION_TOKEN_TTL_MINUTES) || 60;
-    return new Date(Date.now() + ttlMinutes * 60 * 1000);
   }
 
   private async usernameMayExist(username: string): Promise<boolean> {

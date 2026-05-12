@@ -1,8 +1,8 @@
-import mongoose, { ClientSession, Model } from "mongoose";
+import mongoose, { Model } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
 import { IMessage, IMessageWithPopulatedSender, PaginationResult, CursorPaginationResult } from "@/types";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { encodeCursor, decodeCursor } from "@/utils/cursorCodec";
 import { TOKENS } from "@/types/tokens";
 
@@ -18,7 +18,8 @@ export class MessageRepository extends BaseRepository<IMessage> {
 		super(model);
 	}
 
-	async findByPublicId(publicId: string, session?: ClientSession): Promise<IMessage | null> {
+	async findByPublicId(publicId: string): Promise<IMessage | null> {
+		const session = this.getSession();
 		const query = this.model.findOne({ publicId }).populate("sender", "publicId handle username avatar");
 		if (session) query.session(session);
 		return query.exec();
@@ -57,7 +58,7 @@ export class MessageRepository extends BaseRepository<IMessage> {
 				.sort({ createdAt: -1, _id: -1 })
 				.limit(limit + 1)
 				.populate("sender", "publicId handle username avatar")
-				.lean()
+				.lean<IMessageWithPopulatedSender[]>()
 				.exec();
 
 			const hasMore = messages.length > limit;
@@ -74,12 +75,12 @@ export class MessageRepository extends BaseRepository<IMessage> {
 			}
 
 			return {
-				data: data as unknown as IMessageWithPopulatedSender[],
+				data,
 				hasMore,
 				nextCursor,
 			};
 		} catch (error) {
-			throw createError("DatabaseError", (error as Error).message);
+			throw Errors.database(error instanceof Error ? error.message : String(error));
 		}
 	}
 
@@ -102,29 +103,29 @@ export class MessageRepository extends BaseRepository<IMessage> {
 					.skip(skip)
 					.limit(limit)
 					.populate("sender", "publicId handle username avatar")
-					.lean()
+					.lean<IMessageWithPopulatedSender[]>()
 					.exec(),
 				this.model.countDocuments({ conversation: objectId }),
 			]);
 
 			return {
-				data: messages as unknown as IMessageWithPopulatedSender[],
+				data: messages,
 				total,
 				page,
 				limit,
 				totalPages: total > 0 ? Math.ceil(total / limit) : 0,
 			};
 		} catch (error) {
-			throw createError("DatabaseError", (error as Error).message);
+			throw Errors.database(error instanceof Error ? error.message : String(error));
 		}
 	}
 
 	// Trying different session handling here
 	async markConversationMessagesAsRead(
 		conversationId: string,
-		readerId: string,
-		session?: ClientSession
+		readerId: string
 	): Promise<void> {
+		const session = this.getSession();
 		const update = this.model.updateMany(
 			{
 				conversation: new mongoose.Types.ObjectId(conversationId),
@@ -144,8 +145,8 @@ export class MessageRepository extends BaseRepository<IMessage> {
 	async markConversationMessagesAsDelivered(
 		conversationId: string,
 		recipientId: string,
-		session?: ClientSession,
 	): Promise<boolean> {
+		const session = this.getSession();
 		const update = this.model.updateMany(
 			{
 				conversation: new mongoose.Types.ObjectId(conversationId),
@@ -162,7 +163,8 @@ export class MessageRepository extends BaseRepository<IMessage> {
 		return (result.modifiedCount ?? 0) > 0;
 	}
 
-	async findMessageById(messageId: string, session?: ClientSession): Promise<IMessage | null> {
+	async findMessageById(messageId: string): Promise<IMessage | null> {
+		const session = this.getSession();
 		const query = this.model
 			.findById(new mongoose.Types.ObjectId(messageId))
 			.populate("sender", "publicId handle username avatar");
@@ -170,7 +172,8 @@ export class MessageRepository extends BaseRepository<IMessage> {
 		return query.exec();
 	}
 
-	async deleteManyBySender(senderId: string, session?: ClientSession): Promise<number> {
+	async deleteManyBySender(senderId: string): Promise<number> {
+		const session = this.getSession();
 		const result = await this.model
 			.deleteMany({ sender: new mongoose.Types.ObjectId(senderId) })
 			.session(session || null)
@@ -178,7 +181,8 @@ export class MessageRepository extends BaseRepository<IMessage> {
 		return result.deletedCount || 0;
 	}
 
-	async removeUserFromReadBy(userId: string, session?: ClientSession): Promise<number> {
+	async removeUserFromReadBy(userId: string): Promise<number> {
+		const session = this.getSession();
 		const result = await this.model
 			.updateMany(
 				{ readBy: new mongoose.Types.ObjectId(userId) },
@@ -189,7 +193,8 @@ export class MessageRepository extends BaseRepository<IMessage> {
 		return result.modifiedCount || 0;
 	}
 
-	async updateMessage(publicId: string, updates: Partial<IMessage>, session?: ClientSession): Promise<IMessage | null> {
+	async updateMessage(publicId: string, updates: Partial<IMessage>): Promise<IMessage | null> {
+		const session = this.getSession();
 		const query = this.model
 			.findOneAndUpdate({ publicId }, { $set: updates }, { new: true })
 			.populate("sender", "publicId handle username avatar");

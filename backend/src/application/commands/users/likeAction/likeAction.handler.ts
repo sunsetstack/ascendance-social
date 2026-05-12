@@ -1,21 +1,22 @@
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { inject, injectable } from "tsyringe";
 import { LikeActionCommand } from "./likeAction.command";
-import { IPost, PopulatedPostUser, PopulatedPostTag } from "@/types/index";
+import { IPost, PopulatedPostUser } from "@/types/index";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { UserInteractedWithPostEvent } from "@/application/events/user/user-interaction.event";
-import { IPostReadRepository } from "@/repositories/interfaces/IPostReadRepository";
-import { IPostWriteRepository } from "@/repositories/interfaces/IPostWriteRepository";
+import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRepository";
+import type { IPostWriteRepository } from "@/repositories/interfaces/IPostWriteRepository";
 import { PostLikeRepository } from "@/repositories/postLike.repository";
 import { UserActionRepository } from "@/repositories/userAction.repository";
-import { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
+import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
 import { NotificationRequestedEvent } from "@/application/events/notification/notification.event";
-import { createError, wrapError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { FeedService } from "@/services/feed/feed.service";
-import { ClientSession, Types } from "mongoose";
+import { Types } from "mongoose";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import { extractTagNames, buildPostPreview } from "@/utils/post-helpers";
 
 @injectable()
 export class LikeActionCommandHandler implements ICommandHandler<
@@ -23,7 +24,8 @@ export class LikeActionCommandHandler implements ICommandHandler<
   IPost
 > {
   constructor(
-    @inject(TOKENS.Repositories.UnitOfWork) private readonly unitOfWork: UnitOfWork,
+    @inject(TOKENS.Repositories.UnitOfWork)
+    private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.Repositories.PostRead)
     private readonly postReadRepository: IPostReadRepository,
     @inject(TOKENS.Repositories.PostWrite)
@@ -43,165 +45,84 @@ export class LikeActionCommandHandler implements ICommandHandler<
    * Determines whether the action is a like or an unlike and processes it accordingly.
    * @param command - The command containing the user ID and image ID.
    * @returns The updated image object.
-   * @throws Throws an error if the image is not found or if an operation fails.
    */
   async execute(command: LikeActionCommand): Promise<IPost> {
     let isLikeAction = true;
-    let postTags: string[] = [];
-    let existingPost: IPost | null;
 
-    try {
-      existingPost = await this.postReadRepository.findById(command.postId);
-      if (!existingPost) {
-        throw createError("PathError", `Post ${command.postId} not found`);
-      }
-      postTags = Array.isArray(existingPost.tags)
-        ? (existingPost.tags as (Types.ObjectId | PopulatedPostTag)[]).map(
-            (t) =>
-              typeof t === "object" && "tag" in t
-                ? (t as PopulatedPostTag).tag
-                : t.toString(),
-          )
-        : [];
-
-      // Execute the like/unlike operation within transaction
-      await this.unitOfWork.executeInTransaction(async (session) => {
-        const existingLike = await this.postLikeRepository.hasUserLiked(
-          command.postId,
-          command.userId,
-          session,
-        );
-
-        if (existingLike) {
-          // If the like already exists, perform an unlike operation
-          await this.handleUnlike(command, session);
-          isLikeAction = false;
-        } else {
-          // perform a like operation
-          await this.handleLike(command, existingPost!, session);
-        }
-
-        await this.eventBus.queueTransactional(
-          new UserInteractedWithPostEvent(
-            command.userId,
-            isLikeAction ? "like" : "unlike",
-            existingPost!.publicId ?? command.postId,
-            postTags,
-            (() => {
-              const owner = existingPost!.user as
-                | Types.ObjectId
-                | PopulatedPostUser;
-              return typeof owner === "object" && "publicId" in owner
-                ? ((owner as PopulatedPostUser).publicId ?? "")
-                : (owner?.toString() ?? "");
-            })(),
-          ),
-        );
-      });
-
-      // Return the updated image with the modified like count
-      const updatedPost = await this.postReadRepository.findById(
-        command.postId,
-      );
-      if (!updatedPost) {
-        throw createError(
-          "PathError",
-          `Post ${command.postId} not found after update`,
-        );
-      }
-      // Update per-post meta cache asynchronously as not to block response
-      if (updatedPost.publicId) {
-        this.feedService
-          .updatePostLikeMeta(updatedPost.publicId, updatedPost.likesCount ?? 0)
-          .catch((e) => console.warn("updatePostLikeMeta failed", e));
-      }
-      return updatedPost;
-    } catch (error) {
-      throw wrapError(error, "InternalServerError", {
-        context: {
-          operation: "LikeAction",
-          userId: command.userId,
-          postId: command.postId,
-        },
-      });
+    const existingPost = await this.postReadRepository.findById(command.postId);
+    if (!existingPost) {
+      throw Errors.notFound("Post");
     }
+
+    const postTags = extractTagNames(existingPost.tags);
+
+    // Execute the like/unlike operation within transaction
+    await this.unitOfWork.executeInTransaction(async () => {
+      const existingLike = await this.postLikeRepository.hasUserLiked(
+        command.postId,
+        command.userId,
+      );
+
+      if (existingLike) {
+        await this.handleUnlike(command);
+        isLikeAction = false;
+      } else {
+        await this.handleLike(command, existingPost);
+      }
+
+      await this.eventBus.queueTransactional(
+        new UserInteractedWithPostEvent(
+          command.userId,
+          isLikeAction ? "like" : "unlike",
+          existingPost.publicId ?? command.postId,
+          postTags,
+          this.resolveOwnerPublicId(existingPost),
+        ),
+      );
+    });
+
+    // Return the updated image with the modified like count
+    const updatedPost = await this.postReadRepository.findById(
+      command.postId,
+    );
+    if (!updatedPost) {
+      throw Errors.notFound("Post");
+    }
+
+    // Update per-post meta cache asynchronously as not to block response
+    if (updatedPost.publicId) {
+      this.feedService
+        .updatePostLikeMeta(updatedPost.publicId, updatedPost.likesCount ?? 0)
+        .catch((e) => logger.warn("updatePostLikeMeta failed", e));
+    }
+    return updatedPost;
   }
 
   /**
    * Handles the like action by creating a like record, incrementing the like count,
    * logging the user action, and triggering a notification.
-   * @param command - The like action command containing user ID and post ID.
-   * @param post - The post being liked.
-   * @param session - The active database transaction session.
    */
-  private async handleLike(
-    command: LikeActionCommand,
-    post: IPost,
-    session: ClientSession,
-  ) {
+  private async handleLike(command: LikeActionCommand, post: IPost) {
     const added = await this.postLikeRepository.addLike(
       command.postId,
       command.userId,
-      session,
     );
     if (!added) {
-      throw createError(
-        "ConflictError",
-        "like already exists for user and post",
-      );
+      throw Errors.validation("like already exists for user and post");
     }
 
-    await this.postWriteRepository.updateLikeCount(command.postId, 1, session);
+    await this.postWriteRepository.updateLikeCount(command.postId, 1);
 
     await this.userActionRepository.logAction(
       command.userId,
       "like",
       command.postId,
-      session,
     );
 
-    const postOwner = post.user as Types.ObjectId | PopulatedPostUser;
-    let postOwnerPublicId = "";
-
-    logger.info(
-      `[LikeAction] Resolving post owner for post ${command.postId}. postOwner raw:`,
-      postOwner,
-    );
-
-    if (typeof postOwner === "object" && "publicId" in postOwner) {
-      postOwnerPublicId =
-        (postOwner as PopulatedPostUser).publicId?.toString() ?? "";
-      logger.info(
-        `[LikeAction] Resolved owner from populated object: ${postOwnerPublicId}`,
-      );
-    } else if (postOwner) {
-      // Resolve user publicId from ObjectId
-      const ownerUser = await this.userReadRepository.findById(
-        postOwner.toString(),
-      );
-      if (ownerUser) {
-        postOwnerPublicId = ownerUser.publicId;
-        logger.info(
-          `[LikeAction] Resolved owner from DB lookup: ${postOwnerPublicId}`,
-        );
-      } else {
-        logger.warn(
-          `[LikeAction] Could not find user for ObjectId: ${postOwner}`,
-        );
-      }
-    }
+    const postOwnerPublicId = await this.resolveOwnerPublicIdAsync(post);
 
     if (postOwnerPublicId && postOwnerPublicId !== command.userId) {
-      logger.info(
-        `[LikeAction] Queuing notification for owner ${postOwnerPublicId} from actor ${command.userId}`,
-      );
       const actorUser = await this.userReadRepository.findById(command.userId);
-
-      const postPreview = post.body
-        ? post.body.substring(0, 50) + (post.body.length > 50 ? "..." : "")
-        : post.image
-          ? "[Image post]"
-          : "[Post]";
 
       await this.eventBus.queueTransactional(
         new NotificationRequestedEvent({
@@ -213,12 +134,8 @@ export class LikeActionCommandHandler implements ICommandHandler<
           actorAvatar: actorUser?.avatar,
           targetId: post.publicId ?? command.postId,
           targetType: "post",
-          targetPreview: postPreview,
+          targetPreview: buildPostPreview(post),
         }),
-      );
-    } else {
-      logger.info(
-        `[LikeAction] Skipping notification. Owner: ${postOwnerPublicId}, Actor: ${command.userId}, Same? ${postOwnerPublicId === command.userId}`,
       );
     }
   }
@@ -226,32 +143,43 @@ export class LikeActionCommandHandler implements ICommandHandler<
   /**
    * Handles the unlike action by removing the like record, decrementing the like count,
    * and logging the user action.
-   * @param command - The unlike action command containing user ID and post ID.
-   * @param session - The active database transaction session.
    */
-  private async handleUnlike(
-    command: LikeActionCommand,
-    session: ClientSession,
-  ) {
+  private async handleUnlike(command: LikeActionCommand) {
     const removed = await this.postLikeRepository.removeLike(
       command.postId,
       command.userId,
-      session,
     );
     if (!removed) {
-      throw createError(
-        "NotFoundError",
-        "like does not exist for user and post",
-      );
+      throw Errors.notFound("Resource");
     }
 
-    await this.postWriteRepository.updateLikeCount(command.postId, -1, session);
+    await this.postWriteRepository.updateLikeCount(command.postId, -1);
 
     await this.userActionRepository.logAction(
       command.userId,
       "unlike",
       command.postId,
-      session,
     );
+  }
+
+  /** Sync extraction of owner publicId from a populated post — returns empty string if not populated */
+  private resolveOwnerPublicId(post: IPost): string {
+    const owner = post.user as Types.ObjectId | PopulatedPostUser;
+    return typeof owner === "object" && "publicId" in owner
+      ? ((owner as PopulatedPostUser).publicId ?? "")
+      : (owner?.toString() ?? "");
+  }
+
+  /** Async resolution — falls back to DB lookup when not populated */
+  private async resolveOwnerPublicIdAsync(post: IPost): Promise<string> {
+    const owner = post.user as Types.ObjectId | PopulatedPostUser;
+    if (typeof owner === "object" && "publicId" in owner) {
+      return (owner as PopulatedPostUser).publicId ?? "";
+    }
+    if (owner) {
+      const ownerUser = await this.userReadRepository.findById(owner.toString());
+      return ownerUser?.publicId ?? "";
+    }
+    return "";
   }
 }

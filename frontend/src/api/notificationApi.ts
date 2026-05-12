@@ -1,5 +1,5 @@
 import axiosClient from "./axiosClient";
-import { Notification } from "../types";
+import { Notification, NotificationPage } from "../types";
 import { mapNotification } from "../lib/mappers";
 
 // Small helper to unwrap axios responses with generics
@@ -27,20 +27,28 @@ const errorMessage = (err: unknown): string => {
 export const fetchNotifications = async (
   signal?: AbortSignal,
   before?: string,
-): Promise<Notification[]> => {
+): Promise<NotificationPage> => {
   try {
     const params: { before?: string } = {};
     if (before) {
       params.before = before;
     }
 
-    const response = await unwrap<{ data: unknown[] }>(
+    const response = await unwrap<{
+      data: unknown[];
+      hasMore?: boolean;
+      nextCursor?: string;
+    }>(
       axiosClient.get("/api/notifications", {
         signal,
         params,
       }),
     );
-    return response.data.map(mapNotification);
+    return {
+      data: response.data.map(mapNotification),
+      hasMore: response.hasMore === true,
+      nextCursor: response.nextCursor,
+    };
   } catch (error) {
     throw new Error(`fetchNotifications failed: ${errorMessage(error)}`);
   }
@@ -58,7 +66,11 @@ export const markNotificationAsRead = async (
   }
   try {
     const raw = await unwrap<unknown>(
-      axiosClient.post(`/api/notifications/read/${notificationId}`, { signal }),
+      axiosClient.post(
+        `/api/notifications/read/${notificationId}`,
+        undefined,
+        { signal },
+      ),
     );
     return mapNotification(raw);
   } catch (error) {

@@ -1,9 +1,9 @@
-import { ClientSession, Model } from "mongoose";
+import { Model } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
 import { IOutboxEvent } from "@/models/outbox.model";
 import { TOKENS } from "@/types/tokens";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 
 @injectable()
 export class OutboxRepository extends BaseRepository<IOutboxEvent> {
@@ -14,9 +14,9 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
   async saveEvent(
     eventType: string,
     payload: any,
-    session: ClientSession
   ): Promise<IOutboxEvent> {
     try {
+      const session = this.getSession();
       const outboxDocs = await this.model.create(
         [
           {
@@ -29,10 +29,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
       );
       return outboxDocs[0];
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ?? "failed to save outbox event"
-      );
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to save outbox event");
     }
   }
 
@@ -44,10 +41,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
         .limit(limit)
         .exec();
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ?? "failed to fetch unprocessed events"
-      );
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to fetch unprocessed events");
     }
   }
 
@@ -58,10 +52,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
         { $set: { processed: true, processedAt: new Date() } }
       ).exec();
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ?? "failed to mark event as processed"
-      );
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to mark event as processed");
     }
   }
 
@@ -75,10 +66,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
         }
       ).exec();
     } catch (error: unknown) {
-      throw createError(
-        "DatabaseError",
-        (error instanceof Error ? error.message : String(error)) ?? "failed to mark event as failed"
-      );
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to mark event as failed");
     }
   }
 }

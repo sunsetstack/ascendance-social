@@ -2,7 +2,7 @@ import { injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
 import { ICommunityMember } from "@/types";
 import { CommunityMember } from "@/models/communityMember.model";
-import { ClientSession, Types } from "mongoose";
+import { Types } from "mongoose";
 
 @injectable()
 export class CommunityMemberRepository extends BaseRepository<ICommunityMember> {
@@ -38,20 +38,22 @@ export class CommunityMemberRepository extends BaseRepository<ICommunityMember> 
 	async deleteByCommunityAndUser(
 		communityId: string | Types.ObjectId,
 		userId: string | Types.ObjectId,
-		session?: ClientSession,
 	): Promise<void> {
+		const session = this.getSession();
 		const query = this.model.deleteOne({ communityId, userId });
 		if (session) query.session(session);
 		await query.exec();
 	}
 
-	async deleteByCommunityId(communityId: string | Types.ObjectId, session?: ClientSession): Promise<void> {
+	async deleteByCommunityId(communityId: string | Types.ObjectId): Promise<void> {
+		const session = this.getSession();
 		const query = this.model.deleteMany({ communityId });
 		if (session) query.session(session);
 		await query.exec();
 	}
 
-	async deleteManyByUserId(userId: string | Types.ObjectId, session?: ClientSession): Promise<void> {
+	async deleteManyByUserId(userId: string | Types.ObjectId): Promise<void> {
+		const session = this.getSession();
 		const query = this.model.deleteMany({ userId });
 		if (session) query.session(session);
 		await query.exec();

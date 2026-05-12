@@ -7,8 +7,3 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["backend:3000"]
-
-  - job_name: api-gateway
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["api-gateway:8000"]

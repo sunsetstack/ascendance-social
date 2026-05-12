@@ -44,6 +44,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useInitiateConversation } from "../hooks/messaging/useInitiateConversation";
 import { useTranslation } from "react-i18next";
 import { PageSeo, buildProfileMetadata } from "../lib/seo";
+import { devError } from "@/lib/devLogger";
 
 const BASE_URL = "/api";
 
@@ -162,7 +163,7 @@ const Profile: React.FC = () => {
 			},
 			onError: (error: Error) => {
 				notifyError(`Action failed: ${error?.message || "Unknown error"}`);
-				console.error("Error following/unfollowing user:", error);
+				devError("Error following/unfollowing user:", error);
 			},
 		});
 	};
@@ -204,7 +205,7 @@ const Profile: React.FC = () => {
 				});
 			} catch (error) {
 				notifyError("Error processing image");
-				console.error("Error converting dataURL to Blob:", error);
+				devError("Error converting dataURL to Blob:", error);
 			}
 		},
 		[avatarMutation, notifyError, notifySuccess]
@@ -225,7 +226,7 @@ const Profile: React.FC = () => {
 				});
 			} catch (error) {
 				notifyError("Error processing image");
-				console.error("Error converting dataURL to Blob:", error);
+				devError("Error converting dataURL to Blob:", error);
 			}
 		},
 		[coverMutation, notifyError, notifySuccess]

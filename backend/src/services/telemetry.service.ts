@@ -57,13 +57,22 @@ export class TelemetryService {
   private currentBucket: MetricsBucket;
   private bucketStartTime: number;
   private readonly BUCKET_DURATION = 5 * 60 * 1000; // 5 minutes
+  private readonly MAX_ARRAY_SIZE = 10_000;
+  private rotationTimer: ReturnType<typeof setInterval>;
 
   constructor() {
     this.currentBucket = this.createEmptyBucket();
     this.bucketStartTime = Date.now();
 
     // rotate bucket periodically
-    setInterval(() => this.rotateBucket(), this.BUCKET_DURATION);
+    this.rotationTimer = setInterval(
+      () => this.rotateBucket(),
+      this.BUCKET_DURATION,
+    );
+  }
+
+  dispose(): void {
+    clearInterval(this.rotationTimer);
   }
 
   private createEmptyBucket(): MetricsBucket {
@@ -125,7 +134,9 @@ export class TelemetryService {
   private processTTFI(event: TelemetryEvent): void {
     const duration = event.data.duration as number;
     if (typeof duration === "number" && duration > 0 && duration < 60000) {
-      this.currentBucket.ttfiValues.push(duration);
+      if (this.currentBucket.ttfiValues.length < this.MAX_ARRAY_SIZE) {
+        this.currentBucket.ttfiValues.push(duration);
+      }
     }
   }
 
@@ -138,7 +149,10 @@ export class TelemetryService {
     if (!this.currentBucket.scrollDepths.has(feedId)) {
       this.currentBucket.scrollDepths.set(feedId, []);
     }
-    this.currentBucket.scrollDepths.get(feedId)!.push(depth);
+    const depths = this.currentBucket.scrollDepths.get(feedId)!;
+    if (depths.length < this.MAX_ARRAY_SIZE) {
+      depths.push(depth);
+    }
   }
 
   private processFlowStart(event: TelemetryEvent): void {
@@ -163,7 +177,7 @@ export class TelemetryService {
 
     const data = this.currentBucket.flowCompletes.get(flowType)!;
     data.count++;
-    if (typeof duration === "number") {
+    if (typeof duration === "number" && data.durations.length < this.MAX_ARRAY_SIZE) {
       data.durations.push(duration);
     }
   }

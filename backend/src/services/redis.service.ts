@@ -5,11 +5,17 @@ import { performance } from "perf_hooks";
 import { redisLogger } from "@/utils/winston";
 import { getErrorMessage } from "@/utils/errors";
 import { INotification } from "@/types";
+import { NotificationPlain } from "@/types/customNotifications/notifications.types";
 import { MetricsService } from "../metrics/metrics.service";
 import { RedisNotificationModule } from "./redis/redis-notification.module";
 import { RedisFeedModule } from "./redis/redis-feed.module";
 import { RedisStreamModule } from "./redis/redis-stream.module";
+import { RedisFeedType } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
+import {
+  XPendingRangeEntry,
+  XClaimReply,
+} from "./redis/redis-stream.module";
 
 /**
  * Configuration for resilient Redis operations
@@ -98,6 +104,26 @@ export class RedisService {
 
   private parseJson<T>(payload: string): T {
     return JSON.parse(payload) as T;
+  }
+
+  /**
+   * Type-safe cache read. Callers must supply a type guard that narrows
+   * the parsed value to T before it's returned — prevents silent type lies
+   * from deserialized cache hits.
+   */
+  async getValidated<T>(
+    key: string,
+    guard: (v: unknown) => v is T,
+  ): Promise<T | null> {
+    const raw = await this.get<string>(key);
+    if (raw === null) return null;
+    try {
+      const parsed: unknown =
+        typeof raw === "string" ? JSON.parse(raw) : raw;
+      return guard(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
   }
 
   private hasFallback<T>(
@@ -626,7 +652,7 @@ export class RedisService {
     userId: string,
     page = 1,
     limit = 20,
-  ): Promise<INotification[]> {
+  ): Promise<NotificationPlain[]> {
     return this.notificationModule.getUserNotifications(userId, page, limit);
   }
 
@@ -655,7 +681,7 @@ export class RedisService {
     userId: string,
     postId: string,
     timestamp: number,
-    feedType = "for_you",
+    feedType: RedisFeedType = "for_you",
   ): Promise<void> {
     return this.feedModule.addToFeed(userId, postId, timestamp, feedType);
   }
@@ -664,7 +690,7 @@ export class RedisService {
     userIds: string[],
     postId: string,
     timestamp: number,
-    feedType = "for_you",
+    feedType: RedisFeedType = "for_you",
   ): Promise<void> {
     return this.feedModule.addToFeedsBatch(
       userIds,
@@ -678,7 +704,7 @@ export class RedisService {
     userId: string,
     page: number,
     limit: number,
-    feedType = "for_you",
+    feedType: RedisFeedType = "for_you",
   ): Promise<string[]> {
     return this.feedModule.getFeedPage(userId, page, limit, feedType);
   }
@@ -687,7 +713,7 @@ export class RedisService {
     userId: string,
     limit: number,
     cursor?: string,
-    feedType = "for_you",
+    feedType: RedisFeedType = "for_you",
   ): Promise<{
     ids: string[];
     hasMore: boolean;
@@ -699,7 +725,7 @@ export class RedisService {
   async removeFromFeed(
     userId: string,
     postId: string,
-    feedType = "for_you",
+    feedType: RedisFeedType = "for_you",
   ): Promise<void> {
     return this.feedModule.removeFromFeed(userId, postId, feedType);
   }
@@ -707,16 +733,16 @@ export class RedisService {
   async removeFromFeedsBatch(
     userIds: string[],
     postId: string,
-    feedType = "for_you",
+    feedType: RedisFeedType = "for_you",
   ): Promise<void> {
     return this.feedModule.removeFromFeedsBatch(userIds, postId, feedType);
   }
 
-  async invalidateFeed(userId: string, feedType = "for_you"): Promise<void> {
+  async invalidateFeed(userId: string, feedType: RedisFeedType = "for_you"): Promise<void> {
     return this.feedModule.invalidateFeed(userId, feedType);
   }
 
-  async getFeedSize(userId: string, feedType = "for_you"): Promise<number> {
+  async getFeedSize(userId: string, feedType: RedisFeedType = "for_you"): Promise<number> {
     return this.feedModule.getFeedSize(userId, feedType);
   }
 
@@ -836,7 +862,7 @@ export class RedisService {
     start = "-",
     end = "+",
     count = 1000,
-  ): Promise<unknown> {
+  ): Promise<XPendingRangeEntry[]> {
     return this.streamModule.xPendingRange(stream, group, start, end, count);
   }
 
@@ -846,10 +872,18 @@ export class RedisService {
     consumer: string,
     minIdleMs: number,
     ids: string[],
-  ): Promise<unknown> {
+  ): Promise<XClaimReply> {
     return this.streamModule.xClaim(stream, group, consumer, minIdleMs, ids);
   }
 
+  /**
+   * Low-level sorted-set ADD for feed management.
+   * This is a direct pass-through to the feed module's Redis sorted set.
+   * Prefer higher-level feed service methods when possible.
+   * @param key - Redis sorted set key
+   * @param score - Numeric score (typically a timestamp)
+   * @param member - The value to store
+   */
   async zadd(key: string, score: number, member: string): Promise<number> {
     return this.feedModule.zadd(key, score, member);
   }
@@ -858,6 +892,15 @@ export class RedisService {
     return this.feedModule.zrem(key, member);
   }
 
+  /**
+   * Low-level sorted-set range-by-score query for feed management.
+   * This is a direct pass-through to the feed module's Redis sorted set.
+   * Prefer higher-level feed service methods when possible.
+   * @param key - Redis sorted set key
+   * @param min - Minimum score (use '-inf' for unbounded)
+   * @param max - Maximum score (use '+inf' for unbounded)
+   * @returns Array of members within the score range
+   */
   async zrangeByScore(
     key: string,
     min: string,

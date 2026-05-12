@@ -5,8 +5,13 @@
     "outDir": "dist",
     "rootDir": "src",
     "noEmit": false,
+    "target": "ESNEXT",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "moduleDetection": "force",
     "paths": {
       "@/*": ["./src/*"],
       "@/application/*": ["./src/application/*"],

@@ -48,7 +48,7 @@ export class FeedFanoutService {
         `Fanned out post ${postId} to ${followerIds.length} followers`,
       );
     } catch (error) {
-      console.error(`Failed to fan out post ${postId}:`, error);
+      logger.error(`Failed to fan out post ${postId}:`, error);
     }
   }
 
@@ -72,7 +72,7 @@ export class FeedFanoutService {
         `Removed post ${postId} from ${followerIds.length} followers' feeds`,
       );
     } catch (error) {
-      console.error(`Failed to remove post ${postId} from feeds:`, error);
+      logger.error(`Failed to remove post ${postId} from feeds:`, error);
     }
   }
 

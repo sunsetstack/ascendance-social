@@ -1,8 +1,8 @@
-import mongoose, { ClientSession, Model } from "mongoose";
+import mongoose, { Model } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
 import { IConversation, HydratedConversation, PaginationResult, CursorPaginationResult } from "@/types";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { encodeCursor, decodeCursor } from "@/utils/cursorCodec";
 import { TOKENS } from "@/types/tokens";
 
@@ -42,9 +42,9 @@ export class ConversationRepository extends BaseRepository<IConversation> {
 
 	async findByPublicId(
 		publicId: string,
-		session?: ClientSession,
 		options?: { populateParticipants?: boolean; includeLastMessage?: boolean }
 	): Promise<IConversation | null> {
+		const session = this.getSession();
 		const query = this.model.findOne({ publicId });
 		if (options?.populateParticipants) {
 			query.populate("participants", "publicId handle username avatar");
@@ -59,7 +59,8 @@ export class ConversationRepository extends BaseRepository<IConversation> {
 		return query.exec();
 	}
 
-	async findByParticipantHash(participantHash: string, session?: ClientSession): Promise<IConversation | null> {
+	async findByParticipantHash(participantHash: string): Promise<IConversation | null> {
+		const session = this.getSession();
 		const query = this.model.findOne({ participantHash });
 		if (session) query.session(session);
 		return query.exec();
@@ -164,7 +165,7 @@ export class ConversationRepository extends BaseRepository<IConversation> {
 				totalPages: total > 0 ? Math.ceil(total / limit) : 0,
 			};
 		} catch (error) {
-			throw createError("DatabaseError", (error as Error).message);
+			throw Errors.database(error instanceof Error ? error.message : String(error));
 		}
 	}
 
@@ -267,7 +268,7 @@ export class ConversationRepository extends BaseRepository<IConversation> {
 				},
 			];
 
-			const results = await this.model.aggregate(pipeline).exec();
+			const results = await this.model.aggregate<HydratedConversation>(pipeline).exec();
 			const hasMore = results.length > limit;
 			const data = hasMore ? results.slice(0, limit) : results;
 
@@ -282,16 +283,17 @@ export class ConversationRepository extends BaseRepository<IConversation> {
 			}
 
 			return {
-				data: data as HydratedConversation[],
+				data,
 				hasMore,
 				nextCursor,
 			};
 		} catch (error) {
-			throw createError("DatabaseError", (error as Error).message);
+			throw Errors.database(error instanceof Error ? error.message : String(error));
 		}
 	}
 
-	async resetUnreadCount(conversationId: string, userId: string, session?: ClientSession): Promise<void> {
+	async resetUnreadCount(conversationId: string, userId: string): Promise<void> {
+		const session = this.getSession();
 		const update = this.model.updateOne(
 			{ _id: new mongoose.Types.ObjectId(conversationId) },
 			{ $set: { [`unreadCounts.${userId}`]: 0 } }
@@ -300,7 +302,8 @@ export class ConversationRepository extends BaseRepository<IConversation> {
 		await update.exec();
 	}
 
-	async incrementUnreadCounts(conversationId: string, recipientIds: string[], session?: ClientSession): Promise<void> {
+	async incrementUnreadCounts(conversationId: string, recipientIds: string[]): Promise<void> {
+		const session = this.getSession();
 		if (recipientIds.length === 0) return;
 
 		const update = this.model.updateOne(
@@ -317,13 +320,15 @@ export class ConversationRepository extends BaseRepository<IConversation> {
 		await update.exec();
 	}
 
-	async findByParticipant(userId: string, session?: ClientSession): Promise<IConversation[]> {
+	async findByParticipant(userId: string): Promise<IConversation[]> {
+		const session = this.getSession();
 		const query = this.model.find({ participants: new mongoose.Types.ObjectId(userId) });
 		if (session) query.session(session);
 		return query.exec();
 	}
 
-	async removeParticipant(conversationId: string, userId: string, session?: ClientSession): Promise<void> {
+	async removeParticipant(conversationId: string, userId: string): Promise<void> {
+		const session = this.getSession();
 		const update = this.model.updateOne(
 			{ _id: new mongoose.Types.ObjectId(conversationId) },
 			{ $pull: { participants: new mongoose.Types.ObjectId(userId) } }

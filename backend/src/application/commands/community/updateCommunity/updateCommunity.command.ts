@@ -9,8 +9,12 @@ export class UpdateCommunityCommand implements ICommand {
 		public readonly updates: {
 			name?: string;
 			description?: string;
-			avatarPath?: string;
-			coverPhotoPath?: string;
+			avatarBuffer?: Buffer;
+			avatarOriginalName?: string;
+			avatarMimeType?: string;
+			coverPhotoBuffer?: Buffer;
+			coverPhotoOriginalName?: string;
+			coverPhotoMimeType?: string;
 		},
 	) {}
 }
