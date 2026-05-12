@@ -9,6 +9,7 @@ import {
   updateCommentSchema,
   commentIdSchema,
   commentsQuerySchema,
+  userCommentsQuerySchema,
 } from "@/utils/schemas/comment.schemas";
 import { postPublicIdSchema } from "@/utils/schemas/post.schemas";
 import { publicIdSchema as userPublicIdSchema } from "@/utils/schemas/user.schemas";
@@ -39,6 +40,7 @@ export class CommentRoutes {
     // User comments
     this.router.get(
       "/users/:publicId/comments",
+      new ValidationMiddleware({ query: userCommentsQuerySchema }).validate(),
       new ValidationMiddleware({ params: userPublicIdSchema }).validate(),
       asyncHandler(this.commentController.getCommentsByUserId),
     );

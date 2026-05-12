@@ -22,6 +22,7 @@ export interface IMessage extends Document {
 }
 
 export interface IConversation extends Document {
+	_id: mongoose.Types.ObjectId;
 	publicId: string;
 	participantHash: string;
 	participants: mongoose.Types.ObjectId[];

@@ -8,11 +8,13 @@ import { Errors } from "@/utils/errors";
 import {
   ConversationSummaryDTO,
   HydratedConversation,
+  IMessage,
   IMessageWithPopulatedSender,
   MaybePopulatedParticipant,
   MessageDTO,
   PopulatedSender,
   SendMessagePayload,
+  toObjectId,
   UserPublicIdLean,
 } from "@/types";
 import { DTOService } from "./dto.service";
@@ -170,7 +172,7 @@ export class MessagingService {
     }
 
     return this.mapConversationSummary(
-      hydratedConversation as unknown as HydratedConversation,
+      hydratedConversation as HydratedConversation,
       userInternalId,
     );
   }
@@ -191,9 +193,7 @@ export class MessagingService {
       userPublicId,
       conversationPublicId,
     );
-    const conversationId = (
-      conversation._id as unknown as mongoose.Types.ObjectId
-    ).toString();
+    const conversationId = toObjectId(conversation._id).toString();
     const userInternalId =
       await this.userRepository.findInternalIdByPublicId(userPublicId);
     if (!userInternalId) {
@@ -274,9 +274,7 @@ export class MessagingService {
     }
 
     await this.unitOfWork.executeInTransaction(async () => {
-      const conversationId = (
-        conversation._id as unknown as mongoose.Types.ObjectId
-      ).toString();
+      const conversationId = toObjectId(conversation._id).toString();
       await this.messageRepository.markConversationMessagesAsRead(
         conversationId,
         userInternalId,
@@ -407,16 +405,12 @@ export class MessagingService {
 
         if (conversationDoc) {
           await this.messageRepository.markConversationMessagesAsRead(
-            (
-              conversationDoc._id as unknown as mongoose.Types.ObjectId
-            ).toString(),
+            toObjectId(conversationDoc._id).toString(),
             senderInternalId,
           );
 
           await this.conversationRepository.resetUnreadCount(
-            (
-              conversationDoc._id as unknown as mongoose.Types.ObjectId
-            ).toString(),
+            toObjectId(conversationDoc._id).toString(),
             senderInternalId,
           );
         }
@@ -472,9 +466,7 @@ export class MessagingService {
           (id: string) => id !== senderInternalId,
         );
 
-        const conversationId = (
-          conversationDoc!._id as unknown as mongoose.Types.ObjectId
-        ).toString();
+        const conversationId = toObjectId(conversationDoc!._id).toString();
         const message = await this.messageRepository.create(
           {
             conversation: new mongoose.Types.ObjectId(conversationId),
@@ -508,8 +500,7 @@ export class MessagingService {
         );
 
         await message.populate("sender", "publicId handle username avatar");
-        const populatedMessage =
-          message as unknown as IMessageWithPopulatedSender;
+        const populatedMessage = this.asPopulatedMessage(message);
 
         const participantObjectIds = participantIds.map(
           (participantId: string) => new mongoose.Types.ObjectId(participantId),
@@ -602,19 +593,20 @@ export class MessagingService {
       throw Errors.notFound("Resource");
     }
 
-    const populatedSender = message.sender as
-      | mongoose.Types.ObjectId
-      | PopulatedSender;
-    if (
-      (populatedSender as PopulatedSender).publicId !== undefined &&
-      (populatedSender as PopulatedSender).publicId !== userPublicId
-    ) {
-      throw Errors.forbidden("You can only edit your own messages");
-    } else if (message.sender.toString() !== userInternalId) {
-      const senderId = (populatedSender as PopulatedSender)._id
-        ? (populatedSender as PopulatedSender)._id!.toString()
-        : message.sender.toString();
-      if (senderId !== userInternalId) {
+    // IMessage.sender is statically typed as ObjectId, but at runtime it may be
+    // a populated user object if .populate() was called on this query.
+    // We use unknown here to allow the type guard to branch on the actual value.
+    const sender: unknown = message.sender;
+    if (this.isPopulatedSender(sender)) {
+      if (sender.publicId !== undefined && sender.publicId !== userPublicId) {
+        throw Errors.forbidden("You can only edit your own messages");
+      }
+      const senderId = sender._id ? sender._id.toString() : "";
+      if (senderId && senderId !== userInternalId) {
+        throw Errors.forbidden("You can only edit your own messages");
+      }
+    } else {
+      if (message.sender.toString() !== userInternalId) {
         throw Errors.forbidden("You can only edit your own messages");
       }
     }
@@ -671,11 +663,11 @@ export class MessagingService {
       throw Errors.notFound("Resource");
     }
 
-    const senderRef = message.sender as
-      | mongoose.Types.ObjectId
-      | PopulatedSender;
-    const senderId = (senderRef as PopulatedSender)._id
-      ? (senderRef as PopulatedSender)._id!.toString()
+    // IMessage.sender is statically typed as ObjectId, but at runtime it may be
+    // a populated user object. We use unknown to allow the type guard to branch.
+    const senderRef: unknown = message.sender;
+    const senderId = this.isPopulatedSender(senderRef)
+      ? (senderRef._id ? senderRef._id.toString() : senderRef.publicId ?? "")
       : message.sender.toString();
     if (senderId !== userInternalId) {
       throw Errors.forbidden("You can only delete your own messages");
@@ -910,5 +902,38 @@ export class MessagingService {
     return participants
       .map((participant) => this.extractParticipantId(participant))
       .filter((id): id is string => Boolean(id));
+  }
+
+  /**
+   * Casts a freshly `.populate()`-d IMessage to IMessageWithPopulatedSender.
+   *
+   * This cast is unavoidable because Mongoose's `.populate()` does not update
+   * the return type. It is centralized here so the business logic that calls
+   * `.populate()` never needs to inline an `as unknown as` assertion.
+   *
+   * Safe to call only after `message.populate("sender", "...")` has resolved.
+   */
+  private asPopulatedMessage(message: IMessage): IMessageWithPopulatedSender {
+    return message as unknown as IMessageWithPopulatedSender;
+  }
+
+  /**
+   * Type guard that narrows a message sender to a populated PopulatedSender
+   * object rather than a plain ObjectId reference.
+   *
+   * Mongoose stores sender as ObjectId but populates it in place. After
+   * `.populate()`, the field is an object with user fields. Before populate,
+   * it is an ObjectId. This guard lets callers branch on the actual shape
+   * without casting.
+   */
+  private isPopulatedSender(
+    sender: mongoose.Types.ObjectId | PopulatedSender | unknown,
+  ): sender is PopulatedSender {
+    return (
+      typeof sender === "object" &&
+      sender !== null &&
+      !("_bsontype" in sender) &&
+      ("publicId" in sender || "handle" in sender || "username" in sender)
+    );
   }
 }

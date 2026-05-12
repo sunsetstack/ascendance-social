@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { inject, injectable } from "tsyringe";
 import { CommandBus } from "@/application/common/buses/command.bus";
 import { QueryBus } from "@/application/common/buses/query.bus";
@@ -14,9 +14,21 @@ import { UpdateCommunityCommand } from "@/application/commands/community/updateC
 import { DeleteCommunityCommand } from "@/application/commands/community/deleteCommunity/deleteCommunity.command";
 import { KickMemberCommand } from "@/application/commands/community/kickMember/kickMember.command";
 import { Errors } from "@/utils/errors";
-import { ICommunity } from "@/types";
+import { ICommunity, TypedRequest } from "@/types";
 import { DTOService } from "@/services/dto.service";
 import { TOKENS } from "@/types/tokens";
+import type {
+  CommunityPaginationQuery,
+  CommunityPublicIdParams,
+  CommunitySearchQuery,
+  CommunitySlugParams,
+  CreateCommunityBody,
+  KickMemberParams,
+  UpdateCommunityBody,
+} from "@/utils/schemas/community.schemas";
+
+type EmptyParams = Record<string, never>;
+type EmptyBody = Record<string, never>;
 
 @injectable()
 export class CommunityController {
@@ -26,10 +38,11 @@ export class CommunityController {
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
   ) {}
 
-  getAllCommunities = async (req: Request, res: Response): Promise<void> => {
-    const page = parseInt(String(req.query.page)) || 1;
-    const limit = parseInt(String(req.query.limit)) || 20;
-    const search = typeof req.query.search === "string" ? req.query.search : undefined;
+  getAllCommunities = async (
+    req: TypedRequest<EmptyParams, EmptyBody, CommunitySearchQuery>,
+    res: Response,
+  ): Promise<void> => {
+    const { page, limit, search } = req.query;
     const viewerPublicId = req.decodedUser?.publicId;
 
     const query = new GetAllCommunitiesQuery(
@@ -42,7 +55,10 @@ export class CommunityController {
     res.status(200).json(result);
   };
 
-  createCommunity = async (req: Request, res: Response): Promise<void> => {
+  createCommunity = async (
+    req: TypedRequest<EmptyParams, CreateCommunityBody>,
+    res: Response,
+  ): Promise<void> => {
     const { decodedUser } = req;
     const { name, description } = req.body;
     const avatarBuffer = req.file?.buffer;
@@ -69,7 +85,10 @@ export class CommunityController {
     );
   };
 
-  joinCommunity = async (req: Request, res: Response): Promise<void> => {
+  joinCommunity = async (
+    req: TypedRequest<CommunityPublicIdParams>,
+    res: Response,
+  ): Promise<void> => {
     const { decodedUser } = req;
     const { id } = req.params;
 
@@ -82,7 +101,10 @@ export class CommunityController {
     res.status(200).json({ message: "Joined community successfully" });
   };
 
-  leaveCommunity = async (req: Request, res: Response): Promise<void> => {
+  leaveCommunity = async (
+    req: TypedRequest<CommunityPublicIdParams>,
+    res: Response,
+  ): Promise<void> => {
     const { decodedUser } = req;
     const { id } = req.params;
 
@@ -95,7 +117,10 @@ export class CommunityController {
     res.status(200).json({ message: "Left community successfully" });
   };
 
-  getCommunityDetails = async (req: Request, res: Response): Promise<void> => {
+  getCommunityDetails = async (
+    req: TypedRequest<CommunitySlugParams>,
+    res: Response,
+  ): Promise<void> => {
     const { slug } = req.params;
     const viewerPublicId = req.decodedUser?.publicId;
     const query = new GetCommunityDetailsQuery(slug, viewerPublicId);
@@ -103,10 +128,12 @@ export class CommunityController {
     res.status(200).json(community);
   };
 
-  getUserCommunities = async (req: Request, res: Response): Promise<void> => {
+  getUserCommunities = async (
+    req: TypedRequest<EmptyParams, EmptyBody, CommunityPaginationQuery>,
+    res: Response,
+  ): Promise<void> => {
     const { decodedUser } = req;
-    const page = parseInt(String(req.query.page)) || 1;
-    const limit = parseInt(String(req.query.limit)) || 20;
+    const { page, limit } = req.query;
 
     if (!decodedUser || !decodedUser.publicId) {
       throw Errors.authentication("User information missing");
@@ -121,29 +148,37 @@ export class CommunityController {
     res.status(200).json(result);
   };
 
-  getCommunityFeed = async (req: Request, res: Response): Promise<void> => {
+  getCommunityFeed = async (
+    req: TypedRequest<
+      CommunityPublicIdParams,
+      EmptyBody,
+      CommunityPaginationQuery
+    >,
+    res: Response,
+  ): Promise<void> => {
     const { id } = req.params;
-    const page = parseInt(String(req.query.page)) || 1;
-    const limit = parseInt(String(req.query.limit)) || 20;
+    const { page, limit } = req.query;
 
     const query = new GetCommunityFeedQuery(id, page, limit);
     const result = await this.queryBus.execute(query);
     res.status(200).json(result);
   };
 
-  updateCommunity = async (req: Request, res: Response): Promise<void> => {
+  updateCommunity = async (
+    req: TypedRequest<CommunityPublicIdParams, UpdateCommunityBody>,
+    res: Response,
+  ): Promise<void> => {
     const { decodedUser } = req;
     const { id } = req.params;
-    const { name, description } = req.body;
+    const { name, description } = req.body ?? {};
 
     if (!decodedUser || !decodedUser.publicId) {
       throw Errors.authentication("User information missing");
     }
 
     // handle file uploads - req.files comes from multer fields middleware
-    const files = (req.files && !Array.isArray(req.files))
-      ? req.files 
-      : undefined;
+    const files =
+      req.files && !Array.isArray(req.files) ? req.files : undefined;
     const avatarBuffer = files?.avatar?.[0]?.buffer;
     const coverPhotoBuffer = files?.coverPhoto?.[0]?.buffer;
 
@@ -167,7 +202,10 @@ export class CommunityController {
     res.status(200).json(this.dtoService.toCommunityDTO(community));
   };
 
-  deleteCommunity = async (req: Request, res: Response): Promise<void> => {
+  deleteCommunity = async (
+    req: TypedRequest<CommunityPublicIdParams>,
+    res: Response,
+  ): Promise<void> => {
     const { decodedUser } = req;
     const { id } = req.params;
 
@@ -180,17 +218,22 @@ export class CommunityController {
     res.status(204).send();
   };
 
-  getCommunityMembers = async (req: Request, res: Response): Promise<void> => {
+  getCommunityMembers = async (
+    req: TypedRequest<CommunitySlugParams, EmptyBody, CommunityPaginationQuery>,
+    res: Response,
+  ): Promise<void> => {
     const { slug } = req.params;
-    const page = parseInt(String(req.query.page)) || 1;
-    const limit = parseInt(String(req.query.limit)) || 20;
+    const { page, limit } = req.query;
 
     const query = new GetCommunityMembersQuery(slug, page, limit);
     const result = await this.queryBus.execute(query);
     res.status(200).json(result);
   };
 
-  kickMember = async (req: Request, res: Response): Promise<void> => {
+  kickMember = async (
+    req: TypedRequest<KickMemberParams>,
+    res: Response,
+  ): Promise<void> => {
     const { decodedUser } = req;
     const { id, userId } = req.params;
 

@@ -374,7 +374,7 @@ export class PostRepository extends BaseRepository<IPost> {
     }
   }
 
-  async runAggregation<R = any>(pipeline: PipelineStage[]): Promise<R[]> {
+  async runAggregation<R = unknown>(pipeline: PipelineStage[]): Promise<R[]> {
     try {
       const session = this.getSession();
       const aggregation = this.model.aggregate(pipeline);

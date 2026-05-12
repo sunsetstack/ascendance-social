@@ -3,6 +3,7 @@ import { injectable, inject } from "tsyringe";
 import { TelemetryService } from "@/services/telemetry.service";
 import { TOKENS } from "@/types/tokens";
 import { logger } from "@/utils/winston";
+import { telemetryBatchSchema } from "@/utils/schemas/telemetry.schemas";
 import {
   AuthFactory,
   adminRateLimit,
@@ -43,32 +44,19 @@ export class TelemetryRoutes {
             }
           }
 
-          const { events } = body;
-
-          if (!Array.isArray(events) || events.length > 100) {
-            res.status(400).json({ error: "events must be an array with at most 100 items" });
+          const parsedBody = telemetryBatchSchema.safeParse(body);
+          if (!parsedBody.success) {
+            res.status(400).json({ error: "Invalid telemetry payload" });
             return;
           }
 
-          // validate each event has required fields
-          for (const event of events) {
-            if (
-              !event ||
-              typeof event !== "object" ||
-              typeof event.type !== "string" ||
-              typeof event.timestamp !== "number" ||
-              typeof event.sessionId !== "string"
-            ) {
-              res.status(400).json({ error: "Each event must have type (string), timestamp (number), and sessionId (string)" });
-              return;
-            }
-          }
+          const { events } = parsedBody.data;
 
           // extract client info for context
           const clientInfo = {
             ip: req.ip || req.socket.remoteAddress,
             userAgent: req.get("User-Agent"),
-            userId: (req as any).decodedUser?.publicId,
+            userId: req.decodedUser?.publicId,
           };
 
           await this.telemetryService.processEvents(events, clientInfo);
@@ -96,7 +84,9 @@ export class TelemetryRoutes {
           const message =
             error instanceof Error ? error.message : "Failed to get summary";
           logger.error("Telemetry summary error", { error: message });
-          res.status(500).json({ error: "Failed to retrieve telemetry summary" });
+          res
+            .status(500)
+            .json({ error: "Failed to retrieve telemetry summary" });
         }
       },
     );

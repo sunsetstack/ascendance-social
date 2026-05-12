@@ -5,7 +5,7 @@ import { UserRepository } from "@/repositories/user.repository";
 import { TagRepository } from "@/repositories/tag.repository";
 import { DTOService } from "./dto.service";
 import { Errors, wrapError } from "@/utils/errors";
-import { IPostWithId, ITag, PaginationResult, PostDTO } from "@/types";
+import { ITag, PaginationResult, PostDTO, toObjectId } from "@/types";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
 import { TagService } from "./tag.service";
 import { logger } from "@/utils/winston";
@@ -44,7 +44,7 @@ export class PostService {
 
     // Add viewer-specific fields if viewer is logged in
     if (viewerPublicId) {
-      const postInternalId = (post as IPostWithId)._id?.toString();
+      const postInternalId = toObjectId(post._id).toString();
       const viewerInternalId =
         await this.userRepository.findInternalIdByPublicId(viewerPublicId);
 
@@ -97,9 +97,7 @@ export class PostService {
     });
     return {
       ...result,
-      data: result.data.map((entry) =>
-        this.dtoService.toPostDTO(entry as unknown as Record<string, unknown>),
-      ),
+      data: result.data.map((entry) => this.dtoService.toPostDTO(entry)),
     };
   }
 
@@ -114,9 +112,7 @@ export class PostService {
     });
     return {
       ...result,
-      data: result.data.map((entry) =>
-        this.dtoService.toPostDTO(entry as unknown as Record<string, unknown>),
-      ),
+      data: result.data.map((entry) => this.dtoService.toPostDTO(entry)),
     };
   }
 
@@ -137,9 +133,7 @@ export class PostService {
 
     return {
       ...result,
-      data: result.data.map((entry) =>
-        this.dtoService.toPostDTO(entry as unknown as Record<string, unknown>),
-      ),
+      data: result.data.map((entry) => this.dtoService.toPostDTO(entry)),
     };
   }
 

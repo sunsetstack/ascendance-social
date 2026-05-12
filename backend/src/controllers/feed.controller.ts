@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { FeedService } from "@/services/feed/feed.service";
 import { inject, injectable } from "tsyringe";
 import { Errors } from "@/utils/errors";
@@ -11,11 +11,19 @@ import {
   streamPaginatedResponse,
   streamCursorResponse,
 } from "@/utils/streamResponse";
-import { CursorPaginationResult, FeedPost } from "@/types";
+import { CursorPaginationResult, FeedPost, TypedRequest } from "@/types";
 import { TOKENS } from "@/types/tokens";
+import type {
+  FeedPaginationQuery,
+  NewFeedQuery,
+  TrendingTagsQuery,
+} from "@/utils/schemas/feed.schemas";
 
 /** Threshold for enabling streaming responses (items) */
 import { STREAM_THRESHOLD } from "@/utils/post-helpers";
+
+type EmptyParams = Record<string, never>;
+type EmptyBody = Record<string, never>;
 
 @injectable()
 export class FeedController {
@@ -24,17 +32,19 @@ export class FeedController {
     @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
   ) {}
 
-  getFeed = async (req: Request, res: Response) => {
-    const { page, limit } = req.query;
-    const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+  getFeed = async (
+    req: TypedRequest<EmptyParams, EmptyBody, FeedPaginationQuery>,
+    res: Response,
+  ) => {
+    const { page, limit, cursor } = req.query;
     if (!req.decodedUser || !req.decodedUser.publicId) {
       throw Errors.validation("User public ID is required");
     }
 
     const query = new GetPersonalizedFeedQuery(
       req.decodedUser.publicId,
-      Number(page) || 1,
-      Math.min(Number(limit) || 20, 100),
+      page,
+      limit,
       cursor,
     );
     const feed =
@@ -51,16 +61,18 @@ export class FeedController {
     }
   };
 
-  getForYouFeed = async (req: Request, res: Response) => {
-    const { page, limit } = req.query;
-    const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+  getForYouFeed = async (
+    req: TypedRequest<EmptyParams, EmptyBody, FeedPaginationQuery>,
+    res: Response,
+  ) => {
+    const { page, limit, cursor } = req.query;
     if (!req.decodedUser || !req.decodedUser.publicId) {
       throw Errors.validation("User public ID is required");
     }
     const query = new GetForYouFeedQuery(
       req.decodedUser.publicId,
-      Number(page) || 1,
-      Math.min(Number(limit) || 20, 100),
+      page,
+      limit,
       cursor,
     );
     const feed =
@@ -77,10 +89,11 @@ export class FeedController {
     }
   };
 
-  getTrendingFeed = async (req: Request, res: Response) => {
-    const page = Number(req.query.page) || 1;
-    const limit = Math.min(Number(req.query.limit) || 20, 100);
-    const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+  getTrendingFeed = async (
+    req: TypedRequest<EmptyParams, EmptyBody, FeedPaginationQuery>,
+    res: Response,
+  ) => {
+    const { page, limit, cursor } = req.query;
 
     const query = new GetTrendingFeedQuery(page, limit, cursor);
     const feed =
@@ -97,11 +110,11 @@ export class FeedController {
     }
   };
 
-  getNewFeed = async (req: Request, res: Response) => {
-    const page = Number(req.query.page) || 1;
-    const limit = Math.min(Number(req.query.limit) || 20, 100);
-    const cursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
-    const refresh = req.query.refresh === "true";
+  getNewFeed = async (
+    req: TypedRequest<EmptyParams, EmptyBody, NewFeedQuery>,
+    res: Response,
+  ) => {
+    const { page, limit, cursor, refresh } = req.query;
     const isAuthenticated = !!req.decodedUser;
 
     // only allow cache bypass for authenticated users requesting a refresh
@@ -132,9 +145,11 @@ export class FeedController {
     }
   };
 
-  getTrendingTags = async (req: Request, res: Response) => {
-    const limit = Math.min(Number(req.query.limit) || 5, 50);
-    const timeWindowHours = Number(req.query.timeWindowHours) || 168; // 7 days default
+  getTrendingTags = async (
+    req: TypedRequest<EmptyParams, EmptyBody, TrendingTagsQuery>,
+    res: Response,
+  ) => {
+    const { limit, timeWindowHours } = req.query;
 
     const query = new GetTrendingTagsQuery(limit, timeWindowHours);
     const result = await this.queryBus.execute(query);

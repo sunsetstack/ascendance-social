@@ -7,19 +7,20 @@ import { Errors } from "@/utils/errors";
  * Sanitizes objects for Mongo by removing dangerous keys that could enable NoSQL injection
  * Also strips prototype pollution keys and removes keys with empty object values
  */
-export function sanitizeForMongo(input: any): any {
+export function sanitizeForMongo<T>(input: T): T {
   if (input === null || input === undefined) return input;
-  if (Array.isArray(input)) return input.map(sanitizeForMongo);
+  if (Array.isArray(input)) return input.map(sanitizeForMongo) as T;
 
   // preserve Mongo objIDs
   if (input instanceof mongoose.Types.ObjectId) return input;
 
   if (typeof input !== "object") return input; // strings/numbers/booleans are safe
 
-  const out: any = {};
+  const out: Record<string, unknown> = {};
   const dangerousKeys = ["__proto__", "constructor", "prototype"];
+  const source = input as Record<string, unknown>;
 
-  for (const key of Object.keys(input)) {
+  for (const key of Object.keys(source)) {
     // drop NoSQL injection operators and path traversal
     if (key.startsWith("$") || key.includes(".")) {
       continue;
@@ -29,7 +30,7 @@ export function sanitizeForMongo(input: any): any {
       continue;
     }
 
-    const sanitizedValue = sanitizeForMongo(input[key]);
+    const sanitizedValue = sanitizeForMongo(source[key]);
 
     // skip keys with empty object values (result of sanitizing nested malicious objects)
     if (
@@ -44,7 +45,7 @@ export function sanitizeForMongo(input: any): any {
 
     out[key] = sanitizedValue;
   }
-  return out;
+  return out as T;
 }
 
 /**

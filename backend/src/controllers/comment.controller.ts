@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { NextFunction, Response } from "express";
 import { CommentService } from "@/services/comment.service";
 import { Errors } from "@/utils/errors";
 import { streamPaginatedResponse } from "@/utils/streamResponse";
@@ -7,10 +7,22 @@ import { CommandBus } from "@/application/common/buses/command.bus";
 import { CreateCommentCommand } from "@/application/commands/comments/createComment/createComment.command";
 import { DeleteCommentCommand } from "@/application/commands/comments/deleteComment/deleteComment.command";
 import { LikeCommentCommand } from "@/application/commands/comments/likeComment/likeComment.command";
+import { TypedRequest } from "@/types";
 import { TOKENS } from "@/types/tokens";
+import type {
+  CommentIdParams,
+  CommentsQuery,
+  CreateCommentBody,
+  UpdateCommentBody,
+  UserCommentsQuery,
+} from "@/utils/schemas/comment.schemas";
+import type { PostPublicIdParams } from "@/utils/schemas/post.schemas";
+import type { PublicIdParams as UserPublicIdParams } from "@/utils/schemas/user.schemas";
 
 /** Threshold for enabling streaming responses (items) */
 import { STREAM_THRESHOLD } from "@/utils/post-helpers";
+
+type EmptyBody = Record<string, never>;
 
 /**
  * Comment Controller
@@ -24,7 +36,10 @@ export class CommentController {
     @inject(TOKENS.CQRS.Commands.Bus) private readonly commandBus: CommandBus,
   ) {}
 
-  createComment = async (req: Request, res: Response): Promise<void> => {
+  createComment = async (
+    req: TypedRequest<PostPublicIdParams, CreateCommentBody>,
+    res: Response,
+  ): Promise<void> => {
     const { postPublicId } = req.params;
     const { content, parentId } = req.body;
     const { decodedUser } = req;
@@ -44,11 +59,12 @@ export class CommentController {
     res.status(201).json(comment);
   };
 
-  getCommentsByPostId = async (req: Request, res: Response): Promise<void> => {
+  getCommentsByPostId = async (
+    req: TypedRequest<PostPublicIdParams, EmptyBody, CommentsQuery>,
+    res: Response,
+  ): Promise<void> => {
     const { postPublicId } = req.params;
-    const page = parseInt(String(req.query.page)) || 1;
-    const limit = parseInt(String(req.query.limit)) || 10;
-    const parentId = typeof req.query.parentId === "string" ? req.query.parentId : null;
+    const { page, limit, parentId } = req.query;
 
     // Limit max comments per page to prevent abuse
     const maxLimit = Math.min(limit, 50);
@@ -57,12 +73,15 @@ export class CommentController {
       postPublicId,
       page,
       maxLimit,
-      parentId,
+      parentId ?? null,
     );
     res.json(result);
   };
 
-  updateComment = async (req: Request, res: Response): Promise<void> => {
+  updateComment = async (
+    req: TypedRequest<CommentIdParams, UpdateCommentBody>,
+    res: Response,
+  ): Promise<void> => {
     const { commentId } = req.params;
     const { content } = req.body; // Already validated and sanitized by Zod middleware
     const { decodedUser } = req;
@@ -79,7 +98,10 @@ export class CommentController {
     res.json(comment);
   };
 
-  deleteComment = async (req: Request, res: Response): Promise<void> => {
+  deleteComment = async (
+    req: TypedRequest<CommentIdParams>,
+    res: Response,
+  ): Promise<void> => {
     const { commentId } = req.params;
     const { decodedUser } = req;
 
@@ -94,7 +116,10 @@ export class CommentController {
     res.status(204).send(); // No content response
   };
 
-  likeComment = async (req: Request, res: Response): Promise<void> => {
+  likeComment = async (
+    req: TypedRequest<CommentIdParams>,
+    res: Response,
+  ): Promise<void> => {
     const { commentId } = req.params;
     const { decodedUser } = req;
 
@@ -107,14 +132,12 @@ export class CommentController {
     res.status(200).json(result);
   };
 
-  getCommentsByUserId = async (req: Request, res: Response): Promise<void> => {
+  getCommentsByUserId = async (
+    req: TypedRequest<UserPublicIdParams, EmptyBody, UserCommentsQuery>,
+    res: Response,
+  ): Promise<void> => {
     const { publicId } = req.params;
-    const page = parseInt(String(req.query.page)) || 1;
-    const limit = parseInt(String(req.query.limit)) || 10;
-    const ALLOWED_SORT_FIELDS = ["createdAt", "updatedAt"];
-    const rawSortBy = String(req.query.sortBy || "createdAt");
-    const sortBy = ALLOWED_SORT_FIELDS.includes(rawSortBy) ? rawSortBy : "createdAt";
-    const sortOrder = String(req.query.sortOrder) === "asc" ? "asc" : "desc";
+    const { page, limit, sortBy, sortOrder } = req.query;
 
     // Limit max comments per page
     const maxLimit = Math.min(limit, 100);
@@ -145,7 +168,7 @@ export class CommentController {
   };
 
   getCommentThread = async (
-    req: Request,
+    req: TypedRequest<CommentIdParams>,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
@@ -160,10 +183,12 @@ export class CommentController {
     res.json(result);
   };
 
-  getCommentReplies = async (req: Request, res: Response): Promise<void> => {
+  getCommentReplies = async (
+    req: TypedRequest<CommentIdParams, EmptyBody, CommentsQuery>,
+    res: Response,
+  ): Promise<void> => {
     const { commentId } = req.params;
-    const page = parseInt(String(req.query.page)) || 1;
-    const limit = parseInt(String(req.query.limit)) || 10;
+    const { page, limit } = req.query;
 
     const maxLimit = Math.min(limit, 50);
 
