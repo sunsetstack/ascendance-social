@@ -10,7 +10,7 @@ import { setupContainerCore, registerCQRS, initCQRS } from "@/di/container";
 import { DatabaseConfig } from "@/config/dbConfig";
 import { TrendingWorker } from "../workers/_impl/trending.worker.impl";
 
-const worker = new TrendingWorker();
+let worker: TrendingWorker;
 dns.setServers(["8.8.8.8", "1.1.1.1"]);
 async function start() {
   try {
@@ -26,6 +26,8 @@ async function start() {
 
     // resolve and wire up CQRS handlers
     initCQRS();
+
+    worker = container.resolve(TrendingWorker);
 
     // init and start the worker
     await worker.init();

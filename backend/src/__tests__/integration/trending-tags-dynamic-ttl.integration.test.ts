@@ -190,7 +190,7 @@ describe("Trending Tags Dynamic TTL Integration", function () {
 				getTrendingTags: async () => [{ tag: "test", count: 10, recentPostCount: 5 }],
 			};
 
-			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, redisService);
+			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, {} as any, redisService);
 
 			// clear any cached trending tags
 			await redisService.del("trending_tags:5:168");
@@ -224,7 +224,7 @@ describe("Trending Tags Dynamic TTL Integration", function () {
 				getTrendingTags: async () => [{ tag: "dormant", count: 5, recentPostCount: 1 }],
 			};
 
-			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, redisService);
+			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, {} as any, redisService);
 			await redisService.del("trending_tags:5:168");
 
 			const result = await trendingTagsHandler.execute(new GetTrendingTagsQuery(5, 168));
@@ -251,7 +251,7 @@ describe("Trending Tags Dynamic TTL Integration", function () {
 				getTrendingTags: async () => [{ tag: "active", count: 100, recentPostCount: 50 }],
 			};
 
-			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, redisService);
+			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, {} as any, redisService);
 			await redisService.del("trending_tags:5:168");
 
 			const result = await trendingTagsHandler.execute(new GetTrendingTagsQuery(5, 168));
@@ -270,7 +270,7 @@ describe("Trending Tags Dynamic TTL Integration", function () {
 				],
 			};
 
-			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, redisService);
+			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, {} as any, redisService);
 
 			// clear caches
 			await redisService.del("trending_tags:5:168");
@@ -305,7 +305,7 @@ describe("Trending Tags Dynamic TTL Integration", function () {
 				getTrendingTags: async () => [],
 			};
 
-			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, redisService);
+			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, {} as any, redisService);
 
 			// clear main cache
 			await redisService.del("trending_tags:5:168");
@@ -335,7 +335,7 @@ describe("Trending Tags Dynamic TTL Integration", function () {
 				getTrendingTags: async () => [],
 			};
 
-			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, redisService);
+			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, {} as any, redisService);
 			await redisService.del("trending_tags:5:168");
 
 			// first call - should hit historical
@@ -366,7 +366,7 @@ describe("Trending Tags Dynamic TTL Integration", function () {
 				},
 			};
 
-			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, redisService);
+			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, {} as any, redisService);
 
 			// clear caches
 			await redisService.del("trending_tags:5:168");
@@ -412,7 +412,7 @@ describe("Trending Tags Dynamic TTL Integration", function () {
 					{ tag: "trending", count: 80, recentPostCount: 40 },
 				],
 			};
-			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, redisService);
+			trendingTagsHandler = new GetTrendingTagsQueryHandler(mockPostReadRepo as any, {} as any, redisService);
 			await redisService.del("trending_tags:5:168");
 
 			let result = await trendingTagsHandler.execute(new GetTrendingTagsQuery(5, 168));
@@ -442,7 +442,7 @@ describe("Trending Tags Dynamic TTL Integration", function () {
 			const dormantMockRepo = {
 				getTrendingTags: async () => [],
 			};
-			trendingTagsHandler = new GetTrendingTagsQueryHandler(dormantMockRepo as any, redisService);
+			trendingTagsHandler = new GetTrendingTagsQueryHandler(dormantMockRepo as any, {} as any, redisService);
 			await redisService.del("trending_tags:5:168");
 
 			result = await trendingTagsHandler.execute(new GetTrendingTagsQuery(5, 168));

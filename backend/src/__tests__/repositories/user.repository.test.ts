@@ -88,7 +88,11 @@ describe("UserRepository", () => {
 		mockModel.callsFake((data) => createMockUserDocInstance(data));
 
 		mockSession = {} as ClientSession;
-		repository = new UserRepository(mockModel as any as Model<IUser>);
+		const mockFollowRepository = {
+			getFollowerObjectIds: sinon.stub().resolves([]),
+			getFollowingObjectIds: sinon.stub().resolves([]),
+		};
+		repository = new UserRepository(mockModel as any as Model<IUser>, mockFollowRepository as any);
 	});
 
 	afterEach(() => {
@@ -191,7 +195,7 @@ describe("UserRepository", () => {
 	describe("update", () => {
 		const userId = new Types.ObjectId().toString();
 		const updateData = { username: "updatedUser" };
-		const updatedUserDoc = { _id: userId, ...updateData } as IUser;
+		const updatedUserDoc = { _id: userId, ...updateData } as unknown as IUser;
 
 		it("should update a user successfully", async () => {
 			mockQuery.exec.resolves(updatedUserDoc);

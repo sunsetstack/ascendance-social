@@ -274,11 +274,7 @@ class FeedError extends AppError {
   }
 }
 
-class InternalError extends AppError {
-  constructor(message: string, options?: ErrorOptions) {
-    super("InternalError", message, 500, options);
-  }
-}
+
 
 class ConfigError extends AppError {
   constructor(message: string, options?: ErrorOptions) {
@@ -301,7 +297,6 @@ const errorMap = {
   ForbiddenError,
   DuplicateError,
   InternalServerError,
-  InternalError,
   StorageError,
   UploadError,
   FeedError,
@@ -372,47 +367,6 @@ export function handleMongoError(error: unknown): never {
 
   const message = error instanceof Error ? error.message : String(error);
   throw createError("DatabaseError", message, { cause: error });
-}
-
-/**
- * Helper class for formatting error responses consistently.
- */
-export class ErrorResponse {
-  /**
-   * Converts an AppError to a standardized JSON response.
-   * @param error - The AppError to format
-   * @param includeDebugInfo - Whether to include stack traces and cause chain (default: false)
-   */
-  static toJSON(
-    error: AppError,
-    includeDebugInfo: boolean = false,
-  ): Record<string, unknown> {
-    const errorObj: Record<string, unknown> = {
-      type: error.name,
-      message: error.message,
-      code: error.statusCode,
-    };
-
-    if (error.errorCode) {
-      errorObj.errorCode = error.errorCode;
-    }
-
-    if (error.context) {
-      errorObj.context = error.context;
-    }
-
-    if (includeDebugInfo) {
-      errorObj.stack = error.stack;
-      if (error.cause instanceof Error) {
-        errorObj.cause = {
-          message: error.cause.message,
-          stack: error.cause.stack,
-        };
-      }
-    }
-
-    return { error: errorObj };
-  }
 }
 
 /**
@@ -495,7 +449,7 @@ export class ErrorHandler {
       userAgent: req.get("user-agent"),
     });
 
-    res.status(appError.statusCode || 500).json(response);
+    res.status(appError.statusCode || 500).json({ error: response });
   }
 }
 
@@ -505,7 +459,7 @@ export class ErrorHandler {
  *
  * @example
  * // Validation errors
- * throw Errors.validation("Email is required", { field: "email" });
+ * throw Errors.validation("Email is required", { context: { field: "email" } });
  *
  * // Not found errors
  * throw Errors.notFound("User", userId);
@@ -519,12 +473,11 @@ export const Errors = {
    */
   validation: (
     message: string,
-    context?: ErrorContext,
-    errorCode?: ErrorCode,
+    options?: ErrorOptions,
   ): AppError =>
     createError("ValidationError", message, {
-      context,
-      errorCode: errorCode || ErrorCode.VALIDATION_FAILED,
+      errorCode: ErrorCode.VALIDATION_FAILED,
+      ...options,
     }),
 
   /**
@@ -532,12 +485,11 @@ export const Errors = {
    */
   authentication: (
     message: string = "Authentication required",
-    errorCode?: ErrorCode,
-    context?: ErrorContext,
+    options?: ErrorOptions,
   ): AppError =>
     createError("AuthenticationError", message, {
-      context,
-      errorCode: errorCode || ErrorCode.UNAUTHORIZED,
+      errorCode: ErrorCode.UNAUTHORIZED,
+      ...options,
     }),
 
   /**
@@ -545,12 +497,11 @@ export const Errors = {
    */
   unauthorized: (
     message: string = "Unauthorized access",
-    errorCode?: ErrorCode,
-    context?: ErrorContext,
+    options?: ErrorOptions,
   ): AppError =>
     createError("UnauthorizedError", message, {
-      context,
-      errorCode: errorCode || ErrorCode.UNAUTHORIZED,
+      errorCode: ErrorCode.UNAUTHORIZED,
+      ...options,
     }),
 
   /**
@@ -558,12 +509,11 @@ export const Errors = {
    */
   forbidden: (
     message: string = "Access forbidden",
-    context?: ErrorContext,
-    errorCode?: ErrorCode,
+    options?: ErrorOptions,
   ): AppError =>
     createError("ForbiddenError", message, {
-      context,
-      errorCode: errorCode || ErrorCode.FORBIDDEN,
+      errorCode: ErrorCode.FORBIDDEN,
+      ...options,
     }),
 
   /**
@@ -574,14 +524,14 @@ export const Errors = {
   notFound: (
     resourceType: string,
     identifier?: string,
-    errorCode?: ErrorCode,
+    options?: ErrorOptions,
   ): AppError => {
     const message = identifier
       ? `${resourceType} with ID '${identifier}' not found`
       : `${resourceType} not found`;
     return createError("NotFoundError", message, {
       context: { resourceType, resourceId: identifier },
-      errorCode,
+      ...options,
     });
   },
 
@@ -590,12 +540,11 @@ export const Errors = {
    */
   conflict: (
     message: string,
-    context?: ErrorContext,
-    errorCode?: ErrorCode,
+    options?: ErrorOptions,
   ): AppError =>
     createError("ConflictError", message, {
-      context,
-      errorCode: errorCode || ErrorCode.ALREADY_EXISTS,
+      errorCode: ErrorCode.ALREADY_EXISTS,
+      ...options,
     }),
 
   /**
@@ -603,12 +552,11 @@ export const Errors = {
    */
   duplicate: (
     message: string,
-    context?: ErrorContext,
-    errorCode?: ErrorCode,
+    options?: ErrorOptions,
   ): AppError =>
     createError("DuplicateError", message, {
-      context,
-      errorCode: errorCode || ErrorCode.DUPLICATE_RESOURCE,
+      errorCode: ErrorCode.DUPLICATE_RESOURCE,
+      ...options,
     }),
 
   /**
@@ -616,13 +564,11 @@ export const Errors = {
    */
   database: (
     message: string,
-    context?: ErrorContext,
-    cause?: unknown,
+    options?: ErrorOptions,
   ): AppError =>
     createError("DatabaseError", message, {
-      context,
       errorCode: ErrorCode.DATABASE_ERROR,
-      cause,
+      ...options,
     }),
 
   /**
@@ -630,13 +576,11 @@ export const Errors = {
    */
   storage: (
     message: string,
-    context?: ErrorContext,
-    cause?: unknown,
+    options?: ErrorOptions,
   ): AppError =>
     createError("StorageError", message, {
-      context,
       errorCode: ErrorCode.STORAGE_ERROR,
-      cause,
+      ...options,
     }),
 
   /**
@@ -644,13 +588,11 @@ export const Errors = {
    */
   upload: (
     message: string,
-    context?: ErrorContext,
-    cause?: unknown,
+    options?: ErrorOptions,
   ): AppError =>
     createError("UploadError", message, {
-      context,
       errorCode: ErrorCode.UPLOAD_FAILED,
-      cause,
+      ...options,
     }),
 
   /**
@@ -658,13 +600,11 @@ export const Errors = {
    */
   internal: (
     message: string = "Internal server error",
-    context?: ErrorContext,
-    cause?: unknown,
+    options?: ErrorOptions,
   ): AppError =>
     createError("InternalServerError", message, {
-      context,
       errorCode: ErrorCode.INTERNAL_ERROR,
-      cause,
+      ...options,
     }),
 
   /**
@@ -672,30 +612,28 @@ export const Errors = {
    */
   transaction: (
     message: string,
-    context?: ErrorContext,
-    cause?: unknown,
+    options?: ErrorOptions,
   ): AppError =>
     createError("TransactionError", message, {
-      context,
       errorCode: ErrorCode.TRANSACTION_ERROR,
-      cause,
+      ...options,
     }),
 
   /**
    * Create a security error (403)
    */
-  security: (message: string, context?: ErrorContext): AppError =>
+  security: (message: string, options?: ErrorOptions): AppError =>
     createError("SecurityError", message, {
-      context,
       errorCode: ErrorCode.FORBIDDEN,
+      ...options,
     }),
 
   /**
    * Create a configuration error (500)
    */
-  config: (message: string, context?: ErrorContext): AppError =>
+  config: (message: string, options?: ErrorOptions): AppError =>
     createError("ConfigError", message, {
-      context,
       errorCode: ErrorCode.INTERNAL_ERROR,
+      ...options,
     }),
 };

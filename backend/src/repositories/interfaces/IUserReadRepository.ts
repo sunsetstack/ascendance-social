@@ -1,4 +1,3 @@
-import { ClientSession } from "mongoose";
 import { IUser, PaginationOptions, PaginationResult, UserSuggestion } from "@/types";
 
 /**
@@ -7,14 +6,14 @@ import { IUser, PaginationOptions, PaginationResult, UserSuggestion } from "@/ty
  */
 export interface IUserReadRepository {
 	// single user lookups
-	findById(id: string, session?: ClientSession): Promise<IUser | null>;
-	findByPublicId(publicId: string, session?: ClientSession): Promise<IUser | null>;
+	findById(id: string): Promise<IUser | null>;
+	findByPublicId(publicId: string): Promise<IUser | null>;
 	findInternalIdByPublicId(publicId: string): Promise<string | null>;
-	findByUsername(username: string, session?: ClientSession): Promise<IUser | null>;
-	findByHandle(handle: string, session?: ClientSession): Promise<IUser | null>;
-	findByEmail(email: string, session?: ClientSession): Promise<IUser | null>;
-	findByResetToken(token: string, session?: ClientSession): Promise<IUser | null>;
-	findByEmailVerificationToken(email: string, token: string, session?: ClientSession): Promise<IUser | null>;
+	findByUsername(username: string): Promise<IUser | null>;
+	findByHandle(handle: string): Promise<IUser | null>;
+	findByEmail(email: string): Promise<IUser | null>;
+	findByResetToken(token: string): Promise<IUser | null>;
+	findByEmailVerificationToken(email: string, token: string): Promise<IUser | null>;
 
 	// batch lookups
 	findUsersByPublicIds(userPublicIds: string[]): Promise<IUser[]>;

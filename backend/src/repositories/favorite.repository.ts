@@ -1,4 +1,4 @@
-import mongoose, { Model, ClientSession } from "mongoose";
+import mongoose, { Model } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
 import { IFavorite, IPost } from "@/types";
@@ -10,14 +10,16 @@ export class FavoriteRepository extends BaseRepository<IFavorite> {
 		super(model);
 	}
 
-	async findByUserAndPost(userId: string, postId: string, session?: ClientSession): Promise<IFavorite | null> {
+	async findByUserAndPost(userId: string, postId: string): Promise<IFavorite | null> {
+		const session = this.getSession();
 		return this.model
 			.findOne({ userId, postId })
 			.session(session || null)
 			.exec();
 	}
 
-	async remove(userId: string, postId: string, session?: ClientSession): Promise<boolean> {
+	async remove(userId: string, postId: string): Promise<boolean> {
+		const session = this.getSession();
 		const result = await this.model
 			.deleteOne({ userId, postId })
 			.session(session || null)
@@ -33,7 +35,7 @@ export class FavoriteRepository extends BaseRepository<IFavorite> {
 		const skip = (page - 1) * limit;
 
 		// Use an aggregation pipeline to join Favorite documents with the Post documents
-		const aggregation = this.model.aggregate([
+		const aggregation = this.model.aggregate<IPost>([
 			{ $match: { userId: new mongoose.Types.ObjectId(userId) } },
 			{ $sort: { createdAt: -1 } },
 			{ $skip: skip },
@@ -83,10 +85,11 @@ export class FavoriteRepository extends BaseRepository<IFavorite> {
 		const totalFavorites = await this.model.countDocuments({ userId });
 		const favoritedPosts = await aggregation.exec();
 
-		return { data: favoritedPosts as IPost[], total: totalFavorites };
+		return { data: favoritedPosts, total: totalFavorites };
 	}
 
-	async deleteManyByUserId(userId: string, session?: ClientSession): Promise<number> {
+	async deleteManyByUserId(userId: string): Promise<number> {
+		const session = this.getSession();
 		const result = await this.model
 			.deleteMany({ userId })
 			.session(session || null)

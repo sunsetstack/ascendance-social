@@ -3,25 +3,19 @@ import { expect } from "chai";
 import sinon from "sinon";
 import mongoose from "mongoose";
 import { UnitOfWork, TransactionMetrics } from "@/database/UnitOfWork";
-import { EventBus } from "@/application/common/buses/event.bus";
 
 // skipping UnitOfWork tests - mongoose.connection.readyState is a non-configurable property
 // that cannot be stubbed with sinon, these tests require integration testing with a real
 // MongoDB instance or a more sophisticated mocking approach
 describe.skip("UnitOfWork", () => {
 	let unitOfWork: UnitOfWork;
-	let eventBusStub: sinon.SinonStubbedInstance<EventBus>;
 	let connectionStub: sinon.SinonStub;
 
 	beforeEach(() => {
 		// stub mongoose connection to report as connected
 		connectionStub = sinon.stub(mongoose.connection, "readyState").value(1);
 
-		eventBusStub = sinon.createStubInstance(EventBus);
-		eventBusStub.flushTransactionalQueue.resolves();
-		eventBusStub.clearTransactionalQueue.returns();
-
-		unitOfWork = new UnitOfWork(eventBusStub as unknown as EventBus);
+		unitOfWork = new UnitOfWork();
 	});
 
 	afterEach(() => {
@@ -135,16 +129,13 @@ describe.skip("UnitOfWork", () => {
 describe.skip("Semaphore", () => {
 	// test the internal Semaphore class behavior through UnitOfWork
 	let unitOfWork: UnitOfWork;
-	let eventBusStub: sinon.SinonStubbedInstance<EventBus>;
 
 	beforeEach(() => {
 		sinon.stub(mongoose.connection, "readyState").value(1);
-		eventBusStub = sinon.createStubInstance(EventBus);
-		eventBusStub.flushTransactionalQueue.resolves();
 
 		// create with small concurrency limit for testing
 		process.env.MAX_CONCURRENT_TRANSACTIONS = "2";
-		unitOfWork = new UnitOfWork(eventBusStub as unknown as EventBus);
+		unitOfWork = new UnitOfWork();
 	});
 
 	afterEach(() => {

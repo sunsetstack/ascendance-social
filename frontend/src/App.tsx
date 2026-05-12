@@ -38,8 +38,9 @@ const CommentThreadView = lazy(() =>
 	import("./components/comments").then((module) => ({ default: module.CommentThreadView })),
 );
 
+const queryClient = new QueryClient();
+
 function App() {
-	const queryClient = new QueryClient();
 
 	return (
 		<ThemeProvider theme={theme}>

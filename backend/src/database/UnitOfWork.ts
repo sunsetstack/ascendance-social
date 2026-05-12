@@ -1,9 +1,15 @@
-import { EventBus } from "@/application/common/buses/event.bus";
 import mongoose, { ClientSession } from "mongoose";
-import { inject, injectable } from "tsyringe";
+import { injectable } from "tsyringe";
 import { logger } from "@/utils/winston";
-import { createError, getErrorMessage, getErrorCode, getErrorLabels } from "@/utils/errors";
-import { TOKENS } from "@/types/tokens";
+import {
+  Errors,
+  getErrorMessage,
+  getErrorCode,
+  getErrorLabels,
+} from "@/utils/errors";
+import { AsyncLocalStorage } from "async_hooks";
+
+export const sessionALS = new AsyncLocalStorage<ClientSession>();
 
 /**
  * Configuration for transaction execution
@@ -88,12 +94,15 @@ export class UnitOfWork {
     totalRetries: 0,
   };
 
-  constructor(@inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus) {
+  constructor() {
     if (!mongoose.connection.readyState) {
-      throw createError("DatabaseError", "Database connection not established");
+      throw Errors.database("Database connection not established");
     }
     // allow up to 50 concurrent transactions
-    const maxConcurrent = parseInt(process.env.MAX_CONCURRENT_TRANSACTIONS || "50", 10);
+    const maxConcurrent = parseInt(
+      process.env.MAX_CONCURRENT_TRANSACTIONS || "50",
+      10,
+    );
     this.transactionSemaphore = new Semaphore(maxConcurrent);
   }
 
@@ -101,7 +110,10 @@ export class UnitOfWork {
    * Execute work within a MongoDB transaction with automatic retry on transient errors
    * Uses exponential backoff with jitter to handle write conflicts
    */
-  async executeInTransaction<T>(work: (session: ClientSession) => Promise<T>, config?: TransactionConfig): Promise<T> {
+  async executeInTransaction<T>(
+    work: (session: ClientSession) => Promise<T>,
+    config?: TransactionConfig,
+  ): Promise<T> {
     const cfg = { ...DEFAULT_CONFIG, ...config };
 
     // acquire semaphore to limit concurrency
@@ -117,17 +129,18 @@ export class UnitOfWork {
         try {
           const result = await session.withTransaction(
             async () => {
-              return await work(session);
+              return await sessionALS.run(session, async () => {
+                return await work(session);
+              });
             },
             {
               readPreference: "primary",
               readConcern: { level: "snapshot" },
               writeConcern: { w: "majority" },
               maxCommitTimeMS: 30000,
-            }
+            },
           );
 
-          await this.eventBus.flushTransactionalQueue();
           this.metrics.successfulTransactions++;
           if (attempt > 1) {
             this.metrics.retriedTransactions++;
@@ -135,29 +148,37 @@ export class UnitOfWork {
           }
           return result as T;
         } catch (error: unknown) {
-          this.eventBus.clearTransactionalQueue();
 
           const retryable = this.isRetryableError(error);
           const shouldRetry = retryable && attempt < cfg.maxAttempts;
 
           if (shouldRetry) {
-            logger.warn(`[UnitOfWork] Transient error on attempt ${attempt}/${cfg.maxAttempts}, retrying...`, {
-              errorCode: getErrorCode(error),
-              errorLabels: getErrorLabels(error),
-              message: getErrorMessage(error).substring(0, 100),
-            });
-            await session.endSession();
-            await this.backoffWithJitter(attempt, cfg.baseDelayMs, cfg.maxDelayMs);
+            logger.warn(
+              `[UnitOfWork] Transient error on attempt ${attempt}/${cfg.maxAttempts}, retrying...`,
+              {
+                errorCode: getErrorCode(error),
+                errorLabels: getErrorLabels(error),
+                message: getErrorMessage(error).substring(0, 100),
+              },
+            );
+            await this.backoffWithJitter(
+              attempt,
+              cfg.baseDelayMs,
+              cfg.maxDelayMs,
+            );
             continue;
           }
 
           this.metrics.failedTransactions++;
-          logger.error(`[UnitOfWork] Transaction failed after ${attempt} attempts`, {
-            errorCode: getErrorCode(error),
-            errorLabels: getErrorLabels(error),
-            message: getErrorMessage(error),
-            retryable,
-          });
+          logger.error(
+            `[UnitOfWork] Transaction failed after ${attempt} attempts`,
+            {
+              errorCode: getErrorCode(error),
+              errorLabels: getErrorLabels(error),
+              message: getErrorMessage(error),
+              retryable,
+            },
+          );
           throw error;
         } finally {
           await session.endSession();
@@ -237,7 +258,11 @@ export class UnitOfWork {
    * Exponential backoff with full jitter
    * prevents thundering herd when multiple transactions retry simultaneously
    */
-  private async backoffWithJitter(attempt: number, baseMs: number, maxMs: number): Promise<void> {
+  private async backoffWithJitter(
+    attempt: number,
+    baseMs: number,
+    maxMs: number,
+  ): Promise<void> {
     // exponential backoff: baseMs * 2^(attempt-1)
     const exponentialDelay = Math.min(baseMs * Math.pow(2, attempt - 1), maxMs);
     // full jitter: random value between 0 and exponentialDelay
@@ -253,7 +278,9 @@ export class UnitOfWork {
    */
   getMetrics(): TransactionMetrics {
     const avgRetryCount =
-      this.metrics.retriedTransactions > 0 ? this.metrics.totalRetries / this.metrics.retriedTransactions : 0;
+      this.metrics.retriedTransactions > 0
+        ? this.metrics.totalRetries / this.metrics.retriedTransactions
+        : 0;
 
     return {
       totalAttempts: this.metrics.totalAttempts,

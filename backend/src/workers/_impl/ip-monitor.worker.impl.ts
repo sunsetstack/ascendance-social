@@ -4,6 +4,7 @@ import { logger } from "@/utils/winston";
 import { NotificationService } from "@/services/notification.service";
 import User from "@/models/user.model";
 import { RequestLogModel } from "@/models/requestLog.model";
+import { SystemActor } from "@/utils/actors/SystemActor";
 
 export class IpMonitorWorker {
     private CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -124,10 +125,10 @@ export class IpMonitorWorker {
                         this.notificationService.createNotification({
                             receiverId: admin.publicId,
                             actionType: "security_alert",
-                            actorId: "system-monitor",
-                            actorUsername: "System Monitor",
-                            actorHandle: "system",
-                            actorAvatar: "https://res.cloudinary.com/dfyqaqnj7/image/upload/v1737562142/defaultAvatar_evsmmj.jpg",
+                            actorId: SystemActor.id,
+                            actorUsername: SystemActor.username,
+                            actorHandle: SystemActor.handle,
+                            actorAvatar: SystemActor.avatar,
                             targetId: ip,
                             targetType: "ip",
                             targetPreview: `New unknown IP detected: ${ip}`

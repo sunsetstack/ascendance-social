@@ -23,8 +23,6 @@ describe("RepostPostCommandHandler", () => {
 	let mockUserReadRepository: { findByPublicId: SinonStub };
 	let mockDTOService: { toPostDTO: SinonStub };
 	let mockEventBus: { queueTransactional: SinonStub };
-	let mockPostUploadHandler: unknown;
-	let mockNotificationRequestedHandler: unknown;
 
 	beforeEach(() => {
 		mockUnitOfWork = { executeInTransaction: sinon.stub() };
@@ -45,8 +43,6 @@ describe("RepostPostCommandHandler", () => {
 		mockEventBus = {
 			queueTransactional: sinon.stub(),
 		};
-		mockPostUploadHandler = {};
-		mockNotificationRequestedHandler = {};
 
 		handler = new RepostPostCommandHandler(
 			mockUnitOfWork as any,
@@ -55,8 +51,6 @@ describe("RepostPostCommandHandler", () => {
 			mockUserReadRepository as any,
 			mockDTOService as any,
 			mockEventBus as any,
-			mockPostUploadHandler as any,
-			mockNotificationRequestedHandler as any,
 		);
 
 		command = new RepostPostCommand(VALID_USER_PUBLIC_ID, VALID_TARGET_POST_PUBLIC_ID, "nice post");

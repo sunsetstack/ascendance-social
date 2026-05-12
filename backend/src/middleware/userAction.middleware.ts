@@ -13,5 +13,9 @@ export function logUserAction(req: Request, res: Response, next: NextFunction): 
 	}
 
 	const userActionService = container.resolve<UserActionService>("UserActionService");
-	userActionService.logUserAction(userId, actionType, targetId).finally(() => next());
+	userActionService.logUserAction(userId, actionType, targetId).catch((err) => {
+		// fire-and-forget: don't block the request pipeline for logging
+		void err;
+	});
+	next();
 }

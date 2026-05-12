@@ -18,10 +18,10 @@ describe("Favorite Feature Integration", () => {
 	});
 
 	it("should have proper error types available", () => {
-		const { createError } = require("@/utils/errors");
+		const { Errors } = require("@/utils/errors");
 
-		const notFoundError = createError("NotFoundError", "Test message");
-		const forbiddenError = createError("ForbiddenError", "Test message");
+		const notFoundError = Errors.notFound("Resource");
+		const forbiddenError = Errors.forbidden("Test message");
 
 		expect(notFoundError.name).to.equal("NotFoundError");
 		expect(notFoundError.statusCode).to.equal(404);

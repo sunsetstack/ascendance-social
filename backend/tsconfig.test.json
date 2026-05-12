@@ -1,22 +1,33 @@
 {
-	"extends": "./tsconfig.json",
-	"compilerOptions": {
-		"composite": true,
-		"module": "CommonJS",
-		"moduleResolution": "node",
-		"types": ["mocha", "node"],
-		"noEmit": true,
-		"skipLibCheck": true,
-		"baseUrl": "./src",
-		"paths": {
-			"@/*": ["./*"]
-		}
-	},
-	"include": ["src/**/*.ts"],
-	"exclude": ["node_modules", "dist"],
-	"ts-node": {
-		"transpileOnly": true,
-		"files": true,
-		"require": ["tsconfig-paths/register"]
-	}
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "moduleDetection": "force",
+    "types": [
+      "mocha",
+      "node"
+    ],
+    "noEmit": true,
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ],
+  "ts-node": {
+    "transpileOnly": true,
+    "files": true,
+    "require": [
+      "tsconfig-paths/register"
+    ]
+  }
 }

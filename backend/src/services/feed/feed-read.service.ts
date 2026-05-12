@@ -1,19 +1,22 @@
 import { inject, injectable } from "tsyringe";
-import { PostRepository } from "@/repositories/post.repository";
-import { RedisService } from "../redis.service";
-import { DTOService } from "../dto.service";
-import { FeedEnrichmentService } from "./feed-enrichment.service";
-import { FeedCoreService } from "./feed-core.service";
-import { createError } from "@/utils/errors";
+import type { PostRepository } from "@/repositories/post.repository";
+import type { RedisService } from "../redis.service";
+import type { DTOService } from "../dto.service";
+import type { FeedEnrichmentService } from "./feed-enrichment.service";
+import type { FeedCoreService } from "./feed-core.service";
+import { Errors } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { CacheConfig } from "@/config/cacheConfig";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { CoreFeed, FeedPost, PaginationResult, PostDTO } from "@/types";
 import { TOKENS } from "@/types/tokens";
+import type { IFeedReadDao } from "@/repositories/interfaces";
 
 @injectable()
 export class FeedReadService {
   constructor(
+    @inject(TOKENS.Repositories.FeedReadDao)
+    private readonly feedReadDao: IFeedReadDao,
     @inject(TOKENS.Repositories.Post) private postRepository: PostRepository,
     @inject(TOKENS.Services.Redis) private redisService: RedisService,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
@@ -89,8 +92,7 @@ export class FeedReadService {
       };
     } catch (error) {
       console.error("Failed to generate personalized feed:", error);
-      throw createError(
-        "UnknownError",
+      throw Errors.internal(
         `Could not generate personalized feed for user ${userId}: ${(error as Error).message}`,
       );
     }
@@ -108,7 +110,7 @@ export class FeedReadService {
     const isCacheHit = !!cached;
     if (!cached) {
       const skip = (safePage - 1) * safeLimit;
-      const core = await this.postRepository.getTrendingFeedWithFacet(
+      const core = await this.feedReadDao.getTrendingFeedWithFacet(
         safeLimit,
         skip,
         {
@@ -168,7 +170,7 @@ export class FeedReadService {
       const useCursorFlow = Boolean(cursor) || safePage === 1;
 
       if (useCursorFlow) {
-        const coreCursor = await this.postRepository.getNewFeedWithCursor({
+        const coreCursor = await this.feedReadDao.getNewFeedWithCursor({
           limit: safeLimit,
           cursor,
         });
@@ -184,7 +186,7 @@ export class FeedReadService {
         };
       } else {
         const skip = (safePage - 1) * safeLimit;
-        const corePage = await this.postRepository.getNewFeed(safeLimit, skip);
+        const corePage = await this.feedReadDao.getNewFeed(safeLimit, skip);
         core = {
           data: corePage.data as FeedPost[],
           limit: corePage.limit ?? safeLimit,

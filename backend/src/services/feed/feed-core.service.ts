@@ -1,14 +1,15 @@
 import { inject, injectable } from "tsyringe";
-import {
+import type {
   IPostReadRepository,
   IUserReadRepository,
 } from "@/repositories/interfaces";
+import type { IFeedReadDao } from "@/repositories/interfaces/IFeedReadDao";
 import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
 import { FollowRepository } from "@/repositories/follow.repository";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { ColdStartFeedGeneratedEvent } from "@/application/events/ColdStartFeedGenerated.event";
 import { CursorPaginationResult, FeedPost } from "@/types";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { RedisService } from "@/services/redis.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
@@ -20,6 +21,8 @@ const FOLLOWING_IDS_TTL_SECONDS = 60;
 @injectable()
 export class FeedCoreService {
   constructor(
+    @inject(TOKENS.Repositories.FeedReadDao)
+    private readonly feedReadDao: IFeedReadDao,
     @inject(TOKENS.Repositories.PostRead)
     private readonly postReadRepository: IPostReadRepository,
     @inject(TOKENS.Repositories.UserRead)
@@ -39,7 +42,7 @@ export class FeedCoreService {
   ): Promise<CursorPaginationResult<FeedPost>> {
     const user = await this.userReadRepository.findByPublicId(userPublicId);
     if (!user) {
-      throw createError("NotFoundError", "User not found");
+      throw Errors.notFound("User");
     }
 
     const [topTags, followingIds] = await Promise.all([
@@ -63,13 +66,13 @@ export class FeedCoreService {
         }
       }
 
-      return this.postReadRepository.getRankedFeedWithCursor(favoriteTags, {
+      return this.feedReadDao.getRankedFeedWithCursor(favoriteTags, {
         limit,
         cursor,
       });
     }
 
-    return this.postReadRepository.getFeedForUserCoreWithCursor(
+    return this.feedReadDao.getFeedForUserCoreWithCursor(
       followingIds,
       favoriteTags,
       { limit, cursor },

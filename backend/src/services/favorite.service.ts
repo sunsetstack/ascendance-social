@@ -6,7 +6,7 @@ import { UserRepository } from "@/repositories/user.repository";
 import { PostRepository } from "@/repositories/post.repository";
 import { DTOService } from "./dto.service";
 import { IFavorite, IPost, PaginationResult, PostDTO } from "@/types";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
@@ -14,40 +14,38 @@ export class FavoriteService {
   constructor(
     @inject(TOKENS.Repositories.Favorite)
     private readonly favoriteRepository: FavoriteRepository,
-    @inject(TOKENS.Repositories.UnitOfWork) private readonly unitOfWork: UnitOfWork,
-    @inject(TOKENS.Repositories.User) private readonly userRepository: UserRepository,
-    @inject(TOKENS.Repositories.Post) private readonly postRepository: PostRepository,
+    @inject(TOKENS.Repositories.UnitOfWork)
+    private readonly unitOfWork: UnitOfWork,
+    @inject(TOKENS.Repositories.User)
+    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.Post)
+    private readonly postRepository: PostRepository,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
   ) {}
 
   async addFavorite(userId: string, postId: string): Promise<void> {
-    return this.unitOfWork.executeInTransaction(async (session) => {
+    return this.unitOfWork.executeInTransaction(async () => {
       const existing = await this.favoriteRepository.findByUserAndPost(
         userId,
         postId,
-        session,
       );
       if (existing) {
-        throw createError("DuplicateError", "Post already in favorites");
+        throw Errors.duplicate("Post already in favorites");
       }
 
       const favoriteData: Partial<IFavorite> = {
         userId: new mongoose.Types.ObjectId(userId),
         postId: new mongoose.Types.ObjectId(postId),
       };
-      await this.favoriteRepository.create(favoriteData, session);
+      await this.favoriteRepository.create(favoriteData);
     });
   }
 
   async removeFavorite(userId: string, postId: string): Promise<void> {
-    return this.unitOfWork.executeInTransaction(async (session) => {
-      const wasRemoved = await this.favoriteRepository.remove(
-        userId,
-        postId,
-        session,
-      );
+    return this.unitOfWork.executeInTransaction(async () => {
+      const wasRemoved = await this.favoriteRepository.remove(userId, postId);
       if (!wasRemoved) {
-        throw createError("NotFoundError", "Favorite not found");
+        throw Errors.notFound("Favorite not found");
       }
     });
   }
@@ -56,16 +54,15 @@ export class FavoriteService {
     actorPublicId: string,
     postPublicId: string,
   ): Promise<void> {
-    const actorId =
-      await this.userRepository.findInternalIdByPublicId(actorPublicId);
+    const [actorId, postId] = await Promise.all([
+      this.userRepository.findInternalIdByPublicId(actorPublicId),
+      this.postRepository.findInternalIdByPublicId(postPublicId),
+    ]);
     if (!actorId) {
-      throw createError("NotFoundError", "User not found");
+      throw Errors.notFound("User not found");
     }
-
-    const postId =
-      await this.postRepository.findInternalIdByPublicId(postPublicId);
     if (!postId) {
-      throw createError("NotFoundError", "Post not found");
+      throw Errors.notFound("Post not found");
     }
 
     await this.addFavorite(actorId, postId);
@@ -75,16 +72,15 @@ export class FavoriteService {
     actorPublicId: string,
     postPublicId: string,
   ): Promise<void> {
-    const actorId =
-      await this.userRepository.findInternalIdByPublicId(actorPublicId);
+    const [actorId, postId] = await Promise.all([
+      this.userRepository.findInternalIdByPublicId(actorPublicId),
+      this.postRepository.findInternalIdByPublicId(postPublicId),
+    ]);
     if (!actorId) {
-      throw createError("NotFoundError", "User not found");
+      throw Errors.notFound("User not found");
     }
-
-    const postId =
-      await this.postRepository.findInternalIdByPublicId(postPublicId);
     if (!postId) {
-      throw createError("NotFoundError", "Post not found");
+      throw Errors.notFound("Post not found");
     }
 
     await this.removeFavorite(actorId, postId);
@@ -97,17 +93,17 @@ export class FavoriteService {
     const userId =
       await this.userRepository.findInternalIdByPublicId(userPublicId);
     if (!userId) {
-      throw createError("NotFoundError", "User not found");
+      throw Errors.notFound("User not found");
     }
 
     const postId =
       await this.postRepository.findInternalIdByPublicId(postPublicId);
     if (!postId) {
-      throw createError("NotFoundError", "Post not found");
+      throw Errors.notFound("Post not found");
     }
 
-    return this.unitOfWork.executeInTransaction(async (session) => {
-      await this.favoriteRepository.remove(userId, postId, session);
+    return this.unitOfWork.executeInTransaction(async () => {
+      await this.favoriteRepository.remove(userId, postId);
     });
   }
 
@@ -119,7 +115,7 @@ export class FavoriteService {
     const userId =
       await this.userRepository.findInternalIdByPublicId(viewerPublicId);
     if (!userId) {
-      throw createError("NotFoundError", "User not found");
+      throw Errors.notFound("User not found");
     }
 
     const safePage = Math.max(1, page);

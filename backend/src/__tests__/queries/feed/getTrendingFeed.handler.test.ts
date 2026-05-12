@@ -12,6 +12,7 @@ chai.use(chaiAsPromised);
 describe("GetTrendingFeedQueryHandler", () => {
 	let handler: GetTrendingFeedQueryHandler;
 
+	let mockFeedReadDao: { getTrendingFeedWithCursor: SinonStub };
 	let mockPostReadRepository: {
 		findPostsByPublicIds: SinonStub;
 		getTrendingFeedWithCursor: SinonStub;
@@ -22,6 +23,7 @@ describe("GetTrendingFeedQueryHandler", () => {
 	let mockFeedEnrichmentService: { enrichFeedWithCurrentData: SinonStub };
 
 	beforeEach(() => {
+		mockFeedReadDao = { getTrendingFeedWithCursor: sinon.stub() };
 		mockPostReadRepository = {
 			findPostsByPublicIds: sinon.stub(),
 			getTrendingFeedWithCursor: sinon.stub(),
@@ -34,6 +36,7 @@ describe("GetTrendingFeedQueryHandler", () => {
 		mockFeedEnrichmentService = { enrichFeedWithCurrentData: sinon.stub() };
 
 		handler = new GetTrendingFeedQueryHandler(
+			mockFeedReadDao as any,
 			mockPostReadRepository as any,
 			mockUserReadRepository as any,
 			mockRedisService as any,
@@ -77,14 +80,14 @@ describe("GetTrendingFeedQueryHandler", () => {
 		const result = await handler.execute(new GetTrendingFeedQuery(1, 2));
 
 		expect(mockPostReadRepository.findPostsByPublicIds.calledWith(["p1", "p2"])).to.be.true;
-		expect(mockPostReadRepository.getTrendingFeedWithCursor.called).to.be.false;
+		expect(mockFeedReadDao.getTrendingFeedWithCursor.called).to.be.false;
 		expect(result.total).to.equal(0);
 		expect(result.data).to.have.lengthOf(2);
 	});
 
 	it("falls back to Mongo when Redis ZSET is empty", async () => {
 		mockRedisService.getTrendingFeedWithCursor.resolves({ ids: [], hasMore: false, nextCursor: undefined });
-		mockPostReadRepository.getTrendingFeedWithCursor.resolves({
+		mockFeedReadDao.getTrendingFeedWithCursor.resolves({
 			data: [
 				{
 					publicId: "p3",
@@ -105,7 +108,7 @@ describe("GetTrendingFeedQueryHandler", () => {
 
 		const result = await handler.execute(new GetTrendingFeedQuery(1, 10));
 
-		expect(mockPostReadRepository.getTrendingFeedWithCursor.calledOnce).to.be.true;
+		expect(mockFeedReadDao.getTrendingFeedWithCursor.calledOnce).to.be.true;
 		expect(mockPostReadRepository.findPostsByPublicIds.called).to.be.false;
 		expect(result.total).to.equal(0);
 		expect(result.data).to.have.lengthOf(1);
@@ -113,7 +116,7 @@ describe("GetTrendingFeedQueryHandler", () => {
 
 	it("wraps errors as FeedError", async () => {
 		mockRedisService.getTrendingFeedWithCursor.rejects(new Error("redis down"));
-		mockPostReadRepository.getTrendingFeedWithCursor.rejects(new Error("db down"));
+		mockFeedReadDao.getTrendingFeedWithCursor.rejects(new Error("db down"));
 
 		await expect(handler.execute(new GetTrendingFeedQuery(1, 10))).to.be.rejectedWith(
 			"Could not generate trending feed.",

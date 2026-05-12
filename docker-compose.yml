@@ -31,7 +31,15 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: secret
-    command: [ "mongod", "--replSet", "rs0", "--keyFile", "/opt/keyfile/mongodb-keyfile", "--bind_ip_all" ]
+    command:
+      [
+        "mongod",
+        "--replSet",
+        "rs0",
+        "--keyFile",
+        "/opt/keyfile/mongodb-keyfile",
+        "--bind_ip_all",
+      ]
     depends_on:
       - mongo-setup
     healthcheck:
@@ -60,7 +68,7 @@ services:
       MONGO_HOST: mongo
     volumes:
       - ./mongo-rs-init.sh:/rs-init/mongo-rs-init.sh:ro
-    entrypoint: [ "bash", "/rs-init/mongo-rs-init.sh" ]
+    entrypoint: ["bash", "/rs-init/mongo-rs-init.sh"]
     restart: "no"
 
   redis-service:
@@ -73,7 +81,7 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -87,6 +95,7 @@ services:
     restart: always
     # shared environment variables here using a YAML anchor (&)
     environment: &backend-environment
+      ENABLE_WORKERS: "false"
       NODE_ENV: production
       MONGODB_URI: mongodb://root:secret@mongo:27017/PhotoAppOOP?authSource=admin&replicaSet=rs0
       REDIS_URL: redis://redis-service:6379
@@ -109,7 +118,13 @@ services:
     volumes:
       - ./backend/uploads:/app/backend/uploads
     healthcheck:
-      test: [ "CMD", "sh", "-c", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1" ]
+      test:
+        [
+          "CMD",
+          "sh",
+          "-c",
+          "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -168,8 +183,29 @@ services:
       - app-network
     mem_limit: 256m
     cpu_shares: 256
-  # Workers now in-process with the backend on the same Node event loop
-  # ENABLE_WORKERS=false in backend environment to disable them
+
+  # Workers moved to an independent container using the identical backend image
+  backend-worker:
+    build:
+      context: .
+      dockerfile: backend/backend.Dockerfile
+    container_name: backend-worker
+    restart: always
+    environment:
+      <<: *backend-environment
+      ENABLE_API: "false"
+      ENABLE_WORKERS: "true"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      mongo-rs-init:
+        condition: service_completed_successfully
+      redis-service:
+        condition: service_healthy
+    networks:
+      - app-network
+    volumes:
+      - ./backend/uploads:/app/backend/uploads
 
 networks:
   app-network:

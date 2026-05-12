@@ -2,7 +2,7 @@ import { inject, injectable } from "tsyringe";
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { GetPersonalizedFeedQuery } from "./getPersonalizedFeed.query";
 import { RedisService } from "@/services/redis.service";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { CursorPaginationResult, FeedPost } from "@/types";
 import { logger } from "@/utils/winston";
 import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
@@ -73,8 +73,7 @@ export class GetPersonalizedFeedQueryHandler implements IQueryHandler<
       };
     } catch (error) {
       console.error("Failed to generate personalized feed:", error);
-      throw createError(
-        "UnknownError",
+      throw Errors.internal(
         `Could not generate personalized feed for user ${userId}: ${(error as Error).message}`,
       );
     }

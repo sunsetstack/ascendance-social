@@ -1,8 +1,8 @@
-import { ClientSession, Model } from "mongoose";
+import { Model } from "mongoose";
 import { IUserAction, PaginationOptions, PaginationResult } from "@/types";
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
-import { createError , wrapError } from "@/utils/errors";
+import { Errors , wrapError } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
@@ -15,10 +15,10 @@ export class UserActionRepository extends BaseRepository<IUserAction> {
 		userId: string,
 		actionType: string,
 		targetId: string,
-		session?: ClientSession,
 		_admin?: boolean
 	): Promise<IUserAction> {
 		try {
+			const session = this.getSession();
 			const doc = new this.model({ userId, actionType, targetId });
 			// if(session) doc.$session(session);
 			return await doc.save({ session });
@@ -26,7 +26,7 @@ export class UserActionRepository extends BaseRepository<IUserAction> {
 			if (error instanceof Error) {
 				throw wrapError(error);
 			}
-			throw createError("UnknownError", String(error));
+			throw Errors.internal(String(error));
 		}
 	}
 
@@ -60,14 +60,15 @@ export class UserActionRepository extends BaseRepository<IUserAction> {
 			};
 		} catch (error) {
 			if (error instanceof Error) {
-				throw createError("DatabaseError", error.message);
+				throw Errors.database(error.message);
 			}
-			throw createError("DatabaseError", String(error));
+			throw Errors.database(String(error));
 		}
 	}
 
-	async deleteManyByUserId(userId: string, session?: ClientSession): Promise<number> {
+	async deleteManyByUserId(userId: string): Promise<number> {
 		try {
+			const session = this.getSession();
 			const result = await this.model
 				.deleteMany({ userId })
 				.session(session || null)
@@ -77,7 +78,7 @@ export class UserActionRepository extends BaseRepository<IUserAction> {
 			if (error instanceof Error) {
 				throw wrapError(error);
 			}
-			throw createError("UnknownError", String(error));
+			throw Errors.internal(String(error));
 		}
 	}
 }

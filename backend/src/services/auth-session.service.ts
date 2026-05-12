@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { inject, injectable } from "tsyringe";
 import { RedisService } from "@/services/redis.service";
 import { AuthSessionRecord } from "@/types";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
 
 const SESSION_ID_REGEX =
@@ -111,10 +111,10 @@ export class AuthSessionService {
         this.userSessionsKey(publicId),
         sid,
       );
-      throw createError("AuthenticationError", "Session is invalid or expired");
+      throw Errors.authentication("Session is invalid or expired");
     }
     if (session.status !== "active" || session.publicId !== publicId) {
-      throw createError("AuthenticationError", "Session is invalid or expired");
+      throw Errors.authentication("Session is invalid or expired");
     }
     await this.touchSessionOnAccess(session);
     return session;
@@ -130,22 +130,22 @@ export class AuthSessionService {
   async validateRefreshToken(refreshToken: string): Promise<AuthSessionRecord> {
     const sid = this.extractSessionIdFromRefreshToken(refreshToken);
     if (!sid) {
-      throw createError("AuthenticationError", "Invalid refresh token");
+      throw Errors.authentication("Invalid refresh token");
     }
 
     const session = await this.getSession(sid);
     if (!session || session.status !== "active") {
-      throw createError("AuthenticationError", "Session is invalid or expired");
+      throw Errors.authentication("Session is invalid or expired");
     }
 
     const presentedHash = this.hashRefreshToken(refreshToken);
     const matchState = this.classifyRefreshTokenMatch(session, presentedHash);
     if (matchState === "recently_rotated") {
-      throw createError("AuthenticationError", "Refresh token already rotated");
+      throw Errors.authentication("Refresh token already rotated");
     }
     if (matchState !== "current") {
       await this.revokeSession(sid);
-      throw createError("AuthenticationError", "Refresh token reuse detected");
+      throw Errors.authentication("Refresh token reuse detected");
     }
 
     return session;
@@ -167,17 +167,17 @@ export class AuthSessionService {
   ): Promise<AuthSessionRecord> {
     const current = await this.getSession(sid);
     if (!current || current.status !== "active") {
-      throw createError("AuthenticationError", "Session is invalid or expired");
+      throw Errors.authentication("Session is invalid or expired");
     }
 
     const presentedHash = this.hashRefreshToken(presentedRefreshToken);
     const matchState = this.classifyRefreshTokenMatch(current, presentedHash);
     if (matchState === "recently_rotated") {
-      throw createError("AuthenticationError", "Refresh token already rotated");
+      throw Errors.authentication("Refresh token already rotated");
     }
     if (matchState !== "current") {
       await this.revokeSession(sid);
-      throw createError("AuthenticationError", "Refresh token reuse detected");
+      throw Errors.authentication("Refresh token reuse detected");
     }
 
     const now = Date.now();
@@ -340,7 +340,7 @@ export class AuthSessionService {
         this.userSessionsKey(session.publicId),
         session.sid,
       );
-      throw createError("AuthenticationError", "Session is invalid or expired");
+      throw Errors.authentication("Session is invalid or expired");
     }
 
     const touchedSession: AuthSessionRecord = {
@@ -408,7 +408,7 @@ export class AuthSessionService {
    */
   private normalizeTtlSeconds(ttlSeconds: number): number {
     if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) {
-      throw createError("ConfigError", "Invalid session TTL configuration");
+      throw Errors.internal("Invalid session TTL configuration");
     }
     return Math.floor(ttlSeconds);
   }

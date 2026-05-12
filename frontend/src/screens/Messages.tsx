@@ -104,6 +104,7 @@ const Messages = () => {
 	const socket = useSocket();
 	const messagesContainerRef = useRef<HTMLDivElement | null>(null);
 	const markedAsReadRef = useRef<Set<string>>(new Set());
+	const markReadPendingRef = useRef<Set<string>>(new Set());
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
 	const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -138,7 +139,9 @@ const Messages = () => {
 		}
 
 		return () => {
-			socket.emit("conversation_closed");
+			if (selectedConversationId) {
+				socket.emit("conversation_closed", selectedConversationId);
+			}
 		};
 	}, [selectedConversationId, socket]);
 
@@ -159,14 +162,25 @@ const Messages = () => {
 		if (
 			selectedConversation &&
 			selectedConversation.unreadCount > 0 &&
-			!markedAsReadRef.current.has(selectedConversation.publicId)
+			!markedAsReadRef.current.has(selectedConversation.publicId) &&
+			!markReadPendingRef.current.has(selectedConversation.publicId)
 		) {
-			markedAsReadRef.current.add(selectedConversation.publicId);
-			markConversationRead.mutate(selectedConversation.publicId);
+			markReadPendingRef.current.add(selectedConversation.publicId);
+			markConversationRead.mutate(selectedConversation.publicId, {
+				onSuccess: () => {
+					markReadPendingRef.current.delete(selectedConversation.publicId);
+					markedAsReadRef.current.add(selectedConversation.publicId);
+				},
+				onError: () => {
+					markReadPendingRef.current.delete(selectedConversation.publicId);
+					markedAsReadRef.current.delete(selectedConversation.publicId);
+				},
+			});
 		}
 		// reset tracking when conversation changes or unread count goes to 0
 		if (selectedConversation && selectedConversation.unreadCount === 0) {
 			markedAsReadRef.current.delete(selectedConversation.publicId);
+			markReadPendingRef.current.delete(selectedConversation.publicId);
 		}
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [selectedConversation?.publicId, selectedConversation?.unreadCount]);

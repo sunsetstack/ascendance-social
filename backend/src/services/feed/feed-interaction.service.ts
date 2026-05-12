@@ -4,7 +4,7 @@ import { UserRepository } from "@/repositories/user.repository";
 import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
 import { UserActionRepository } from "@/repositories/userAction.repository";
 import { RedisService } from "../redis.service";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
@@ -32,7 +32,7 @@ export class FeedInteractionService {
     );
 
     const user = await this.userRepository.findByPublicId(userPublicId);
-    if (!user) throw createError("NotFoundError", "User not found");
+    if (!user) throw Errors.notFound("User not found");
 
     let internalTargetId = targetIdentifier;
     if (
@@ -70,7 +70,6 @@ export class FeedInteractionService {
     }
 
     await this.redisService.invalidateFeed(userPublicId, "for_you");
-    await this.redisService.invalidateFeed(userPublicId, "personalized");
 
     const invalidationTags = [CacheKeyBuilder.getUserFeedTag(userPublicId)];
     await this.redisService.invalidateByTags(invalidationTags);

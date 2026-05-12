@@ -4,13 +4,15 @@ services:
     image: redis:alpine
     container_name: redis
     restart: always
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
     networks:
       - app-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "sh", "-c", 'redis-cli -a "$$REDIS_PASSWORD" ping']
       interval: 5s
       retries: 5
 
@@ -19,10 +21,11 @@ services:
     image: ghcr.io/danzin/photoapp-backend:latest
     container_name: backend
     restart: always
-    environment:
+    environment: &backend-environment
+      ENABLE_WORKERS: "false"
       NODE_ENV: production
       MONGODB_URI: ${MONGODB_URI}
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       JWT_SECRET: ${JWT_SECRET}
       ALLOWED_ORIGINS: https://${DOMAIN_NAME},https://www.${DOMAIN_NAME}
       COOKIE_SECURE: "true"
@@ -90,8 +93,22 @@ services:
         condition: service_started
     mem_limit: 256m
 
-  # Workers now in-process with the backend on the same Node event loop
-  # ENABLE_WORKERS=false in backend environment to disable them
+  # Dedicated worker container
+  backend-worker:
+    image: ghcr.io/danzin/photoapp-backend:latest
+    container_name: backend-worker
+    restart: always
+    environment:
+      <<: *backend-environment
+      ENABLE_API: "false"
+      ENABLE_WORKERS: "true"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    volumes:
+      - ./backend/uploads:/app/uploads
 
 networks:
   app-network:

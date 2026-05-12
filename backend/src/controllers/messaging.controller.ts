@@ -1,9 +1,24 @@
-import { Request, Response } from "express";
+import { Response } from "express";
 import { inject, injectable } from "tsyringe";
 import { MessagingService } from "@/services/messaging.service";
-import { createError } from "@/utils/errors";
-import { SendMessagePayload } from "@/types";
+import { Errors } from "@/utils/errors";
+import { SendMessagePayload, TypedRequest } from "@/types";
+import { streamPaginatedResponse } from "@/utils/streamResponse";
 import { TOKENS } from "@/types/tokens";
+import type {
+  ConversationParams,
+  EditMessageBody,
+  InitiateConversationBody,
+  MessageParams,
+  PaginationQuery,
+  SendMessageBody,
+} from "@/utils/schemas/messaging.schemas";
+
+/** Threshold for enabling streaming responses (items) */
+import { STREAM_THRESHOLD } from "@/utils/post-helpers";
+
+type EmptyParams = Record<string, never>;
+type EmptyBody = Record<string, never>;
 
 @injectable()
 export class MessagingController {
@@ -12,17 +27,18 @@ export class MessagingController {
     private readonly messagingService: MessagingService,
   ) {}
 
-  listConversations = async (req: Request, res: Response): Promise<void> => {
-    const userPublicId = req.decodedUser?.publicId as string | undefined;
+  listConversations = async (
+    req: TypedRequest<EmptyParams, EmptyBody, PaginationQuery>,
+    res: Response,
+  ): Promise<void> => {
+    const userPublicId = req.decodedUser?.publicId;
     if (!userPublicId) {
-      throw createError(
-        "AuthenticationError",
+      throw Errors.authentication(
         "User must be logged in to view conversations",
       );
     }
 
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 20;
+    const { page, limit } = req.query;
 
     const result = await this.messagingService.listConversations(
       userPublicId,
@@ -33,20 +49,16 @@ export class MessagingController {
   };
 
   getConversationMessages = async (
-    req: Request,
+    req: TypedRequest<ConversationParams, EmptyBody, PaginationQuery>,
     res: Response,
   ): Promise<void> => {
-    const userPublicId = req.decodedUser?.publicId as string | undefined;
+    const userPublicId = req.decodedUser?.publicId;
     if (!userPublicId) {
-      throw createError(
-        "AuthenticationError",
-        "User must be logged in to view messages",
-      );
+      throw Errors.authentication("User must be logged in to view messages");
     }
 
     const { conversationId } = req.params;
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 30;
+    const { page, limit } = req.query;
 
     const result = await this.messagingService.getConversationMessages(
       userPublicId,
@@ -54,14 +66,31 @@ export class MessagingController {
       page,
       limit,
     );
-    res.status(200).json(result);
+
+    if (result.messages.length >= STREAM_THRESHOLD) {
+      streamPaginatedResponse(
+        res,
+        result.messages,
+        {
+          total: result.total,
+          page: result.page,
+          limit: result.limit,
+          totalPages: result.totalPages,
+        },
+        { arrayKey: "messages" },
+      );
+    } else {
+      res.status(200).json(result);
+    }
   };
 
-  markConversationRead = async (req: Request, res: Response): Promise<void> => {
-    const userPublicId = req.decodedUser?.publicId as string | undefined;
+  markConversationRead = async (
+    req: TypedRequest<ConversationParams>,
+    res: Response,
+  ): Promise<void> => {
+    const userPublicId = req.decodedUser?.publicId;
     if (!userPublicId) {
-      throw createError(
-        "AuthenticationError",
+      throw Errors.authentication(
         "User must be logged in to update read state",
       );
     }
@@ -74,11 +103,13 @@ export class MessagingController {
     res.status(204).send();
   };
 
-  initiateConversation = async (req: Request, res: Response): Promise<void> => {
-    const senderPublicId = req.decodedUser?.publicId as string | undefined;
+  initiateConversation = async (
+    req: TypedRequest<EmptyParams, InitiateConversationBody>,
+    res: Response,
+  ): Promise<void> => {
+    const senderPublicId = req.decodedUser?.publicId;
     if (!senderPublicId) {
-      throw createError(
-        "AuthenticationError",
+      throw Errors.authentication(
         "User must be logged in to start a conversation",
       );
     }
@@ -92,21 +123,16 @@ export class MessagingController {
     res.status(201).json({ conversation });
   };
 
-  sendMessage = async (req: Request, res: Response): Promise<void> => {
-    const senderPublicId = req.decodedUser?.publicId as string | undefined;
+  sendMessage = async (
+    req: TypedRequest<EmptyParams, SendMessageBody>,
+    res: Response,
+  ): Promise<void> => {
+    const senderPublicId = req.decodedUser?.publicId;
     if (!senderPublicId) {
-      throw createError(
-        "AuthenticationError",
-        "User must be logged in to send messages",
-      );
+      throw Errors.authentication("User must be logged in to send messages");
     }
 
-    const payload: SendMessagePayload = {
-      conversationPublicId: req.body.conversationPublicId,
-      recipientPublicId: req.body.recipientPublicId,
-      body: req.body.body,
-      attachments: req.body.attachments,
-    };
+    const payload: SendMessagePayload = req.body;
 
     const message = await this.messagingService.sendMessage(
       senderPublicId,
@@ -116,13 +142,13 @@ export class MessagingController {
     res.status(201).json({ message });
   };
 
-  editMessage = async (req: Request, res: Response): Promise<void> => {
-    const userPublicId = req.decodedUser?.publicId as string | undefined;
+  editMessage = async (
+    req: TypedRequest<MessageParams, EditMessageBody>,
+    res: Response,
+  ): Promise<void> => {
+    const userPublicId = req.decodedUser?.publicId;
     if (!userPublicId) {
-      throw createError(
-        "AuthenticationError",
-        "User must be logged in to edit messages",
-      );
+      throw Errors.authentication("User must be logged in to edit messages");
     }
 
     const { messageId } = req.params;
@@ -136,13 +162,13 @@ export class MessagingController {
     res.status(200).json({ message });
   };
 
-  deleteMessage = async (req: Request, res: Response): Promise<void> => {
-    const userPublicId = req.decodedUser?.publicId as string | undefined;
+  deleteMessage = async (
+    req: TypedRequest<MessageParams>,
+    res: Response,
+  ): Promise<void> => {
+    const userPublicId = req.decodedUser?.publicId;
     if (!userPublicId) {
-      throw createError(
-        "AuthenticationError",
-        "User must be logged in to delete messages",
-      );
+      throw Errors.authentication("User must be logged in to delete messages");
     }
 
     const { messageId } = req.params;

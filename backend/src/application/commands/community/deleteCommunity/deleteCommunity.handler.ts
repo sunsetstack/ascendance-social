@@ -6,7 +6,7 @@ import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
 import { UserRepository } from "@/repositories/user.repository";
 import { UnitOfWork } from "@/database/UnitOfWork";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 
 @injectable()
 export class DeleteCommunityCommandHandler implements ICommandHandler<DeleteCommunityCommand, void> {
@@ -22,28 +22,28 @@ export class DeleteCommunityCommandHandler implements ICommandHandler<DeleteComm
 
 		const community = await this.communityRepository.findByPublicId(communityPublicId);
 		if (!community) {
-			throw createError("NotFoundError", "Community not found");
+			throw Errors.notFound("Community");
 		}
 		const communityId = community._id as Types.ObjectId;
 
 		const user = await this.userRepository.findByPublicId(userPublicId);
 		if (!user) {
-			throw createError("NotFoundError", "User not found");
+			throw Errors.notFound("User");
 		}
 		const userId = user._id as Types.ObjectId;
 
 		// 1. Check permissions
 		const member = await this.communityMemberRepository.findByCommunityAndUser(communityId, userId);
 		if (!member || member.role !== "admin") {
-			throw createError("ForbiddenError", "Only community admins can delete the community");
+			throw Errors.forbidden("Only community admins can delete the community");
 		}
 
-		await this.uow.executeInTransaction(async (session) => {
+		await this.uow.executeInTransaction(async () => {
 			// 2. Delete all memberships
-			await this.communityMemberRepository.deleteByCommunityId(communityId, session);
+			await this.communityMemberRepository.deleteByCommunityId(communityId);
 
 			// 3. Delete Community
-			await this.communityRepository.delete(communityId.toString(), session);
+			await this.communityRepository.delete(communityId.toString());
 		});
 	}
 }

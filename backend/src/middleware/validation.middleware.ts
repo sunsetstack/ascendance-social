@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction, RequestHandler } from "express";
 import { z, ZodError } from "zod";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 
 interface ValidationSchema {
 	body?: z.ZodTypeAny;
@@ -27,11 +27,11 @@ export class ValidationMiddleware {
 			} catch (error) {
 				if (error instanceof ZodError) {
 					const errorMessages = error.errors.map((e) => e.message).join(", ");
-					next(createError("ValidationError", errorMessages));
+					next(Errors.validation(errorMessages));
 				} else if (error instanceof Error) {
-					next(createError("ValidationError", error.message));
+					next(Errors.validation(error.message));
 				} else {
-					next(createError("ValidationError", "Unknown validation error"));
+					next(Errors.validation("Unknown validation error"));
 				}
 			}
 		};

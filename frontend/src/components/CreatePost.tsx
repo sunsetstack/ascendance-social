@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { telemetry } from "../lib/telemetry";
 import { LoadingSpinner } from "./LoadingSpinner";
 import MentionInput from "./MentionInput";
+import { devError } from "@/lib/devLogger";
 
 interface CreatePostProps {
 	onClose?: () => void; // optional callback when post is successfully created for usage in modal
@@ -167,7 +168,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 				onClose();
 			}
 		} catch (error) {
-			console.error("Upload failed:", error);
+			devError("Upload failed:", error);
 		}
 	};
 

@@ -37,22 +37,13 @@ export interface IUser extends Document {
 }
 
 // Create a user lookup map using publicId
-export interface UserLookupData {
-	publicId: string;
-	handle?: string;
-	username: string;
-	avatar?: string;
-}
+export type UserLookupData = Pick<IUser, "publicId" | "username"> & Partial<Pick<IUser, "handle" | "avatar">>;
 
 /** Shape returned by user suggestion aggregation queries */
-export interface UserSuggestion {
-	publicId: string;
-	handle: string;
-	username: string;
-	avatar: string;
+export type UserSuggestion = Pick<IUser, "publicId" | "handle" | "username" | "avatar"> & {
 	bio?: string;
-	followerCount: number;
-	postCount: number;
+	followerCount: NonNullable<IUser["followerCount"]>;
+	postCount: NonNullable<IUser["postCount"]>;
 	totalLikes: number;
 	score: number;
-}
+};

@@ -12,6 +12,7 @@ import {
 	AdminUserDTO,
 	WhoToFollowResponse,
 } from "../../types";
+import { devError } from "@/lib/devLogger";
 
 /**All hooks use public ids */
 export const useFollowUser = () => {
@@ -123,7 +124,7 @@ export const useFollowUser = () => {
 			queryClient.invalidateQueries({ queryKey: ["whoToFollow"], refetchType: "active" });
 		},
 		onError: (error: Error, publicId, context) => {
-			console.error("Error following user:", error.message || error);
+			devError("Error following user:", error.message || error);
 			if (!context) {
 				return;
 			}

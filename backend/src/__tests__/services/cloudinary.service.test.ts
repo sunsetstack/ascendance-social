@@ -97,7 +97,7 @@ describe("CloudinaryService", () => {
 
 	describe("deleteAssetByUrl", () => {
 		it("should handle invalid URL by skipping", async () => {
-			const result = await cloudinaryService.deleteAssetByUrl("user", "invalid-url");
+			const result = await cloudinaryService.deleteAssetByUrl("user", "", "invalid-url");
 			expect(result).to.deep.equal({ result: "skipped" });
 		});
 
@@ -106,6 +106,7 @@ describe("CloudinaryService", () => {
 
 			const result = await cloudinaryService.deleteAssetByUrl(
 				"user",
+				"",
 				"https://res.cloudinary.com/demo/image/upload/v123/test.jpg",
 			);
 

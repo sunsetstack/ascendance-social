@@ -2,10 +2,10 @@ import "reflect-metadata";
 import path from "path";
 import dotenv from "dotenv";
 import { logger } from "@/utils/winston";
+import dns from "node:dns";
 
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
-
-logger.info("Starting IP Monitor Worker...");
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
 
 import { container } from "tsyringe";
 import { setupContainerCore, registerCQRS, initCQRS } from "@/di/container";

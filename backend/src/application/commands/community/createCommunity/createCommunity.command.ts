@@ -7,6 +7,8 @@ export class CreateCommunityCommand implements ICommand {
 		public readonly name: string,
 		public readonly description: string,
 		public readonly creatorId: string,
-		public readonly avatarPath?: string
+		public readonly avatarBuffer?: Buffer,
+		public readonly avatarOriginalName?: string,
+		public readonly avatarMimeType?: string,
 	) {}
 }

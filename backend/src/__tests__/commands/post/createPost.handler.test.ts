@@ -59,15 +59,9 @@ describe("CreatePostCommandHandler", () => {
 		queueTransactional: SinonStub;
 		publish: SinonStub;
 	};
-	let mockPostUploadHandler: {
-		handle: SinonStub;
-	};
 	let mockSession: ClientSession;
 	let mockDTOService: {
 		toPostDTO: SinonStub;
-	};
-	let mockNotificationRequestedHandler: {
-		handle: SinonStub;
 	};
 
 	beforeEach(() => {
@@ -124,16 +118,8 @@ describe("CreatePostCommandHandler", () => {
 			publish: sinon.stub(),
 		};
 
-		mockPostUploadHandler = {
-			handle: sinon.stub(),
-		};
-
 		mockDTOService = {
 			toPostDTO: sinon.stub(),
-		};
-
-		mockNotificationRequestedHandler = {
-			handle: sinon.stub(),
 		};
 
 		mockSession = {} as ClientSession;
@@ -151,8 +137,6 @@ describe("CreatePostCommandHandler", () => {
 			mockRedisService as any,
 			mockDTOService as any,
 			mockEventBus as any,
-			mockPostUploadHandler as any,
-			mockNotificationRequestedHandler as any,
 		);
 
 		command = new CreatePostCommand(

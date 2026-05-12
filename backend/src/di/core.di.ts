@@ -14,6 +14,7 @@ import Follow from "@/models/follow.model";
 import Notification from "@/models/notification.model";
 import UserAction from "@/models/userAction.model";
 import { UserPreference } from "@/models/userPreference.model";
+import { OutboxModel } from "@/models/outbox.model";
 import { WebSocketServer } from "../server/socketServer";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
@@ -30,6 +31,7 @@ export function registerCoreComponents(): void {
   container.register(TOKENS.Models.Follow, { useValue: Follow });
   container.register(TOKENS.Models.Notification, { useValue: Notification });
   container.register(TOKENS.Models.UserAction, { useValue: UserAction });
+  container.register(TOKENS.Models.Outbox, { useValue: OutboxModel });
   container.register(TOKENS.Models.UserPreference, {
     useValue: UserPreference,
   });

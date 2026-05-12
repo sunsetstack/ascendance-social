@@ -1,6 +1,11 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient, InfiniteData } from "@tanstack/react-query";
 import {
-  fetchPosts,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+  InfiniteData,
+} from "@tanstack/react-query";
+import {
   fetchPostByPublicId,
   fetchPostBySlug,
   uploadPost,
@@ -17,22 +22,19 @@ import {
 import { IPost, ITag, PaginatedResponse } from "../../types";
 import { useAuth } from "../context/useAuth";
 import { mapPost } from "../../lib/mappers";
+import { devError } from "@/lib/devLogger";
 
 export const usePosts = () => {
   const { user } = useAuth();
 
   const queryKey = ["posts", user?.publicId];
 
-  return useInfiniteQuery<
-    PaginatedResponse<IPost>,
-    Error
-  >({
+  return useInfiniteQuery<PaginatedResponse<IPost>, Error>({
     queryKey,
     queryFn: async ({ pageParam = 1 }) => {
-      // fetchPosts (user feed) still uses numeric page, fetchNewFeed can use cursor
       const response = !user
         ? await fetchNewFeed(pageParam as number | string, 10)
-        : await fetchPosts(pageParam as number, 10);
+        : await fetchPersonalizedFeed(pageParam as number | string, 10);
 
       return {
         ...response,
@@ -85,7 +87,9 @@ export const usePostBySlug = (slug: string) => {
 
 export const usePostById = (identifier: string) => {
   // Strip file extension
-  const cleanIdentifier = identifier ? identifier.replace(/\.(png|jpg|jpeg|gif|webp)$/i, "") : identifier;
+  const cleanIdentifier = identifier
+    ? identifier.replace(/\.(png|jpg|jpeg|gif|webp)$/i, "")
+    : identifier;
 
   return useQuery<IPost, Error>({
     queryKey: ["post", cleanIdentifier],
@@ -105,7 +109,7 @@ export const usePostsByTag = (
   options?: {
     limit?: number;
     enabled?: boolean;
-  }
+  },
 ) => {
   const limit = options?.limit ?? 10;
   const enabled = options?.enabled ?? tags.length > 0;
@@ -122,13 +126,18 @@ export const usePostsByTag = (
   >({
     queryKey: ["postsByTag", tags],
     queryFn: async ({ pageParam = 1 }) => {
-      const response = await fetchPostsByTag({ tags, page: pageParam as number, limit });
+      const response = await fetchPostsByTag({
+        tags,
+        page: pageParam as number,
+        limit,
+      });
       return {
         ...response,
         data: response.data.map((rawPost: IPost) => mapPost(rawPost)),
       };
     },
-    getNextPageParam: (lastPage) => (lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined),
+    getNextPageParam: (lastPage) =>
+      lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined,
     initialPageParam: 1,
     enabled,
     staleTime: 0,
@@ -164,11 +173,17 @@ export const useUploadPost = () => {
       queryClient.invalidateQueries({ queryKey: ["community-posts"] });
 
       queryClient.refetchQueries({ queryKey: ["posts"], type: "active" });
-      queryClient.refetchQueries({ queryKey: ["personalizedFeed"], type: "active" });
-      queryClient.refetchQueries({ queryKey: ["community-posts"], type: "active" });
+      queryClient.refetchQueries({
+        queryKey: ["personalizedFeed"],
+        type: "active",
+      });
+      queryClient.refetchQueries({
+        queryKey: ["community-posts"],
+        type: "active",
+      });
     },
     onError: (error: Error) => {
-      console.error("Error uploading post:", error);
+      devError("Error uploading post:", error);
     },
   });
 };
@@ -178,15 +193,71 @@ export const useDeletePost = () => {
 
   return useMutation<void, Error, string>({
     mutationFn: deletePostByPublicId,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["posts"] });
-      queryClient.invalidateQueries({ queryKey: ["post"] });
+    onSuccess: (_data, publicId) => {
+      // Surgically remove the deleted post from every feed/list cache so nothing
+      // tries to background-refetch a post that no longer exists (which would cause
+      // the CommentSection to fire a 404 request before navigate(-1) unmounts the page).
+      const filterOut = (oldData: unknown): unknown => {
+        if (!oldData || typeof oldData !== "object") return oldData;
+        if ("pages" in oldData) {
+          const inf = oldData as {
+            pages: { data: { publicId: string }[] }[];
+            pageParams: unknown[];
+          };
+          return {
+            ...inf,
+            pages: inf.pages.map((page) => ({
+              ...page,
+              data: Array.isArray(page.data)
+                ? page.data.filter((item) => item.publicId !== publicId)
+                : page.data,
+            })),
+          };
+        }
+        if ("data" in oldData) {
+          const reg = oldData as { data: { publicId: string }[] };
+          if (Array.isArray(reg.data)) {
+            return {
+              ...reg,
+              data: reg.data.filter((item) => item.publicId !== publicId),
+            };
+          }
+        }
+        return oldData;
+      };
+
+      for (const key of [
+        "posts",
+        "personalizedFeed",
+        "userPosts",
+        "forYouFeed",
+        "trendingFeed",
+        "newFeed",
+        "images",
+        "userImages",
+      ]) {
+        queryClient.setQueriesData({ queryKey: [key] }, filterOut);
+      }
+
+      // Remove the post detail and comments from cache immediately so they cannot
+      // be background-refetched while PostView is still mounted.
+      queryClient.removeQueries({
+        predicate: (query) => {
+          const key = query.queryKey as unknown[];
+          return (
+            (key[0] === "post" && key.includes(publicId)) ||
+            (key[0] === "comments" && key[1] === "post" && key[2] === publicId)
+          );
+        },
+      });
+
+      // Broader invalidations for counts / profile data
       queryClient.invalidateQueries({ queryKey: ["user"] });
       queryClient.invalidateQueries({ queryKey: ["userPosts"] });
       queryClient.invalidateQueries({ queryKey: ["personalizedFeed"] });
     },
     onError: (error: Error) => {
-      console.error("Error deleting post:", error);
+      devError("Error deleting post:", error);
     },
   });
 };
@@ -214,19 +285,39 @@ export const useRepostPost = () => {
               ...page,
               data: page.data.map((post) =>
                 post.publicId === postPublicId
-                  ? { ...post, repostCount: (post.repostCount || 0) + 1, isRepostedByViewer: true }
-                  : post
+                  ? {
+                      ...post,
+                      repostCount: (post.repostCount || 0) + 1,
+                      isRepostedByViewer: true,
+                    }
+                  : post,
               ),
             })),
           };
         });
       };
 
-      queryClient.setQueriesData<IPost>({ queryKey: ["post", "publicId", postPublicId] }, (existing) =>
-        existing ? { ...existing, repostCount: (existing.repostCount || 0) + 1, isRepostedByViewer: true } : existing
+      queryClient.setQueriesData<IPost>(
+        { queryKey: ["post", "publicId", postPublicId] },
+        (existing) =>
+          existing
+            ? {
+                ...existing,
+                repostCount: (existing.repostCount || 0) + 1,
+                isRepostedByViewer: true,
+              }
+            : existing,
       );
-      queryClient.setQueriesData<IPost>({ queryKey: ["post", postPublicId] }, (existing) =>
-        existing ? { ...existing, repostCount: (existing.repostCount || 0) + 1, isRepostedByViewer: true } : existing
+      queryClient.setQueriesData<IPost>(
+        { queryKey: ["post", postPublicId] },
+        (existing) =>
+          existing
+            ? {
+                ...existing,
+                repostCount: (existing.repostCount || 0) + 1,
+                isRepostedByViewer: true,
+              }
+            : existing,
       );
 
       bumpRepostCountInInfinite(["posts"]);
@@ -236,7 +327,9 @@ export const useRepostPost = () => {
       bumpRepostCountInInfinite(["forYouFeed"]);
       bumpRepostCountInInfinite(["postsByTag"]);
 
-      queryClient.invalidateQueries({ queryKey: ["post", "publicId", postPublicId] });
+      queryClient.invalidateQueries({
+        queryKey: ["post", "publicId", postPublicId],
+      });
       queryClient.invalidateQueries({ queryKey: ["post", postPublicId] });
 
       // Invalidate feeds to show the new repost
@@ -247,7 +340,7 @@ export const useRepostPost = () => {
       queryClient.invalidateQueries({ queryKey: ["userPosts"] });
     },
     onError: (error: Error) => {
-      console.error("Error reposting post:", error);
+      devError("Error reposting post:", error);
     },
   });
 };
@@ -275,23 +368,39 @@ export const useUnrepostPost = () => {
               ...page,
               data: page.data.map((post) =>
                 post.publicId === postPublicId
-                  ? { ...post, repostCount: Math.max((post.repostCount || 0) - 1, 0), isRepostedByViewer: false }
-                  : post
+                  ? {
+                      ...post,
+                      repostCount: Math.max((post.repostCount || 0) - 1, 0),
+                      isRepostedByViewer: false,
+                    }
+                  : post,
               ),
             })),
           };
         });
       };
 
-      queryClient.setQueriesData<IPost>({ queryKey: ["post", "publicId", postPublicId] }, (existing) =>
-        existing
-          ? { ...existing, repostCount: Math.max((existing.repostCount || 0) - 1, 0), isRepostedByViewer: false }
-          : existing
+      queryClient.setQueriesData<IPost>(
+        { queryKey: ["post", "publicId", postPublicId] },
+        (existing) =>
+          existing
+            ? {
+                ...existing,
+                repostCount: Math.max((existing.repostCount || 0) - 1, 0),
+                isRepostedByViewer: false,
+              }
+            : existing,
       );
-      queryClient.setQueriesData<IPost>({ queryKey: ["post", postPublicId] }, (existing) =>
-        existing
-          ? { ...existing, repostCount: Math.max((existing.repostCount || 0) - 1, 0), isRepostedByViewer: false }
-          : existing
+      queryClient.setQueriesData<IPost>(
+        { queryKey: ["post", postPublicId] },
+        (existing) =>
+          existing
+            ? {
+                ...existing,
+                repostCount: Math.max((existing.repostCount || 0) - 1, 0),
+                isRepostedByViewer: false,
+              }
+            : existing,
       );
 
       decrementRepostCountInInfinite(["posts"]);
@@ -301,7 +410,9 @@ export const useUnrepostPost = () => {
       decrementRepostCountInInfinite(["forYouFeed"]);
       decrementRepostCountInInfinite(["postsByTag"]);
 
-      queryClient.invalidateQueries({ queryKey: ["post", "publicId", postPublicId] });
+      queryClient.invalidateQueries({
+        queryKey: ["post", "publicId", postPublicId],
+      });
       queryClient.invalidateQueries({ queryKey: ["post", postPublicId] });
 
       // Invalidate feeds to remove the repost
@@ -312,23 +423,26 @@ export const useUnrepostPost = () => {
       queryClient.invalidateQueries({ queryKey: ["userPosts"] });
     },
     onError: (error: Error) => {
-      console.error("Error removing repost:", error);
+      devError("Error removing repost:", error);
     },
   });
 };
 
-export const usePersonalizedFeed = (options?: { enabled?: boolean; limit?: number }) => {
+export const usePersonalizedFeed = (options?: {
+  enabled?: boolean;
+  limit?: number;
+}) => {
   const { isLoggedIn } = useAuth();
   const enabled = options?.enabled ?? isLoggedIn;
   const limit = options?.limit ?? 5;
 
-  return useInfiniteQuery<
-    PaginatedResponse<IPost>,
-    Error
-  >({
+  return useInfiniteQuery<PaginatedResponse<IPost>, Error>({
     queryKey: ["personalizedFeed"],
     queryFn: async ({ pageParam = 1 }) => {
-      const response = await fetchPersonalizedFeed(pageParam as number | string, limit);
+      const response = await fetchPersonalizedFeed(
+        pageParam as number | string,
+        limit,
+      );
       return {
         ...response,
         data: response.data.map((rawPost: IPost) => mapPost(rawPost)),
@@ -345,17 +459,20 @@ export const usePersonalizedFeed = (options?: { enabled?: boolean; limit?: numbe
   });
 };
 
-export const useTrendingFeed = (options?: { enabled?: boolean; limit?: number }) => {
+export const useTrendingFeed = (options?: {
+  enabled?: boolean;
+  limit?: number;
+}) => {
   const enabled = options?.enabled ?? true;
   const limit = options?.limit ?? 10;
 
-  return useInfiniteQuery<
-    PaginatedResponse<IPost>,
-    Error
-  >({
+  return useInfiniteQuery<PaginatedResponse<IPost>, Error>({
     queryKey: ["trendingFeed"],
     queryFn: async ({ pageParam = 1 }) => {
-      const response = await fetchTrendingFeed(pageParam as number | string, limit);
+      const response = await fetchTrendingFeed(
+        pageParam as number | string,
+        limit,
+      );
       return {
         ...response,
         data: response.data.map(mapPost),
@@ -377,10 +494,7 @@ export const useNewFeed = (options?: { enabled?: boolean; limit?: number }) => {
   const enabled = options?.enabled ?? true;
   const limit = options?.limit ?? 10;
 
-  const query = useInfiniteQuery<
-    PaginatedResponse<IPost>,
-    Error
-  >({
+  const query = useInfiniteQuery<PaginatedResponse<IPost>, Error>({
     queryKey: ["newFeed"],
     queryFn: async ({ pageParam = 1 }) => {
       const response = await fetchNewFeed(pageParam as number | string, limit);
@@ -411,18 +525,21 @@ export const useNewFeed = (options?: { enabled?: boolean; limit?: number }) => {
   return { ...query, refreshFeed };
 };
 
-export const useForYouFeed = (options?: { enabled?: boolean; limit?: number }) => {
+export const useForYouFeed = (options?: {
+  enabled?: boolean;
+  limit?: number;
+}) => {
   const { isLoggedIn } = useAuth();
   const enabled = options?.enabled ?? isLoggedIn;
   const limit = options?.limit ?? 10;
 
-  return useInfiniteQuery<
-    PaginatedResponse<IPost>,
-    Error
-  >({
+  return useInfiniteQuery<PaginatedResponse<IPost>, Error>({
     queryKey: ["forYouFeed"],
     queryFn: async ({ pageParam = 1 }) => {
-      const response = await fetchForYouFeed(pageParam as number | string, limit);
+      const response = await fetchForYouFeed(
+        pageParam as number | string,
+        limit,
+      );
       return {
         ...response,
         data: response.data.map(mapPost),

@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { SearchService } from "@/services/search.service";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { sanitizeTextInput } from "@/utils/sanitizers";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
@@ -16,7 +16,7 @@ export class SearchController {
 
     const queryValue = String(q || "");
     if (!queryValue.trim()) {
-      throw createError("ValidationError", 'Query parameter "q" is required');
+      throw Errors.validation('Query parameter "q" is required');
     }
 
     const searchTerms = queryValue.split(",").reduce<string[]>((acc, term) => {
@@ -31,7 +31,7 @@ export class SearchController {
     }, []);
 
     if (searchTerms.length === 0) {
-      throw createError("ValidationError", 'Query parameter "q" is required');
+      throw Errors.validation('Query parameter "q" is required');
     }
 
     const result = await this.searchService.searchAll(searchTerms);

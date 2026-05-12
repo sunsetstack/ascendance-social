@@ -1,9 +1,7 @@
 import { injectable, inject } from "tsyringe";
-import { ClientSession } from "mongoose";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { RedisService } from "./redis.service";
 import { logger } from "@/utils/winston";
-import { createError } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
 import { RedisClientType } from "redis";
 
@@ -32,7 +30,7 @@ interface QueuedJob {
  */
 @injectable()
 export class TransactionQueueService {
-  private handlers = new Map<string, (payload: any, session: ClientSession | null) => Promise<any>>();
+  private handlers = new Map<string, (payload: any) => Promise<any>>();
   private blockingClient: RedisClientType | null = null;
   private isProcessing = false;
   
@@ -52,7 +50,7 @@ export class TransactionQueueService {
   /**
    * Register a handler for a specific job name.
    */
-  registerHandler(jobName: string, handler: (payload: any, session: ClientSession | null) => Promise<any>) {
+  registerHandler(jobName: string, handler: (payload: any) => Promise<any>) {
     this.handlers.set(jobName, handler);
   }
 
@@ -123,7 +121,7 @@ export class TransactionQueueService {
       throw new Error(`[TransactionQueue] No handler registered for job: ${jobName}`);
     }
     
-    await this.unitOfWork.executeInTransaction((session) => handler(payload, session));
+    await this.unitOfWork.executeInTransaction(() => handler(payload));
   }
 
   /**
@@ -198,7 +196,7 @@ export class TransactionQueueService {
         }
 
         try {
-          await this.unitOfWork.executeInTransaction((session) => handler(job.payload, session));
+          await this.unitOfWork.executeInTransaction(() => handler(job.payload));
           this.metrics.totalProcessed++;
         } catch (error) {
           if (job.attempts < job.maxAttempts) {

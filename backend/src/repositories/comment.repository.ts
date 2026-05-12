@@ -1,4 +1,4 @@
-import { Model, ClientSession, FilterQuery } from "mongoose";
+import { Model, FilterQuery } from "mongoose";
 import { BaseRepository } from "./base.repository";
 import { IComment, PopulatedCommentLean, TransformedComment } from "@/types";
 import { inject, injectable } from "tsyringe";
@@ -178,9 +178,9 @@ export class CommentRepository extends BaseRepository<IComment> {
   async updateComment(
     commentId: string,
     content: string,
-    session?: ClientSession,
   ): Promise<TransformedComment | null> {
     try {
+      const session = this.getSession();
       const comment = await this.model
         .findByIdAndUpdate(
           commentId,
@@ -225,12 +225,9 @@ export class CommentRepository extends BaseRepository<IComment> {
    * Increment or decrement the reply count for a comment.
    * Uses an atomic $inc operation and supports transactional sessions.
    */
-  async updateReplyCount(
-    commentId: string,
-    delta: number,
-    session?: ClientSession,
-  ): Promise<void> {
+  async updateReplyCount(commentId: string, delta: number): Promise<void> {
     try {
+      const session = this.getSession();
       await this.model
         .updateOne(
           { _id: commentId },
@@ -247,12 +244,10 @@ export class CommentRepository extends BaseRepository<IComment> {
    * Increment or decrement the likes count for a comment.
    * Uses an atomic $inc operation and supports transactional sessions.
    */
-  async updateLikesCount(
-    commentId: string,
-    delta: number,
-    session?: ClientSession,
-  ): Promise<void> {
+  async updateLikesCount(commentId: string, delta: number): Promise<void> {
     try {
+      const session = this.getSession();
+
       await this.model
         .updateOne(
           { _id: commentId },
@@ -269,11 +264,9 @@ export class CommentRepository extends BaseRepository<IComment> {
    * Permanently delete a comment document.
    * Returns the removed comment when found, or null when it does not exist.
    */
-  async deleteComment(
-    commentId: string,
-    session?: ClientSession,
-  ): Promise<IComment | null> {
+  async deleteComment(commentId: string): Promise<IComment | null> {
     try {
+      const session = this.getSession();
       // Replaced 'as unknown as IComment' with native Mongoose generics
       return await this.model
         .findByIdAndDelete(commentId, { session })
@@ -292,9 +285,9 @@ export class CommentRepository extends BaseRepository<IComment> {
   async softDeleteComment(
     commentId: string,
     deletedBy: "user" | "admin",
-    session?: ClientSession,
   ): Promise<IComment | null> {
     try {
+      const session = this.getSession();
       return await this.model
         .findByIdAndUpdate(
           commentId,
@@ -355,11 +348,9 @@ export class CommentRepository extends BaseRepository<IComment> {
    * Hard-delete all comments associated with a post.
    * Returns the number of documents removed.
    */
-  async deleteCommentsByPostId(
-    postId: string,
-    session?: ClientSession,
-  ): Promise<number> {
+  async deleteCommentsByPostId(postId: string): Promise<number> {
     try {
+      const session = this.getSession();
       const result = await this.model
         .deleteMany({ postId }, { session })
         .exec();
@@ -373,11 +364,10 @@ export class CommentRepository extends BaseRepository<IComment> {
    * Hard-delete all comments authored by a user.
    * Returns the number of documents removed.
    */
-  async deleteCommentsByUserId(
-    userId: string,
-    session?: ClientSession,
-  ): Promise<number> {
+  async deleteCommentsByUserId(userId: string): Promise<number> {
     try {
+      const session = this.getSession();
+
       const result = await this.model
         .deleteMany({ userId }, { session })
         .exec();

@@ -2,6 +2,8 @@ import { Router, Request, Response, text } from "express";
 import { injectable, inject } from "tsyringe";
 import { TelemetryService } from "@/services/telemetry.service";
 import { TOKENS } from "@/types/tokens";
+import { logger } from "@/utils/winston";
+import { telemetryBatchSchema } from "@/utils/schemas/telemetry.schemas";
 import {
   AuthFactory,
   adminRateLimit,
@@ -28,7 +30,7 @@ export class TelemetryRoutes {
     this.router.post(
       "/",
       optionalAuth,
-      text({ type: "*/*" }),
+      text({ type: "*/*", limit: "100kb" }),
       async (req: Request, res: Response) => {
         try {
           // handle sendBeacon which might send as text/plain
@@ -42,18 +44,19 @@ export class TelemetryRoutes {
             }
           }
 
-          const { events } = body;
-
-          if (!Array.isArray(events)) {
-            res.status(400).json({ error: "events must be an array" });
+          const parsedBody = telemetryBatchSchema.safeParse(body);
+          if (!parsedBody.success) {
+            res.status(400).json({ error: "Invalid telemetry payload" });
             return;
           }
+
+          const { events } = parsedBody.data;
 
           // extract client info for context
           const clientInfo = {
             ip: req.ip || req.socket.remoteAddress,
             userAgent: req.get("User-Agent"),
-            userId: (req as any).decodedUser?.publicId,
+            userId: req.decodedUser?.publicId,
           };
 
           await this.telemetryService.processEvents(events, clientInfo);
@@ -80,7 +83,10 @@ export class TelemetryRoutes {
         } catch (error) {
           const message =
             error instanceof Error ? error.message : "Failed to get summary";
-          res.status(500).json({ error: message });
+          logger.error("Telemetry summary error", { error: message });
+          res
+            .status(500)
+            .json({ error: "Failed to retrieve telemetry summary" });
         }
       },
     );

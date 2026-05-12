@@ -26,7 +26,11 @@ describe("TagService", () => {
 
 		mockSession = {} as ClientSession;
 
-		tagService = new TagService(mockTagRepository as any);
+		const mockRedisService = {
+			get: sinon.stub().resolves(null),
+			set: sinon.stub().resolves(),
+		};
+		tagService = new TagService(mockTagRepository as any, mockRedisService as any);
 	});
 
 	afterEach(() => {

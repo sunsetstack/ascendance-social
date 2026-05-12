@@ -12,6 +12,7 @@ chai.use(chaiAsPromised);
 describe("GetForYouFeedQueryHandler", () => {
 	let handler: GetForYouFeedQueryHandler;
 
+	let mockFeedReadDao: { getRankedFeedWithCursor: SinonStub, getRankedFeed: SinonStub };
 	let mockPostReadRepository: {
 		findPostsByPublicIds: SinonStub;
 		getRankedFeedWithCursor: SinonStub;
@@ -23,6 +24,7 @@ describe("GetForYouFeedQueryHandler", () => {
 	let mockFeedEnrichmentService: { enrichFeedWithCurrentData: SinonStub };
 
 	beforeEach(() => {
+		mockFeedReadDao = { getRankedFeedWithCursor: sinon.stub(), getRankedFeed: sinon.stub() };
 		mockPostReadRepository = {
 			findPostsByPublicIds: sinon.stub(),
 			getRankedFeedWithCursor: sinon.stub(),
@@ -37,6 +39,7 @@ describe("GetForYouFeedQueryHandler", () => {
 		mockFeedEnrichmentService = { enrichFeedWithCurrentData: sinon.stub() };
 
 		handler = new GetForYouFeedQueryHandler(
+			mockFeedReadDao as any,
 			mockPostReadRepository as any,
 			mockUserReadRepository as any,
 			mockUserPreferenceRepository as any,
@@ -69,7 +72,7 @@ describe("GetForYouFeedQueryHandler", () => {
 
 		const result = await handler.execute(new GetForYouFeedQuery("viewer", 1, 10));
 
-		expect(mockPostReadRepository.getRankedFeedWithCursor.called).to.be.false;
+		expect(mockFeedReadDao.getRankedFeedWithCursor.called).to.be.false;
 		expect(result.data[0].publicId).to.equal("p1");
 		expect(result.total).to.equal(0);
 	});
@@ -78,7 +81,7 @@ describe("GetForYouFeedQueryHandler", () => {
 		mockRedisService.getFeedWithCursor.resolves({ ids: [], hasMore: false, nextCursor: undefined });
 		mockUserReadRepository.findByPublicId.resolves({ _id: "userObjectId" });
 		mockUserPreferenceRepository.getTopUserTags.resolves([{ tag: "cats" }]);
-		mockPostReadRepository.getRankedFeedWithCursor.resolves({
+		mockFeedReadDao.getRankedFeedWithCursor.resolves({
 			data: [
 				{
 					publicId: "p1",
@@ -99,7 +102,7 @@ describe("GetForYouFeedQueryHandler", () => {
 
 		const result = await handler.execute(new GetForYouFeedQuery("viewer", 1, 10));
 
-		expect(mockPostReadRepository.getRankedFeedWithCursor.calledOnce).to.be.true;
+		expect(mockFeedReadDao.getRankedFeedWithCursor.calledOnce).to.be.true;
 		expect(mockRedisService.addToFeed.called).to.be.true;
 		expect(result.data[0].publicId).to.equal("p1");
 	});
@@ -108,7 +111,7 @@ describe("GetForYouFeedQueryHandler", () => {
 		mockRedisService.getFeedWithCursor.resolves({ ids: [], hasMore: false, nextCursor: undefined });
 		mockUserReadRepository.findByPublicId.resolves({ _id: "userObjectId" });
 		mockUserPreferenceRepository.getTopUserTags.resolves([]);
-		mockPostReadRepository.getRankedFeedWithCursor.resolves({ data: [], hasMore: false, nextCursor: undefined });
+		mockFeedReadDao.getRankedFeedWithCursor.resolves({ data: [], hasMore: false, nextCursor: undefined });
 		mockFeedEnrichmentService.enrichFeedWithCurrentData.callsFake(async (posts: any) => posts);
 
 		await handler.execute(new GetForYouFeedQuery("viewer", 2, 10, "cursor-token"));

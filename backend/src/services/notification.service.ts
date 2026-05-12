@@ -1,7 +1,6 @@
-import { ClientSession } from "mongoose";
-import { NotificationRepository } from "@/repositories/notification.respository";
+import { NotificationRepository } from "@/repositories/notification.repository";
 import { INotification, NotificationPlain } from "@/types";
-import { createError, isErrorWithStatusCode, wrapError } from "@/utils/errors";
+import { Errors, isErrorWithStatusCode, wrapError } from "@/utils/errors";
 import { inject, injectable } from "tsyringe";
 import { Server as SocketIOServer } from "socket.io";
 import { WebSocketServer } from "../server/socketServer";
@@ -10,6 +9,8 @@ import { ImageRepository } from "@/repositories/image.repository";
 import { RedisService } from "./redis.service";
 import { redisLogger, errorLogger, logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import { SystemActor } from "@/utils/actors/SystemActor";
+import { normalizeNotificationPlain } from "@/utils/notification-plain";
 
 @injectable()
 export class NotificationService {
@@ -30,23 +31,25 @@ export class NotificationService {
     return this.webSocketServer.getIO();
   }
 
+  private toPlainNotification(notification: INotification | NotificationPlain): NotificationPlain {
+    const raw =
+      typeof notification === "object" &&
+      notification !== null &&
+      "toJSON" in notification &&
+      typeof notification.toJSON === "function"
+        ? notification.toJSON()
+        : notification;
+
+    return normalizeNotificationPlain(raw) ?? {};
+  }
+
   private sendNotification(
     io: SocketIOServer,
     userPublicId: string,
-    notification: INotification,
+    notification: INotification | NotificationPlain,
   ) {
     try {
-      // emit a plain JSON object using toJSON for proper serialization
-      const plain: NotificationPlain = notification.toJSON
-        ? notification.toJSON()
-        : { ...notification };
-
-      if (plain._id && !plain.id) {
-        plain.id = String(plain._id);
-      }
-
-      delete plain._id;
-      delete plain.$__;
+      const plain = this.toPlainNotification(notification);
 
       logger.info(`Sending new_notification to user ${userPublicId}:`, {
         notification: plain,
@@ -62,19 +65,10 @@ export class NotificationService {
   private readNotification(
     io: SocketIOServer,
     userPublicId: string,
-    notification: INotification,
+    notification: INotification | NotificationPlain,
   ) {
     try {
-      const plain: NotificationPlain = notification.toJSON
-        ? notification.toJSON()
-        : { ...notification };
-
-      if (plain._id && !plain.id) {
-        plain.id = String(plain._id);
-      }
-
-      delete plain._id;
-      delete plain.$__;
+      const plain = this.toPlainNotification(notification);
 
       logger.info(`Sending notification_read to user ${userPublicId}:`, {
         notification: plain,
@@ -97,11 +91,9 @@ export class NotificationService {
     actorUsername?: string; // optional actor username provided by frontend
     actorHandle?: string; // optional actor handle provided by frontend
     actorAvatar?: string; // optional actor avatar URL
-    session?: ClientSession;
   }): Promise<INotification> {
     if (!data.receiverId || !data.actionType || !data.actorId) {
-      throw createError(
-        "ValidationError",
+      throw Errors.validation(
         "Missing required notification fields",
       );
     }
@@ -120,7 +112,7 @@ export class NotificationService {
       // Fallback: Fetch actor info if missing
       if (
         (!actorUsername || !actorHandle || !actorAvatar) &&
-        actorPublicId !== "system-monitor"
+        actorPublicId !== SystemActor.id
       ) {
         try {
           const actor = await this.userRepository.findByPublicId(actorPublicId);
@@ -139,8 +131,7 @@ export class NotificationService {
 
       // Final fallback for avatar to ensure it's never empty
       if (!actorAvatar) {
-        actorAvatar =
-          "https://res.cloudinary.com/dfyqaqnj7/image/upload/v1737562142/defaultAvatar_evsmmj.jpg";
+        actorAvatar = SystemActor.avatar;
       }
 
       const io = this.getIO();
@@ -159,7 +150,6 @@ export class NotificationService {
           isRead: false,
           timestamp: new Date(),
         },
-        data.session, // pass the session
       );
 
       // emit via WebSocket
@@ -175,7 +165,7 @@ export class NotificationService {
       return notification;
     } catch (error) {
       logger.error(`notificationRepository.create error:`, { error });
-      throw createError("InternalServerError", "Failed to create notification");
+      throw Errors.internal("Failed to create notification");
     }
   }
 
@@ -191,7 +181,7 @@ export class NotificationService {
     userId: string,
     limit: number = 20,
     before?: number,
-  ): Promise<INotification[]> {
+  ): Promise<NotificationPlain[]> {
     redisLogger.debug(`getNotifications called`, { userId, before, limit });
 
     try {
@@ -212,7 +202,9 @@ export class NotificationService {
           userId,
           count: dbNotifications.length,
         });
-        return dbNotifications;
+        return dbNotifications.map((notification) =>
+          this.toPlainNotification(notification),
+        );
       }
 
       // initial page load - try Redis cache first
@@ -262,16 +254,18 @@ export class NotificationService {
           });
       }
 
-      return allRecentNotifications.slice(0, limit);
+      return allRecentNotifications
+        .slice(0, limit)
+        .map((notification) => this.toPlainNotification(notification));
     } catch (error) {
       errorLogger.error(`getNotifications error`, {
         userId,
         error: error instanceof Error ? error.message : String(error),
       });
       if (error instanceof Error) {
-        throw createError("InternalServerError", error.message);
+        throw Errors.internal(error.message);
       } else {
-        throw createError("InternalServerError", String(error));
+        throw Errors.internal(String(error));
       }
     }
   }
@@ -292,7 +286,7 @@ export class NotificationService {
           notificationId,
           userPublicId,
         });
-        throw createError("PathError", "Notification not found");
+        throw Errors.notFound("Notification");
       }
       logger.info(`[NotificationService] markAsRead updated`, {
         notificationId,
@@ -316,15 +310,7 @@ export class NotificationService {
    */
   async getUnreadCount(userPublicId: string): Promise<number> {
     try {
-      // try Redis first for fast count
-      const count =
-        await this.redisService.getUnreadNotificationCount(userPublicId);
-      if (count >= 0) {
-        return count;
-      }
-
-      // fallback to DB if Redis fails
-      return await this.notificationRepository.getUnreadCount(userPublicId);
+      return await this.redisService.getUnreadNotificationCount(userPublicId);
     } catch (error) {
       // fallback to DB on error
       logger.warn(
@@ -355,9 +341,9 @@ export class NotificationService {
       return modifiedCount;
     } catch (error) {
       if (error instanceof Error) {
-        throw createError("InternalServerError", error.message);
+        throw Errors.internal(error.message);
       }
-      throw createError("InternalServerError", String(error));
+      throw Errors.internal(String(error));
     }
   }
 }

@@ -1,9 +1,11 @@
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs";
 import * as path from "path";
-import { IImageStorageService } from "@/types";
+import { pipeline } from "stream/promises";
+import { Readable } from "stream";
+import { IImageStorageService, ImageUploadInput } from "@/types";
 import { injectable } from "tsyringe";
-import { createError, wrapError } from "@/utils/errors";
+import { Errors, wrapError } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 
 @injectable()
@@ -21,6 +23,109 @@ export class LocalStorageService implements IImageStorageService {
     );
   }
 
+  /**
+   * Convert a Buffer to a readable stream
+   */
+  private bufferToStream(buffer: Buffer): Readable {
+    const readable = new Readable();
+    readable.push(buffer);
+    readable.push(null);
+    return readable;
+  }
+
+  /**
+   * Get file extension from MIME type or original name
+   */
+  private getExtension(mimeType?: string, originalName?: string): string {
+    if (mimeType) {
+      const mimeToExt: Record<string, string> = {
+        "image/jpeg": ".jpg",
+        "image/jpg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+      };
+      if (mimeToExt[mimeType]) return mimeToExt[mimeType];
+    }
+    if (originalName) {
+      const ext = path.extname(originalName).toLowerCase();
+      if ([".jpg", ".jpeg", ".png", ".webp"].includes(ext)) {
+        return ext === ".jpeg" ? ".jpg" : ext;
+      }
+    }
+    return ".png"; // default
+  }
+
+  /**
+   * Upload an image from a Buffer or Stream directly to local storage.
+   * Uses stream pipeline for efficient memory usage.
+   */
+  async uploadImageStream(
+    input: ImageUploadInput,
+    userId: string,
+    folder?: string,
+  ): Promise<{ url: string; publicId: string }> {
+    // If filePath is provided, fall back to legacy method
+    if (input.filePath && !input.buffer && !input.stream) {
+      return this.uploadImage(input.filePath, userId, folder);
+    }
+
+    try {
+      const safeUserId = this.validateUserId(userId);
+      const ext = this.getExtension(input.mimeType, input.originalName);
+      const filename = `${uuidv4()}${ext}`;
+      
+      logger.info("UserID in local storage service:", { safeUserId });
+
+      let userDir = this.safeJoin(this.uploadsDir, safeUserId);
+      let urlPrefix = `/uploads/${safeUserId}`;
+      let publicIdPrefix = safeUserId;
+
+      if (folder) {
+        const safeFolder = folder
+          .split("/")
+          .filter(Boolean)
+          .map((s) => s.replace(/[^a-z0-9-]/gi, ""))
+          .join("/");
+
+        if (safeFolder) {
+          userDir = this.safeJoin(this.uploadsDir, safeFolder);
+          urlPrefix = `/uploads/${safeFolder}`;
+          publicIdPrefix = safeFolder;
+        }
+      }
+
+      const destFilepath = this.safeJoin(userDir, filename);
+
+      if (!fs.existsSync(userDir)) {
+        fs.mkdirSync(userDir, { recursive: true });
+      }
+
+      // Get source stream
+      let sourceStream: Readable;
+      if (input.buffer) {
+        sourceStream = this.bufferToStream(input.buffer);
+      } else if (input.stream) {
+        sourceStream = input.stream;
+      } else {
+        throw Errors.validation("No image data provided");
+      }
+
+      // Use stream pipeline for efficient writing
+      const writeStream = fs.createWriteStream(destFilepath);
+      await pipeline(sourceStream, writeStream);
+
+      const url = `${urlPrefix}/${filename}`;
+      return { url, publicId: `${publicIdPrefix}/${filename}` };
+    } catch (error) {
+      logger.error("Failed to upload image stream", { error });
+      throw wrapError(error, "StorageError");
+    }
+  }
+
+  /**
+   * @deprecated Use uploadImageStream for better performance
+   * Legacy method that copies from file path
+   */
   async uploadImage(
     filePath: string,
     userId: string,
@@ -60,8 +165,10 @@ export class LocalStorageService implements IImageStorageService {
         fs.mkdirSync(userDir, { recursive: true });
       }
 
-      // Copy instead of rename so retries can re-read the temp file if a transaction retries
-      await fs.promises.copyFile(filePath, destFilepath);
+      // Use stream pipeline instead of copyFile for better efficiency
+      const readStream = fs.createReadStream(filePath);
+      const writeStream = fs.createWriteStream(destFilepath);
+      await pipeline(readStream, writeStream);
 
       const url = `${urlPrefix}/${filename}`;
 
@@ -148,12 +255,12 @@ export class LocalStorageService implements IImageStorageService {
         return null;
       }
     })();
-    if (!parsed) throw createError("StorageError", "Invalid URL");
+    if (!parsed) throw Errors.storage("Invalid URL");
     const pathname = decodeURIComponent(parsed.pathname);
 
     const publicId = this.extractPublicId(pathname);
     if (!publicId)
-      throw createError("StorageError", "Could not extract publicId from URL");
+      throw Errors.storage("Could not extract publicId from URL");
 
     // validate filename and ownerPublicId
     const safeFileName = this.validateFileName(publicId);
@@ -167,7 +274,7 @@ export class LocalStorageService implements IImageStorageService {
       return { result: "skipped" };
     }
     if (stat.isSymbolicLink()) {
-      throw createError("StorageError", "Refusing to remove symlink");
+      throw Errors.storage("Refusing to remove symlink");
     }
 
     await fs.promises.unlink(assetPath);
@@ -242,7 +349,7 @@ export class LocalStorageService implements IImageStorageService {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
     if (!uuidV4Regex.test(cleaned)) {
-      throw createError("SecurityError", "Invalid user identifier format");
+      throw Errors.validation("Invalid user identifier format");
     }
 
     return cleaned;
@@ -257,7 +364,7 @@ export class LocalStorageService implements IImageStorageService {
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(png|jpg|jpeg|webp)$/i;
 
     if (!fileNameRegex.test(cleaned)) {
-      throw createError("SecurityError", "Invalid file name format");
+      throw Errors.validation("Invalid file name format");
     }
 
     return cleaned;
@@ -271,7 +378,7 @@ export class LocalStorageService implements IImageStorageService {
 
     // check if resolved path escapes base directory
     if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-      throw createError("SecurityError", "Path traversal attempt detected");
+      throw Errors.validation("Path traversal attempt detected");
     }
 
     return resolvedPath;

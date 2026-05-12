@@ -1,4 +1,5 @@
 import { errorLogger } from "./winston";
+import { getErrorMessage } from "./errors";
 
 /**
  * Wrapper to catch and log errors in async functions
@@ -18,11 +19,11 @@ import { errorLogger } from "./winston";
 export async function withErrorLogging<T>(fn: () => Promise<T>, context: string): Promise<T> {
 	try {
 		return await fn();
-	} catch (error: any) {
+	} catch (error: unknown) {
 		errorLogger.error({
 			context,
-			message: error.message,
-			stack: error.stack,
+			message: getErrorMessage(error),
+			stack: error instanceof Error ? error.stack : undefined,
 			timestamp: new Date().toISOString(),
 		});
 		throw error; // Re-throw to let caller handle it
@@ -35,11 +36,11 @@ export async function withErrorLogging<T>(fn: () => Promise<T>, context: string)
 export function withErrorLoggingSync<T>(fn: () => T, context: string): T {
 	try {
 		return fn();
-	} catch (error: any) {
+	} catch (error: unknown) {
 		errorLogger.error({
 			context,
-			message: error.message,
-			stack: error.stack,
+			message: getErrorMessage(error),
+			stack: error instanceof Error ? error.stack : undefined,
 			timestamp: new Date().toISOString(),
 		});
 		throw error;
@@ -49,11 +50,11 @@ export function withErrorLoggingSync<T>(fn: () => T, context: string): T {
 /**
  * Log error without re-throwing (for fire-and-forget operations)
  */
-export function logError(error: any, context: string, additionalInfo?: any): void {
+export function logError(error: unknown, context: string, additionalInfo?: unknown): void {
 	errorLogger.error({
 		context,
-		message: error.message || String(error),
-		stack: error.stack,
+		message: getErrorMessage(error),
+		stack: error instanceof Error ? error.stack : undefined,
 		additionalInfo,
 		timestamp: new Date().toISOString(),
 	});

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Alert, Box, Button, Container, Paper, TextField, Typography } from "@mui/material";
 import { useResetPassword } from "../hooks/user/useUserResetPassword";
+import { devError } from "@/lib/devLogger";
 
 const ResetPassword = () => {
 	const [searchParams] = useSearchParams();
@@ -45,7 +46,7 @@ const ResetPassword = () => {
 		try {
 			await reset({ token, newPassword });
 		} catch (error) {
-			console.error("Reset password error:", error);
+			devError("Reset password error:", error);
 			setErrorMessage(error instanceof Error ? error.message : "An error occurred. Please try again.");
 		}
 	};

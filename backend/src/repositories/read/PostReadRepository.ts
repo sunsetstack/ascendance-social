@@ -1,15 +1,6 @@
-import { ClientSession } from "mongoose";
 import { inject, injectable } from "tsyringe";
-import {
-  CursorPaginationOptions,
-  CursorPaginationResult,
-  FeedPost,
-  IPost,
-  PaginationOptions,
-  PaginationResult,
-  TrendingTag,
-} from "@/types";
-import { IPostReadRepository } from "../interfaces/IPostReadRepository";
+import { FeedPost, IPost, PaginationOptions, PaginationResult } from "@/types";
+import type { IPostReadRepository } from "../interfaces/IPostReadRepository";
 import { PostRepository } from "../post.repository";
 import { TOKENS } from "@/types/tokens";
 
@@ -20,33 +11,39 @@ import { TOKENS } from "@/types/tokens";
  */
 @injectable()
 export class PostReadRepository implements IPostReadRepository {
-  constructor(@inject(TOKENS.Repositories.Post) private readonly postRepository: PostRepository) { }
+  constructor(
+    @inject(TOKENS.Repositories.Post)
+    private readonly postRepository: PostRepository,
+  ) {}
 
-  async findById(id: string, session?: ClientSession): Promise<IPost | null> {
-    return this.postRepository.findById(id, session);
+  async findById(id: string): Promise<IPost | null> {
+    return this.postRepository.findById(id);
   }
 
   async findInternalIdByPublicId(publicId: string): Promise<string | null> {
     return this.postRepository.findInternalIdByPublicId(publicId);
   }
 
-  async findOneByPublicId(publicId: string, session?: ClientSession): Promise<IPost | null> {
-    return this.postRepository.findOneByPublicId(publicId, session);
+  async findOneByPublicId(publicId: string): Promise<IPost | null> {
+    return this.postRepository.findOneByPublicId(publicId);
   }
 
-  async findByIdWithPopulates(id: string, session?: ClientSession): Promise<IPost | null> {
-    return this.postRepository.findByIdWithPopulates(id, session);
+  async findByIdWithPopulates(id: string): Promise<IPost | null> {
+    return this.postRepository.findByIdWithPopulates(id);
   }
 
-  async findByPublicId(publicId: string, session?: ClientSession): Promise<IPost | null> {
-    return this.postRepository.findByPublicId(publicId, session);
+  async findByPublicId(publicId: string): Promise<IPost | null> {
+    return this.postRepository.findByPublicId(publicId);
   }
 
-  async findBySlug(slug: string, session?: ClientSession): Promise<IPost | null> {
-    return this.postRepository.findBySlug(slug, session);
+  async findBySlug(slug: string): Promise<IPost | null> {
+    return this.postRepository.findBySlug(slug);
   }
 
-  async findPostsByIds(ids: string[], viewerPublicId?: string): Promise<FeedPost[]> {
+  async findPostsByIds(
+    ids: string[],
+    viewerPublicId?: string,
+  ): Promise<FeedPost[]> {
     return this.postRepository.findPostsByIds(ids, viewerPublicId);
   }
 
@@ -54,104 +51,50 @@ export class PostReadRepository implements IPostReadRepository {
     return this.postRepository.findPostsByPublicIds(publicIds);
   }
 
-  async findByUserPublicId(userPublicId: string, options: PaginationOptions): Promise<PaginationResult<FeedPost>> {
+  async findByUserPublicId(
+    userPublicId: string,
+    options: PaginationOptions,
+  ): Promise<PaginationResult<FeedPost>> {
     return this.postRepository.findByUserPublicId(userPublicId, options);
   }
 
-  async findByCommunityId(communityId: string, page: number, limit: number): Promise<IPost[]> {
+  async findByCommunityId(
+    communityId: string,
+    page: number,
+    limit: number,
+  ): Promise<IPost[]> {
     return this.postRepository.findByCommunityId(communityId, page, limit);
   }
 
   async findByTags(
     tagIds: string[],
-    options?: { page?: number; limit?: number; sortBy?: string; sortOrder?: string },
+    options?: {
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: string;
+    },
   ): Promise<PaginationResult<IPost>> {
     return this.postRepository.findByTags(tagIds, options);
   }
 
-  async findWithPagination(options: PaginationOptions, session?: ClientSession): Promise<PaginationResult<FeedPost>> {
-    return this.postRepository.findWithPagination(options, session);
-  }
-
-
-
-  async getFeedForUserCoreWithCursor(
-    followingIds: string[],
-    favoriteTags: string[],
-    options: CursorPaginationOptions
-  ): Promise<CursorPaginationResult<FeedPost>> {
-    return this.postRepository.getFeedForUserCoreWithCursor(followingIds, favoriteTags, options);
-  }
-
-  async getRankedFeed(favoriteTags: string[], limit: number, skip: number): Promise<PaginationResult<FeedPost>> {
-    return this.postRepository.getRankedFeed(favoriteTags, limit, skip);
-  }
-
-  async getTrendingFeed(
-    limit: number,
-    skip: number,
-    options?: {
-      timeWindowDays?: number;
-      minLikes?: number;
-      weights?: { recency?: number; popularity?: number; comments?: number };
-    },
+  async findWithPagination(
+    options: PaginationOptions,
   ): Promise<PaginationResult<FeedPost>> {
-    return this.postRepository.getTrendingFeed(limit, skip, options);
-  }
-
-  async getTrendingFeedWithFacet(
-    limit: number,
-    skip: number,
-    options?: {
-      timeWindowDays?: number;
-      minLikes?: number;
-      weights?: { recency?: number; popularity?: number; comments?: number };
-    }
-  ): Promise<PaginationResult<FeedPost>> {
-    return this.postRepository.getTrendingFeedWithFacet(limit, skip, options);
-  }
-
-  async getNewFeedWithCursor(options: CursorPaginationOptions): Promise<CursorPaginationResult<FeedPost>> {
-    return this.postRepository.getNewFeedWithCursor(options);
-  }
-
-  async getTrendingFeedWithCursor(
-    options: CursorPaginationOptions & {
-      timeWindowDays?: number;
-      minLikes?: number;
-      weights?: { recency?: number; popularity?: number; comments?: number };
-    }
-  ): Promise<CursorPaginationResult<FeedPost>> {
-    return this.postRepository.getTrendingFeedWithCursor(options);
-  }
-
-  async getRankedFeedWithCursor(
-    favoriteTags: string[],
-    options: CursorPaginationOptions & {
-      weights?: { recency?: number; popularity?: number; tagMatch?: number };
-    }
-  ): Promise<CursorPaginationResult<FeedPost>> {
-    return this.postRepository.getRankedFeedWithCursor(favoriteTags, options);
-  }
-
-  async getNewFeed(limit: number, skip: number): Promise<PaginationResult<FeedPost>> {
-    return this.postRepository.getNewFeed(limit, skip);
+    return this.postRepository.findWithPagination(options);
   }
 
   async countDocuments(filter: Record<string, unknown>): Promise<number> {
     return this.postRepository.countDocuments(filter);
   }
 
-  async findOneByFilter(filter: Record<string, unknown>): Promise<IPost | null> {
+  async findOneByFilter(
+    filter: Record<string, unknown>,
+  ): Promise<IPost | null> {
     return this.postRepository.findOneByFilter(filter);
   }
 
   async countByCommunityId(communityId: string): Promise<number> {
     return this.postRepository.countByCommunityId(communityId);
   }
-
-  async getTrendingTags(limit: number, timeWindowHours: number): Promise<TrendingTag[]> {
-    return this.postRepository.getTrendingTags(limit, timeWindowHours);
-  }
 }
-

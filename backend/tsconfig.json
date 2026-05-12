@@ -1,31 +1,41 @@
 {
-	"extends": "../tsconfig.base.json",
-	"compilerOptions": {
-		"composite": true,
-		"outDir": "dist",
-		"rootDir": "src",
-		"noEmit": false,
-		"module": "CommonJS",
-		"baseUrl": "./src",
-		"paths": {
-			"@/*": ["./*"],
-			"@/application/*": ["./application/*"],
-			"@/config/*": ["./config/*"],
-			"@/controllers/*": ["./controllers/*"],
-			"@/database/*": ["./database/*"],
-			"@/di/*": ["./di/*"],
-			"@/middleware/*": ["./middleware/*"],
-			"@/models/*": ["./models/*"],
-			"@/repositories/*": ["./repositories/*"],
-			"@/routes/*": ["./routes/*"],
-			"@/server/*": ["./server/*"],
-			"@/services/*": ["./services/*"],
-			"@/types/*": ["./types/*"],
-			"@/utils/*": ["./utils/*"]
-		},
-		"moduleResolution": "node",
-		"types": ["node"]
-	},
-	"include": ["src/**/*"],
-	"exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts", "**/__tests__/**"]
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "noEmit": false,
+    "target": "ESNEXT",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2023"],
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "moduleDetection": "force",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/application/*": ["./src/application/*"],
+      "@/config/*": ["./src/config/*"],
+      "@/controllers/*": ["./src/controllers/*"],
+      "@/database/*": ["./src/database/*"],
+      "@/di/*": ["./src/di/*"],
+      "@/middleware/*": ["./src/middleware/*"],
+      "@/models/*": ["./src/models/*"],
+      "@/repositories/*": ["./src/repositories/*"],
+      "@/routes/*": ["./src/routes/*"],
+      "@/server/*": ["./src/server/*"],
+      "@/services/*": ["./src/services/*"],
+      "@/types/*": ["./src/types/*"],
+      "@/utils/*": ["./src/utils/*"]
+    },
+    "types": ["node"]
+  },
+  "include": ["src/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/__tests__/**"
+  ]
 }

@@ -1,6 +1,6 @@
 import { inject, injectable } from "tsyringe";
 import { RedisService } from "../redis.service";
-import { IUserReadRepository } from "@/repositories/interfaces";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import { FeedPost, UserLookupData } from "@/types";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { CacheConfig } from "@/config/cacheConfig";

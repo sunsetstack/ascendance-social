@@ -30,6 +30,7 @@ import { TrendingWorker } from "./workers/_impl/trending.worker.impl";
 import { ProfileSyncWorker } from "./workers/_impl/profile-sync.worker.impl";
 import { NewFeedWarmCacheWorker } from "./workers/_impl/newFeedWarmCache.worker.impl";
 import { IpMonitorWorker } from "./workers/_impl/ip-monitor.worker.impl";
+import { OutboxWorker } from "./workers/outbox.worker";
 
 dns.setServers(["8.8.8.8", "1.1.1.1"]);
 // Global error handlers
@@ -76,23 +77,27 @@ async function bootstrap(): Promise<void> {
     // Start workers in-process (same event loop - I/O bound, no need for threads)
     await startInProcessWorkers(metricsService);
 
-    // Create Express app and HTTP server
-    const expressServer = container.resolve(Server);
-    const app = expressServer.getExpressApp();
-    const server = createServer(app);
+    if (process.env.ENABLE_API !== "false") {
+      // Create Express app and HTTP server
+      const expressServer = container.resolve(Server);
+      const app = expressServer.getExpressApp();
+      const server = createServer(app);
 
-    // Resolve and initialize WebSocket server
-    const webSocketServer =
-      container.resolve<WebSocketServer>("WebSocketServer");
-    webSocketServer.initialize(server);
+      // Resolve and initialize WebSocket server
+      const webSocketServer =
+        container.resolve<WebSocketServer>("WebSocketServer");
+      webSocketServer.initialize(server);
 
-    // Initialize real-time feed service
-    container.resolve<RealTimeFeedService>("RealTimeFeedService");
-    logger.info("Real-time feed service initialized");
+      // Initialize real-time feed service
+      container.resolve<RealTimeFeedService>("RealTimeFeedService");
+      logger.info("Real-time feed service initialized");
 
-    // Start the HTTP server last
-    const port = 3000;
-    expressServer.start(server, port);
+      // Start the HTTP server last
+      const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+      expressServer.start(server, port);
+    } else {
+      logger.info("API server disabled via ENABLE_API=false");
+    }
   } catch (error) {
     console.error("Startup failed", error);
     process.exit(1);
@@ -109,7 +114,7 @@ async function startInProcessWorkers(
 
   try {
     // trending worker
-    const trendingWorker = new TrendingWorker();
+    const trendingWorker = container.resolve(TrendingWorker);
     await trendingWorker.init();
     trendingWorker.start();
     metricsService.markWorkerRunning("trending.worker");
@@ -135,6 +140,12 @@ async function startInProcessWorkers(
     ipMonitorWorker.start();
     metricsService.markWorkerRunning("ip-monitor.worker");
     logger.info("Started in-process worker: ip-monitor");
+
+    // outbox worker
+    const outboxWorker = container.resolve(OutboxWorker);
+    outboxWorker.start();
+    metricsService.markWorkerRunning("outbox.worker");
+    logger.info("Started in-process worker: outbox");
 
     logger.info("All in-process workers started successfully");
   } catch (error) {

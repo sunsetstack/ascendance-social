@@ -42,13 +42,23 @@ jobs:
     steps:
       - name: Deploy to Digital Ocean via SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: 22
+          envs: REDIS_PASSWORD
           script: |
             cd /opt/image-app
+
+            touch .env
+            if grep -q '^REDIS_PASSWORD=' .env; then
+              sed -i "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=${REDIS_PASSWORD}|" .env
+            else
+              echo "REDIS_PASSWORD=${REDIS_PASSWORD}" >> .env
+            fi
 
             git fetch --all
             git reset --hard origin/master

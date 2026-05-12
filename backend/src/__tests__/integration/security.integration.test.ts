@@ -242,11 +242,11 @@ describe("Security - NoSQL Injection & XSS Prevention", () => {
 
 	it("should have error handling for CreatePost command", () => {
 		const { CreatePostCommandHandler } = require("@/application/commands/post/createPost/createPost.handler");
-		const { createError } = require("@/utils/errors");
+		const { Errors } = require("@/utils/errors");
 
 		expect(CreatePostCommandHandler).to.exist;
 
-		const validationError = createError("ValidationError", "Invalid userPublicId format");
+		const validationError = Errors.validation("Invalid userPublicId format");
 		expect(validationError.name).to.equal("ValidationError");
 		expect(validationError.statusCode).to.equal(400);
 	});
@@ -255,11 +255,11 @@ describe("Security - NoSQL Injection & XSS Prevention", () => {
 		const {
 			CreateCommentCommandHandler,
 		} = require("@/application/commands/comments/createComment/create-comment.handler");
-		const { createError } = require("@/utils/errors");
+		const { Errors } = require("@/utils/errors");
 
 		expect(CreateCommentCommandHandler).to.exist;
 
-		const validationError = createError("ValidationError", "Invalid postPublicId");
+		const validationError = Errors.validation("Invalid postPublicId");
 		expect(validationError.name).to.equal("ValidationError");
 		expect(validationError.statusCode).to.equal(400);
 	});

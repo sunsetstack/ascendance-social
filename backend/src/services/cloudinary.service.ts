@@ -1,9 +1,14 @@
 import { v2 as cloudinary } from "cloudinary";
 import * as fs from "fs";
-import { createError, getErrorMessage, wrapError } from "@/utils/errors";
-import { CloudinaryDeleteResponse, DeletionResult } from "@/types";
+import { Readable } from "stream";
+import { Errors, getErrorMessage, wrapError } from "@/utils/errors";
+import {
+  CloudinaryDeleteResponse,
+  DeletionResult,
+  ImageUploadInput,
+} from "@/types";
 import { injectable, inject } from "tsyringe";
-import { IImageStorageService } from "@/types/customImageStorage/imageStorage.types";
+import type { IImageStorageService } from "@/types/customImageStorage/imageStorage.types";
 import { logger } from "@/utils/winston";
 import { RetryService, RetryPresets } from "./retry.service";
 import { TOKENS } from "@/types/tokens";
@@ -62,6 +67,78 @@ export class CloudinaryService implements IImageStorageService {
     return retryablePatterns.some((p) => message.includes(p));
   }
 
+  /**
+   * Convert a Buffer to a readable stream
+   */
+  private bufferToStream(buffer: Buffer): Readable {
+    const readable = new Readable();
+    readable.push(buffer);
+    readable.push(null);
+    return readable;
+  }
+
+  /**
+   * Upload an image from a Buffer or Stream directly to Cloudinary.
+   * This is more efficient as it avoids intermediate disk I/O.
+   */
+  async uploadImageStream(
+    input: ImageUploadInput,
+    userId: string,
+    folder?: string,
+  ): Promise<{ url: string; publicId: string }> {
+    // Get the readable stream from input
+    let sourceStream: Readable;
+
+    if (input.buffer) {
+      sourceStream = this.bufferToStream(input.buffer);
+    } else if (input.stream) {
+      sourceStream = input.stream;
+    } else if (input.filePath) {
+      // Fallback to file path for backward compatibility
+      return this.uploadImage(input.filePath, userId, folder);
+    } else {
+      throw Errors.validation("No image data provided");
+    }
+
+    return this.retryService.execute(
+      () =>
+        new Promise((resolve, reject) => {
+          const uploadStream = cloudinary.uploader.upload_stream(
+            { folder: folder || userId },
+            (error, result) => {
+              if (error) {
+                return reject(wrapError(error, "StorageError"));
+              }
+              if (!result) {
+                return reject(
+                  Errors.storage("Upload failed, no result returned"),
+                );
+              }
+              resolve({
+                url: result.secure_url,
+                publicId: result.public_id,
+              });
+            },
+          );
+
+          sourceStream.on("error", (err) => {
+            logger.error("Error streaming data for upload", { error: err });
+            reject(Errors.storage(`Failed to stream data: ${err.message}`));
+          });
+
+          sourceStream.pipe(uploadStream);
+        }),
+      {
+        ...RetryPresets.externalApi(),
+        shouldRetry: (err) => this.isCloudinaryRetryable(err),
+      },
+    );
+  }
+
+  /**
+   * @deprecated Use uploadImageStream for better performance
+   * Legacy method that reads from file path
+   */
   async uploadImage(
     filePath: string,
     userId: string,
@@ -79,10 +156,7 @@ export class CloudinaryService implements IImageStorageService {
                 }
                 if (!result) {
                   return reject(
-                    createError(
-                      "StorageError",
-                      "Upload failed, no result returned",
-                    ),
+                    Errors.storage("Upload failed, no result returned"),
                   );
                 }
                 resolve({
@@ -98,12 +172,7 @@ export class CloudinaryService implements IImageStorageService {
               logger.error(`Error reading file for upload: ${filePath}`, {
                 error: err,
               });
-              reject(
-                createError(
-                  "StorageError",
-                  `Failed to read file: ${err.message}`,
-                ),
-              );
+              reject(Errors.storage(`Failed to read file: ${err.message}`));
             });
 
             fileStream.pipe(uploadStream);
@@ -191,10 +260,6 @@ export class CloudinaryService implements IImageStorageService {
       }));
   }
 
-  /**
-   * Recursively deletes Cloudinary folders.
-   * Folders must be empty of assets before they can be deleted.
-   */
   private async deleteFolderRecursive(folderPath: string): Promise<void> {
     try {
       // Get subfolders of the current folder
@@ -215,8 +280,14 @@ export class CloudinaryService implements IImageStorageService {
     } catch (error: unknown) {
       // If folder doesn't exist (404), that's fine.
       // If it's not empty (e.g. more than 1000 resources or other resource types), it will fail here.
-      const err = error as { http_code?: number };
-      if (err?.http_code !== 404) {
+      let is404 = false;
+      if (typeof error === "object" && error !== null && "http_code" in error) {
+         if ((error as Record<string, unknown>).http_code === 404) {
+           is404 = true;
+         }
+      }
+
+      if (!is404) {
         logger.warn("Cloudinary folder deletion skipped or failed", {
           folder: folderPath,
           error: getErrorMessage(error),

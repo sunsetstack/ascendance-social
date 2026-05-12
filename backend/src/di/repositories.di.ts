@@ -11,18 +11,20 @@ import { CommentLikeRepository } from "@/repositories/commentLike.repository";
 import { UserActionRepository } from "@/repositories/userAction.repository";
 import { TagRepository } from "@/repositories/tag.repository";
 import { FollowRepository } from "@/repositories/follow.repository";
-import { NotificationRepository } from "@/repositories/notification.respository";
+import { NotificationRepository } from "@/repositories/notification.repository";
 import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
 import { ConversationRepository } from "@/repositories/conversation.repository";
 import { MessageRepository } from "@/repositories/message.repository";
 import { PostReadRepository } from "@/repositories/read/PostReadRepository";
 import { UserReadRepository } from "@/repositories/read/UserReadRepository";
+import { FeedReadDao } from "@/repositories/read/FeedReadDao";
 import { PostWriteRepository } from "@/repositories/write/PostWriteRepository";
 import { UserWriteRepository } from "@/repositories/write/UserWriteRepository";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
 import { RequestLogRepository } from "@/repositories/requestLog.repository";
+import { OutboxRepository } from "@/repositories/outbox.repository";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 
@@ -70,6 +72,7 @@ export function registerRepositories(): void {
     TOKENS.Repositories.RequestLog,
     RequestLogRepository,
   );
+  container.registerSingleton(TOKENS.Repositories.Outbox, OutboxRepository);
 
   container.registerSingleton(TOKENS.Repositories.PostRead, PostReadRepository);
   container.registerSingleton(TOKENS.Repositories.UserRead, UserReadRepository);
@@ -81,6 +84,7 @@ export function registerRepositories(): void {
     TOKENS.Repositories.UserWrite,
     UserWriteRepository,
   );
+  container.registerSingleton(TOKENS.Repositories.FeedReadDao, FeedReadDao);
 
   logger.info("[di] Repositories registered");
 }

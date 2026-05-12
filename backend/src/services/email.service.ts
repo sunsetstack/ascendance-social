@@ -1,6 +1,6 @@
 import { injectable } from "tsyringe";
 import { Resend } from "resend";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 
 @injectable()
 export class EmailService {
@@ -16,7 +16,7 @@ export class EmailService {
     resetToken: string,
   ): Promise<void> {
     if (!this.resend) {
-      throw createError("ConfigError", "RESEND_API_KEY is not configured");
+      throw Errors.internal("RESEND_API_KEY is not configured");
     }
     try {
       const link = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
@@ -27,9 +27,7 @@ export class EmailService {
         html: `<p>You requested a password reset. Click <a href="${link}">here</a> to reset your password.</p>`,
       });
     } catch (error) {
-      throw createError(
-        "InternalServerError",
-        "Failed to send password reset email",
+      throw Errors.internal("Failed to send password reset email",
       );
     }
   }
@@ -39,7 +37,7 @@ export class EmailService {
     verificationToken: string,
   ): Promise<void> {
     if (!this.resend) {
-      throw createError("ConfigError", "RESEND_API_KEY is not configured");
+      throw Errors.internal("RESEND_API_KEY is not configured");
     }
     try {
       const link = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}&email=${encodeURIComponent(
@@ -52,9 +50,7 @@ export class EmailService {
         html: `<p>Use this code to verify your email: <strong>${verificationToken}</strong></p><p>Or click <a href="${link}">here</a> to verify.</p>`,
       });
     } catch (error) {
-      throw createError(
-        "InternalServerError",
-        "Failed to send verification email",
+      throw Errors.internal("Failed to send verification email",
       );
     }
   }

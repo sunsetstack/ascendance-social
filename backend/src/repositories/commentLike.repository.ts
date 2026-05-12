@@ -1,8 +1,8 @@
-import { ClientSession, Model, Types } from "mongoose";
+import { Model, Types } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
 import { ICommentLike } from "@/types";
-import { createError } from "@/utils/errors";
+import { Errors } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
@@ -11,25 +11,26 @@ export class CommentLikeRepository extends BaseRepository<ICommentLike> {
 		super(model);
 	}
 
-	async addLike(commentId: string, userId: string, session?: ClientSession): Promise<boolean> {
+	async addLike(commentId: string, userId: string): Promise<boolean> {
 		const payload = {
 			commentId: this.normalizeId(commentId, "commentId"),
 			userId: this.normalizeId(userId, "userId"),
 		};
 
 		try {
+			const session = this.getSession();
 			await this.model.create([payload], { session });
 			return true;
 		} catch (error: unknown) {
-			const err = error as Record<string, unknown>;
-			if (err?.code === 11000) {
+			if (typeof error === 'object' && error !== null && 'code' in error && error.code === 11000) {
 				return false;
 			}
-			throw createError("DatabaseError", (error instanceof Error ? error.message : String(error)) ?? "failed to persist comment like");
+			throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to persist comment like");
 		}
 	}
 
-	async removeLike(commentId: string, userId: string, session?: ClientSession): Promise<boolean> {
+	async removeLike(commentId: string, userId: string): Promise<boolean> {
+		const session = this.getSession();
 		const normalizedCommentId = this.normalizeId(commentId, "commentId");
 		const normalizedUserId = this.normalizeId(userId, "userId");
 		const query = this.model.deleteOne({ commentId: normalizedCommentId, userId: normalizedUserId });
@@ -38,7 +39,8 @@ export class CommentLikeRepository extends BaseRepository<ICommentLike> {
 		return (result.deletedCount ?? 0) > 0;
 	}
 
-	async hasUserLiked(commentId: string, userId: string, session?: ClientSession): Promise<boolean> {
+	async hasUserLiked(commentId: string, userId: string): Promise<boolean> {
+		const session = this.getSession();
 		const normalizedCommentId = this.normalizeId(commentId, "commentId");
 		const normalizedUserId = this.normalizeId(userId, "userId");
 		const query = this.model.exists({ commentId: normalizedCommentId, userId: normalizedUserId });
@@ -54,7 +56,7 @@ export class CommentLikeRepository extends BaseRepository<ICommentLike> {
 		try {
 			return new Types.ObjectId(String(id));
 		} catch {
-			throw createError("ValidationError", `${field} is not a valid ObjectId`);
+			throw Errors.validation(`${field} is not a valid ObjectId`);
 		}
 	}
 }

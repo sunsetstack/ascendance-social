@@ -2,7 +2,7 @@ import "reflect-metadata";
 import { expect } from "chai";
 import sinon, { SinonStub, SinonStubbedInstance } from "sinon";
 import { NotificationService } from "@/services/notification.service";
-import { NotificationRepository } from "@/repositories/notification.respository";
+import { NotificationRepository } from "@/repositories/notification.repository";
 import { RedisService } from "@/services/redis.service";
 import { WebSocketServer } from "@/server/socketServer";
 import { UserRepository } from "@/repositories/user.repository";
@@ -64,7 +64,11 @@ describe("NotificationService", () => {
 			expect(mockRedisService.getUserNotifications.calledOnceWith(userId, 1, limit)).to.be.true;
 			expect(mockNotificationRepository.getNotifications.calledOnceWith(userId, 200, 0)).to.be.true;
 			expect(mockRedisService.backfillNotifications.calledOnceWith(userId, dbNotifications, 200)).to.be.true;
-			expect(result).to.deep.equal(dbNotifications.slice(0, limit));
+			expect(result).to.deep.equal(
+				dbNotifications.slice(0, limit).map((notification) => ({
+					id: notification._id,
+				})),
+			);
 		});
 
 		it("should return cached notifications if count >= limit (Full Cache Hit)", async () => {
@@ -96,7 +100,7 @@ describe("NotificationService", () => {
 
 			expect(mockRedisService.getUserNotifications.calledOnce).to.be.true;
 			expect(mockNotificationRepository.getNotifications.calledOnce).to.be.true;
-			expect(result).to.deep.equal(dbNotifications);
+			expect(result).to.deep.equal([{ id: "notif1" }]);
 		});
 	});
 

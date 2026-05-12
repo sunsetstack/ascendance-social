@@ -111,7 +111,7 @@ describe("ImageRepository", () => {
 
 		it("should return an image with populated fields for valid ID", async () => {
 			const mockImage = createMockImage(generateMockData(1)) as IImage;
-			const mockId = mockImage._id as string;
+			const mockId = mockImage._id.toString();
 
 			const mockQuery = {
 				populate: sinon.stub().returnsThis(),
@@ -132,7 +132,7 @@ describe("ImageRepository", () => {
 
 		it("should use session if provided", async () => {
 			const mockImage = createMockImage(generateMockData(1)) as IImage;
-			const mockId = mockImage._id as string;
+			const mockId = mockImage._id.toString();
 
 			const mockQuery = {
 				populate: sinon.stub().returnsThis(),

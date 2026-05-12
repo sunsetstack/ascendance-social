@@ -6,10 +6,13 @@ import { logger } from "@/utils/winston";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { CoreFeed, FeedPost } from "@/types";
 import { TOKENS } from "@/types/tokens";
+import type { IFeedReadDao } from "@/repositories/interfaces";
 
 @injectable()
 export class FeedFanoutService {
   constructor(
+    @inject(TOKENS.Repositories.FeedReadDao)
+    private readonly feedReadDao: IFeedReadDao,
     @inject(TOKENS.Repositories.Follow)
     private readonly followRepository: FollowRepository,
     @inject(TOKENS.Repositories.Post) private postRepository: PostRepository,
@@ -45,7 +48,7 @@ export class FeedFanoutService {
         `Fanned out post ${postId} to ${followerIds.length} followers`,
       );
     } catch (error) {
-      console.error(`Failed to fan out post ${postId}:`, error);
+      logger.error(`Failed to fan out post ${postId}:`, error);
     }
   }
 
@@ -69,7 +72,7 @@ export class FeedFanoutService {
         `Removed post ${postId} from ${followerIds.length} followers' feeds`,
       );
     } catch (error) {
-      console.error(`Failed to remove post ${postId} from feeds:`, error);
+      logger.error(`Failed to remove post ${postId} from feeds:`, error);
     }
   }
 
@@ -80,7 +83,7 @@ export class FeedFanoutService {
       let cursor: string | undefined;
       for (let page = 1; page <= 3; page++) {
         const key = CacheKeyBuilder.getNewFeedKey(page, limit);
-        const cursorResult = await this.postRepository.getNewFeedWithCursor({
+        const cursorResult = await this.feedReadDao.getNewFeedWithCursor({
           limit,
           cursor,
         });

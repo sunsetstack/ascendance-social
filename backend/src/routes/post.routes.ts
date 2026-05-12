@@ -6,10 +6,13 @@ import { ValidationMiddleware } from "../middleware/validation.middleware";
 import { asyncHandler } from "@/middleware/async-handler.middleware";
 import {
   createPostSchema,
+  listPostsQuerySchema,
+  handlePostsQuerySchema,
   publicIdSchema,
   slugSchema,
   searchByTagsSchema,
   repostSchema,
+  userPostsQuerySchema,
 } from "@/utils/schemas/post.schemas";
 import { handleSchema } from "@/utils/schemas/user.schemas";
 import upload from "@/config/multer";
@@ -23,7 +26,8 @@ export class PostRoutes {
     AuthFactory.optionalBearerToken().handleOptional();
 
   constructor(
-    @inject(TOKENS.Controllers.Post) private readonly postController: PostController,
+    @inject(TOKENS.Controllers.Post)
+    private readonly postController: PostController,
   ) {
     this.initializeRoutes();
   }
@@ -32,6 +36,7 @@ export class PostRoutes {
     this.router.get(
       "/",
       this.optionalAuth,
+      new ValidationMiddleware({ query: listPostsQuerySchema }).validate(),
       asyncHandler(this.postController.listPosts),
     );
 
@@ -51,18 +56,21 @@ export class PostRoutes {
 
     this.router.get(
       "/user/handle/:handle",
+      new ValidationMiddleware({ query: handlePostsQuerySchema }).validate(),
       new ValidationMiddleware({ params: handleSchema }).validate(),
       asyncHandler(this.postController.getPostsByHandle),
     );
 
     this.router.get(
       "/user/:publicId",
+      new ValidationMiddleware({ query: userPostsQuerySchema }).validate(),
       new ValidationMiddleware({ params: publicIdSchema }).validate(),
       asyncHandler(this.postController.getPostsByUserPublicId),
     );
 
     this.router.get(
       "/user/:publicId/likes",
+      new ValidationMiddleware({ query: userPostsQuerySchema }).validate(),
       new ValidationMiddleware({ params: publicIdSchema }).validate(),
       asyncHandler(this.postController.getLikedPostsByUserPublicId),
     );

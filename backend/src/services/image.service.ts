@@ -1,13 +1,14 @@
 import mongoose from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { ImageRepository } from "@/repositories/image.repository";
-import {
+import type {
   AttachmentCreationResult,
   CreatePostAttachmentInput,
   DeleteAttachmentAssetInput,
   IImage,
   IImageStorageService,
   ImageDocWithId,
+  ImageUploadInput,
   PopulatedUserField,
   RemoveAttachmentRecordInput,
   RemoveAttachmentRecordResult,
@@ -42,7 +43,6 @@ export class ImageService {
         storagePublicId: uploaded.publicId,
         originalName: input.originalName,
         userInternalId: input.userInternalId,
-        session: input.session,
       });
     } catch (error) {
       if (uploaded) {
@@ -52,6 +52,9 @@ export class ImageService {
     }
   }
 
+  /**
+   * @deprecated Use uploadImageStream for better performance
+   */
   async uploadImage(
     filePath: string,
     userPublicId: string,
@@ -59,12 +62,22 @@ export class ImageService {
     return this.imageStorageService.uploadImage(filePath, userPublicId);
   }
 
+  /**
+   * Upload an image from a Buffer or Stream directly.
+   * This is more efficient as it avoids intermediate disk I/O.
+   */
+  async uploadImageStream(
+    input: ImageUploadInput,
+    userPublicId: string,
+  ): Promise<{ url: string; publicId: string }> {
+    return this.imageStorageService.uploadImageStream(input, userPublicId);
+  }
+
   async createImageRecord(input: {
     url: string;
     storagePublicId: string;
     originalName: string;
     userInternalId: string;
-    session?: mongoose.ClientSession;
   }): Promise<AttachmentCreationResult> {
     try {
       const slug = `${generateSlug(input.originalName) || "image"}-${Date.now()}`;
@@ -79,7 +92,6 @@ export class ImageService {
           user: new mongoose.Types.ObjectId(input.userInternalId),
           createdAt,
         } as unknown as IImage,
-        input.session,
       )) as ImageDocWithId;
 
       return {
@@ -112,7 +124,6 @@ export class ImageService {
     try {
       const imageDoc = (await this.imageRepository.findById(
         input.imageId,
-        input.session,
       )) as ImageDocWithId | null;
       if (!imageDoc) {
         return { removed: false };
@@ -128,7 +139,7 @@ export class ImageService {
           logger.error("Failed to delete attachment asset", { error }),
         );
 
-      await this.imageRepository.delete(imageDoc._id.toString(), input.session);
+      await this.imageRepository.delete(imageDoc._id.toString());
 
       return {
         removed: true,
@@ -146,13 +157,12 @@ export class ImageService {
     try {
       const imageDoc = (await this.imageRepository.findById(
         input.imageId,
-        input.session,
       )) as ImageDocWithId | null;
       if (!imageDoc) {
         return { removed: false };
       }
 
-      await this.imageRepository.delete(imageDoc._id.toString(), input.session);
+      await this.imageRepository.delete(imageDoc._id.toString());
 
       return {
         removed: true,
