@@ -163,8 +163,8 @@ export const AdminDashboard: React.FC = () => {
     limit: logsRowsPerPage,
     statusCode: logsStatusFilter ? parseInt(logsStatusFilter) : undefined,
     search: logsSearch,
-    startDate: logsStartDate,
-    endDate: logsEndDate,
+    startDate: logsStartDate || undefined,
+    endDate: logsEndDate || undefined,
   });
 
   // Mutations
