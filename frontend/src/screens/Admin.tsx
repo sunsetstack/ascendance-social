@@ -29,9 +29,7 @@ import {
   CircularProgress,
   useTheme,
   Stack,
-  MenuItem,
 } from "@mui/material";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import {
   Dashboard as DashboardIcon,
   People as PeopleIcon,
@@ -45,7 +43,6 @@ import {
   Speed as SpeedIcon,
   Storage as StorageIcon,
   Search as SearchIcon,
-  FilterList as FilterListIcon,
 } from "@mui/icons-material";
 import {
   useAdminUsers,
@@ -72,7 +69,9 @@ interface TabPanelProps {
 }
 
 const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
-  <div hidden={value !== index}>{value === index && <Box sx={{ py: 3 }}>{children}</Box>}</div>
+  <div hidden={value !== index}>
+    {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
+  </div>
 );
 
 interface StatCardProps {
@@ -94,8 +93,19 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, change, icon }) => {
       }}
     >
       <CardContent>
-        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", mb: 2 }}>
-          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            mb: 2,
+          }}
+        >
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ fontWeight: 500 }}
+          >
             {title}
           </Typography>
           <Box sx={{ color: "primary.main", opacity: 0.8 }}>{icon}</Box>
@@ -104,7 +114,10 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, change, icon }) => {
           {value}
         </Typography>
         {change && (
-          <Typography variant="body2" sx={{ color: isPositive ? "success.main" : "error.main" }}>
+          <Typography
+            variant="body2"
+            sx={{ color: isPositive ? "success.main" : "error.main" }}
+          >
             {change}
           </Typography>
         )}
@@ -156,7 +169,8 @@ export const AdminDashboard: React.FC = () => {
   });
 
   const { data: activityData } = useRecentActivity({ page: 1, limit: 10 });
-  const { data: telemetryData, isLoading: telemetryLoading } = useTelemetryMetrics();
+  const { data: telemetryData, isLoading: telemetryLoading } =
+    useTelemetryMetrics();
 
   const { data: requestLogsData, isLoading: logsLoading } = useRequestLogs({
     page: logsPage + 1,
@@ -186,7 +200,7 @@ export const AdminDashboard: React.FC = () => {
             setBanReason("");
             setSelectedUser(null);
           },
-        }
+        },
       );
     }
   };
@@ -199,7 +213,11 @@ export const AdminDashboard: React.FC = () => {
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
       <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" gutterBottom sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Typography
+          variant="h4"
+          gutterBottom
+          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+        >
           <AdminPanelSettingsIcon fontSize="large" />
           admin dashboard
         </Typography>
@@ -267,7 +285,14 @@ export const AdminDashboard: React.FC = () => {
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 2 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      mb: 2,
+                    }}
+                  >
                     <Typography variant="h6">cache management</Typography>
                     <Button
                       variant="contained"
@@ -275,12 +300,14 @@ export const AdminDashboard: React.FC = () => {
                       onClick={() => clearCacheMutation.mutate("feed:*")}
                       disabled={clearCacheMutation.isPending}
                     >
-                      {clearCacheMutation.isPending ? "clearing..." : "clear feed cache"}
+                      {clearCacheMutation.isPending
+                        ? "clearing..."
+                        : "clear feed cache"}
                     </Button>
                   </Box>
                   <Typography variant="body2" color="text.secondary">
-                    clear Redis cache to force feed regeneration. useful when feed data seems stale after deletions or
-                    updates.
+                    clear Redis cache to force feed regeneration. useful when
+                    feed data seems stale after deletions or updates.
                   </Typography>
                 </CardContent>
               </Card>
@@ -309,7 +336,10 @@ export const AdminDashboard: React.FC = () => {
                             <TableCell>{activity.action}</TableCell>
                             <TableCell>{activity.targetType}</TableCell>
                             <TableCell>
-                              {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
+                              {formatDistanceToNow(
+                                new Date(activity.timestamp),
+                                { addSuffix: true },
+                              )}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -327,7 +357,12 @@ export const AdminDashboard: React.FC = () => {
       <TabPanel value={currentTab} index={1}>
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }} alignItems={{ xs: 'stretch', sm: 'center' }}>
+            <Stack
+              direction={{ xs: "column", sm: "row" }}
+              spacing={2}
+              sx={{ mb: 2 }}
+              alignItems={{ xs: "stretch", sm: "center" }}
+            >
               <TextField
                 size="small"
                 label="Search Users"
@@ -335,9 +370,15 @@ export const AdminDashboard: React.FC = () => {
                 value={userSearch}
                 onChange={(e) => setUserSearch(e.target.value)}
                 InputProps={{
-                  startAdornment: <SearchIcon color="action" fontSize="small" sx={{ mr: 1 }} />,
+                  startAdornment: (
+                    <SearchIcon
+                      color="action"
+                      fontSize="small"
+                      sx={{ mr: 1 }}
+                    />
+                  ),
                 }}
-                sx={{ width: { xs: '100%', sm: 300 } }}
+                sx={{ width: { xs: "100%", sm: 300 } }}
               />
               <TextField
                 select
@@ -345,7 +386,7 @@ export const AdminDashboard: React.FC = () => {
                 label="Sort By"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                sx={{ width: { xs: '100%', sm: 150 } }}
+                sx={{ width: { xs: "100%", sm: 150 } }}
                 SelectProps={{ native: true }}
               >
                 <option value="createdAt">Joined Date</option>
@@ -359,13 +400,20 @@ export const AdminDashboard: React.FC = () => {
                 label="Order"
                 value={sortOrder}
                 onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
-                sx={{ width: { xs: '100%', sm: 120 } }}
+                sx={{ width: { xs: "100%", sm: 120 } }}
                 SelectProps={{ native: true }}
               >
                 <option value="desc">Descending</option>
                 <option value="asc">Ascending</option>
               </TextField>
-              <Button variant="outlined" onClick={() => { setUserSearch(""); setSortBy("createdAt"); setSortOrder("desc"); }}>
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  setUserSearch("");
+                  setSortBy("createdAt");
+                  setSortOrder("desc");
+                }}
+              >
                 Reset
               </Button>
             </Stack>
@@ -395,17 +443,31 @@ export const AdminDashboard: React.FC = () => {
                     <TableRow
                       key={user.publicId}
                       hover
-                      sx={{ cursor: 'pointer' }}
+                      sx={{ cursor: "pointer" }}
                       onClick={() => navigate(`/admin/users/${user.publicId}`)}
                     >
                       <TableCell>
-                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                          <Avatar src={user.avatar} sx={{ width: 32, height: 32 }}>
+                        <Box
+                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
+                        >
+                          <Avatar
+                            src={user.avatar}
+                            sx={{ width: 32, height: 32 }}
+                          >
                             {user.username.charAt(0).toUpperCase()}
                           </Avatar>
                           <Box>
-                            <Typography variant="body2" fontWeight="bold">{user.username}</Typography>
-                            {user.isAdmin && <Chip label="admin" size="small" color="warning" sx={{ height: 20, fontSize: '0.625rem' }} />}
+                            <Typography variant="body2" fontWeight="bold">
+                              {user.username}
+                            </Typography>
+                            {user.isAdmin && (
+                              <Chip
+                                label="admin"
+                                size="small"
+                                color="warning"
+                                sx={{ height: 20, fontSize: "0.625rem" }}
+                              />
+                            )}
                           </Box>
                         </Box>
                       </TableCell>
@@ -418,27 +480,40 @@ export const AdminDashboard: React.FC = () => {
                           <Chip label="active" size="small" color="success" />
                         )}
                       </TableCell>
-                      <TableCell>{formatDistanceToNow(new Date(user.createdAt), { addSuffix: true })}</TableCell>
+                      <TableCell>
+                        {formatDistanceToNow(new Date(user.createdAt), {
+                          addSuffix: true,
+                        })}
+                      </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <Box sx={{ display: "flex", gap: 1 }}>
                           {user.isBanned ? (
                             <IconButton
                               size="small"
                               color="success"
-                              onClick={() => unbanUserMutation.mutate(user.publicId)}
+                              onClick={() =>
+                                unbanUserMutation.mutate(user.publicId)
+                              }
                               title="unban user"
                             >
                               <CheckCircleIcon />
                             </IconButton>
                           ) : (
-                            <IconButton size="small" color="error" onClick={() => openBanDialog(user)} title="ban user">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={() => openBanDialog(user)}
+                              title="ban user"
+                            >
                               <BlockIcon />
                             </IconButton>
                           )}
                           {user.isAdmin ? (
                             <IconButton
                               size="small"
-                              onClick={() => demoteUserMutation.mutate(user.publicId)}
+                              onClick={() =>
+                                demoteUserMutation.mutate(user.publicId)
+                              }
                               title="remove admin"
                             >
                               <RemoveCircleIcon />
@@ -447,7 +522,9 @@ export const AdminDashboard: React.FC = () => {
                             <IconButton
                               size="small"
                               color="warning"
-                              onClick={() => promoteUserMutation.mutate(user.publicId)}
+                              onClick={() =>
+                                promoteUserMutation.mutate(user.publicId)
+                              }
                               title="make admin"
                             >
                               <AdminPanelSettingsIcon />
@@ -457,7 +534,11 @@ export const AdminDashboard: React.FC = () => {
                             size="small"
                             color="error"
                             onClick={() => {
-                              if (window.confirm(`delete user ${user.username}? this cannot be undone.`)) {
+                              if (
+                                window.confirm(
+                                  `delete user ${user.username}? this cannot be undone.`,
+                                )
+                              ) {
                                 deleteUserMutation.mutate(user.publicId);
                               }
                             }}
@@ -529,9 +610,20 @@ export const AdminDashboard: React.FC = () => {
                       >
                         <TableCell>
                           {hasImage ? (
-                            <Avatar variant="rounded" src={imageUrl} sx={{ width: 60, height: 60 }} />
+                            <Avatar
+                              variant="rounded"
+                              src={imageUrl}
+                              sx={{ width: 60, height: 60 }}
+                            />
                           ) : (
-                            <Avatar variant="rounded" sx={{ width: 60, height: 60, bgcolor: "grey.800" }}>
+                            <Avatar
+                              variant="rounded"
+                              sx={{
+                                width: 60,
+                                height: 60,
+                                bgcolor: "grey.800",
+                              }}
+                            >
                               <ImageIcon />
                             </Avatar>
                           )}
@@ -545,23 +637,36 @@ export const AdminDashboard: React.FC = () => {
                           onClick={(e) => {
                             e.stopPropagation();
                             if (post.user?.publicId) {
-                              navigate(`/profile/${post.user.handle || post.user.publicId}`);
+                              navigate(
+                                `/profile/${post.user.handle || post.user.publicId}`,
+                              );
                             }
                           }}
                           sx={{
-                            "&:hover": { color: "primary.main", textDecoration: "underline" },
+                            "&:hover": {
+                              color: "primary.main",
+                              textDecoration: "underline",
+                            },
                           }}
                         >
                           {post.user?.username}
                         </TableCell>
                         <TableCell>{post.likes || 0}</TableCell>
-                        <TableCell>{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</TableCell>
+                        <TableCell>
+                          {formatDistanceToNow(new Date(post.createdAt), {
+                            addSuffix: true,
+                          })}
+                        </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <IconButton
                             size="small"
                             color="error"
                             onClick={() => {
-                              if (window.confirm("delete this post? this cannot be undone.")) {
+                              if (
+                                window.confirm(
+                                  "delete this post? this cannot be undone.",
+                                )
+                              ) {
                                 deleteImageMutation.mutate(post.publicId);
                               }
                             }}
@@ -606,12 +711,24 @@ export const AdminDashboard: React.FC = () => {
                   <Typography variant="h6" gutterBottom>
                     Time to First Interaction (TTFI)
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Measures how quickly users can interact with the page after loading
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mb: 2 }}
+                  >
+                    Measures how quickly users can interact with the page after
+                    loading
                   </Typography>
                   <Grid container spacing={2}>
                     <Grid item xs={6} sm={2.4}>
-                      <Box sx={{ textAlign: "center", p: 2, bgcolor: "background.default", borderRadius: 1 }}>
+                      <Box
+                        sx={{
+                          textAlign: "center",
+                          p: 2,
+                          bgcolor: "background.default",
+                          borderRadius: 1,
+                        }}
+                      >
                         <Typography variant="h4" color="primary.main">
                           {telemetryData?.ttfi.count || 0}
                         </Typography>
@@ -621,7 +738,14 @@ export const AdminDashboard: React.FC = () => {
                       </Box>
                     </Grid>
                     <Grid item xs={6} sm={2.4}>
-                      <Box sx={{ textAlign: "center", p: 2, bgcolor: "background.default", borderRadius: 1 }}>
+                      <Box
+                        sx={{
+                          textAlign: "center",
+                          p: 2,
+                          bgcolor: "background.default",
+                          borderRadius: 1,
+                        }}
+                      >
                         <Typography variant="h4" color="primary.main">
                           {telemetryData?.ttfi.avg || 0}ms
                         </Typography>
@@ -631,7 +755,14 @@ export const AdminDashboard: React.FC = () => {
                       </Box>
                     </Grid>
                     <Grid item xs={6} sm={2.4}>
-                      <Box sx={{ textAlign: "center", p: 2, bgcolor: "background.default", borderRadius: 1 }}>
+                      <Box
+                        sx={{
+                          textAlign: "center",
+                          p: 2,
+                          bgcolor: "background.default",
+                          borderRadius: 1,
+                        }}
+                      >
                         <Typography variant="h4" color="success.main">
                           {telemetryData?.ttfi.p50 || 0}ms
                         </Typography>
@@ -641,7 +772,14 @@ export const AdminDashboard: React.FC = () => {
                       </Box>
                     </Grid>
                     <Grid item xs={6} sm={2.4}>
-                      <Box sx={{ textAlign: "center", p: 2, bgcolor: "background.default", borderRadius: 1 }}>
+                      <Box
+                        sx={{
+                          textAlign: "center",
+                          p: 2,
+                          bgcolor: "background.default",
+                          borderRadius: 1,
+                        }}
+                      >
                         <Typography variant="h4" color="warning.main">
                           {telemetryData?.ttfi.p90 || 0}ms
                         </Typography>
@@ -651,7 +789,14 @@ export const AdminDashboard: React.FC = () => {
                       </Box>
                     </Grid>
                     <Grid item xs={6} sm={2.4}>
-                      <Box sx={{ textAlign: "center", p: 2, bgcolor: "background.default", borderRadius: 1 }}>
+                      <Box
+                        sx={{
+                          textAlign: "center",
+                          p: 2,
+                          bgcolor: "background.default",
+                          borderRadius: 1,
+                        }}
+                      >
                         <Typography variant="h4" color="error.main">
                           {telemetryData?.ttfi.p99 || 0}ms
                         </Typography>
@@ -672,7 +817,11 @@ export const AdminDashboard: React.FC = () => {
                   <Typography variant="h6" gutterBottom>
                     User Flows
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mb: 2 }}
+                  >
                     Tracks completion rates of key user journeys
                   </Typography>
                   {telemetryData?.flows && telemetryData.flows.length > 0 ? (
@@ -692,11 +841,21 @@ export const AdminDashboard: React.FC = () => {
                           {telemetryData.flows.map((flow) => (
                             <TableRow key={flow.flowType}>
                               <TableCell>
-                                <Chip label={flow.flowType} size="small" variant="outlined" />
+                                <Chip
+                                  label={flow.flowType}
+                                  size="small"
+                                  variant="outlined"
+                                />
                               </TableCell>
-                              <TableCell align="right">{flow.started}</TableCell>
-                              <TableCell align="right">{flow.completed}</TableCell>
-                              <TableCell align="right">{flow.abandoned}</TableCell>
+                              <TableCell align="right">
+                                {flow.started}
+                              </TableCell>
+                              <TableCell align="right">
+                                {flow.completed}
+                              </TableCell>
+                              <TableCell align="right">
+                                {flow.abandoned}
+                              </TableCell>
                               <TableCell align="right">
                                 <Chip
                                   label={`${flow.completionRate}%`}
@@ -711,7 +870,9 @@ export const AdminDashboard: React.FC = () => {
                                 />
                               </TableCell>
                               <TableCell align="right">
-                                {flow.avgDuration > 0 ? `${(flow.avgDuration / 1000).toFixed(1)}s` : "-"}
+                                {flow.avgDuration > 0
+                                  ? `${(flow.avgDuration / 1000).toFixed(1)}s`
+                                  : "-"}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -719,7 +880,11 @@ export const AdminDashboard: React.FC = () => {
                       </Table>
                     </TableContainer>
                   ) : (
-                    <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", py: 4 }}>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
                       No flow data available yet
                     </Typography>
                   )}
@@ -734,10 +899,15 @@ export const AdminDashboard: React.FC = () => {
                   <Typography variant="h6" gutterBottom>
                     Scroll Depth
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mb: 2 }}
+                  >
                     How far users scroll through feeds
                   </Typography>
-                  {telemetryData?.scrollDepth && telemetryData.scrollDepth.length > 0 ? (
+                  {telemetryData?.scrollDepth &&
+                  telemetryData.scrollDepth.length > 0 ? (
                     <TableContainer>
                       <Table size="small">
                         <TableHead>
@@ -754,20 +924,38 @@ export const AdminDashboard: React.FC = () => {
                           {telemetryData.scrollDepth.map((scroll) => (
                             <TableRow key={scroll.feedId}>
                               <TableCell>
-                                <Chip label={scroll.feedId} size="small" variant="outlined" />
+                                <Chip
+                                  label={scroll.feedId}
+                                  size="small"
+                                  variant="outlined"
+                                />
                               </TableCell>
-                              <TableCell align="right">{scroll.avgMaxDepth}%</TableCell>
-                              <TableCell align="right">{scroll.reachedThresholds[25] || 0}</TableCell>
-                              <TableCell align="right">{scroll.reachedThresholds[50] || 0}</TableCell>
-                              <TableCell align="right">{scroll.reachedThresholds[75] || 0}</TableCell>
-                              <TableCell align="right">{scroll.reachedThresholds[100] || 0}</TableCell>
+                              <TableCell align="right">
+                                {scroll.avgMaxDepth}%
+                              </TableCell>
+                              <TableCell align="right">
+                                {scroll.reachedThresholds[25] || 0}
+                              </TableCell>
+                              <TableCell align="right">
+                                {scroll.reachedThresholds[50] || 0}
+                              </TableCell>
+                              <TableCell align="right">
+                                {scroll.reachedThresholds[75] || 0}
+                              </TableCell>
+                              <TableCell align="right">
+                                {scroll.reachedThresholds[100] || 0}
+                              </TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
                       </Table>
                     </TableContainer>
                   ) : (
-                    <Typography variant="body2" color="text.secondary" sx={{ textAlign: "center", py: 4 }}>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{ textAlign: "center", py: 4 }}
+                    >
                       No scroll data available yet
                     </Typography>
                   )}
@@ -779,10 +967,19 @@ export const AdminDashboard: React.FC = () => {
             <Grid item xs={12}>
               <Card>
                 <CardContent>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
                     <Typography variant="body2" color="text.secondary">
-                      Data bucket age: {telemetryData?.bucketAge ? Math.round(telemetryData.bucketAge / 1000) : 0}s
-                      (resets every 5 minutes)
+                      Data bucket age:{" "}
+                      {telemetryData?.bucketAge
+                        ? Math.round(telemetryData.bucketAge / 1000)
+                        : 0}
+                      s (resets every 5 minutes)
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       Auto-refreshes every 60s
@@ -799,12 +996,32 @@ export const AdminDashboard: React.FC = () => {
       <TabPanel value={currentTab} index={4}>
         <Card>
           <CardContent>
-            <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, justifyContent: "space-between", alignItems: { xs: "flex-start", sm: "center" }, mb: 2, gap: 2 }}>
-              <Typography variant="h6" sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: { xs: "column", sm: "row" },
+                justifyContent: "space-between",
+                alignItems: { xs: "flex-start", sm: "center" },
+                mb: 2,
+                gap: 2,
+              }}
+            >
+              <Typography
+                variant="h6"
+                sx={{ display: "flex", alignItems: "center", gap: 1 }}
+              >
                 <StorageIcon />
                 request logs
               </Typography>
-              <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center", width: { xs: "100%", sm: "auto" } }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  gap: 1,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  width: { xs: "100%", sm: "auto" },
+                }}
+              >
                 <TextField
                   size="small"
                   label="Search"
@@ -814,7 +1031,13 @@ export const AdminDashboard: React.FC = () => {
                     setLogsPage(0);
                   }}
                   InputProps={{
-                    startAdornment: <SearchIcon color="action" fontSize="small" sx={{ mr: 1 }} />,
+                    startAdornment: (
+                      <SearchIcon
+                        color="action"
+                        fontSize="small"
+                        sx={{ mr: 1 }}
+                      />
+                    ),
                   }}
                   sx={{ width: { xs: "100%", sm: 200 } }}
                 />
@@ -903,7 +1126,11 @@ export const AdminDashboard: React.FC = () => {
                     </TableHead>
                     <TableBody>
                       {requestLogsData?.data
-                        .filter((log) => !logsMethodFilter || log.method === logsMethodFilter)
+                        .filter(
+                          (log) =>
+                            !logsMethodFilter ||
+                            log.method === logsMethodFilter,
+                        )
                         .map((log, idx) => {
                           const statusColor =
                             log.statusCode >= 500
@@ -919,13 +1146,26 @@ export const AdminDashboard: React.FC = () => {
                                 {new Date(log.timestamp).toLocaleString()}
                               </TableCell>
                               <TableCell>
-                                <Chip label={log.method} size="small" sx={{ fontWeight: 600, minWidth: 65 }} />
+                                <Chip
+                                  label={log.method}
+                                  size="small"
+                                  sx={{ fontWeight: 600, minWidth: 65 }}
+                                />
                               </TableCell>
-                              <TableCell sx={{ fontSize: "0.75rem", fontFamily: "monospace" }}>
+                              <TableCell
+                                sx={{
+                                  fontSize: "0.75rem",
+                                  fontFamily: "monospace",
+                                }}
+                              >
                                 {log.route}
                               </TableCell>
                               <TableCell>
-                                <Chip label={log.statusCode} size="small" color={statusColor} />
+                                <Chip
+                                  label={log.statusCode}
+                                  size="small"
+                                  color={statusColor}
+                                />
                               </TableCell>
                               <TableCell>
                                 <Typography
@@ -943,16 +1183,35 @@ export const AdminDashboard: React.FC = () => {
                                   {log.responseTimeMs}
                                 </Typography>
                               </TableCell>
-                              <TableCell sx={{ fontSize: "0.75rem", fontFamily: "monospace" }}>
+                              <TableCell
+                                sx={{
+                                  fontSize: "0.75rem",
+                                  fontFamily: "monospace",
+                                }}
+                              >
                                 {log.ip}
                               </TableCell>
                               <TableCell>
                                 {log.userId ? (
-                                  <Box sx={{ display: "flex", flexDirection: "column" }}>
-                                    <Chip label="auth" size="small" color="primary" sx={{ width: "fit-content", mb: 0.5 }} />
+                                  <Box
+                                    sx={{
+                                      display: "flex",
+                                      flexDirection: "column",
+                                    }}
+                                  >
+                                    <Chip
+                                      label="auth"
+                                      size="small"
+                                      color="primary"
+                                      sx={{ width: "fit-content", mb: 0.5 }}
+                                    />
                                   </Box>
                                 ) : (
-                                  <Chip label="anon" size="small" variant="outlined" />
+                                  <Chip
+                                    label="anon"
+                                    size="small"
+                                    variant="outlined"
+                                  />
                                 )}
                               </TableCell>
                             </TableRow>
@@ -980,7 +1239,12 @@ export const AdminDashboard: React.FC = () => {
       </TabPanel>
 
       {/* ban user dialog */}
-      <Dialog open={banDialogOpen} onClose={() => setBanDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={banDialogOpen}
+        onClose={() => setBanDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>ban user: {selectedUser?.username}</DialogTitle>
         <DialogContent>
           <TextField
