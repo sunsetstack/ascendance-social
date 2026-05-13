@@ -1,0 +1,93 @@
+import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
+import { DeleteMessageCommand } from "./deleteMessage.command";
+import { MessageRepository } from "@/repositories/message.repository";
+import { UserRepository } from "@/repositories/user.repository";
+import { UnitOfWork } from "@/database/UnitOfWork";
+import { EventBus } from "@/application/common/buses/event.bus";
+import { MessageAttachmentsDeletedEvent } from "@/application/events/message/message.event";
+import { Errors, wrapError } from "@/utils/errors";
+import { isPopulatedSender } from "@/utils/messaging-helpers";
+import { logger } from "@/utils/winston";
+import { inject, injectable } from "tsyringe";
+import { TOKENS } from "@/types/tokens";
+
+@injectable()
+export class DeleteMessageCommandHandler
+  implements ICommandHandler<DeleteMessageCommand, void>
+{
+  constructor(
+    @inject(TOKENS.Repositories.Message)
+    private readonly messageRepository: MessageRepository,
+    @inject(TOKENS.Repositories.User)
+    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UnitOfWork)
+    private readonly unitOfWork: UnitOfWork,
+    @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
+  ) {}
+
+  async execute(command: DeleteMessageCommand): Promise<void> {
+    try {
+      const { userPublicId, messageId } = command;
+
+      const userInternalId =
+        await this.userRepository.findInternalIdByPublicId(userPublicId);
+      if (!userInternalId) {
+        throw Errors.notFound("User");
+      }
+
+      const message = await this.messageRepository.findByPublicId(messageId);
+      if (!message) {
+        throw Errors.notFound("Resource");
+      }
+
+      const senderRef: unknown = message.sender;
+      const senderId = isPopulatedSender(senderRef)
+        ? (senderRef._id ? senderRef._id.toString() : senderRef.publicId ?? "")
+        : message.sender.toString();
+      if (senderId !== userInternalId) {
+        throw Errors.forbidden("You can only delete your own messages");
+      }
+
+      await this.unitOfWork.executeInTransaction(async () => {
+        const attachmentPublicIds =
+          message.attachments
+            ?.map((att) => {
+              const url = att.url;
+              const cloudinaryMatch = url.match(
+                /\/upload\/(?:v\d+\/)?(.+)\.[^.]+$/,
+              );
+              if (cloudinaryMatch) return cloudinaryMatch[1];
+
+              const localStorageMatch = url.match(/\/uploads\/(.+)$/);
+              if (localStorageMatch) return localStorageMatch[1];
+
+              logger.warn(
+                "[MessagingService] Could not extract publicId from attachment URL, file may remain in storage",
+                { url },
+              );
+              return null;
+            })
+            .filter((id): id is string => !!id) || [];
+
+        await this.messageRepository.updateMessage(
+          messageId,
+          {
+            body: "message deleted by user",
+            attachments: [],
+          },
+        );
+
+        if (attachmentPublicIds.length > 0) {
+          await this.eventBus.queueTransactional(
+            new MessageAttachmentsDeletedEvent(attachmentPublicIds),
+          );
+        }
+      });
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AppError') throw error;
+      throw wrapError(error, "InternalServerError", {
+        context: { operation: "deleteMessage" },
+      });
+    }
+  }
+}

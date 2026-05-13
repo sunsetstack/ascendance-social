@@ -77,6 +77,40 @@ import { GetPostsByUserQuery } from "@/application/queries/post/getPostsByUser/g
 import { GetPostsByUserQueryHandler } from "@/application/queries/post/getPostsByUser/getPostsByUser.handler";
 import { SearchPostsByTagsQuery } from "@/application/queries/post/searchPostsByTags/searchPostsByTags.query";
 import { SearchPostsByTagsQueryHandler } from "@/application/queries/post/searchPostsByTags/searchPostsByTags.handler";
+import { SearchAllQuery } from "@/application/queries/search/searchAll/searchAll.query";
+import { SearchAllQueryHandler } from "@/application/queries/search/searchAll/searchAll.handler";
+import { AddFavoriteCommand } from "@/application/commands/favorite/addFavorite/addFavorite.command";
+import { AddFavoriteCommandHandler } from "@/application/commands/favorite/addFavorite/addFavorite.handler";
+import { RemoveFavoriteCommand } from "@/application/commands/favorite/removeFavorite/removeFavorite.command";
+import { RemoveFavoriteCommandHandler } from "@/application/commands/favorite/removeFavorite/removeFavorite.handler";
+import { RemoveFavoriteAdminCommand } from "@/application/commands/favorite/removeFavoriteAdmin/removeFavoriteAdmin.command";
+import { RemoveFavoriteAdminCommandHandler } from "@/application/commands/favorite/removeFavoriteAdmin/removeFavoriteAdmin.handler";
+import { CreateNotificationCommand } from "@/application/commands/notification/createNotification/createNotification.command";
+import { CreateNotificationCommandHandler } from "@/application/commands/notification/createNotification/createNotification.handler";
+import { MarkAsReadCommand } from "@/application/commands/notification/markAsRead/markAsRead.command";
+import { MarkAsReadCommandHandler } from "@/application/commands/notification/markAsRead/markAsRead.handler";
+import { MarkAllAsReadCommand } from "@/application/commands/notification/markAllAsRead/markAllAsRead.command";
+import { MarkAllAsReadCommandHandler } from "@/application/commands/notification/markAllAsRead/markAllAsRead.handler";
+import { SendMessageCommand } from "@/application/commands/messaging/sendMessage/sendMessage.command";
+import { SendMessageCommandHandler } from "@/application/commands/messaging/sendMessage/sendMessage.handler";
+import { EditMessageCommand } from "@/application/commands/messaging/editMessage/editMessage.command";
+import { EditMessageCommandHandler } from "@/application/commands/messaging/editMessage/editMessage.handler";
+import { DeleteMessageCommand } from "@/application/commands/messaging/deleteMessage/deleteMessage.command";
+import { DeleteMessageCommandHandler } from "@/application/commands/messaging/deleteMessage/deleteMessage.handler";
+import { InitiateConversationCommand } from "@/application/commands/messaging/initiateConversation/initiateConversation.command";
+import { InitiateConversationCommandHandler } from "@/application/commands/messaging/initiateConversation/initiateConversation.handler";
+import { MarkConversationReadCommand } from "@/application/commands/messaging/markConversationRead/markConversationRead.command";
+import { MarkConversationReadCommandHandler } from "@/application/commands/messaging/markConversationRead/markConversationRead.handler";
+import { ListConversationsQuery } from "@/application/queries/messaging/listConversations/listConversations.query";
+import { ListConversationsQueryHandler } from "@/application/queries/messaging/listConversations/listConversations.handler";
+import { GetConversationMessagesQuery } from "@/application/queries/messaging/getConversationMessages/getConversationMessages.query";
+import { GetConversationMessagesQueryHandler } from "@/application/queries/messaging/getConversationMessages/getConversationMessages.handler";
+import { GetNotificationsQuery } from "@/application/queries/notification/getNotifications/getNotifications.query";
+import { GetNotificationsQueryHandler } from "@/application/queries/notification/getNotifications/getNotifications.handler";
+import { GetUnreadCountQuery } from "@/application/queries/notification/getUnreadCount/getUnreadCount.query";
+import { GetUnreadCountQueryHandler } from "@/application/queries/notification/getUnreadCount/getUnreadCount.handler";
+import { GetFavoritesQuery } from "@/application/queries/favorite/getFavorites/getFavorites.query";
+import { GetFavoritesQueryHandler } from "@/application/queries/favorite/getFavorites/getFavorites.handler";
 import { GetAllTagsQuery } from "@/application/queries/tags/getAllTags/getAllTags.query";
 import { GetAllTagsQueryHandler } from "@/application/queries/tags/getAllTags/getAllTags.handler";
 import { GetLikedPostsByUserQuery } from "@/application/queries/post/getLikedPostsByUser/getLikedPostsByUser.query";
@@ -231,8 +265,56 @@ export function registerCQRS(): void {
   container.register(TOKENS.CQRS.Commands.RecordPostView, {
     useClass: RecordPostViewCommandHandler,
   });
+  container.register(TOKENS.CQRS.Commands.AddFavorite, {
+    useClass: AddFavoriteCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Commands.RemoveFavorite, {
+    useClass: RemoveFavoriteCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Commands.RemoveFavoriteAdmin, {
+    useClass: RemoveFavoriteAdminCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Commands.CreateNotification, {
+    useClass: CreateNotificationCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Commands.MarkAsRead, {
+    useClass: MarkAsReadCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Commands.MarkAllAsRead, {
+    useClass: MarkAllAsReadCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Commands.SendMessage, {
+    useClass: SendMessageCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Commands.EditMessage, {
+    useClass: EditMessageCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Commands.DeleteMessage, {
+    useClass: DeleteMessageCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Commands.InitiateConversation, {
+    useClass: InitiateConversationCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Commands.MarkConversationRead, {
+    useClass: MarkConversationReadCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Queries.ListConversations, {
+    useClass: ListConversationsQueryHandler,
+  });
+  container.register(TOKENS.CQRS.Queries.GetConversationMessages, {
+    useClass: GetConversationMessagesQueryHandler,
+  });
   container.register(TOKENS.CQRS.Queries.GetLikedPostsByUser, {
     useClass: GetLikedPostsByUserHandler,
+  });
+  container.register(TOKENS.CQRS.Queries.GetFavorites, {
+    useClass: GetFavoritesQueryHandler,
+  });
+  container.register(TOKENS.CQRS.Queries.GetNotifications, {
+    useClass: GetNotificationsQueryHandler,
+  });
+  container.register(TOKENS.CQRS.Queries.GetUnreadCount, {
+    useClass: GetUnreadCountQueryHandler,
   });
 
   container.register(TOKENS.CQRS.Commands.BanUser, {
@@ -373,6 +455,9 @@ export function registerCQRS(): void {
   container.register(TOKENS.CQRS.Queries.SearchPostsByTags, {
     useClass: SearchPostsByTagsQueryHandler,
   });
+  container.register(TOKENS.CQRS.Queries.SearchAll, {
+    useClass: SearchAllQueryHandler,
+  });
   container.register(TOKENS.CQRS.Queries.GetAllTags, {
     useClass: GetAllTagsQueryHandler,
   });
@@ -511,6 +596,72 @@ export function initCQRS(): void {
     RecordPostViewCommand,
     container.resolve<RecordPostViewCommandHandler>(
       TOKENS.CQRS.Commands.RecordPostView,
+    ),
+  );
+  commandBus.register(
+    AddFavoriteCommand,
+    container.resolve<AddFavoriteCommandHandler>(
+      TOKENS.CQRS.Commands.AddFavorite,
+    ),
+  );
+  commandBus.register(
+    RemoveFavoriteCommand,
+    container.resolve<RemoveFavoriteCommandHandler>(
+      TOKENS.CQRS.Commands.RemoveFavorite,
+    ),
+  );
+  commandBus.register(
+    RemoveFavoriteAdminCommand,
+    container.resolve<RemoveFavoriteAdminCommandHandler>(
+      TOKENS.CQRS.Commands.RemoveFavoriteAdmin,
+    ),
+  );
+  commandBus.register(
+    CreateNotificationCommand,
+    container.resolve<CreateNotificationCommandHandler>(
+      TOKENS.CQRS.Commands.CreateNotification,
+    ),
+  );
+  commandBus.register(
+    MarkAsReadCommand,
+    container.resolve<MarkAsReadCommandHandler>(
+      TOKENS.CQRS.Commands.MarkAsRead,
+    ),
+  );
+  commandBus.register(
+    MarkAllAsReadCommand,
+    container.resolve<MarkAllAsReadCommandHandler>(
+      TOKENS.CQRS.Commands.MarkAllAsRead,
+    ),
+  );
+  commandBus.register(
+    SendMessageCommand,
+    container.resolve<SendMessageCommandHandler>(
+      TOKENS.CQRS.Commands.SendMessage,
+    ),
+  );
+  commandBus.register(
+    EditMessageCommand,
+    container.resolve<EditMessageCommandHandler>(
+      TOKENS.CQRS.Commands.EditMessage,
+    ),
+  );
+  commandBus.register(
+    DeleteMessageCommand,
+    container.resolve<DeleteMessageCommandHandler>(
+      TOKENS.CQRS.Commands.DeleteMessage,
+    ),
+  );
+  commandBus.register(
+    InitiateConversationCommand,
+    container.resolve<InitiateConversationCommandHandler>(
+      TOKENS.CQRS.Commands.InitiateConversation,
+    ),
+  );
+  commandBus.register(
+    MarkConversationReadCommand,
+    container.resolve<MarkConversationReadCommandHandler>(
+      TOKENS.CQRS.Commands.MarkConversationRead,
     ),
   );
   commandBus.register(
@@ -709,6 +860,12 @@ export function initCQRS(): void {
     ),
   );
   queryBus.register(
+    SearchAllQuery,
+    container.resolve<SearchAllQueryHandler>(
+      TOKENS.CQRS.Queries.SearchAll,
+    ),
+  );
+  queryBus.register(
     GetAllTagsQuery,
     container.resolve<GetAllTagsQueryHandler>(TOKENS.CQRS.Queries.GetAllTags),
   );
@@ -716,6 +873,36 @@ export function initCQRS(): void {
     GetLikedPostsByUserQuery,
     container.resolve<GetLikedPostsByUserHandler>(
       TOKENS.CQRS.Queries.GetLikedPostsByUser,
+    ),
+  );
+  queryBus.register(
+    GetFavoritesQuery,
+    container.resolve<GetFavoritesQueryHandler>(
+      TOKENS.CQRS.Queries.GetFavorites,
+    ),
+  );
+  queryBus.register(
+    GetNotificationsQuery,
+    container.resolve<GetNotificationsQueryHandler>(
+      TOKENS.CQRS.Queries.GetNotifications,
+    ),
+  );
+  queryBus.register(
+    GetUnreadCountQuery,
+    container.resolve<GetUnreadCountQueryHandler>(
+      TOKENS.CQRS.Queries.GetUnreadCount,
+    ),
+  );
+  queryBus.register(
+    ListConversationsQuery,
+    container.resolve<ListConversationsQueryHandler>(
+      TOKENS.CQRS.Queries.ListConversations,
+    ),
+  );
+  queryBus.register(
+    GetConversationMessagesQuery,
+    container.resolve<GetConversationMessagesQueryHandler>(
+      TOKENS.CQRS.Queries.GetConversationMessages,
     ),
   );
   queryBus.register(

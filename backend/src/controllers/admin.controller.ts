@@ -20,8 +20,8 @@ import { UnbanUserCommand } from "@/application/commands/admin/unbanUser/unbanUs
 import { PromoteToAdminCommand } from "@/application/commands/admin/promoteToAdmin/promoteToAdmin.command";
 import { DemoteFromAdminCommand } from "@/application/commands/admin/demoteFromAdmin/demoteFromAdmin.command";
 import { DeleteCommentCommand } from "@/application/commands/comments/deleteComment/deleteComment.command";
+import { RemoveFavoriteAdminCommand } from "@/application/commands/favorite/removeFavoriteAdmin/removeFavoriteAdmin.command";
 import { AdminUserDTO } from "@/services/dto.service";
-import { FavoriteService } from "@/services/favorite.service";
 import { escapeRegex } from "@/utils/sanitizers";
 import { RedisService } from "@/services/redis.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
@@ -51,8 +51,6 @@ export class AdminUserController {
     @inject(TOKENS.CQRS.Commands.Bus) private readonly commandBus: CommandBus,
     @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
     @inject(TOKENS.Services.Redis) private readonly redisService: RedisService,
-    @inject(TOKENS.Services.Favorite)
-    private readonly favoriteService: FavoriteService,
   ) {}
 
   getAllUsersAdmin = async (
@@ -226,7 +224,9 @@ export class AdminUserController {
     res: Response,
   ) => {
     const { publicId, postPublicId } = req.params;
-    await this.favoriteService.removeFavoriteAdmin(publicId, postPublicId);
+    await this.commandBus.dispatch(
+      new RemoveFavoriteAdminCommand(publicId, postPublicId)
+    );
     res.status(204).send();
   };
 
