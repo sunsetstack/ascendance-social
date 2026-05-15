@@ -4,6 +4,7 @@ import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import { MongoId, UserPublicId } from "@/types/branded";
 
 @injectable()
 export class NotificationRepository extends BaseRepository<INotification> {
@@ -24,7 +25,7 @@ export class NotificationRepository extends BaseRepository<INotification> {
 	 * @param limit - number of notifications to fetch (default: 50)
 	 * @param skip - number of notifications to skip for pagination (default: 0)
 	 */
-	async getNotifications(userId: string, limit: number = 50, skip: number = 0): Promise<INotification[]> {
+	async getNotifications(userId: UserPublicId, limit: number = 50, skip: number = 0): Promise<INotification[]> {
 		return await this.model
 			.find({ userId })
 			.sort({ timestamp: -1 })
@@ -42,7 +43,7 @@ export class NotificationRepository extends BaseRepository<INotification> {
 	 * @param limit - number of notifications to fetch (default: 20)
 	 */
 	async getNotificationsBeforeTimestamp(
-		userId: string,
+		userId: UserPublicId,
 		beforeTimestamp: Date,
 		limit: number = 20,
 	): Promise<INotification[]> {
@@ -61,11 +62,11 @@ export class NotificationRepository extends BaseRepository<INotification> {
 	 * Get count of unread notifications for a user
 	 * Uses the compound index { userId: 1, isRead: 1 } for optimal performance
 	 */
-	async getUnreadCount(userId: string): Promise<number> {
+	async getUnreadCount(userId: UserPublicId): Promise<number> {
 		return this.model.countDocuments({ userId, isRead: false }).exec();
 	}
 
-	async markAsRead(notificationId: string, userId: string) {
+	async markAsRead(notificationId: MongoId, userId: UserPublicId) {
 		if (!notificationId || !/^[0-9a-fA-F]{24}$/.test(notificationId)) {
 			logger.warn(`[NotificationRepository] Invalid notificationId format: ${notificationId}`);
 			return null;
@@ -96,7 +97,7 @@ export class NotificationRepository extends BaseRepository<INotification> {
 	 * Mark all notifications as read for a user
 	 * Useful for "mark all as read" functionality
 	 */
-	async markAllAsRead(userId: string): Promise<number> {
+	async markAllAsRead(userId: UserPublicId): Promise<number> {
 		const result = await this.model.updateMany({ userId, isRead: false }, { $set: { isRead: true } }).exec();
 		return result.modifiedCount;
 	}
@@ -106,7 +107,7 @@ export class NotificationRepository extends BaseRepository<INotification> {
 	 * @param userId - user publicId
 	 * @param olderThanDays - delete notifications older than this many days (default: 30)
 	 */
-	async deleteOldReadNotifications(userId: string, olderThanDays: number = 30): Promise<number> {
+	async deleteOldReadNotifications(userId: UserPublicId, olderThanDays: number = 30): Promise<number> {
 		const cutoffDate = new Date();
 		cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
 
@@ -121,7 +122,7 @@ export class NotificationRepository extends BaseRepository<INotification> {
 		return result.deletedCount;
 	}
 
-	async deleteManyByUserId(userId: string): Promise<number> {
+	async deleteManyByUserId(userId: UserPublicId): Promise<number> {
 		const session = this.getSession();
 		const result = await this.model
 			.deleteMany({ userId })
@@ -130,7 +131,7 @@ export class NotificationRepository extends BaseRepository<INotification> {
 		return result.deletedCount || 0;
 	}
 
-	async deleteManyByActorId(actorId: string): Promise<number> {
+	async deleteManyByActorId(actorId: UserPublicId): Promise<number> {
 		const session = this.getSession();
 		const result = await this.model
 			.deleteMany({ actorId })

@@ -1,3 +1,4 @@
+import { UserPublicId } from "@/types/branded";
 /**
  * @pattern Strategy
  *
@@ -5,5 +6,7 @@
  * Each strategy encapsulates how image data reaches the storage provider.
  */
 export interface IImageUploadStrategy {
-  upload(userPublicId: string): Promise<{ url: string; publicId: string }>;
+  upload(
+    userPublicId: UserPublicId,
+  ): Promise<{ url: string; publicId: string }>;
 }

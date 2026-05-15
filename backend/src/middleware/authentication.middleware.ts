@@ -10,6 +10,7 @@ import {
 } from "@/utils/errors";
 import rateLimit from "express-rate-limit";
 import { DecodedUser, AdminContext } from "@/types";
+import { asUserPublicId, asSessionId } from "@/types/branded";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
 import { logger } from "@/utils/winston";
 import { authCookieNames } from "@/config/cookieConfig";
@@ -81,12 +82,13 @@ export class BearerTokenStrategy extends AuthStrategy {
       }
 
       const payload: DecodedUser = {
-        publicId: verified.publicId,
+        publicId: asUserPublicId(verified.publicId),
         email: verified.email,
         username: verified.username,
         handle: verified.handle,
-        sid: verified.sid,
-        isAdmin: typeof verified.isAdmin === "boolean" ? verified.isAdmin : false,
+        sid: asSessionId(verified.sid),
+        isAdmin:
+          typeof verified.isAdmin === "boolean" ? verified.isAdmin : false,
       };
 
       const authSessionService =

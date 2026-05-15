@@ -9,14 +9,16 @@ import { MessageStatusUpdatedEvent } from "@/application/events/message/message.
 import { Errors, wrapError } from "@/utils/errors";
 import { getParticipantIds } from "@/utils/messaging-helpers";
 import { toObjectId, UserPublicIdLean } from "@/types";
+import { UserPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
-export class MarkConversationReadCommandHandler
-  implements ICommandHandler<MarkConversationReadCommand, void>
-{
+export class MarkConversationReadCommandHandler implements ICommandHandler<
+  MarkConversationReadCommand,
+  void
+> {
   constructor(
     @inject(TOKENS.Repositories.Conversation)
     private readonly conversationRepository: ConversationRepository,
@@ -30,7 +32,7 @@ export class MarkConversationReadCommandHandler
   ) {}
 
   private async ensureConversationAccess(
-    userPublicId: string,
+    userPublicId: UserPublicId,
     conversationPublicId: string,
   ) {
     const conversation = await this.conversationRepository.findByPublicId(
@@ -106,7 +108,7 @@ export class MarkConversationReadCommandHandler
         );
       });
     } catch (error) {
-      if (error instanceof Error && error.name === 'AppError') throw error;
+      if (error instanceof Error && error.name === "AppError") throw error;
       throw wrapError(error, "InternalServerError", {
         context: { operation: "markConversationRead" },
       });

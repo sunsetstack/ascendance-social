@@ -1,92 +1,98 @@
+import { UserPublicId, PostPublicId, MongoId } from "@/types/branded";
 import mongoose, { Document } from "mongoose";
 import { Types } from "mongoose";
 
 export interface IComment extends Document {
-	_id: mongoose.Types.ObjectId;
-	content: string;
-	postId: mongoose.Types.ObjectId;
-	parentId: mongoose.Types.ObjectId | null;
-	replyCount: number;
-	depth: number;
-	likesCount: number;
-	userId: mongoose.Types.ObjectId | null;
-	createdAt: Date;
-	updatedAt: Date;
-	isEdited: boolean;
-	isDeleted: boolean;
-	deletedBy: "user" | "admin" | null;
+  _id: mongoose.Types.ObjectId;
+  content: string;
+  postId: mongoose.Types.ObjectId;
+  parentId: mongoose.Types.ObjectId | null;
+  replyCount: number;
+  depth: number;
+  likesCount: number;
+  userId: mongoose.Types.ObjectId | null;
+  createdAt: Date;
+  updatedAt: Date;
+  isEdited: boolean;
+  isDeleted: boolean;
+  deletedBy: "user" | "admin" | null;
 }
 
 export interface CommentCreateDto {
-	content: string;
-	postId: string;
-	userId: string;
+  content: string;
+  postId: MongoId;
+  userId: MongoId;
 }
 
 export interface CommentUpdateDto {
-	content: string;
+  content: string;
 }
 
 export interface CommentResponseDto {
-	id: string;
-	content: string;
-	postId: string;
-	parentId: string | null;
-	replyCount: number;
-	depth: number;
-	likesCount: number;
-	user: {
-		id: string;
-		username: string;
-		avatar?: string;
-	};
-	createdAt: Date;
-	updatedAt: Date;
-	isEdited: boolean;
+  id: string;
+  content: string;
+  postId: string;
+  parentId: string | null;
+  replyCount: number;
+  depth: number;
+  likesCount: number;
+  user: {
+    id: string;
+    username: string;
+    avatar?: string;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+  isEdited: boolean;
 }
 
 export interface CommentsPaginationResponse {
-	comments: CommentResponseDto[];
-	total: number;
-	page: number;
-	limit: number;
-	totalPages: number;
+  comments: CommentResponseDto[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface TransformedComment {
-	id: string;
-	content: string;
-	postPublicId: string;
-	parentId: string | null;
-	replyCount: number;
-	depth: number;
-	likesCount: number;
-	user: {
-		publicId: string;
-		handle: string;
-		username: string;
-		avatar?: string;
-	} | null;
-	createdAt: Date;
-	updatedAt: Date;
-	isEdited: boolean;
-	isDeleted: boolean;
-	deletedBy: "user" | "admin" | null;
+  id: string;
+  content: string;
+  postPublicId: PostPublicId;
+  parentId: string | null;
+  replyCount: number;
+  depth: number;
+  likesCount: number;
+  user: {
+    publicId: UserPublicId;
+    handle: string;
+    username: string;
+    avatar?: string;
+  } | null;
+  createdAt: Date;
+  updatedAt: Date;
+  isEdited: boolean;
+  isDeleted: boolean;
+  deletedBy: "user" | "admin" | null;
 }
 
 // interface for populated comment from lean() query
 export interface PopulatedCommentLean {
-	_id: Types.ObjectId;
-	content: string;
-	postId: { publicId: string };
-	parentId: Types.ObjectId | null;
-	replyCount: number;
-	depth: number;
-	likesCount: number;
-	userId: { publicId: string; handle?: string; username: string; avatar?: string } | null;
-	createdAt: Date;
-	updatedAt: Date;
-	isEdited: boolean;
-	isDeleted: boolean;
-	deletedBy: "user" | "admin" | null;
+  _id: Types.ObjectId;
+  content: string;
+  postId: { publicId: PostPublicId };
+  parentId: Types.ObjectId | null;
+  replyCount: number;
+  depth: number;
+  likesCount: number;
+  userId: {
+    publicId: UserPublicId;
+    handle?: string;
+    username: string;
+    avatar?: string;
+  } | null;
+  createdAt: Date;
+  updatedAt: Date;
+  isEdited: boolean;
+  isDeleted: boolean;
+  deletedBy: "user" | "admin" | null;
 }

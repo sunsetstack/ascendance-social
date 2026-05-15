@@ -9,6 +9,7 @@ import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
 import { FeedCoreService } from "@/services/feed/feed-core.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
+import { asUserPublicId } from "@/types/branded";
 
 @injectable()
 export class GetPersonalizedFeedQueryHandler implements IQueryHandler<
@@ -44,7 +45,7 @@ export class GetPersonalizedFeedQueryHandler implements IQueryHandler<
         // cache miss - generate core feed
         logger.info("Core feed cache miss, generating...");
         coreFeed = await this.feedCoreService.generatePersonalizedCoreFeed(
-          userId,
+          asUserPublicId(userId),
           safeLimit,
           cursor,
         );

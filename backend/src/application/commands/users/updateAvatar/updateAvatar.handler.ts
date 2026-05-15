@@ -1,3 +1,4 @@
+import { UserPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { UpdateAvatarCommand } from "./updateAvatar.command";
@@ -119,7 +120,7 @@ export class UpdateAvatarCommandHandler implements ICommandHandler<
   }
 
   private async deleteOldAvatarAfterCommit(
-    userPublicId: string,
+    userPublicId: UserPublicId,
     oldAvatarUrl: string | null,
   ): Promise<void> {
     if (!oldAvatarUrl) {

@@ -21,6 +21,7 @@ import {
   ITag,
 } from "@/types";
 import { TOKENS } from "@/types/tokens";
+import { asPostPublicId, asUserPublicId } from "@/types/branded";
 
 @injectable()
 export class GetForYouFeedQueryHandler implements IQueryHandler<
@@ -66,7 +67,7 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
             count: redisResult.ids.length,
           });
           const posts = await this.postReadRepository.findPostsByPublicIds(
-            redisResult.ids,
+            redisResult.ids.map(asPostPublicId),
           );
 
           // Re-sort to match Redis order (crucial for feed consistency)
@@ -105,7 +106,9 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
         userId,
       });
 
-      const user = await this.userReadRepository.findByPublicId(userId);
+      const user = await this.userReadRepository.findByPublicId(
+        asUserPublicId(userId),
+      );
       if (!user) {
         throw Errors.notFound("User");
       }
@@ -216,7 +219,7 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
         likes: plainPost.likesCount ?? plainPost.likes ?? 0,
         commentsCount: plainPost.commentsCount ?? 0,
         viewsCount: plainPost.viewsCount ?? 0,
-        userPublicId: userDoc?.publicId as string,
+        userPublicId: asUserPublicId(userDoc?.publicId as string),
         tags: normalizedTags,
         user: {
           publicId: userDoc?.publicId as string,
@@ -317,7 +320,9 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
     page: number,
     limit: number,
   ) {
-    const user = await this.userReadRepository.findByPublicId(userId);
+    const user = await this.userReadRepository.findByPublicId(
+      asUserPublicId(userId),
+    );
     if (!user) {
       throw Errors.notFound("User");
     }

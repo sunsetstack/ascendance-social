@@ -10,18 +10,29 @@ import { MessageSentEvent } from "@/application/events/message/message.event";
 import { CommandBus } from "@/application/common/buses/command.bus";
 import { CreateNotificationCommand } from "@/application/commands/notification/createNotification/createNotification.command";
 import { Errors, wrapError } from "@/utils/errors";
-import { buildParticipantHash, getParticipantIds, asPopulatedMessage } from "@/utils/messaging-helpers";
+import {
+  buildParticipantHash,
+  getParticipantIds,
+  asPopulatedMessage,
+} from "@/utils/messaging-helpers";
 import { sanitizeTextInput } from "@/utils/sanitizers";
 import { isUserViewingConversation } from "@/server/socketServer";
-import { IImageStorageService, MessageDTO, toObjectId, UserPublicIdLean } from "@/types";
+import {
+  IImageStorageService,
+  MessageDTO,
+  toObjectId,
+  UserPublicIdLean,
+} from "@/types";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { TOKENS } from "@/types/tokens";
+import { asUserPublicId } from "@/types/branded";
 
 @injectable()
-export class SendMessageCommandHandler
-  implements ICommandHandler<SendMessageCommand, MessageDTO>
-{
+export class SendMessageCommandHandler implements ICommandHandler<
+  SendMessageCommand,
+  MessageDTO
+> {
   constructor(
     @inject(TOKENS.Repositories.Conversation)
     private readonly conversationRepository: ConversationRepository,
@@ -48,7 +59,9 @@ export class SendMessageCommandHandler
         !!file;
 
       if (!hasContent) {
-        throw Errors.validation("Message must contain either text or an attachment");
+        throw Errors.validation(
+          "Message must contain either text or an attachment",
+        );
       }
 
       if (file) {
@@ -99,7 +112,9 @@ export class SendMessageCommandHandler
         : null;
 
       if (!targetConversation && !payload.recipientPublicId) {
-        throw Errors.validation("Recipient is required when no conversation is provided");
+        throw Errors.validation(
+          "Recipient is required when no conversation is provided",
+        );
       }
 
       let attachments = payload.attachments || [];
@@ -110,7 +125,11 @@ export class SendMessageCommandHandler
         const uploadPath = `${senderPublicId}/${convIdForPath}`;
 
         const { url } = await this.imageStorageService.uploadImageStream(
-          { buffer: file.buffer, originalName: file.originalname, mimeType: file.mimetype },
+          {
+            buffer: file.buffer,
+            originalName: file.originalname,
+            mimeType: file.mimetype,
+          },
           senderPublicId,
           uploadPath,
         );
@@ -140,7 +159,7 @@ export class SendMessageCommandHandler
           if (!conversationDoc) {
             const recipientInternalId =
               await this.userRepository.findInternalIdByPublicId(
-                payload.recipientPublicId!,
+                asUserPublicId(payload.recipientPublicId!),
               );
             if (!recipientInternalId) {
               throw Errors.notFound("User");
@@ -159,7 +178,10 @@ export class SendMessageCommandHandler
                 (id) => new mongoose.Types.ObjectId(id),
               );
               const unreadSeed = new Map<string, number>(
-                participantIds.map((id) => [id, id === senderInternalId ? 0 : 1]),
+                participantIds.map((id) => [
+                  id,
+                  id === senderInternalId ? 0 : 1,
+                ]),
               );
 
               conversationDoc = await this.conversationRepository.create({
@@ -174,7 +196,9 @@ export class SendMessageCommandHandler
               conversationDoc.participants,
             );
             if (!new Set(existingParticipantIds).has(senderInternalId)) {
-              throw Errors.forbidden("You do not have access to this conversation");
+              throw Errors.forbidden(
+                "You do not have access to this conversation",
+              );
             }
           }
 
@@ -221,7 +245,8 @@ export class SendMessageCommandHandler
           const populatedMessage = asPopulatedMessage(message);
 
           const participantObjectIds = participantIds.map(
-            (participantId: string) => new mongoose.Types.ObjectId(participantId),
+            (participantId: string) =>
+              new mongoose.Types.ObjectId(participantId),
           );
           const alsSession = sessionALS.getStore() ?? null;
           const participantDocs = await this.userRepository
@@ -231,7 +256,9 @@ export class SendMessageCommandHandler
             .lean<UserPublicIdLean[]>()
             .exec();
 
-          const participantPublicIds = participantDocs.map((doc) => doc.publicId);
+          const participantPublicIds = participantDocs.map(
+            (doc) => doc.publicId,
+          );
 
           const recipients = participantPublicIds.filter(
             (id: string) => id !== senderPublicId,
@@ -265,8 +292,8 @@ export class SendMessageCommandHandler
                     targetPreview:
                       sanitizedBody.substring(0, 50) +
                       (sanitizedBody.length > 50 ? "..." : ""),
-                  })
-                )
+                  }),
+                ),
               ),
             );
           }
@@ -286,7 +313,9 @@ export class SendMessageCommandHandler
       );
 
       if (!targetConversation) {
-        throw Errors.internal("Conversation context missing after message creation");
+        throw Errors.internal(
+          "Conversation context missing after message creation",
+        );
       }
 
       return this.dtoService.toPublicMessageDTO(
@@ -294,7 +323,7 @@ export class SendMessageCommandHandler
         targetConversation.publicId,
       );
     } catch (error) {
-      if (error instanceof Error && error.name === 'AppError') throw error;
+      if (error instanceof Error && error.name === "AppError") throw error;
       throw wrapError(error, "InternalServerError", {
         context: { operation: "sendMessage" },
       });

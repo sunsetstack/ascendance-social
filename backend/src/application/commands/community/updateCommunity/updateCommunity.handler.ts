@@ -11,6 +11,11 @@ import { Errors } from "@/utils/errors";
 import { generateSlug } from "@/utils/helpers";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import {
+  asMongoId,
+  asUserPublicId,
+  asCommunityPublicId,
+} from "@/types/branded";
 
 @injectable()
 export class UpdateCommunityCommandHandler implements ICommandHandler<
@@ -34,14 +39,17 @@ export class UpdateCommunityCommandHandler implements ICommandHandler<
       updates,
     } = command;
 
-    const community =
-      await this.communityRepository.findByPublicId(communityPublicId);
+    const community = await this.communityRepository.findByPublicId(
+      asCommunityPublicId(communityPublicId),
+    );
     if (!community) {
       throw Errors.notFound("Community");
     }
     const communityId = community._id as Types.ObjectId;
 
-    const user = await this.userRepository.findByPublicId(userPublicId);
+    const user = await this.userRepository.findByPublicId(
+      asUserPublicId(userPublicId),
+    );
     if (!user) {
       throw Errors.notFound("User");
     }
@@ -67,7 +75,10 @@ export class UpdateCommunityCommandHandler implements ICommandHandler<
 
       // check slug uniqueness if changed
       const existing = await this.communityRepository.findBySlug(newSlug);
-      if (existing && existing._id.toString() !== communityId.toString()) {
+      if (
+        existing &&
+        existing._id.toString() !== asMongoId(communityId.toString())
+      ) {
         throw Errors.validation("Community name is already taken");
       }
       updateData.slug = newSlug;
@@ -109,7 +120,7 @@ export class UpdateCommunityCommandHandler implements ICommandHandler<
 
     // Update
     const updatedCommunity = await this.communityRepository.update(
-      communityId.toString(),
+      asMongoId(asMongoId(communityId.toString())),
       updateData,
     );
     if (!updatedCommunity) {

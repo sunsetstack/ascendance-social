@@ -1,3 +1,4 @@
+import { UserPublicId, asUserPublicId, asPostPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import { PostRepository } from "@/repositories/post.repository";
 import { PostLikeRepository } from "@/repositories/postLike.repository";
@@ -32,7 +33,9 @@ export class PostService {
     publicId: string,
     viewerPublicId?: string,
   ): Promise<PostDTO> {
-    const post = await this.postRepository.findByPublicId(publicId);
+    const post = await this.postRepository.findByPublicId(
+      asPostPublicId(publicId),
+    );
     if (!post) {
       throw Errors.notFound("Post not found");
     }
@@ -46,7 +49,9 @@ export class PostService {
     if (viewerPublicId) {
       const postInternalId = toObjectId(post._id).toString();
       const viewerInternalId =
-        await this.userRepository.findInternalIdByPublicId(viewerPublicId);
+        await this.userRepository.findInternalIdByPublicId(
+          asUserPublicId(viewerPublicId),
+        );
 
       logger.info("[PostService.getPostByPublicId] IDs:", {
         postInternalId,
@@ -55,8 +60,14 @@ export class PostService {
 
       if (postInternalId && viewerInternalId) {
         const [hasLiked, favoriteRecord] = await Promise.all([
-          this.postLikeRepository.hasUserLiked(postInternalId, viewerInternalId),
-          this.favoriteRepository.findByUserAndPost(viewerInternalId, postInternalId),
+          this.postLikeRepository.hasUserLiked(
+            postInternalId,
+            viewerInternalId,
+          ),
+          this.favoriteRepository.findByUserAndPost(
+            viewerInternalId,
+            postInternalId,
+          ),
         ]);
         dto.isLikedByViewer = hasLiked;
         logger.info("[PostService.getPostByPublicId] like match:", {
@@ -102,7 +113,7 @@ export class PostService {
   }
 
   async getPostsByUserPublicId(
-    userPublicId: string,
+    userPublicId: UserPublicId,
     page: number,
     limit: number,
   ): Promise<PaginationResult<PostDTO>> {

@@ -10,11 +10,13 @@ import { sanitizeTextInput } from "@/utils/sanitizers";
 import { MessageDTO } from "@/types";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
+import { asMongoId } from "@/types/branded";
 
 @injectable()
-export class EditMessageCommandHandler
-  implements ICommandHandler<EditMessageCommand, MessageDTO>
-{
+export class EditMessageCommandHandler implements ICommandHandler<
+  EditMessageCommand,
+  MessageDTO
+> {
   constructor(
     @inject(TOKENS.Repositories.Conversation)
     private readonly conversationRepository: ConversationRepository,
@@ -67,7 +69,9 @@ export class EditMessageCommandHandler
         });
       } catch (sanitizeError) {
         const errorMsg =
-          sanitizeError instanceof Error ? sanitizeError.message : "Invalid message body";
+          sanitizeError instanceof Error
+            ? sanitizeError.message
+            : "Invalid message body";
         throw Errors.validation(errorMsg);
       }
 
@@ -80,7 +84,7 @@ export class EditMessageCommandHandler
       }
 
       const conversation = await this.conversationRepository.findById(
-        updatedMessage.conversation.toString(),
+        asMongoId(updatedMessage.conversation.toString()),
       );
       if (!conversation) {
         throw Errors.internal("Conversation not found");
@@ -91,7 +95,7 @@ export class EditMessageCommandHandler
         conversation.publicId,
       );
     } catch (error) {
-      if (error instanceof Error && error.name === 'AppError') throw error;
+      if (error instanceof Error && error.name === "AppError") throw error;
       throw wrapError(error, "InternalServerError", {
         context: { operation: "editMessage" },
       });

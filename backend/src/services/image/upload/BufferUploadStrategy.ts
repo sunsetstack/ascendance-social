@@ -1,3 +1,4 @@
+import { UserPublicId } from "@/types/branded";
 import type { IImageUploadStrategy } from "./IImageUploadStrategy";
 import type { ImageService } from "@/services/image.service";
 
@@ -15,7 +16,9 @@ export class BufferUploadStrategy implements IImageUploadStrategy {
     private readonly mimeType?: string,
   ) {}
 
-  async upload(userPublicId: string): Promise<{ url: string; publicId: string }> {
+  async upload(
+    userPublicId: UserPublicId,
+  ): Promise<{ url: string; publicId: string }> {
     return this.imageService.uploadImageStream(
       {
         buffer: this.buffer,

@@ -1,3 +1,4 @@
+import { UserPublicId, asMongoId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import { Model, Types } from "mongoose";
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
@@ -99,8 +100,8 @@ export class DeleteUserCommandHandler implements ICommandHandler<
     }
 
     // capture follower public IDs before deletion for cache invalidation
-    let followerPublicIds: string[] = [];
-    let userPublicId: string = command.userPublicId;
+    let followerPublicIds: UserPublicId[] = [];
+    let userPublicId: UserPublicId = command.userPublicId;
     let userId: string = "";
 
     try {
@@ -122,12 +123,14 @@ export class DeleteUserCommandHandler implements ICommandHandler<
         userPublicId = user.publicId;
 
         // get users that the deleted user was following (they need followerCount decremented)
-        const followingIds =
-          await this.followRepository.getFollowingObjectIds(userId);
+        const followingIds = await this.followRepository.getFollowingObjectIds(
+          asMongoId(userId),
+        );
 
         // get users that were following the deleted user (they need followingCount decremented)
-        const followerIds =
-          await this.followRepository.getFollowerObjectIds(userId);
+        const followerIds = await this.followRepository.getFollowerObjectIds(
+          asMongoId(userId),
+        );
 
         // delete all user relationships and content in proper order
         await this.commentRepository.deleteCommentsByUserId(userId);
@@ -138,11 +141,11 @@ export class DeleteUserCommandHandler implements ICommandHandler<
 
         await this.postViewRepository.deleteManyByUserId(userId);
 
-        await this.postWriteRepository.deleteManyByUserId(userId);
+        await this.postWriteRepository.deleteManyByUserId(asMongoId(userId));
 
-        await this.imageRepository.deleteMany(userId);
+        await this.imageRepository.deleteMany(asMongoId(userId));
 
-        await this.followRepository.deleteAllFollowsByUserId(userId);
+        await this.followRepository.deleteAllFollowsByUserId(asMongoId(userId));
 
         const uniqueFollowingIds = Array.from(new Set(followingIds));
         if (uniqueFollowingIds.length > 0) {
@@ -216,7 +219,7 @@ export class DeleteUserCommandHandler implements ICommandHandler<
         await this.messageRepository.removeUserFromReadBy(userId);
 
         // finally, delete the user
-        await this.userWriteRepository.delete(userId);
+        await this.userWriteRepository.delete(asMongoId(userId));
       });
 
       // delete all user-related cloud storage assets (after successful transaction commit)
@@ -233,7 +236,11 @@ export class DeleteUserCommandHandler implements ICommandHandler<
 
       // emit event after successful deletion to trigger cache cleanup
       await this.eventBus.publish(
-        new UserDeletedEvent(userPublicId, userId, followerPublicIds),
+        new UserDeletedEvent(
+          userPublicId,
+          asMongoId(userId),
+          followerPublicIds,
+        ),
       );
 
       // Explicitly invalidate "Who to follow" cache (global or user-specific if tagged)

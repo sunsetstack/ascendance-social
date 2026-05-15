@@ -10,14 +10,16 @@ import { MessageStatusUpdatedEvent } from "@/application/events/message/message.
 import { Errors, wrapError } from "@/utils/errors";
 import { getParticipantIds } from "@/utils/messaging-helpers";
 import { toObjectId, UserPublicIdLean } from "@/types";
+import { UserPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
-export class GetConversationMessagesQueryHandler
-  implements IQueryHandler<GetConversationMessagesQuery, any>
-{
+export class GetConversationMessagesQueryHandler implements IQueryHandler<
+  GetConversationMessagesQuery,
+  any
+> {
   constructor(
     @inject(TOKENS.Repositories.Conversation)
     private readonly conversationRepository: ConversationRepository,
@@ -32,7 +34,7 @@ export class GetConversationMessagesQueryHandler
   ) {}
 
   private async ensureConversationAccess(
-    userPublicId: string,
+    userPublicId: UserPublicId,
     conversationPublicId: string,
   ) {
     const conversation = await this.conversationRepository.findByPublicId(
@@ -61,7 +63,12 @@ export class GetConversationMessagesQueryHandler
 
   async execute(query: GetConversationMessagesQuery): Promise<any> {
     try {
-      const { userPublicId, conversationPublicId, page = 1, limit = 30 } = query;
+      const {
+        userPublicId,
+        conversationPublicId,
+        page = 1,
+        limit = 30,
+      } = query;
 
       const conversation = await this.ensureConversationAccess(
         userPublicId,
@@ -130,7 +137,7 @@ export class GetConversationMessagesQueryHandler
         totalPages: result.totalPages,
       };
     } catch (error) {
-      if (error instanceof Error && error.name === 'AppError') throw error;
+      if (error instanceof Error && error.name === "AppError") throw error;
       throw wrapError(error, "InternalServerError", {
         context: { operation: "getConversationMessages" },
       });

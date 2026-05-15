@@ -1,11 +1,12 @@
+import { UserPublicId } from "@/types/branded";
 import { ICommand } from "@/application/common/interfaces/command.interface";
 
 export class ChangePasswordCommand implements ICommand {
-	readonly type = "ChangePasswordCommand";
+  readonly type = "ChangePasswordCommand";
 
-	constructor(
-		public readonly userPublicId: string,
-		public readonly currentPassword: string,
-		public readonly newPassword: string
-	) {}
+  constructor(
+    public readonly userPublicId: UserPublicId,
+    public readonly currentPassword: string,
+    public readonly newPassword: string,
+  ) {}
 }

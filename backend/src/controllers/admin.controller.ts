@@ -26,6 +26,7 @@ import { escapeRegex } from "@/utils/sanitizers";
 import { RedisService } from "@/services/redis.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
+import { asPostPublicId, asUserPublicId } from "@/types/branded";
 import type {
   AdminFavoriteParams,
   AdminImagesQuery,
@@ -106,7 +107,7 @@ export class AdminUserController {
 
   getUser = async (req: TypedRequest<UserPublicIdParams>, res: Response) => {
     const { publicId } = req.params;
-    const query = new GetAdminUserProfileQuery(publicId);
+    const query = new GetAdminUserProfileQuery(asUserPublicId(publicId));
     const adminDTO = await this.queryBus.execute<AdminUserDTO>(query);
     res.status(200).json(adminDTO);
   };
@@ -116,7 +117,7 @@ export class AdminUserController {
     res: Response,
   ) => {
     const { publicId } = req.params;
-    const query = new GetUserStatsQuery(publicId);
+    const query = new GetUserStatsQuery(asUserPublicId(publicId));
     const stats = await this.queryBus.execute(query);
     res.status(200).json(stats);
   };
@@ -124,7 +125,11 @@ export class AdminUserController {
   deleteUser = async (req: TypedRequest<UserPublicIdParams>, res: Response) => {
     const { publicId } = req.params;
     // admin deletion bypasses password verification
-    const command = new DeleteUserCommand(publicId, undefined, true);
+    const command = new DeleteUserCommand(
+      asUserPublicId(publicId),
+      undefined,
+      true,
+    );
     await this.commandBus.dispatch(command);
     res.status(204).send();
   };
@@ -143,14 +148,18 @@ export class AdminUserController {
     if (!decodedUser?.publicId) {
       throw Errors.validation("Admin publicId missing in token");
     }
-    const command = new BanUserCommand(publicId, decodedUser.publicId, reason);
+    const command = new BanUserCommand(
+      asUserPublicId(publicId),
+      decodedUser.publicId,
+      reason,
+    );
     const result = await this.commandBus.dispatch<AdminUserDTO>(command);
     res.status(200).json(result);
   };
 
   unbanUser = async (req: TypedRequest<UserPublicIdParams>, res: Response) => {
     const { publicId } = req.params;
-    const command = new UnbanUserCommand(publicId);
+    const command = new UnbanUserCommand(asUserPublicId(publicId));
     const result = await this.commandBus.dispatch<AdminUserDTO>(command);
     res.status(200).json(result);
   };
@@ -200,7 +209,7 @@ export class AdminUserController {
     }
 
     await this.commandBus.dispatch(
-      new DeletePostCommand(publicId, decodedUser.publicId),
+      new DeletePostCommand(asPostPublicId(publicId), decodedUser.publicId),
     );
     res.status(204).send();
   };
@@ -225,7 +234,10 @@ export class AdminUserController {
   ) => {
     const { publicId, postPublicId } = req.params;
     await this.commandBus.dispatch(
-      new RemoveFavoriteAdminCommand(publicId, postPublicId)
+      new RemoveFavoriteAdminCommand(
+        asUserPublicId(publicId),
+        asPostPublicId(postPublicId),
+      ),
     );
     res.status(204).send();
   };
@@ -259,7 +271,7 @@ export class AdminUserController {
     res: Response,
   ) => {
     const { publicId } = req.params;
-    const command = new PromoteToAdminCommand(publicId);
+    const command = new PromoteToAdminCommand(asUserPublicId(publicId));
     const result = await this.commandBus.dispatch<AdminUserDTO>(command);
     res.status(200).json(result);
   };
@@ -269,7 +281,7 @@ export class AdminUserController {
     res: Response,
   ) => {
     const { publicId } = req.params;
-    const command = new DemoteFromAdminCommand(publicId);
+    const command = new DemoteFromAdminCommand(asUserPublicId(publicId));
     const result = await this.commandBus.dispatch<AdminUserDTO>(command);
     res.status(200).json(result);
   };

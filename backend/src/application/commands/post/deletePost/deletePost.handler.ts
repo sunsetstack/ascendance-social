@@ -1,3 +1,10 @@
+import {
+  UserPublicId,
+  PostPublicId,
+  asMongoId,
+  asUserPublicId,
+  asPostPublicId,
+} from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { DeletePostCommand } from "./deletePost.command";
@@ -60,8 +67,8 @@ export class DeletePostCommandHandler implements ICommandHandler<
     let postAuthorPublicId: string | undefined;
     let imageAssetToDelete: {
       url: string;
-      ownerPublicId: string;
-      requesterPublicId: string;
+      ownerPublicId: UserPublicId;
+      requesterPublicId: UserPublicId;
     } | null = null;
 
     try {
@@ -72,7 +79,9 @@ export class DeletePostCommandHandler implements ICommandHandler<
         const { postOwnerInternalId, postOwnerPublicId } =
           this.extractPostOwnerInfo(post);
         const postOwnerDoc = postOwnerInternalId
-          ? await this.userReadRepository.findById(postOwnerInternalId)
+          ? await this.userReadRepository.findById(
+              asMongoId(postOwnerInternalId),
+            )
           : null;
 
         postAuthorPublicId =
@@ -85,24 +94,29 @@ export class DeletePostCommandHandler implements ICommandHandler<
         const imageRemoval = await this.handleImageRecordDeletion(
           post,
           command.requesterPublicId,
-          postOwnerDoc?.publicId ??
-            postOwnerPublicId ??
-            command.requesterPublicId,
+          asUserPublicId(
+            postOwnerDoc?.publicId ??
+              postOwnerPublicId ??
+              command.requesterPublicId,
+          ),
         );
 
         if (imageRemoval?.removedUrl) {
           imageAssetToDelete = {
             url: imageRemoval.removedUrl,
             ownerPublicId: imageRemoval.ownerPublicId,
-            requesterPublicId: command.requesterPublicId,
+            requesterPublicId: asUserPublicId(command.requesterPublicId),
           };
         }
 
         await this.deletePostAndComments(post);
         if (postOwnerInternalId) {
-          await this.userWriteRepository.update(postOwnerInternalId, {
-            $inc: { postCount: -1 },
-          });
+          await this.userWriteRepository.update(
+            asMongoId(postOwnerInternalId),
+            {
+              $inc: { postCount: -1 },
+            },
+          );
         }
 
         await this.decrementTagUsage(post);
@@ -130,7 +144,9 @@ export class DeletePostCommandHandler implements ICommandHandler<
   }
 
   private async validatePostExists(publicId: string): Promise<IPost> {
-    const post = await this.postReadRepository.findByPublicId(publicId);
+    const post = await this.postReadRepository.findByPublicId(
+      asPostPublicId(publicId),
+    );
     if (!post) {
       throw new PostNotFoundError();
     }
@@ -138,7 +154,9 @@ export class DeletePostCommandHandler implements ICommandHandler<
   }
 
   private async validateUserExists(publicId: string): Promise<IUser> {
-    const user = await this.userReadRepository.findByPublicId(publicId);
+    const user = await this.userReadRepository.findByPublicId(
+      asUserPublicId(publicId),
+    );
     if (!user) {
       throw new UserNotFoundError();
     }
@@ -193,8 +211,8 @@ export class DeletePostCommandHandler implements ICommandHandler<
   private async handleImageRecordDeletion(
     post: IPost,
     requesterPublicId: string,
-    ownerPublicId: string,
-  ): Promise<{ removedUrl: string; ownerPublicId: string } | null> {
+    ownerPublicId: UserPublicId,
+  ): Promise<{ removedUrl: string; ownerPublicId: UserPublicId } | null> {
     if (!post.image) {
       return null;
     }
@@ -223,7 +241,7 @@ export class DeletePostCommandHandler implements ICommandHandler<
       if (removal.removed && removal.removedUrl) {
         return {
           removedUrl: removal.removedUrl,
-          ownerPublicId: ownerPublicId || requesterPublicId,
+          ownerPublicId: ownerPublicId || asUserPublicId(requesterPublicId),
         };
       }
     } catch (error) {
@@ -240,8 +258,8 @@ export class DeletePostCommandHandler implements ICommandHandler<
   private async deleteImageAssetAfterCommit(
     assetInfo: {
       url: string;
-      ownerPublicId: string;
-      requesterPublicId: string;
+      ownerPublicId: UserPublicId;
+      requesterPublicId: UserPublicId;
     } | null,
   ): Promise<void> {
     if (!assetInfo?.url) {
@@ -268,7 +286,7 @@ export class DeletePostCommandHandler implements ICommandHandler<
 
   private async deletePostAndComments(post: IPost): Promise<void> {
     const postInternalId = post._id!.toString();
-    await this.postWriteRepository.delete(postInternalId);
+    await this.postWriteRepository.delete(asMongoId(postInternalId));
     await this.commentRepository.deleteCommentsByPostId(postInternalId);
   }
 
@@ -292,8 +310,8 @@ export class DeletePostCommandHandler implements ICommandHandler<
   }
 
   private async invalidateCache(
-    userPublicId: string,
-    postPublicId: string,
+    userPublicId: UserPublicId,
+    postPublicId: PostPublicId,
   ): Promise<void> {
     // 1. Remove from user's own feed cache
     await this.redisService.invalidateByTags([
@@ -316,11 +334,11 @@ export class DeletePostCommandHandler implements ICommandHandler<
   }
 
   private async publishDeleteEvent(
-    postPublicId: string,
+    postPublicId: PostPublicId,
     authorPublicId: string,
   ): Promise<void> {
     await this.eventBus.publish(
-      new PostDeletedEvent(postPublicId, authorPublicId),
+      new PostDeletedEvent(postPublicId, asUserPublicId(authorPublicId)),
     );
   }
 }

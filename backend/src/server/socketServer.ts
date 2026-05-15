@@ -1,3 +1,4 @@
+import { UserPublicId } from "@/types/branded";
 import { Request } from "express";
 import { Server as HttpServer } from "http";
 import { AuthFactory } from "../middleware/authentication.middleware";
@@ -12,7 +13,7 @@ import { RedisService } from "@/services/redis.service";
 let ioInstance: SocketIOServer | null = null;
 
 export async function isUserViewingConversation(
-  userPublicId: string,
+  userPublicId: UserPublicId,
   conversationPublicId: string,
 ): Promise<boolean> {
   if (!ioInstance) {
@@ -102,7 +103,11 @@ export class WebSocketServer {
 
         // Allow token passed via Socket.IO auth payload as fallback
         const handshakeAuth = socket.handshake?.auth;
-        if (handshakeAuth && typeof handshakeAuth.token === "string" && !req.headers.authorization) {
+        if (
+          handshakeAuth &&
+          typeof handshakeAuth.token === "string" &&
+          !req.headers.authorization
+        ) {
           req.headers.authorization = `Bearer ${handshakeAuth.token}`;
           logger.info(
             "[Socket][Auth] Applied bearer token from handshake auth",

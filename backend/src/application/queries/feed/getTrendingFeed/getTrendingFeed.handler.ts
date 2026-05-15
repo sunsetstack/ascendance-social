@@ -12,6 +12,7 @@ import { Errors } from "@/utils/errors";
 import { redisLogger } from "@/utils/winston";
 import { FeedPost, PaginatedFeedResult, IPost, IImage, ITag } from "@/types";
 import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
+import { asPostPublicId, asUserPublicId } from "@/types/branded";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
@@ -87,7 +88,7 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
             count: redisResult.ids.length,
           });
           const posts = await this.postReadRepository.findPostsByPublicIds(
-            redisResult.ids,
+            redisResult.ids.map(asPostPublicId),
           );
 
           // Re-sort to match Redis order
@@ -239,7 +240,7 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
         likes: (plainPost.likesCount as number) ?? 0,
         commentsCount: (plainPost.commentsCount as number) ?? 0,
         viewsCount: (plainPost.viewsCount as number) ?? 0,
-        userPublicId: userDoc?.publicId as string,
+        userPublicId: asUserPublicId(userDoc?.publicId as string),
         tags: normalizedTags,
         user: {
           publicId: userDoc?.publicId as string,

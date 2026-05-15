@@ -1,3 +1,4 @@
+import { UserPublicId, asPostPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import { PostRepository } from "@/repositories/post.repository";
 import { UserRepository } from "@/repositories/user.repository";
@@ -22,7 +23,7 @@ export class FeedInteractionService {
   ) {}
 
   public async recordInteraction(
-    userPublicId: string,
+    userPublicId: UserPublicId,
     actionType: string,
     targetIdentifier: string,
     tags: string[],
@@ -42,7 +43,9 @@ export class FeedInteractionService {
       actionType === "comment_deleted"
     ) {
       const sanitized = targetIdentifier.replace(/\.[a-z0-9]{2,5}$/i, "");
-      const post = await this.postRepository.findByPublicId(sanitized);
+      const post = await this.postRepository.findByPublicId(
+        asPostPublicId(sanitized),
+      );
       if (post) internalTargetId = String(post._id);
     }
 

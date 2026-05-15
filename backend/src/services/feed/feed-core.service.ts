@@ -1,3 +1,4 @@
+import { UserPublicId, asMongoId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import type {
   IPostReadRepository,
@@ -36,7 +37,7 @@ export class FeedCoreService {
   ) {}
 
   async generatePersonalizedCoreFeed(
-    userPublicId: string,
+    userPublicId: UserPublicId,
     limit: number,
     cursor?: string,
   ): Promise<CursorPaginationResult<FeedPost>> {
@@ -90,7 +91,9 @@ export class FeedCoreService {
       return cached;
     }
 
-    const ids = await this.followRepository.getFollowingObjectIds(userId);
+    const ids = await this.followRepository.getFollowingObjectIds(
+      asMongoId(userId),
+    );
     await this.redisService.set(cacheKey, ids, FOLLOWING_IDS_TTL_SECONDS);
     return ids;
   }

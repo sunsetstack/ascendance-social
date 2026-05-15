@@ -9,11 +9,13 @@ import { normalizeNotificationPlain } from "@/utils/notification-plain";
 import { logger } from "@/utils/winston";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
+import { asMongoId } from "@/types/branded";
 
 @injectable()
-export class MarkAsReadCommandHandler
-  implements ICommandHandler<MarkAsReadCommand, INotification>
-{
+export class MarkAsReadCommandHandler implements ICommandHandler<
+  MarkAsReadCommand,
+  INotification
+> {
   constructor(
     @inject(TOKENS.Models.WebSocketServer)
     private readonly webSocketServer: WebSocketServer,
@@ -46,7 +48,7 @@ export class MarkAsReadCommandHandler
       });
 
       const updatedNotification = await this.notificationRepository.markAsRead(
-        notificationId,
+        asMongoId(notificationId),
         userPublicId,
       );
 
@@ -68,7 +70,10 @@ export class MarkAsReadCommandHandler
         logger.info(`Sending notification_read to user ${userPublicId}:`, {
           notification: plain,
         });
-        this.webSocketServer.getIO().to(userPublicId).emit("notification_read", plain);
+        this.webSocketServer
+          .getIO()
+          .to(userPublicId)
+          .emit("notification_read", plain);
         logger.info("Notification read event sent successfully");
       } catch (error) {
         logger.error("Error sending notification read event:", { error });
@@ -81,7 +86,11 @@ export class MarkAsReadCommandHandler
     } catch (error) {
       if (isErrorWithStatusCode(error)) throw error;
       throw wrapError(error, "InternalServerError", {
-        context: { operation: "markAsRead", notificationId: command.notificationId, userPublicId: command.userPublicId },
+        context: {
+          operation: "markAsRead",
+          notificationId: command.notificationId,
+          userPublicId: command.userPublicId,
+        },
       });
     }
   }

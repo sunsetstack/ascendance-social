@@ -1,3 +1,4 @@
+import { UserPublicId } from "@/types/branded";
 import type { IImageUploadStrategy } from "./IImageUploadStrategy";
 import type { ImageService } from "@/services/image.service";
 
@@ -14,7 +15,9 @@ export class FilePathUploadStrategy implements IImageUploadStrategy {
     private readonly filePath: string,
   ) {}
 
-  async upload(userPublicId: string): Promise<{ url: string; publicId: string }> {
+  async upload(
+    userPublicId: UserPublicId,
+  ): Promise<{ url: string; publicId: string }> {
     return this.imageService.uploadImage(this.filePath, userPublicId);
   }
 }

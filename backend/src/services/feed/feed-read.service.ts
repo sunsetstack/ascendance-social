@@ -8,6 +8,7 @@ import { Errors } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { CacheConfig } from "@/config/cacheConfig";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
+import { asUserPublicId } from "@/types/branded";
 import { CoreFeed, FeedPost, PaginationResult, PostDTO } from "@/types";
 import { TOKENS } from "@/types/tokens";
 import type { IFeedReadDao } from "@/repositories/interfaces";
@@ -50,7 +51,7 @@ export class FeedReadService {
         logger.info("Core feed cache miss, generating...");
         const cursorFeed =
           await this.feedCoreService.generatePersonalizedCoreFeed(
-            userId,
+            asUserPublicId(userId),
             safeLimit,
           );
         coreFeed = {

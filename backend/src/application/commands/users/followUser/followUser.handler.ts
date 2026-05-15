@@ -1,3 +1,4 @@
+import { UserPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import { FollowUserCommand } from "./followUser.command";
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
@@ -66,27 +67,16 @@ export class FollowUserCommandHandler implements ICommandHandler<
 
         if (wasFollowing) {
           // unfollow logic
-          await this.followRepository.removeFollow(
-            followerId,
-            followeeId,
-          );
-          await this.userWriteRepository.update(
-            followerId,
-            { $pull: { following: followeeId } },
-          );
-          await this.userWriteRepository.update(
-            followeeId,
-            { $pull: { followers: followerId } },
-          );
+          await this.followRepository.removeFollow(followerId, followeeId);
+          await this.userWriteRepository.update(followerId, {
+            $pull: { following: followeeId },
+          });
+          await this.userWriteRepository.update(followeeId, {
+            $pull: { followers: followerId },
+          });
           // decrement denormalized counts
-          await this.userWriteRepository.updateFollowingCount(
-            followerId,
-            -1,
-          );
-          await this.userWriteRepository.updateFollowerCount(
-            followeeId,
-            -1,
-          );
+          await this.userWriteRepository.updateFollowingCount(followerId, -1);
+          await this.userWriteRepository.updateFollowerCount(followeeId, -1);
 
           await this.userActionRepository.logAction(
             followerId,
@@ -95,27 +85,16 @@ export class FollowUserCommandHandler implements ICommandHandler<
           );
         } else {
           // follow logic
-          await this.followRepository.addFollow(
-            followerId,
-            followeeId,
-          );
-          await this.userWriteRepository.update(
-            followerId,
-            { $addToSet: { following: followeeId } },
-          );
-          await this.userWriteRepository.update(
-            followeeId,
-            { $addToSet: { followers: followerId } },
-          );
+          await this.followRepository.addFollow(followerId, followeeId);
+          await this.userWriteRepository.update(followerId, {
+            $addToSet: { following: followeeId },
+          });
+          await this.userWriteRepository.update(followeeId, {
+            $addToSet: { followers: followerId },
+          });
           // increment denormalized counts
-          await this.userWriteRepository.updateFollowingCount(
-            followerId,
-            1,
-          );
-          await this.userWriteRepository.updateFollowerCount(
-            followeeId,
-            1,
-          );
+          await this.userWriteRepository.updateFollowingCount(followerId, 1);
+          await this.userWriteRepository.updateFollowerCount(followeeId, 1);
 
           await this.userActionRepository.logAction(
             followerId,
@@ -154,7 +133,9 @@ export class FollowUserCommandHandler implements ICommandHandler<
     return { action: wasFollowing ? "unfollowed" : "followed" };
   }
 
-  private async invalidateFeedCaches(followerPublicId: string): Promise<void> {
+  private async invalidateFeedCaches(
+    followerPublicId: UserPublicId,
+  ): Promise<void> {
     try {
       await this.redisService.invalidateByTags([
         CacheKeyBuilder.getUserFeedTag(followerPublicId),

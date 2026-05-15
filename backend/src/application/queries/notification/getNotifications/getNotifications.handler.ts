@@ -3,16 +3,18 @@ import { GetNotificationsQuery } from "./getNotifications.query";
 import { NotificationRepository } from "@/repositories/notification.repository";
 import { RedisService } from "@/services/redis.service";
 import { NotificationPlain } from "@/types";
-import { Errors, wrapError } from "@/utils/errors";
+import { wrapError } from "@/utils/errors";
 import { normalizeNotificationPlain } from "@/utils/notification-plain";
 import { errorLogger, redisLogger } from "@/utils/winston";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
+import { asUserPublicId } from "@/types/branded";
 
 @injectable()
-export class GetNotificationsQueryHandler
-  implements IQueryHandler<GetNotificationsQuery, NotificationPlain[]>
-{
+export class GetNotificationsQueryHandler implements IQueryHandler<
+  GetNotificationsQuery,
+  NotificationPlain[]
+> {
   private readonly MAX_NOTIFICATIONS_PER_USER = 200;
 
   constructor(
@@ -22,9 +24,7 @@ export class GetNotificationsQueryHandler
     private readonly redisService: RedisService,
   ) {}
 
-  private toPlainNotification(
-    notification: any,
-  ): NotificationPlain {
+  private toPlainNotification(notification: any): NotificationPlain {
     const raw =
       typeof notification === "object" &&
       notification !== null &&
@@ -49,7 +49,7 @@ export class GetNotificationsQueryHandler
         const beforeDate = new Date(before);
         const dbNotifications =
           await this.notificationRepository.getNotificationsBeforeTimestamp(
-            userId,
+            asUserPublicId(userId),
             beforeDate,
             limit,
           );
@@ -77,10 +77,10 @@ export class GetNotificationsQueryHandler
       }
 
       redisLogger.info(`Notification Redis MISS, fetching from DB`, { userId });
-      
+
       const allRecentNotifications =
         await this.notificationRepository.getNotifications(
-          userId,
+          asUserPublicId(userId),
           this.MAX_NOTIFICATIONS_PER_USER,
           0,
         );

@@ -1,3 +1,4 @@
+import { UserPublicId, asMongoId, asUserPublicId } from "@/types/branded";
 import mongoose from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { ImageRepository } from "@/repositories/image.repository";
@@ -57,7 +58,7 @@ export class ImageService {
    */
   async uploadImage(
     filePath: string,
-    userPublicId: string,
+    userPublicId: UserPublicId,
   ): Promise<{ url: string; publicId: string }> {
     return this.imageStorageService.uploadImage(filePath, userPublicId);
   }
@@ -68,7 +69,7 @@ export class ImageService {
    */
   async uploadImageStream(
     input: ImageUploadInput,
-    userPublicId: string,
+    userPublicId: UserPublicId,
   ): Promise<{ url: string; publicId: string }> {
     return this.imageStorageService.uploadImageStream(input, userPublicId);
   }
@@ -83,16 +84,14 @@ export class ImageService {
       const slug = `${generateSlug(input.originalName) || "image"}-${Date.now()}`;
       const createdAt = new Date();
 
-      const imageDoc = (await this.imageRepository.create(
-        {
-          url: input.url,
-          publicId: input.storagePublicId,
-          originalName: input.originalName,
-          slug,
-          user: new mongoose.Types.ObjectId(input.userInternalId),
-          createdAt,
-        } as unknown as IImage,
-      )) as ImageDocWithId;
+      const imageDoc = (await this.imageRepository.create({
+        url: input.url,
+        publicId: input.storagePublicId,
+        originalName: input.originalName,
+        slug,
+        user: new mongoose.Types.ObjectId(input.userInternalId),
+        createdAt,
+      } as unknown as IImage)) as ImageDocWithId;
 
       return {
         imageDoc,
@@ -123,7 +122,7 @@ export class ImageService {
   ): Promise<RemoveAttachmentResult> {
     try {
       const imageDoc = (await this.imageRepository.findById(
-        input.imageId,
+        asMongoId(input.imageId),
       )) as ImageDocWithId | null;
       if (!imageDoc) {
         return { removed: false };
@@ -134,12 +133,16 @@ export class ImageService {
         input.requesterPublicId;
 
       await this.imageStorageService
-        .deleteAssetByUrl(input.requesterPublicId, owningPublicId, imageDoc.url)
+        .deleteAssetByUrl(
+          input.requesterPublicId,
+          asUserPublicId(owningPublicId),
+          imageDoc.url,
+        )
         .catch((error) =>
           logger.error("Failed to delete attachment asset", { error }),
         );
 
-      await this.imageRepository.delete(imageDoc._id.toString());
+      await this.imageRepository.delete(asMongoId(imageDoc._id.toString()));
 
       return {
         removed: true,
@@ -156,13 +159,13 @@ export class ImageService {
   ): Promise<RemoveAttachmentRecordResult> {
     try {
       const imageDoc = (await this.imageRepository.findById(
-        input.imageId,
+        asMongoId(input.imageId),
       )) as ImageDocWithId | null;
       if (!imageDoc) {
         return { removed: false };
       }
 
-      await this.imageRepository.delete(imageDoc._id.toString());
+      await this.imageRepository.delete(asMongoId(imageDoc._id.toString()));
 
       return {
         removed: true,

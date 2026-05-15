@@ -11,11 +11,18 @@ import { SystemActor } from "@/utils/actors/SystemActor";
 import { logger } from "@/utils/winston";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
+import {
+  asUserPublicId,
+  PostPublicId,
+  ImagePublicId,
+  UserPublicId,
+} from "@/types/branded";
 
 @injectable()
-export class CreateNotificationCommandHandler
-  implements ICommandHandler<CreateNotificationCommand, INotification>
-{
+export class CreateNotificationCommandHandler implements ICommandHandler<
+  CreateNotificationCommand,
+  INotification
+> {
   private readonly MAX_NOTIFICATIONS_PER_USER = 200;
 
   constructor(
@@ -64,7 +71,9 @@ export class CreateNotificationCommandHandler
         actorPublicId !== SystemActor.id
       ) {
         try {
-          const actor = await this.userRepository.findByPublicId(actorPublicId);
+          const actor = await this.userRepository.findByPublicId(
+            asUserPublicId(actorPublicId),
+          );
           if (actor) {
             actorUsername = actorUsername || actor.username;
             actorHandle = actorHandle || actor.handle;
@@ -83,13 +92,17 @@ export class CreateNotificationCommandHandler
       }
 
       const notification = await this.notificationRepository.create({
-        userId: userPublicId,
+        userId: asUserPublicId(userPublicId),
         actionType: data.actionType,
-        actorId: actorPublicId,
+        actorId: asUserPublicId(actorPublicId),
         actorUsername,
         actorHandle,
         actorAvatar,
-        targetId: targetPublicId,
+        targetId: targetPublicId as unknown as
+          | PostPublicId
+          | ImagePublicId
+          | UserPublicId
+          | undefined,
         targetType,
         targetPreview,
         isRead: false,
@@ -101,7 +114,10 @@ export class CreateNotificationCommandHandler
         logger.info(`Sending new_notification to user ${userPublicId}:`, {
           notification: plain,
         });
-        this.webSocketServer.getIO().to(userPublicId).emit("new_notification", plain);
+        this.webSocketServer
+          .getIO()
+          .to(userPublicId)
+          .emit("new_notification", plain);
         logger.info("Notification sent successfully");
       } catch (error) {
         logger.error("Error sending notification:", { error });

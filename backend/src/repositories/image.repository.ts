@@ -6,6 +6,7 @@ import { inject, injectable } from "tsyringe";
 import { logger } from "@/utils/winston";
 import { escapeRegex } from "@/utils/sanitizers";
 import { TOKENS } from "@/types/tokens";
+import { ImagePublicId, MongoId, asMongoId } from "@/types/branded";
 
 @injectable()
 export class ImageRepository extends BaseRepository<IImage> {
@@ -20,7 +21,7 @@ export class ImageRepository extends BaseRepository<IImage> {
 	 * @param {string} publicId - The public ID of the image.
 	 * @returns {Promise<string | null>} - The internal _id as a string, or null if not found.
 	 */
-	async findInternalIdByPublicId(publicId: string): Promise<string | null> {
+	async findInternalIdByPublicId(publicId: ImagePublicId): Promise<MongoId | null> {
 		try {
 			if (!publicId || typeof publicId !== "string") {
 				return null;
@@ -32,7 +33,7 @@ export class ImageRepository extends BaseRepository<IImage> {
 				: { publicId: { $regex: new RegExp(`^${escapeRegex(publicId)}(?:\\.(?:png|jpe?g|webp|gif))?$`, "i") } };
 			const doc = await this.model.findOne(filter).select("_id").lean<{ _id: Types.ObjectId }>().exec();
 
-			return doc ? doc._id.toString() : null;
+			return doc ? asMongoId(doc._id.toString()) : null;
 		} catch (error) {
 			console.error(`Error in findInternalIdByPublicId for publicId: ${publicId}`, error);
 			throw Errors.database(error instanceof Error ? error.message : String(error));
@@ -45,7 +46,7 @@ export class ImageRepository extends BaseRepository<IImage> {
 	 * @param {string} id - The ID of the image.
 	 * @returns {Promise<IImage | null>} - The found image or null if not found.
 	 */
-	async findById(id: string): Promise<IImage | null> {
+	async findById(id: MongoId): Promise<IImage | null> {
 		try {
 			const session = this.getSession();
 			if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -72,7 +73,7 @@ export class ImageRepository extends BaseRepository<IImage> {
 	 * @param {string} userId - The ID of the user whose images will be deleted.
 	 * @returns {Promise<void>} - Resolves when deletion is complete.
 	 */
-	async deleteMany(userId: string): Promise<void> {
+	async deleteMany(userId: MongoId): Promise<void> {
 		try {
 			const session = this.getSession();
 			const query = this.model.deleteMany({ user: userId });

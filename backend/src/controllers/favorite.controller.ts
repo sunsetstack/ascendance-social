@@ -8,6 +8,7 @@ import { GetFavoritesQuery } from "@/application/queries/favorite/getFavorites/g
 import { Errors } from "@/utils/errors";
 import { TypedRequest, PaginationResult, PostDTO } from "@/types";
 import { TOKENS } from "@/types/tokens";
+import { asPostPublicId } from "@/types/branded";
 import type { PublicIdParams as PostPublicIdParams } from "@/utils/schemas/post.schemas";
 import type { PublicUserListQuery } from "@/utils/schemas/user.schemas";
 
@@ -39,7 +40,7 @@ export class FavoriteController {
     );
 
     await this.commandBus.dispatch(
-      new AddFavoriteCommand(actorPublicId, sanitizedPostId)
+      new AddFavoriteCommand(actorPublicId, asPostPublicId(sanitizedPostId)),
     );
     res.status(204).send();
   };
@@ -64,7 +65,7 @@ export class FavoriteController {
     );
 
     await this.commandBus.dispatch(
-      new RemoveFavoriteCommand(actorPublicId, sanitizedPostId)
+      new RemoveFavoriteCommand(actorPublicId, asPostPublicId(sanitizedPostId)),
     );
     res.status(204).send();
   };
@@ -84,7 +85,7 @@ export class FavoriteController {
     const { page, limit } = req.query;
 
     const favorites = await this.queryBus.execute<PaginationResult<PostDTO>>(
-      new GetFavoritesQuery(viewerPublicId, Number(page), Number(limit))
+      new GetFavoritesQuery(viewerPublicId, Number(page), Number(limit)),
     );
     res.status(200).json(favorites);
   };
