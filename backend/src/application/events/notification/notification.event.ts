@@ -1,13 +1,14 @@
+import { UserPublicId, PostPublicId, ImagePublicId, MongoId } from "@/types/branded";
 import { IEvent } from "@/application/common/interfaces/event.interface";
 
 export interface NotificationPayload {
-	receiverId: string;
+	receiverId: UserPublicId;
 	actionType: string;
-	actorId: string;
+	actorId: UserPublicId;
 	actorUsername?: string;
 	actorHandle?: string;
 	actorAvatar?: string;
-	targetId?: string;
+	targetId?: PostPublicId | ImagePublicId | UserPublicId | MongoId;
 	targetType?: string;
 	targetPreview?: string;
 }

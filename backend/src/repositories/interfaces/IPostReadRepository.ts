@@ -1,4 +1,5 @@
 import { FeedPost, IPost, PaginationOptions, PaginationResult } from "@/types";
+import { MongoId, PostPublicId, UserPublicId } from "@/types/branded";
 
 /**
  * Read-only repository interface for post queries
@@ -6,23 +7,20 @@ import { FeedPost, IPost, PaginationOptions, PaginationResult } from "@/types";
  */
 export interface IPostReadRepository {
   // single post lookups
-  findById(id: string): Promise<IPost | null>;
-  findInternalIdByPublicId(publicId: string): Promise<string | null>;
-  findOneByPublicId(
-    publicId: string,
-  ): Promise<IPost | null>;
-  findByIdWithPopulates(
-    id: string,
-  ): Promise<IPost | null>;
-  findByPublicId(
-    publicId: string,
-  ): Promise<IPost | null>;
+  findById(id: MongoId): Promise<IPost | null>;
+  findInternalIdByPublicId(publicId: PostPublicId): Promise<MongoId | null>;
+  findOneByPublicId(publicId: PostPublicId): Promise<IPost | null>;
+  findByIdWithPopulates(id: MongoId): Promise<IPost | null>;
+  findByPublicId(publicId: PostPublicId): Promise<IPost | null>;
   findBySlug(slug: string): Promise<IPost | null>;
   // batch lookups
-  findPostsByIds(ids: string[], viewerPublicId?: string): Promise<FeedPost[]>;
-  findPostsByPublicIds(publicIds: string[]): Promise<FeedPost[]>;
+  findPostsByIds(
+    ids: MongoId[],
+    viewerPublicId?: UserPublicId,
+  ): Promise<FeedPost[]>;
+  findPostsByPublicIds(publicIds: PostPublicId[]): Promise<FeedPost[]>;
   findByUserPublicId(
-    userPublicId: string,
+    userPublicId: UserPublicId,
     options: PaginationOptions,
   ): Promise<PaginationResult<FeedPost>>;
   findByCommunityId(

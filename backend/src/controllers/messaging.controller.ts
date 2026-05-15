@@ -1,6 +1,14 @@
 import { Response } from "express";
 import { inject, injectable } from "tsyringe";
-import { MessagingService } from "@/services/messaging.service";
+import { CommandBus } from "@/application/common/buses/command.bus";
+import { QueryBus } from "@/application/common/buses/query.bus";
+import { ListConversationsQuery } from "@/application/queries/messaging/listConversations/listConversations.query";
+import { GetConversationMessagesQuery } from "@/application/queries/messaging/getConversationMessages/getConversationMessages.query";
+import { InitiateConversationCommand } from "@/application/commands/messaging/initiateConversation/initiateConversation.command";
+import { SendMessageCommand } from "@/application/commands/messaging/sendMessage/sendMessage.command";
+import { MarkConversationReadCommand } from "@/application/commands/messaging/markConversationRead/markConversationRead.command";
+import { EditMessageCommand } from "@/application/commands/messaging/editMessage/editMessage.command";
+import { DeleteMessageCommand } from "@/application/commands/messaging/deleteMessage/deleteMessage.command";
 import { Errors } from "@/utils/errors";
 import { SendMessagePayload, TypedRequest } from "@/types";
 import { streamPaginatedResponse } from "@/utils/streamResponse";
@@ -13,8 +21,6 @@ import type {
   PaginationQuery,
   SendMessageBody,
 } from "@/utils/schemas/messaging.schemas";
-
-/** Threshold for enabling streaming responses (items) */
 import { STREAM_THRESHOLD } from "@/utils/post-helpers";
 
 type EmptyParams = Record<string, never>;
@@ -23,8 +29,8 @@ type EmptyBody = Record<string, never>;
 @injectable()
 export class MessagingController {
   constructor(
-    @inject(TOKENS.Services.Messaging)
-    private readonly messagingService: MessagingService,
+    @inject(TOKENS.CQRS.Commands.Bus) private readonly commandBus: CommandBus,
+    @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
   ) {}
 
   listConversations = async (
@@ -40,10 +46,8 @@ export class MessagingController {
 
     const { page, limit } = req.query;
 
-    const result = await this.messagingService.listConversations(
-      userPublicId,
-      page,
-      limit,
+    const result = await this.queryBus.execute<any>(
+      new ListConversationsQuery(userPublicId, page, limit)
     );
     res.status(200).json(result);
   };
@@ -60,11 +64,8 @@ export class MessagingController {
     const { conversationId } = req.params;
     const { page, limit } = req.query;
 
-    const result = await this.messagingService.getConversationMessages(
-      userPublicId,
-      conversationId,
-      page,
-      limit,
+    const result = await this.queryBus.execute<any>(
+      new GetConversationMessagesQuery(userPublicId, conversationId, page, limit)
     );
 
     if (result.messages.length >= STREAM_THRESHOLD) {
@@ -96,9 +97,8 @@ export class MessagingController {
     }
 
     const { conversationId } = req.params;
-    await this.messagingService.markConversationRead(
-      userPublicId,
-      conversationId,
+    await this.commandBus.dispatch(
+      new MarkConversationReadCommand(userPublicId, conversationId)
     );
     res.status(204).send();
   };
@@ -114,11 +114,10 @@ export class MessagingController {
       );
     }
 
-    const { recipientPublicId } = req.body; // validated by Zod middleware
+    const { recipientPublicId } = req.body;
 
-    const conversation = await this.messagingService.initiateConversation(
-      senderPublicId,
-      recipientPublicId,
+    const conversation = await this.commandBus.dispatch(
+      new InitiateConversationCommand(senderPublicId, recipientPublicId)
     );
     res.status(201).json({ conversation });
   };
@@ -134,10 +133,8 @@ export class MessagingController {
 
     const payload: SendMessagePayload = req.body;
 
-    const message = await this.messagingService.sendMessage(
-      senderPublicId,
-      payload,
-      req.file,
+    const message = await this.commandBus.dispatch(
+      new SendMessageCommand(senderPublicId, payload, req.file)
     );
     res.status(201).json({ message });
   };
@@ -154,10 +151,8 @@ export class MessagingController {
     const { messageId } = req.params;
     const { body } = req.body;
 
-    const message = await this.messagingService.editMessage(
-      userPublicId,
-      messageId,
-      body,
+    const message = await this.commandBus.dispatch(
+      new EditMessageCommand(userPublicId, messageId, body)
     );
     res.status(200).json({ message });
   };
@@ -173,7 +168,9 @@ export class MessagingController {
 
     const { messageId } = req.params;
 
-    await this.messagingService.deleteMessage(userPublicId, messageId);
+    await this.commandBus.dispatch(
+      new DeleteMessageCommand(userPublicId, messageId)
+    );
     res.status(204).send();
   };
 }

@@ -9,6 +9,7 @@ import { DTOService, CommunityDTO } from "@/services/dto.service";
 import { Errors } from "@/utils/errors";
 import { Types } from "mongoose";
 import { TOKENS } from "@/types/tokens";
+import { asUserPublicId } from "@/types/branded";
 
 @injectable()
 export class GetUserCommunitiesQueryHandler implements IQueryHandler<
@@ -30,7 +31,9 @@ export class GetUserCommunitiesQueryHandler implements IQueryHandler<
   ): Promise<PaginationResult<CommunityDTO>> {
     const { userId: userPublicId, page, limit } = query;
 
-    const user = await this.userRepository.findByPublicId(userPublicId);
+    const user = await this.userRepository.findByPublicId(
+      asUserPublicId(userPublicId),
+    );
     if (!user) {
       throw Errors.notFound("User");
     }

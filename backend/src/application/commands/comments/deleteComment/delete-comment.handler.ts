@@ -12,6 +12,7 @@ import { UnitOfWork } from "@/database/UnitOfWork";
 import { logger } from "@/utils/winston";
 import { extractTagNames, extractPostOwnerInfo } from "@/utils/post-helpers";
 import { TOKENS } from "@/types/tokens";
+import { asMongoId, asUserPublicId, asPostPublicId } from "@/types/branded";
 
 @injectable()
 export class DeleteCommentCommandHandler implements ICommandHandler<
@@ -30,7 +31,7 @@ export class DeleteCommentCommandHandler implements ICommandHandler<
     @inject(TOKENS.Repositories.UserRead)
     private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
-  ) { }
+  ) {}
 
   /**
    * Handles the execution of the DeleteCommentCommand.
@@ -46,7 +47,9 @@ export class DeleteCommentCommandHandler implements ICommandHandler<
       throw Errors.notFound("User");
     }
 
-    const comment = await this.commentRepository.findById(command.commentId);
+    const comment = await this.commentRepository.findById(
+      asMongoId(command.commentId),
+    );
     if (!comment) {
       throw Errors.notFound("Comment");
     }
@@ -56,7 +59,7 @@ export class DeleteCommentCommandHandler implements ICommandHandler<
     }
 
     const post = await this.postReadRepository.findByIdWithPopulates(
-      comment.postId.toString(),
+      asMongoId(comment.postId.toString()),
     );
     if (!post) {
       throw Errors.notFound("Post");
@@ -64,8 +67,10 @@ export class DeleteCommentCommandHandler implements ICommandHandler<
 
     // Check if user owns the comment or the post
     const isCommentOwner = comment.userId?.toString() === user.id;
-    const { ownerInternalId: postOwnerInternalId, ownerPublicId: postOwnerPublicId } =
-      extractPostOwnerInfo(post);
+    const {
+      ownerInternalId: postOwnerInternalId,
+      ownerPublicId: postOwnerPublicId,
+    } = extractPostOwnerInfo(post);
     const isPostOwner = postOwnerInternalId === user.id;
 
     if (!isCommentOwner && !isPostOwner && !user.isAdmin) {
@@ -85,22 +90,23 @@ export class DeleteCommentCommandHandler implements ICommandHandler<
     const postTags = extractTagNames(post.tags);
     let postOwnerId = postOwnerPublicId ?? "";
     if (!postOwnerId && postOwnerInternalId) {
-      const ownerDoc =
-        await this.userReadRepository.findById(postOwnerInternalId);
+      const ownerDoc = await this.userReadRepository.findById(
+        asMongoId(postOwnerInternalId),
+      );
       postOwnerId = ownerDoc?.publicId ?? "";
     }
     const postPublicId = post.publicId ?? comment.postId.toString();
 
     // Check if the comment has any replies
     const hasReplies = await this.commentRepository.hasReplies(
-      command.commentId,
+      asMongoId(command.commentId),
     );
 
     await this.unitOfWork.executeInTransaction(async () => {
       if (hasReplies) {
         // Soft delete: keep the comment but mark as deleted and clear user association
         await this.commentRepository.softDeleteComment(
-          command.commentId,
+          asMongoId(command.commentId),
           deletedBy === "user" ? "user" : "admin",
         );
         logger.info(
@@ -108,18 +114,20 @@ export class DeleteCommentCommandHandler implements ICommandHandler<
         );
       } else {
         // Hard delete: no replies, safe to remove entirely
-        await this.commentRepository.deleteComment(command.commentId);
+        await this.commentRepository.deleteComment(
+          asMongoId(command.commentId),
+        );
 
         // Decrement comment count on post only for hard deletes
         await this.postWriteRepository.updateCommentCount(
-          comment.postId.toString(),
+          asMongoId(comment.postId.toString()),
           -1,
         );
 
         // If this comment had a parent, decrement the parent's reply count
         if (comment.parentId) {
           await this.commentRepository.updateReplyCount(
-            comment.parentId.toString(),
+            asMongoId(comment.parentId.toString()),
             -1,
           );
         }
@@ -132,11 +140,11 @@ export class DeleteCommentCommandHandler implements ICommandHandler<
       // Queue event for feed interaction handling and real-time updates
       await this.eventBus.queueTransactional(
         new UserInteractedWithPostEvent(
-          command.userPublicId,
+          asUserPublicId(command.userPublicId),
           "comment_deleted",
-          postPublicId,
+          asPostPublicId(postPublicId),
           postTags,
-          postOwnerId,
+          asUserPublicId(postOwnerId),
         ),
       );
     });

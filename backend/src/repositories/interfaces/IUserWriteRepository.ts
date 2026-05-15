@@ -1,5 +1,6 @@
 import { UpdateQuery } from "mongoose";
 import { IUser } from "@/types";
+import { MongoId, UserPublicId } from "@/types/branded";
 
 /**
  * Write-only repository interface for user mutations
@@ -8,18 +9,18 @@ import { IUser } from "@/types";
 export interface IUserWriteRepository {
   // CRUD operations
   create(userData: Partial<IUser>): Promise<IUser>;
-  update(id: string, updateData: UpdateQuery<IUser>): Promise<IUser | null>;
+  update(id: MongoId, updateData: UpdateQuery<IUser>): Promise<IUser | null>;
   updateByPublicId(
-    publicId: string,
+    publicId: UserPublicId,
     updateData: UpdateQuery<IUser>,
   ): Promise<IUser | null>;
-  delete(id: string): Promise<boolean>;
+  delete(id: MongoId): Promise<boolean>;
 
   // profile updates
-  updateAvatar(userId: string, avatarUrl: string): Promise<void>;
-  updateCover(userId: string, coverUrl: string): Promise<void>;
+  updateAvatar(userId: MongoId, avatarUrl: string): Promise<void>;
+  updateCover(userId: MongoId, coverUrl: string): Promise<void>;
 
   // counter updates
-  updateFollowerCount(userId: string, increment: number): Promise<void>;
-  updateFollowingCount(userId: string, increment: number): Promise<void>;
+  updateFollowerCount(userId: MongoId, increment: number): Promise<void>;
+  updateFollowingCount(userId: MongoId, increment: number): Promise<void>;
 }

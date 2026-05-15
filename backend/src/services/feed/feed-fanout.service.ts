@@ -1,4 +1,6 @@
-import { inject, injectable } from "tsyringe";
+import { asUserPublicId } from "@/types/branded";
+import { injectable, inject } from "tsyringe";
+
 import { FollowRepository } from "@/repositories/follow.repository";
 import { PostRepository } from "@/repositories/post.repository";
 import { RedisService } from "../redis.service";
@@ -30,7 +32,9 @@ export class FeedFanoutService {
 
     try {
       const followerIds =
-        await this.followRepository.getFollowerPublicIdsByPublicId(authorId);
+        await this.followRepository.getFollowerPublicIdsByPublicId(
+          asUserPublicId(authorId),
+        );
       if (followerIds.length === 0) {
         logger.info(
           `No followers found for author ${authorId}, skipping fan-out`,
@@ -60,7 +64,9 @@ export class FeedFanoutService {
 
     try {
       const followerIds =
-        await this.followRepository.getFollowerPublicIdsByPublicId(authorId);
+        await this.followRepository.getFollowerPublicIdsByPublicId(
+          asUserPublicId(authorId),
+        );
       if (followerIds.length === 0) return;
 
       await this.redisService.removeFromFeedsBatch(

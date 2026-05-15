@@ -1,3 +1,4 @@
+import { UserPublicId } from "@/types/branded";
 import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs";
 import * as path from "path";
@@ -73,7 +74,7 @@ export class LocalStorageService implements IImageStorageService {
       const safeUserId = this.validateUserId(userId);
       const ext = this.getExtension(input.mimeType, input.originalName);
       const filename = `${uuidv4()}${ext}`;
-      
+
       logger.info("UserID in local storage service:", { safeUserId });
 
       let userDir = this.safeJoin(this.uploadsDir, safeUserId);
@@ -231,7 +232,7 @@ export class LocalStorageService implements IImageStorageService {
           await fs.promises.unlink(filePath);
           return;
         }
-      } catch (err) {
+      } catch (_err) {
         continue;
       }
     }
@@ -244,7 +245,7 @@ export class LocalStorageService implements IImageStorageService {
    */
   async deleteAssetByUrl(
     _requesterPublicId: string,
-    ownerPublicId: string,
+    ownerPublicId: UserPublicId,
     url: string,
   ): Promise<{ result: string }> {
     // parse & decode URL robustly
@@ -259,8 +260,7 @@ export class LocalStorageService implements IImageStorageService {
     const pathname = decodeURIComponent(parsed.pathname);
 
     const publicId = this.extractPublicId(pathname);
-    if (!publicId)
-      throw Errors.storage("Could not extract publicId from URL");
+    if (!publicId) throw Errors.storage("Could not extract publicId from URL");
 
     // validate filename and ownerPublicId
     const safeFileName = this.validateFileName(publicId);

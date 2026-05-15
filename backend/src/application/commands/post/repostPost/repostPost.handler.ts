@@ -1,5 +1,6 @@
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
+import { asMongoId, asUserPublicId } from "@/types/branded";
 import { v4 as uuidv4 } from "uuid";
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { RepostPostCommand } from "./repostPost.command";
@@ -109,7 +110,7 @@ export class RepostPostCommandHandler implements ICommandHandler<
 
       const newPost = await this.postWriteRepository.create(payload);
       await this.postWriteRepository.updateRepostCount(
-        targetPost._id!.toString(),
+        asMongoId(targetPost._id!.toString()),
         1,
       );
 
@@ -117,7 +118,7 @@ export class RepostPostCommandHandler implements ICommandHandler<
       if (targetOwner && targetOwner !== command.userPublicId) {
         await this.eventBus.queueTransactional(
           new NotificationRequestedEvent({
-            receiverId: targetOwner,
+            receiverId: asUserPublicId(targetOwner),
             actionType: "repost",
             actorId: command.userPublicId,
             actorUsername: user.username,

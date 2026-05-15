@@ -1,7 +1,9 @@
 import "reflect-metadata";
 import { container } from "tsyringe";
 import { logger } from "@/utils/winston";
-import { NotificationService } from "@/services/notification.service";
+import { CommandBus } from "@/application/common/buses/command.bus";
+import { CreateNotificationCommand } from "@/application/commands/notification/createNotification/createNotification.command";
+import { TOKENS } from "@/types/tokens";
 import User from "@/models/user.model";
 import { RequestLogModel } from "@/models/requestLog.model";
 import { SystemActor } from "@/utils/actors/SystemActor";
@@ -9,14 +11,14 @@ import { SystemActor } from "@/utils/actors/SystemActor";
 export class IpMonitorWorker {
     private CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
-    private notificationService!: NotificationService;
+    private commandBus!: CommandBus;
     private timer?: NodeJS.Timeout;
     private running = false;
 
     constructor() {}
 
     async init(): Promise<void> {
-        this.notificationService = container.resolve(NotificationService);
+        this.commandBus = container.resolve(TOKENS.CQRS.Commands.Bus);
         logger.info("[ip-monitor] Worker initialized");
     }
 
@@ -122,17 +124,19 @@ export class IpMonitorWorker {
             for (const ip of newIps) {
                 for (const admin of admins) {
                     notificationPromises.push(
-                        this.notificationService.createNotification({
-                            receiverId: admin.publicId,
-                            actionType: "security_alert",
-                            actorId: SystemActor.id,
-                            actorUsername: SystemActor.username,
-                            actorHandle: SystemActor.handle,
-                            actorAvatar: SystemActor.avatar,
-                            targetId: ip,
-                            targetType: "ip",
-                            targetPreview: `New unknown IP detected: ${ip}`
-                        })
+                        this.commandBus.dispatch(
+                            new CreateNotificationCommand({
+                                receiverId: admin.publicId,
+                                actionType: "security_alert",
+                                actorId: SystemActor.id,
+                                actorUsername: SystemActor.username,
+                                actorHandle: SystemActor.handle,
+                                actorAvatar: SystemActor.avatar,
+                                targetId: ip,
+                                targetType: "ip",
+                                targetPreview: `New unknown IP detected: ${ip}`
+                            })
+                        )
                     );
                 }
             }

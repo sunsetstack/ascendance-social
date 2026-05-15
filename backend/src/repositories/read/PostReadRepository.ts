@@ -3,6 +3,7 @@ import { FeedPost, IPost, PaginationOptions, PaginationResult } from "@/types";
 import type { IPostReadRepository } from "../interfaces/IPostReadRepository";
 import { PostRepository } from "../post.repository";
 import { TOKENS } from "@/types/tokens";
+import { MongoId, PostPublicId, UserPublicId } from "@/types/branded";
 
 /**
  * Read-only repository for post queries
@@ -16,23 +17,25 @@ export class PostReadRepository implements IPostReadRepository {
     private readonly postRepository: PostRepository,
   ) {}
 
-  async findById(id: string): Promise<IPost | null> {
+  async findById(id: MongoId): Promise<IPost | null> {
     return this.postRepository.findById(id);
   }
 
-  async findInternalIdByPublicId(publicId: string): Promise<string | null> {
+  async findInternalIdByPublicId(
+    publicId: PostPublicId,
+  ): Promise<MongoId | null> {
     return this.postRepository.findInternalIdByPublicId(publicId);
   }
 
-  async findOneByPublicId(publicId: string): Promise<IPost | null> {
+  async findOneByPublicId(publicId: PostPublicId): Promise<IPost | null> {
     return this.postRepository.findOneByPublicId(publicId);
   }
 
-  async findByIdWithPopulates(id: string): Promise<IPost | null> {
+  async findByIdWithPopulates(id: MongoId): Promise<IPost | null> {
     return this.postRepository.findByIdWithPopulates(id);
   }
 
-  async findByPublicId(publicId: string): Promise<IPost | null> {
+  async findByPublicId(publicId: PostPublicId): Promise<IPost | null> {
     return this.postRepository.findByPublicId(publicId);
   }
 
@@ -41,18 +44,18 @@ export class PostReadRepository implements IPostReadRepository {
   }
 
   async findPostsByIds(
-    ids: string[],
-    viewerPublicId?: string,
+    ids: MongoId[],
+    viewerPublicId?: UserPublicId,
   ): Promise<FeedPost[]> {
     return this.postRepository.findPostsByIds(ids, viewerPublicId);
   }
 
-  async findPostsByPublicIds(publicIds: string[]): Promise<FeedPost[]> {
+  async findPostsByPublicIds(publicIds: PostPublicId[]): Promise<FeedPost[]> {
     return this.postRepository.findPostsByPublicIds(publicIds);
   }
 
   async findByUserPublicId(
-    userPublicId: string,
+    userPublicId: UserPublicId,
     options: PaginationOptions,
   ): Promise<PaginationResult<FeedPost>> {
     return this.postRepository.findByUserPublicId(userPublicId, options);

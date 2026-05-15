@@ -10,6 +10,7 @@ import { DTOService } from "@/services/dto.service";
 import { PaginationResult, PostDTO } from "@/types";
 import { Errors } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
+import { asMongoId } from "@/types/branded";
 
 @injectable()
 export class GetLikedPostsByUserHandler implements IQueryHandler<
@@ -58,7 +59,7 @@ export class GetLikedPostsByUserHandler implements IQueryHandler<
 
     // fetch posts by IDs
     const posts = await this.postReadRepository.findPostsByIds(
-      postIds.map((id) => id.toString()),
+      postIds.map((id) => asMongoId(id.toString())),
       viewerPublicId,
     );
 

@@ -4,6 +4,7 @@ import { IUser } from "@/types";
 import type { IUserWriteRepository } from "../interfaces/IUserWriteRepository";
 import { UserRepository } from "../user.repository";
 import { TOKENS } from "@/types/tokens";
+import { MongoId, UserPublicId } from "@/types/branded";
 
 /**
  * Write-only repository for user mutations
@@ -22,36 +23,39 @@ export class UserWriteRepository implements IUserWriteRepository {
   }
 
   async update(
-    id: string,
+    id: MongoId,
     updateData: UpdateQuery<IUser>,
   ): Promise<IUser | null> {
     return this.userRepository.update(id, updateData);
   }
 
   async updateByPublicId(
-    publicId: string,
+    publicId: UserPublicId,
     updateData: UpdateQuery<IUser>,
   ): Promise<IUser | null> {
     return this.userRepository.updateByPublicId(publicId, updateData);
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: MongoId): Promise<boolean> {
     return this.userRepository.delete(id);
   }
 
-  async updateAvatar(userId: string, avatarUrl: string): Promise<void> {
+  async updateAvatar(userId: MongoId, avatarUrl: string): Promise<void> {
     return this.userRepository.updateAvatar(userId, avatarUrl);
   }
 
-  async updateCover(userId: string, coverUrl: string): Promise<void> {
+  async updateCover(userId: MongoId, coverUrl: string): Promise<void> {
     return this.userRepository.updateCover(userId, coverUrl);
   }
 
-  async updateFollowerCount(userId: string, increment: number): Promise<void> {
+  async updateFollowerCount(userId: MongoId, increment: number): Promise<void> {
     return this.userRepository.updateFollowerCount(userId, increment);
   }
 
-  async updateFollowingCount(userId: string, increment: number): Promise<void> {
+  async updateFollowingCount(
+    userId: MongoId,
+    increment: number,
+  ): Promise<void> {
     return this.userRepository.updateFollowingCount(userId, increment);
   }
 }

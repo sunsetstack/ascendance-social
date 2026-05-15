@@ -1,31 +1,19 @@
 import mongoose, { Model, PipelineStage } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
-import {
-  IPost,
-  PaginationOptions,
-  PaginationResult,
-  TrendingTag,
-  CursorPaginationOptions,
-  CursorPaginationResult,
-  FeedPost,
-} from "@/types";
+import { IPost, PaginationOptions, PaginationResult, FeedPost } from "@/types";
 import { Errors } from "@/utils/errors";
 import { TagRepository } from "./tag.repository";
-import { decodeCursor, encodeCursor } from "@/utils/cursorCodec";
 import { TOKENS } from "@/types/tokens";
-
-type ProjectedFeedPost = FeedPost & {
-  _id?: mongoose.Types.ObjectId;
-  isPersonalized?: boolean;
-};
+import {
+  MongoId,
+  PostPublicId,
+  UserPublicId,
+  asMongoId,
+} from "@/types/branded";
 
 type CountFacetResult = {
   count: number;
-};
-
-type TotalFacetResult = {
-  total: number;
 };
 
 type PaginationFacetResult<T> = {
@@ -33,16 +21,12 @@ type PaginationFacetResult<T> = {
   totalCount: CountFacetResult[];
 };
 
-type MetadataFacetResult<T> = {
-  data: T[];
-  metadata: TotalFacetResult[];
-};
-
 @injectable()
 export class PostRepository extends BaseRepository<IPost> {
   constructor(
     @inject(TOKENS.Models.Post) model: Model<IPost>,
-    @inject(TOKENS.Repositories.Tag) private readonly tagRepository: TagRepository
+    @inject(TOKENS.Repositories.Tag)
+    private readonly tagRepository: TagRepository,
   ) {
     super(model);
   }
@@ -67,39 +51,63 @@ export class PostRepository extends BaseRepository<IPost> {
       const results = await this.model.aggregate<FeedPost>(pipeline).exec();
       return results;
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
   // in-process cache for tag name → ObjectId resolution; avoids repeated DB hits per feed request
 
-  async findInternalIdByPublicId(publicId: string): Promise<string | null> {
-    const doc = await this.model.findOne({ publicId }).select("_id").lean().exec();
-    return doc ? String(doc._id) : null;
+  async findInternalIdByPublicId(
+    publicId: PostPublicId,
+  ): Promise<MongoId | null> {
+    const doc = await this.model
+      .findOne({ publicId })
+      .select("_id")
+      .lean()
+      .exec();
+    return doc ? asMongoId(String(doc._id)) : null;
   }
 
-  async findOneByPublicId(publicId: string): Promise<IPost | null> {
+  async findOneByPublicId(publicId: PostPublicId): Promise<IPost | null> {
     try {
       const session = this.getSession();
       const query = this.model.findOne({ publicId });
       if (session) query.session(session);
       return await query.exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
-  async findOneByFilter(filter: Record<string, unknown>): Promise<IPost | null> {
+  async findOneByFilter(
+    filter: Record<string, unknown>,
+  ): Promise<IPost | null> {
     try {
       return await this.model.findOne(filter).exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
-  async findByCommunityId(communityId: string, page: number = 1, limit: number = 20): Promise<IPost[]> {
+  async findByCommunityId(
+    communityId: string,
+    page: number = 1,
+    limit: number = 20,
+  ): Promise<IPost[]> {
     const skip = (page - 1) * limit;
-    return this.model.find({ communityId }).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).populate("image").exec();
+    return this.model
+      .find({ communityId })
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("image")
+      .exec();
   }
 
   async countByCommunityId(communityId: string): Promise<number> {
@@ -109,22 +117,33 @@ export class PostRepository extends BaseRepository<IPost> {
   async incrementViewCount(postId: mongoose.Types.ObjectId): Promise<void> {
     try {
       const session = this.getSession();
-      const query = this.model.findOneAndUpdate({ _id: postId }, { $inc: { viewsCount: 1 } }, { new: true });
+      const query = this.model.findOneAndUpdate(
+        { _id: postId },
+        { $inc: { viewsCount: 1 } },
+        { new: true },
+      );
       if (session) query.session(session);
       await query.exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
-  async updateRepostCount(postId: string, increment: number): Promise<void> {
+  async updateRepostCount(postId: MongoId, increment: number): Promise<void> {
     try {
       const session = this.getSession();
-      const query = this.model.updateOne({ _id: postId }, { $inc: { repostCount: increment } });
+      const query = this.model.updateOne(
+        { _id: postId },
+        { $inc: { repostCount: increment } },
+      );
       if (session) query.session(session);
       await query.exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -134,7 +153,7 @@ export class PostRepository extends BaseRepository<IPost> {
     };
   }
 
-  async findByIdWithPopulates(id: string): Promise<IPost | null> {
+  async findByIdWithPopulates(id: MongoId): Promise<IPost | null> {
     try {
       const session = this.getSession();
       const query = this.model
@@ -145,11 +164,14 @@ export class PostRepository extends BaseRepository<IPost> {
       if (session) query.session(session);
       return await query.exec();
     } catch (err: unknown) {
-      throw Errors.database((err instanceof Error ? err.message : String(err)));
+      throw Errors.database(err instanceof Error ? err.message : String(err));
     }
   }
 
-  async findPostsByIds(ids: string[], _viewerPublicId?: string): Promise<FeedPost[]> {
+  async findPostsByIds(
+    ids: MongoId[],
+    _viewerPublicId?: UserPublicId,
+  ): Promise<FeedPost[]> {
     try {
       const objectIds = ids.map((id) => this.normalizeObjectId(id, "id"));
 
@@ -166,13 +188,19 @@ export class PostRepository extends BaseRepository<IPost> {
       const results = await this.model.aggregate<FeedPost>(pipeline).exec();
       return results;
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
-  async findPostsByPublicIds(publicIds: string[]): Promise<FeedPost[]> {
+  async findPostsByPublicIds(publicIds: PostPublicId[]): Promise<FeedPost[]> {
     try {
-      const uniqueIds = Array.from(new Set(publicIds.filter((id) => typeof id === "string" && id.length > 0)));
+      const uniqueIds = Array.from(
+        new Set(
+          publicIds.filter((id) => typeof id === "string" && id.length > 0),
+        ),
+      );
       if (uniqueIds.length === 0) {
         return [];
       }
@@ -186,11 +214,13 @@ export class PostRepository extends BaseRepository<IPost> {
       const results = await this.model.aggregate<FeedPost>(pipeline).exec();
       return results;
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
-  async findByPublicId(publicId: string): Promise<IPost | null> {
+  async findByPublicId(publicId: PostPublicId): Promise<IPost | null> {
     try {
       const session = this.getSession();
       const query = this.model
@@ -204,14 +234,19 @@ export class PostRepository extends BaseRepository<IPost> {
           populate: [
             { path: "image", select: "_id url publicId slug createdAt" },
             { path: "tags", select: "tag" },
-            { path: "user", select: "publicId handle username avatar profile displayName" },
+            {
+              path: "user",
+              select: "publicId handle username avatar profile displayName",
+            },
           ],
         });
 
       if (session) query.session(session);
       return await query.exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -221,18 +256,31 @@ export class PostRepository extends BaseRepository<IPost> {
       const query = this.model
         .findOne({ slug })
         .populate("tags", "tag")
-        .populate({ path: "image", select: "url publicId slug createdAt -_id" });
+        .populate({
+          path: "image",
+          select: "url publicId slug createdAt -_id",
+        });
 
       if (session) query.session(session);
       return await query.exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
-  async findByUserPublicId(userPublicId: string, options: PaginationOptions): Promise<PaginationResult<FeedPost>> {
+  async findByUserPublicId(
+    userPublicId: UserPublicId,
+    options: PaginationOptions,
+  ): Promise<PaginationResult<FeedPost>> {
     try {
-      const { page = 1, limit = 20, sortBy = "createdAt", sortOrder = "desc" } = options;
+      const {
+        page = 1,
+        limit = 20,
+        sortBy = "createdAt",
+        sortOrder = "desc",
+      } = options;
       const skip = (page - 1) * limit;
       const sort = this.buildSort(sortBy, sortOrder);
 
@@ -254,14 +302,16 @@ export class PostRepository extends BaseRepository<IPost> {
               { $skip: skip },
               { $limit: limit },
               ...this.getStandardLookups(),
-              { $project: this.getStandardProjectionFields() }
+              { $project: this.getStandardProjectionFields() },
             ),
             totalCount: this.buildFacetPipeline({ $count: "count" }),
-          }
-        }
+          },
+        },
       ];
 
-      const [result] = await this.model.aggregate<PaginationFacetResult<FeedPost>>(pipeline).exec();
+      const [result] = await this.model
+        .aggregate<PaginationFacetResult<FeedPost>>(pipeline)
+        .exec();
       const data = result?.data ?? [];
       const total = result?.totalCount[0]?.count ?? 0;
 
@@ -273,14 +323,23 @@ export class PostRepository extends BaseRepository<IPost> {
         totalPages: Math.ceil(total / limit),
       };
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
-  async findWithPagination(options: PaginationOptions): Promise<PaginationResult<FeedPost>> {
+  async findWithPagination(
+    options: PaginationOptions,
+  ): Promise<PaginationResult<FeedPost>> {
     try {
       const session = this.getSession();
-      const { page = 1, limit = 20, sortBy = "createdAt", sortOrder = "desc" } = options;
+      const {
+        page = 1,
+        limit = 20,
+        sortBy = "createdAt",
+        sortOrder = "desc",
+      } = options;
       const skip = (page - 1) * limit;
       const sort = this.buildSort(sortBy, sortOrder);
 
@@ -292,14 +351,15 @@ export class PostRepository extends BaseRepository<IPost> {
               { $skip: skip },
               { $limit: limit },
               ...this.getStandardLookups(),
-              this.getStandardProjection()
+              this.getStandardProjection(),
             ),
             totalCount: this.buildFacetPipeline({ $count: "count" }),
-          }
-        }
+          },
+        },
       ];
 
-      const aggregate = this.model.aggregate<PaginationFacetResult<FeedPost>>(pipeline);
+      const aggregate =
+        this.model.aggregate<PaginationFacetResult<FeedPost>>(pipeline);
       if (session) aggregate.session(session);
 
       const [result] = await aggregate.exec();
@@ -314,13 +374,20 @@ export class PostRepository extends BaseRepository<IPost> {
         totalPages: Math.ceil(total / limit),
       };
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
   async findByTags(
     tagIds: string[],
-    options?: { page?: number; limit?: number; sortBy?: string; sortOrder?: string },
+    options?: {
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: string;
+    },
   ): Promise<PaginationResult<IPost>> {
     try {
       const page = options?.page || 1;
@@ -350,27 +417,41 @@ export class PostRepository extends BaseRepository<IPost> {
         totalPages: Math.ceil(total / limit),
       };
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
-  async updateCommentCount(postId: string, increment: number): Promise<void> {
+  async updateCommentCount(postId: MongoId, increment: number): Promise<void> {
     try {
       const session = this.getSession();
-      const query = this.model.findByIdAndUpdate(postId, { $inc: { commentsCount: increment } }, { session });
+      const query = this.model.findByIdAndUpdate(
+        postId,
+        { $inc: { commentsCount: increment } },
+        { session },
+      );
       await query.exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
-  async updateLikeCount(postId: string, increment: number): Promise<void> {
+  async updateLikeCount(postId: MongoId, increment: number): Promise<void> {
     try {
       const session = this.getSession();
-      const query = this.model.findByIdAndUpdate(postId, { $inc: { likesCount: increment } }, { session });
+      const query = this.model.findByIdAndUpdate(
+        postId,
+        { $inc: { likesCount: increment } },
+        { session },
+      );
       await query.exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -381,11 +462,13 @@ export class PostRepository extends BaseRepository<IPost> {
       if (session) aggregation.session(session);
       return await aggregation.exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
-  async deleteManyByUserId(userId: string): Promise<number> {
+  async deleteManyByUserId(userId: MongoId): Promise<number> {
     try {
       const session = this.getSession();
       const query = this.model.deleteMany({ user: userId });
@@ -393,7 +476,9 @@ export class PostRepository extends BaseRepository<IPost> {
       const result = await query.exec();
       return result.deletedCount || 0;
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -433,15 +518,22 @@ export class PostRepository extends BaseRepository<IPost> {
         return 0;
       }
 
-      const result = await this.model.updateMany({ "author._id": userObjectId }, { $set: setFields }).exec();
+      const result = await this.model
+        .updateMany({ "author._id": userObjectId }, { $set: setFields })
+        .exec();
 
       return result.modifiedCount || 0;
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
-  private normalizeObjectId(id: unknown, field: string): mongoose.Types.ObjectId {
+  private normalizeObjectId(
+    id: unknown,
+    field: string,
+  ): mongoose.Types.ObjectId {
     if (id instanceof mongoose.Types.ObjectId) {
       return id;
     }
@@ -457,145 +549,169 @@ export class PostRepository extends BaseRepository<IPost> {
     }
   }
 
-    private getStandardLookups(): PipelineStage.FacetPipelineStage[] {
-        return [
-          { $lookup: { from: "tags", localField: "tags", foreignField: "_id", as: "tagObjects" } },
-          { $lookup: { from: "images", localField: "image", foreignField: "_id", as: "imageDoc" } },
-          { $unwind: { path: "$imageDoc", preserveNullAndEmptyArrays: true } },
+  private getStandardLookups(): PipelineStage.FacetPipelineStage[] {
+    return [
+      {
+        $lookup: {
+          from: "tags",
+          localField: "tags",
+          foreignField: "_id",
+          as: "tagObjects",
+        },
+      },
+      {
+        $lookup: {
+          from: "images",
+          localField: "image",
+          foreignField: "_id",
+          as: "imageDoc",
+        },
+      },
+      { $unwind: { path: "$imageDoc", preserveNullAndEmptyArrays: true } },
 
-          // lookup community for community posts
-          { $lookup: { from: "communities", localField: "communityId", foreignField: "_id", as: "communityDoc" } },
-          { $unwind: { path: "$communityDoc", preserveNullAndEmptyArrays: true } },
+      // lookup community for community posts
+      {
+        $lookup: {
+          from: "communities",
+          localField: "communityId",
+          foreignField: "_id",
+          as: "communityDoc",
+        },
+      },
+      { $unwind: { path: "$communityDoc", preserveNullAndEmptyArrays: true } },
 
-          {
-            $lookup: {
-              from: "posts",
-              let: { repostId: "$repostOf" },
-              pipeline: [
-                { $match: { $expr: { $eq: ["$_id", "$$repostId"] } } },
+      {
+        $lookup: {
+          from: "posts",
+          let: { repostId: "$repostOf" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$_id", "$$repostId"] } } },
 
-                {
-                  $lookup: {
-                    from: "images",
-                    localField: "image",
-                    foreignField: "_id",
-                    as: "repostImageDoc",
-                  },
-                },
-                { $unwind: { path: "$repostImageDoc", preserveNullAndEmptyArrays: true } },
-              ],
-              as: "repostDoc",
-            },
-          },
-          { $unwind: { path: "$repostDoc", preserveNullAndEmptyArrays: true } },
-        ];
-    }
-
-    private getStandardProjectionFields(): Record<string, unknown> {
-        return {
-          _id: 0,
-          publicId: 1,
-          body: 1,
-          slug: 1,
-          type: 1,
-          repostCount: 1,
-          createdAt: 1,
-          likes: "$likesCount",
-          viewsCount: { $ifNull: ["$viewsCount", 0] },
-          commentsCount: 1,
-
-          // Map the root userPublicId directly to the author snapshot
-          userPublicId: "$author.publicId",
-
-          tags: {
-            $map: {
-              input: { $ifNull: ["$tagObjects", []] },
-              as: "tag",
-              in: { tag: "$$tag.tag", publicId: "$$tag.publicId" },
-            },
-          },
-
-          // Construct the User object from the Snapshot
-          user: {
-            publicId: "$author.publicId",
-            handle: "$author.handle",
-            username: "$author.username",
-            avatar: "$author.avatarUrl",
-            displayName: "$author.displayName",
-          },
-
-          image: {
-            $cond: {
-              if: { $ne: ["$imageDoc", null] },
-              then: {
-                publicId: "$imageDoc.publicId",
-                url: "$imageDoc.url",
-                slug: "$imageDoc.slug",
+            {
+              $lookup: {
+                from: "images",
+                localField: "image",
+                foreignField: "_id",
+                as: "repostImageDoc",
               },
-              else: {},
             },
-          },
-
-          repostOf: {
-            $cond: {
-              if: { $ne: ["$repostDoc", null] },
-              then: {
-                publicId: "$repostDoc.publicId",
-                body: "$repostDoc.body",
-                slug: "$repostDoc.slug",
-                likesCount: "$repostDoc.likesCount",
-                commentsCount: "$repostDoc.commentsCount",
-                repostCount: "$repostDoc.repostCount",
-
-                user: {
-                  publicId: "$repostDoc.author.publicId",
-                  handle: "$repostDoc.author.handle",
-                  username: "$repostDoc.author.username",
-                  avatar: "$repostDoc.author.avatarUrl",
-                },
-
-                image: {
-                  $cond: {
-                    if: { $ne: ["$repostDoc.repostImageDoc", null] },
-                    then: {
-                      publicId: "$repostDoc.repostImageDoc.publicId",
-                      url: "$repostDoc.repostImageDoc.url",
-                    },
-                    else: null,
-                  },
-                },
+            {
+              $unwind: {
+                path: "$repostImageDoc",
+                preserveNullAndEmptyArrays: true,
               },
-              else: null,
             },
-          },
+          ],
+          as: "repostDoc",
+        },
+      },
+      { $unwind: { path: "$repostDoc", preserveNullAndEmptyArrays: true } },
+    ];
+  }
 
-          // community info for community posts
-          community: {
-            $cond: {
-              if: { $ne: ["$communityDoc", null] },
-              then: {
-                publicId: "$communityDoc.publicId",
-                name: "$communityDoc.name",
-                slug: "$communityDoc.slug",
-                avatar: "$communityDoc.avatar",
+  private getStandardProjectionFields(): Record<string, unknown> {
+    return {
+      _id: 0,
+      publicId: 1,
+      body: 1,
+      slug: 1,
+      type: 1,
+      repostCount: 1,
+      createdAt: 1,
+      likes: "$likesCount",
+      viewsCount: { $ifNull: ["$viewsCount", 0] },
+      commentsCount: 1,
+
+      // Map the root userPublicId directly to the author snapshot
+      userPublicId: "$author.publicId",
+
+      tags: {
+        $map: {
+          input: { $ifNull: ["$tagObjects", []] },
+          as: "tag",
+          in: { tag: "$$tag.tag", publicId: "$$tag.publicId" },
+        },
+      },
+
+      // Construct the User object from the Snapshot
+      user: {
+        publicId: "$author.publicId",
+        handle: "$author.handle",
+        username: "$author.username",
+        avatar: "$author.avatarUrl",
+        displayName: "$author.displayName",
+      },
+
+      image: {
+        $cond: {
+          if: { $ne: ["$imageDoc", null] },
+          then: {
+            publicId: "$imageDoc.publicId",
+            url: "$imageDoc.url",
+            slug: "$imageDoc.slug",
+          },
+          else: {},
+        },
+      },
+
+      repostOf: {
+        $cond: {
+          if: { $ne: ["$repostDoc", null] },
+          then: {
+            publicId: "$repostDoc.publicId",
+            body: "$repostDoc.body",
+            slug: "$repostDoc.slug",
+            likesCount: "$repostDoc.likesCount",
+            commentsCount: "$repostDoc.commentsCount",
+            repostCount: "$repostDoc.repostCount",
+
+            user: {
+              publicId: "$repostDoc.author.publicId",
+              handle: "$repostDoc.author.handle",
+              username: "$repostDoc.author.username",
+              avatar: "$repostDoc.author.avatarUrl",
+            },
+
+            image: {
+              $cond: {
+                if: { $ne: ["$repostDoc.repostImageDoc", null] },
+                then: {
+                  publicId: "$repostDoc.repostImageDoc.publicId",
+                  url: "$repostDoc.repostImageDoc.url",
+                },
+                else: null,
               },
-              else: null,
             },
           },
-        };
-    }
+          else: null,
+        },
+      },
 
-    private getStandardProjection(): PipelineStage.Project {
-        return {
-          $project: this.getStandardProjectionFields(),
-        };
-    }
+      // community info for community posts
+      community: {
+        $cond: {
+          if: { $ne: ["$communityDoc", null] },
+          then: {
+            publicId: "$communityDoc.publicId",
+            name: "$communityDoc.name",
+            slug: "$communityDoc.slug",
+            avatar: "$communityDoc.avatar",
+          },
+          else: null,
+        },
+      },
+    };
+  }
 
-    private buildFacetPipeline(...stages: PipelineStage.FacetPipelineStage[]): PipelineStage.FacetPipelineStage[] {
-        return stages;
-    }
+  private getStandardProjection(): PipelineStage.Project {
+    return {
+      $project: this.getStandardProjectionFields(),
+    };
+  }
+
+  private buildFacetPipeline(
+    ...stages: PipelineStage.FacetPipelineStage[]
+  ): PipelineStage.FacetPipelineStage[] {
+    return stages;
+  }
 }
-
-
-
-

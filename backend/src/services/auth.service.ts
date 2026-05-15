@@ -11,6 +11,7 @@ import { Errors } from "@/utils/errors";
 import { DecodedUser, IUser } from "@/types";
 import { AuthSessionService } from "@/services/auth-session.service";
 import { TOKENS } from "@/types/tokens";
+import { asSessionId, UserPublicId } from "@/types/branded";
 
 export interface AuthSessionContext {
   ip?: string;
@@ -45,7 +46,8 @@ export class AuthService {
    * - wires token logic to server-backed session storage
    */
   constructor(
-    @inject(TOKENS.Repositories.User) private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.User)
+    private readonly userRepository: UserRepository,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
     @inject(TOKENS.Services.AuthSession)
     private readonly authSessionService: AuthSessionService,
@@ -169,9 +171,7 @@ export class AuthService {
   async revokeSessionByAccessToken(accessToken: string): Promise<void> {
     const payload = this.verifyAccessToken(accessToken);
     if (!payload.sid) {
-      throw Errors.authentication(
-        "Missing session identifier in access token",
-      );
+      throw Errors.authentication("Missing session identifier in access token");
     }
     await this.authSessionService.revokeSession(payload.sid);
   }
@@ -197,7 +197,7 @@ export class AuthService {
       handle: user.handle,
       username: user.username,
       isAdmin: user.isAdmin,
-      sid,
+      sid: asSessionId(sid),
       jti: crypto.randomUUID(),
       ver: 1,
     };
@@ -250,9 +250,7 @@ export class AuthService {
       !Number.isFinite(this.refreshTokenTtlSeconds) ||
       this.refreshTokenTtlSeconds <= 0
     ) {
-      throw Errors.internal(
-        "Invalid refresh token TTL configuration",
-      );
+      throw Errors.internal("Invalid refresh token TTL configuration");
     }
     return Math.floor(this.refreshTokenTtlSeconds);
   }
@@ -267,9 +265,7 @@ export class AuthService {
       !Number.isFinite(this.accessTokenTtlSeconds) ||
       this.accessTokenTtlSeconds <= 0
     ) {
-      throw Errors.internal(
-        "Invalid access token TTL configuration",
-      );
+      throw Errors.internal("Invalid access token TTL configuration");
     }
     return Math.floor(this.accessTokenTtlSeconds);
   }
@@ -300,7 +296,7 @@ export class AuthService {
     const isAdmin =
       typeof withAdmin.isAdmin === "boolean" ? withAdmin.isAdmin : false;
     return {
-      publicId: user.publicId,
+      publicId: user.publicId as UserPublicId,
       email: user.email,
       handle: user.handle,
       username: user.username,

@@ -10,6 +10,7 @@ import {
 import { Errors, wrapError } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import { MongoId, asMongoId, asUserPublicId } from "@/types/branded";
 
 export interface SuggestedUser {
   publicId: string;
@@ -74,7 +75,7 @@ export class GetWhoToFollowQueryHandler implements IQueryHandler<
       if (activityLevel === "dormant" || activityLevel === "low") {
         // low traffic mode: show any user who has posted
         suggestions = await this.getSuggestionsLowTraffic(
-          String(currentUser._id),
+          asMongoId(String(currentUser._id)),
           query.limit,
         );
         logger.info(
@@ -83,7 +84,7 @@ export class GetWhoToFollowQueryHandler implements IQueryHandler<
       } else {
         // high/medium traffic mode: show engaging users
         suggestions = await this.getSuggestionsHighTraffic(
-          String(currentUser._id),
+          asMongoId(String(currentUser._id)),
           query.limit,
         );
         logger.info(
@@ -96,7 +97,7 @@ export class GetWhoToFollowQueryHandler implements IQueryHandler<
             "[WhoToFollow] High traffic mode returned no results, falling back to low traffic",
           );
           suggestions = await this.getSuggestionsLowTraffic(
-            String(currentUser._id),
+            asMongoId(String(currentUser._id)),
             query.limit,
           );
         }
@@ -134,7 +135,7 @@ export class GetWhoToFollowQueryHandler implements IQueryHandler<
    * Uses recently active users from Redis for freshness
    */
   private async getSuggestionsLowTraffic(
-    currentUserId: string,
+    currentUserId: MongoId,
     limit: number,
   ): Promise<SuggestedUser[]> {
     // get recently active users from our tracking
@@ -147,7 +148,7 @@ export class GetWhoToFollowQueryHandler implements IQueryHandler<
     return this.userReadRepository.getSuggestedUsersLowTraffic(
       currentUserId,
       limit,
-      recentlyActiveUsers,
+      recentlyActiveUsers.map(asUserPublicId),
     );
   }
 
@@ -155,7 +156,7 @@ export class GetWhoToFollowQueryHandler implements IQueryHandler<
    * High traffic strategy: show users with engagement metrics
    */
   private async getSuggestionsHighTraffic(
-    currentUserId: string,
+    currentUserId: MongoId,
     limit: number,
   ): Promise<SuggestedUser[]> {
     return this.userReadRepository.getSuggestedUsersHighTraffic(

@@ -1,3 +1,4 @@
+import { UserPublicId, asUserPublicId, asMongoId } from "@/types/branded";
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { GetHandleSuggestionsQuery } from "./getHandleSuggestions.query";
 import { inject, injectable } from "tsyringe";
@@ -71,12 +72,15 @@ export class GetHandleSuggestionsQueryHandler implements IQueryHandler<
   ): Promise<HandleSuggestionDTO[]> {
     if (viewerPublicId) {
       const relatedMatches = await this.loadRelatedMatches(
-        viewerPublicId,
+        asUserPublicId(viewerPublicId),
         handleRegex,
         limit,
       );
       if (relatedMatches.length > 0) {
-        const filtered = this.filterOutViewer(relatedMatches, viewerPublicId);
+        const filtered = this.filterOutViewer(
+          relatedMatches,
+          asUserPublicId(viewerPublicId),
+        );
         return this.mapToDTO(this.sortAlphabeticallyDesc(filtered));
       }
     }
@@ -89,7 +93,7 @@ export class GetHandleSuggestionsQueryHandler implements IQueryHandler<
         TRENDING_FALLBACK_LIMIT,
       );
       const filtered = viewerPublicId
-        ? this.filterOutViewer(trendingMatches, viewerPublicId)
+        ? this.filterOutViewer(trendingMatches, asUserPublicId(viewerPublicId))
         : trendingMatches;
       return this.mapToDTO(
         this.sortAlphabeticallyDesc(filtered).slice(0, limit),
@@ -114,7 +118,7 @@ export class GetHandleSuggestionsQueryHandler implements IQueryHandler<
   }
 
   private async loadRelatedMatches(
-    viewerPublicId: string,
+    viewerPublicId: UserPublicId,
     handleRegex: RegExp,
     limit: number,
   ) {
@@ -124,8 +128,8 @@ export class GetHandleSuggestionsQueryHandler implements IQueryHandler<
     }
 
     const [followerIds, followingIds] = await Promise.all([
-      this.followRepository.getFollowerObjectIds(String(user._id)),
-      this.followRepository.getFollowingObjectIds(String(user._id)),
+      this.followRepository.getFollowerObjectIds(asMongoId(String(user._id))),
+      this.followRepository.getFollowingObjectIds(asMongoId(String(user._id))),
     ]);
     const relatedIds = Array.from(new Set([...followerIds, ...followingIds]));
     if (relatedIds.length === 0) {
@@ -170,7 +174,7 @@ export class GetHandleSuggestionsQueryHandler implements IQueryHandler<
 
   private filterOutViewer<T extends { publicId: string }>(
     users: T[],
-    viewerPublicId: string,
+    viewerPublicId: UserPublicId,
   ): T[] {
     return users.filter((user) => user.publicId !== viewerPublicId);
   }

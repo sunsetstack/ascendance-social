@@ -19,10 +19,7 @@ import { GetAccountInfoResult } from "@/application/queries/users/getAccountInfo
 import { LikeActionByPublicIdCommand } from "@/application/commands/users/likeActionByPublicId/likeActionByPublicId.command";
 import { GetWhoToFollowQuery } from "@/application/queries/users/getWhoToFollow/getWhoToFollow.query";
 import { GetWhoToFollowResult } from "@/application/queries/users/getWhoToFollow/getWhoToFollow.handler";
-import {
-  GetHandleSuggestionsQuery,
-  HandleSuggestionContext,
-} from "@/application/queries/users/getHandleSuggestions/getHandleSuggestions.query";
+import { GetHandleSuggestionsQuery } from "@/application/queries/users/getHandleSuggestions/getHandleSuggestions.query";
 import {
   AdminUserDTO,
   AuthenticatedUserDTO,
@@ -68,6 +65,7 @@ import type {
 
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import { asUserPublicId, asPostPublicId, UserPublicId } from "@/types/branded";
 
 /** Threshold for enabling streaming responses (items) */
 import { STREAM_THRESHOLD } from "@/utils/post-helpers";
@@ -108,7 +106,7 @@ export class UserController {
   }
 
   private toSessionUser(user: AuthenticatedUserDTO | AdminUserDTO): {
-    publicId: string;
+    publicId: UserPublicId;
     email: string;
     handle: string;
     username: string;
@@ -144,7 +142,7 @@ export class UserController {
     res.clearCookie(authCookieNames.legacyToken, clearAuthCookieOptions);
   }
 
-  private requireAuthenticatedUserPublicId(req: Request): string {
+  private requireAuthenticatedUserPublicId(req: Request): UserPublicId {
     const userPublicId = req.decodedUser?.publicId;
     if (!userPublicId) {
       throw Errors.authentication("Authentication required");
@@ -356,7 +354,7 @@ export class UserController {
     res: Response,
   ): Promise<void> => {
     const { publicId } = req.params;
-    const query = new GetUserByPublicIdQuery(publicId);
+    const query = new GetUserByPublicIdQuery(asUserPublicId(publicId));
     const userDTO = await this.queryBus.execute<PublicUserDTO>(query);
 
     res.status(200).json(userDTO);
@@ -372,7 +370,10 @@ export class UserController {
     const { publicId } = req.params;
     const followerPublicId = this.requireAuthenticatedUserPublicId(req);
 
-    const command = new FollowUserCommand(followerPublicId, publicId);
+    const command = new FollowUserCommand(
+      followerPublicId,
+      asUserPublicId(publicId),
+    );
     const result = await this.commandBus.dispatch<FollowUserResult>(command);
     res.status(200).json(result);
   };
@@ -387,7 +388,10 @@ export class UserController {
     const { publicId } = req.params;
     const followerPublicId = this.requireAuthenticatedUserPublicId(req);
 
-    const command = new FollowUserCommand(followerPublicId, publicId);
+    const command = new FollowUserCommand(
+      followerPublicId,
+      asUserPublicId(publicId),
+    );
     const result = await this.commandBus.dispatch<FollowUserResult>(command);
     res.status(200).json(result);
   };
@@ -402,7 +406,10 @@ export class UserController {
     const { publicId } = req.params;
     const followerPublicId = this.requireAuthenticatedUserPublicId(req);
 
-    const query = new CheckFollowStatusQuery(followerPublicId, publicId);
+    const query = new CheckFollowStatusQuery(
+      followerPublicId,
+      asUserPublicId(publicId),
+    );
     const isFollowing = await this.queryBus.execute<boolean>(query);
     res.status(200).json({ isFollowing });
   };
@@ -414,7 +421,7 @@ export class UserController {
     const { publicId } = req.params;
     const { page, limit } = req.query;
 
-    const query = new GetFollowersQuery(publicId, page, limit);
+    const query = new GetFollowersQuery(asUserPublicId(publicId), page, limit);
     const result = await this.queryBus.execute<GetFollowersResult>(query);
 
     if (result.users.length >= STREAM_THRESHOLD) {
@@ -441,7 +448,7 @@ export class UserController {
     const { publicId } = req.params;
     const { page, limit } = req.query;
 
-    const query = new GetFollowingQuery(publicId, page, limit);
+    const query = new GetFollowingQuery(asUserPublicId(publicId), page, limit);
     const result = await this.queryBus.execute<GetFollowingResult>(query);
 
     if (result.users.length >= STREAM_THRESHOLD) {
@@ -537,7 +544,10 @@ export class UserController {
       `[LIKEACTION]: User public ID: ${userPublicId}, Post public ID: ${publicId}`,
     );
     logger.info(publicId);
-    const command = new LikeActionByPublicIdCommand(userPublicId, publicId);
+    const command = new LikeActionByPublicIdCommand(
+      userPublicId,
+      asPostPublicId(publicId),
+    );
     const result = await this.commandBus.dispatch(command);
     res.status(200).json(result);
   };

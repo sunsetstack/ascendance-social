@@ -1,5 +1,7 @@
 import { Request, Response } from "express";
-import { SearchService } from "@/services/search.service";
+import { QueryBus } from "@/application/common/buses/query.bus";
+import { SearchAllQuery } from "@/application/queries/search/searchAll/searchAll.query";
+import { SearchAllResult } from "@/application/queries/search/searchAll/searchAll.handler";
 import { Errors } from "@/utils/errors";
 import { sanitizeTextInput } from "@/utils/sanitizers";
 import { inject, injectable } from "tsyringe";
@@ -8,7 +10,7 @@ import { TOKENS } from "@/types/tokens";
 @injectable()
 export class SearchController {
   constructor(
-    @inject(TOKENS.Services.Search) private readonly searchService: SearchService,
+    @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
   ) {}
 
   searchAll = async (req: Request, res: Response) => {
@@ -34,7 +36,9 @@ export class SearchController {
       throw Errors.validation('Query parameter "q" is required');
     }
 
-    const result = await this.searchService.searchAll(searchTerms);
+    const result = await this.queryBus.execute<SearchAllResult>(
+      new SearchAllQuery(searchTerms)
+    );
 
     res.status(200).json({ success: true, data: result });
   };
