@@ -20,12 +20,13 @@ import { UnbanUserCommand } from "@/application/commands/admin/unbanUser/unbanUs
 import { PromoteToAdminCommand } from "@/application/commands/admin/promoteToAdmin/promoteToAdmin.command";
 import { DemoteFromAdminCommand } from "@/application/commands/admin/demoteFromAdmin/demoteFromAdmin.command";
 import { DeleteCommentCommand } from "@/application/commands/comments/deleteComment/deleteComment.command";
+import { RemoveFavoriteAdminCommand } from "@/application/commands/favorite/removeFavoriteAdmin/removeFavoriteAdmin.command";
 import { AdminUserDTO } from "@/services/dto.service";
-import { FavoriteService } from "@/services/favorite.service";
 import { escapeRegex } from "@/utils/sanitizers";
 import { RedisService } from "@/services/redis.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
+import { asPostPublicId, asUserPublicId } from "@/types/branded";
 import type {
   AdminFavoriteParams,
   AdminImagesQuery,
@@ -51,8 +52,6 @@ export class AdminUserController {
     @inject(TOKENS.CQRS.Commands.Bus) private readonly commandBus: CommandBus,
     @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
     @inject(TOKENS.Services.Redis) private readonly redisService: RedisService,
-    @inject(TOKENS.Services.Favorite)
-    private readonly favoriteService: FavoriteService,
   ) {}
 
   getAllUsersAdmin = async (
@@ -108,7 +107,7 @@ export class AdminUserController {
 
   getUser = async (req: TypedRequest<UserPublicIdParams>, res: Response) => {
     const { publicId } = req.params;
-    const query = new GetAdminUserProfileQuery(publicId);
+    const query = new GetAdminUserProfileQuery(asUserPublicId(publicId));
     const adminDTO = await this.queryBus.execute<AdminUserDTO>(query);
     res.status(200).json(adminDTO);
   };
@@ -118,7 +117,7 @@ export class AdminUserController {
     res: Response,
   ) => {
     const { publicId } = req.params;
-    const query = new GetUserStatsQuery(publicId);
+    const query = new GetUserStatsQuery(asUserPublicId(publicId));
     const stats = await this.queryBus.execute(query);
     res.status(200).json(stats);
   };
@@ -126,7 +125,11 @@ export class AdminUserController {
   deleteUser = async (req: TypedRequest<UserPublicIdParams>, res: Response) => {
     const { publicId } = req.params;
     // admin deletion bypasses password verification
-    const command = new DeleteUserCommand(publicId, undefined, true);
+    const command = new DeleteUserCommand(
+      asUserPublicId(publicId),
+      undefined,
+      true,
+    );
     await this.commandBus.dispatch(command);
     res.status(204).send();
   };
@@ -145,14 +148,18 @@ export class AdminUserController {
     if (!decodedUser?.publicId) {
       throw Errors.validation("Admin publicId missing in token");
     }
-    const command = new BanUserCommand(publicId, decodedUser.publicId, reason);
+    const command = new BanUserCommand(
+      asUserPublicId(publicId),
+      decodedUser.publicId,
+      reason,
+    );
     const result = await this.commandBus.dispatch<AdminUserDTO>(command);
     res.status(200).json(result);
   };
 
   unbanUser = async (req: TypedRequest<UserPublicIdParams>, res: Response) => {
     const { publicId } = req.params;
-    const command = new UnbanUserCommand(publicId);
+    const command = new UnbanUserCommand(asUserPublicId(publicId));
     const result = await this.commandBus.dispatch<AdminUserDTO>(command);
     res.status(200).json(result);
   };
@@ -202,7 +209,7 @@ export class AdminUserController {
     }
 
     await this.commandBus.dispatch(
-      new DeletePostCommand(publicId, decodedUser.publicId),
+      new DeletePostCommand(asPostPublicId(publicId), decodedUser.publicId),
     );
     res.status(204).send();
   };
@@ -226,7 +233,12 @@ export class AdminUserController {
     res: Response,
   ) => {
     const { publicId, postPublicId } = req.params;
-    await this.favoriteService.removeFavoriteAdmin(publicId, postPublicId);
+    await this.commandBus.dispatch(
+      new RemoveFavoriteAdminCommand(
+        asUserPublicId(publicId),
+        asPostPublicId(postPublicId),
+      ),
+    );
     res.status(204).send();
   };
 
@@ -259,7 +271,7 @@ export class AdminUserController {
     res: Response,
   ) => {
     const { publicId } = req.params;
-    const command = new PromoteToAdminCommand(publicId);
+    const command = new PromoteToAdminCommand(asUserPublicId(publicId));
     const result = await this.commandBus.dispatch<AdminUserDTO>(command);
     res.status(200).json(result);
   };
@@ -269,7 +281,7 @@ export class AdminUserController {
     res: Response,
   ) => {
     const { publicId } = req.params;
-    const command = new DemoteFromAdminCommand(publicId);
+    const command = new DemoteFromAdminCommand(asUserPublicId(publicId));
     const result = await this.commandBus.dispatch<AdminUserDTO>(command);
     res.status(200).json(result);
   };

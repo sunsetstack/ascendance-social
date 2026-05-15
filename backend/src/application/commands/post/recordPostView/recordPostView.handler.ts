@@ -1,3 +1,4 @@
+import { PostPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { RecordPostViewCommand } from "./recordPostView.command";
@@ -52,7 +53,7 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
   ) {
     this.transactionQueue.registerHandler(
       "UPDATE_VIEW_COUNT_METADATA",
-      async (payload: { postPublicId: string }) => {
+      async (payload: { postPublicId: PostPublicId }) => {
         const updatedPost = await this.postReadRepository.findOneByPublicId(
           payload.postPublicId,
         );

@@ -8,6 +8,7 @@ import {
 import type { IUserReadRepository } from "../interfaces/IUserReadRepository";
 import { UserRepository } from "../user.repository";
 import { TOKENS } from "@/types/tokens";
+import { MongoId, UserPublicId } from "@/types/branded";
 
 /**
  * Read-only repository for user queries
@@ -21,15 +22,17 @@ export class UserReadRepository implements IUserReadRepository {
     private readonly userRepository: UserRepository,
   ) {}
 
-  async findById(id: string): Promise<IUser | null> {
+  async findById(id: MongoId): Promise<IUser | null> {
     return this.userRepository.findById(id);
   }
 
-  async findByPublicId(publicId: string): Promise<IUser | null> {
+  async findByPublicId(publicId: UserPublicId): Promise<IUser | null> {
     return this.userRepository.findByPublicId(publicId);
   }
 
-  async findInternalIdByPublicId(publicId: string): Promise<string | null> {
+  async findInternalIdByPublicId(
+    publicId: UserPublicId,
+  ): Promise<MongoId | null> {
     return this.userRepository.findInternalIdByPublicId(publicId);
   }
 
@@ -56,7 +59,7 @@ export class UserReadRepository implements IUserReadRepository {
     return this.userRepository.findByEmailVerificationToken(email, token);
   }
 
-  async findUsersByPublicIds(userPublicIds: string[]): Promise<IUser[]> {
+  async findUsersByPublicIds(userPublicIds: UserPublicId[]): Promise<IUser[]> {
     return this.userRepository.findUsersByPublicIds(userPublicIds);
   }
 
@@ -68,7 +71,7 @@ export class UserReadRepository implements IUserReadRepository {
     return this.userRepository.findUsersByHandles(handles);
   }
 
-  async findUsersFollowing(userPublicId: string): Promise<IUser[]> {
+  async findUsersFollowing(userPublicId: UserPublicId): Promise<IUser[]> {
     return this.userRepository.findUsersFollowing(userPublicId);
   }
 
@@ -91,16 +94,16 @@ export class UserReadRepository implements IUserReadRepository {
   }
 
   async getSuggestedUsersToFollow(
-    currentUserId: string,
+    currentUserId: MongoId,
     limit?: number,
   ): Promise<UserSuggestion[]> {
     return this.userRepository.getSuggestedUsersToFollow(currentUserId, limit);
   }
 
   async getSuggestedUsersLowTraffic(
-    currentUserId: string,
+    currentUserId: MongoId,
     limit?: number,
-    recentlyActiveUserPublicIds?: string[],
+    recentlyActiveUserPublicIds?: UserPublicId[],
   ): Promise<UserSuggestion[]> {
     return this.userRepository.getSuggestedUsersLowTraffic(
       currentUserId,
@@ -110,7 +113,7 @@ export class UserReadRepository implements IUserReadRepository {
   }
 
   async getSuggestedUsersHighTraffic(
-    currentUserId: string,
+    currentUserId: MongoId,
     limit?: number,
   ): Promise<UserSuggestion[]> {
     return this.userRepository.getSuggestedUsersHighTraffic(

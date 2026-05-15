@@ -17,6 +17,7 @@ import { UnitOfWork } from "@/database/UnitOfWork";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 import { extractTagNames, buildPostPreview } from "@/utils/post-helpers";
+import { asMongoId, asUserPublicId } from "@/types/branded";
 
 @injectable()
 export class LikeActionCommandHandler implements ICommandHandler<
@@ -54,6 +55,12 @@ export class LikeActionCommandHandler implements ICommandHandler<
       throw Errors.notFound("Post");
     }
 
+    // Fetch actor user before transaction to get publicId for event dispatch
+    const actorUser = await this.userReadRepository.findById(command.userId);
+    if (!actorUser) {
+      throw Errors.notFound("User");
+    }
+
     const postTags = extractTagNames(existingPost.tags);
 
     // Execute the like/unlike operation within transaction
@@ -72,19 +79,17 @@ export class LikeActionCommandHandler implements ICommandHandler<
 
       await this.eventBus.queueTransactional(
         new UserInteractedWithPostEvent(
-          command.userId,
+          actorUser.publicId,
           isLikeAction ? "like" : "unlike",
-          existingPost.publicId ?? command.postId,
+          existingPost.publicId,
           postTags,
-          this.resolveOwnerPublicId(existingPost),
+          asUserPublicId(this.resolveOwnerPublicId(existingPost)),
         ),
       );
     });
 
     // Return the updated image with the modified like count
-    const updatedPost = await this.postReadRepository.findById(
-      command.postId,
-    );
+    const updatedPost = await this.postReadRepository.findById(command.postId);
     if (!updatedPost) {
       throw Errors.notFound("Post");
     }
@@ -126,9 +131,10 @@ export class LikeActionCommandHandler implements ICommandHandler<
 
       await this.eventBus.queueTransactional(
         new NotificationRequestedEvent({
-          receiverId: postOwnerPublicId,
+          receiverId: asUserPublicId(postOwnerPublicId),
           actionType: "like",
-          actorId: command.userId,
+          actorId:
+            actorUser?.publicId ?? asUserPublicId(String(command.userId)),
           actorUsername: actorUser?.username,
           actorHandle: actorUser?.handle,
           actorAvatar: actorUser?.avatar,
@@ -177,7 +183,9 @@ export class LikeActionCommandHandler implements ICommandHandler<
       return (owner as PopulatedPostUser).publicId ?? "";
     }
     if (owner) {
-      const ownerUser = await this.userReadRepository.findById(owner.toString());
+      const ownerUser = await this.userReadRepository.findById(
+        asMongoId(owner.toString()),
+      );
       return ownerUser?.publicId ?? "";
     }
     return "";

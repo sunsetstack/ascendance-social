@@ -1,10 +1,15 @@
 import { Response } from "express";
-import { NotificationService } from "@/services/notification.service";
+import { CommandBus } from "@/application/common/buses/command.bus";
+import { QueryBus } from "@/application/common/buses/query.bus";
+import { GetNotificationsQuery } from "@/application/queries/notification/getNotifications/getNotifications.query";
+import { GetUnreadCountQuery } from "@/application/queries/notification/getUnreadCount/getUnreadCount.query";
+import { MarkAsReadCommand } from "@/application/commands/notification/markAsRead/markAsRead.command";
+import { MarkAllAsReadCommand } from "@/application/commands/notification/markAllAsRead/markAllAsRead.command";
 import { Errors } from "@/utils/errors";
 import { streamCursorResponse } from "@/utils/streamResponse";
 import { inject, injectable } from "tsyringe";
 import { logger } from "@/utils/winston";
-import { TypedRequest } from "@/types";
+import { TypedRequest, NotificationPlain } from "@/types";
 import { TOKENS } from "@/types/tokens";
 import type {
   NotificationIdParams,
@@ -20,8 +25,8 @@ type EmptyBody = Record<string, never>;
 @injectable()
 export class NotificationController {
   constructor(
-    @inject(TOKENS.Services.Notification)
-    private readonly notificationService: NotificationService,
+    @inject(TOKENS.CQRS.Commands.Bus) private readonly commandBus: CommandBus,
+    @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
   ) {}
 
   getNotifications = async (
@@ -38,10 +43,8 @@ export class NotificationController {
     const { before, limit } = req.query;
     const beforeTimestamp = before?.getTime();
 
-    const notifications = await this.notificationService.getNotifications(
-      userPublicId,
-      limit,
-      beforeTimestamp,
+    const notifications = await this.queryBus.execute<NotificationPlain[]>(
+      new GetNotificationsQuery(userPublicId, limit, beforeTimestamp)
     );
 
     logger.info(
@@ -89,9 +92,8 @@ export class NotificationController {
       throw Errors.validation("User publicId is required");
     }
     const userPublicId = decodedUser.publicId;
-    const notification = await this.notificationService.markAsRead(
-      notificationId,
-      userPublicId,
+    const notification = await this.commandBus.dispatch(
+      new MarkAsReadCommand(notificationId, userPublicId)
     );
     res.status(200).json(notification);
   };
@@ -102,7 +104,9 @@ export class NotificationController {
       throw Errors.validation("User publicId is required");
     }
     const userPublicId = decodedUser.publicId;
-    const count = await this.notificationService.getUnreadCount(userPublicId);
+    const count = await this.queryBus.execute<number>(
+      new GetUnreadCountQuery(userPublicId)
+    );
     res.status(200).json({ count });
   };
 
@@ -112,8 +116,9 @@ export class NotificationController {
       throw Errors.validation("User publicId is required");
     }
     const userPublicId = decodedUser.publicId;
-    const modifiedCount =
-      await this.notificationService.markAllAsRead(userPublicId);
+    const modifiedCount = await this.commandBus.dispatch<number>(
+      new MarkAllAsReadCommand(userPublicId)
+    );
     res.status(200).json({ modifiedCount });
   };
 }

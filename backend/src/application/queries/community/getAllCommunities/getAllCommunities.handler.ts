@@ -7,6 +7,7 @@ import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRep
 import { PaginationResult } from "@/types";
 import { DTOService, CommunityDTO } from "@/services/dto.service";
 import { TOKENS } from "@/types/tokens";
+import { asUserPublicId } from "@/types/branded";
 
 @injectable()
 export class GetAllCommunitiesQueryHandler implements IQueryHandler<
@@ -45,8 +46,9 @@ export class GetAllCommunitiesQueryHandler implements IQueryHandler<
     let membershipSet = new Set<string>();
 
     if (viewerPublicId) {
-      const viewer =
-        await this.userReadRepository.findByPublicId(viewerPublicId);
+      const viewer = await this.userReadRepository.findByPublicId(
+        asUserPublicId(viewerPublicId),
+      );
       if (viewer) {
         viewerId = viewer._id?.toString() ?? viewer.id?.toString() ?? "";
         if (viewerId) {

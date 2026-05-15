@@ -1,3 +1,4 @@
+import { UserPublicId, PostPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import { PaginationResult, PostDTO } from "@/types";
 import { FeedReadService } from "./feed-read.service";
@@ -44,7 +45,7 @@ export class FeedService {
   }
 
   public async recordInteraction(
-    userPublicId: string,
+    userPublicId: UserPublicId,
     actionType: string,
     targetIdentifier: string,
     tags: string[],
@@ -58,21 +59,21 @@ export class FeedService {
   }
 
   public async updatePostLikeMeta(
-    postPublicId: string,
+    postPublicId: PostPublicId,
     newTotalLikes: number,
   ): Promise<void> {
     return this.feedMetaService.updatePostLikeMeta(postPublicId, newTotalLikes);
   }
 
   public async updatePostViewMeta(
-    postPublicId: string,
+    postPublicId: PostPublicId,
     newViewsCount: number,
   ): Promise<void> {
     return this.feedMetaService.updatePostViewMeta(postPublicId, newViewsCount);
   }
 
   public async updatePostCommentMeta(
-    postPublicId: string,
+    postPublicId: PostPublicId,
     newCommentsCount: number,
   ): Promise<void> {
     return this.feedMetaService.updatePostCommentMeta(

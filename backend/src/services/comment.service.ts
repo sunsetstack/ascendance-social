@@ -1,3 +1,4 @@
+import { UserPublicId, PostPublicId, asMongoId } from "@/types/branded";
 import { CommentRepository } from "@/repositories/comment.repository";
 import { PostRepository } from "@/repositories/post.repository";
 import { UserRepository } from "@/repositories/user.repository";
@@ -18,14 +19,17 @@ export class CommentService {
   constructor(
     @inject(TOKENS.Repositories.Comment)
     private readonly commentRepository: CommentRepository,
-    @inject(TOKENS.Repositories.Post) private readonly postRepository: PostRepository,
-    @inject(TOKENS.Repositories.User) private readonly userRepository: UserRepository,
-    @inject(TOKENS.Repositories.UnitOfWork) private readonly unitOfWork: UnitOfWork,
+    @inject(TOKENS.Repositories.Post)
+    private readonly postRepository: PostRepository,
+    @inject(TOKENS.Repositories.User)
+    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UnitOfWork)
+    private readonly unitOfWork: UnitOfWork,
   ) {}
 
   async createComment(
     userId: string,
-    postPublicId: string,
+    postPublicId: PostPublicId,
     content: string,
   ): Promise<TransformedComment> {
     // Validate
@@ -46,19 +50,17 @@ export class CommentService {
 
     await this.unitOfWork.executeInTransaction(async () => {
       // create comment
-      const comment = await this.commentRepository.create(
-        {
-          content: content.trim(),
-          postId: post._id as mongoose.Types.ObjectId,
-          userId: new mongoose.Types.ObjectId(userId),
-        } as Partial<IComment>,
-      );
+      const comment = await this.commentRepository.create({
+        content: content.trim(),
+        postId: post._id as mongoose.Types.ObjectId,
+        userId: new mongoose.Types.ObjectId(userId),
+      } as Partial<IComment>);
 
       createdCommentId = comment._id.toString();
 
       // increment comment count on post
       await this.postRepository.updateCommentCount(
-        (post._id as mongoose.Types.ObjectId).toString(),
+        asMongoId((post._id as mongoose.Types.ObjectId).toString()),
         1,
       );
     });
@@ -74,8 +76,8 @@ export class CommentService {
   }
 
   async createCommentByPublicId(
-    userPublicId: string,
-    postPublicId: string,
+    userPublicId: UserPublicId,
+    postPublicId: PostPublicId,
     content: string,
   ) {
     const user = await this.userRepository.findByPublicId(userPublicId);
@@ -84,7 +86,7 @@ export class CommentService {
   }
 
   async getCommentsByPostPublicId(
-    postPublicId: string,
+    postPublicId: PostPublicId,
     page: number = 1,
     limit: number = 10,
     parentId: string | null = null,
@@ -96,7 +98,7 @@ export class CommentService {
     }
 
     return await this.commentRepository.getCommentsByPostId(
-      (post._id as mongoose.Types.ObjectId).toString(),
+      asMongoId((post._id as mongoose.Types.ObjectId).toString()),
       page,
       limit,
       parentId,
@@ -124,9 +126,7 @@ export class CommentService {
       userId,
     );
     if (!isOwner && !isAdmin) {
-      throw Errors.forbidden(
-        "You can only edit your own comments",
-      );
+      throw Errors.forbidden("You can only edit your own comments");
     }
 
     let updatedComment: TransformedComment | null = null;
@@ -147,7 +147,7 @@ export class CommentService {
 
   async updateCommentByPublicId(
     commentId: string,
-    userPublicId: string,
+    userPublicId: UserPublicId,
     content: string,
   ) {
     const user = await this.userRepository.findByPublicId(userPublicId);
@@ -156,12 +156,14 @@ export class CommentService {
   }
 
   async deleteComment(commentId: string, userId: string): Promise<void> {
-    const comment = await this.commentRepository.findById(commentId);
+    const comment = await this.commentRepository.findById(asMongoId(commentId));
     if (!comment) {
       throw Errors.notFound("Comment");
     }
 
-    const post = await this.postRepository.findById(comment.postId.toString());
+    const post = await this.postRepository.findById(
+      asMongoId(comment.postId.toString()),
+    );
     if (!post) {
       throw Errors.notFound("Post");
     }
@@ -186,20 +188,20 @@ export class CommentService {
 
       // decrement comment count on post
       await this.postRepository.updateCommentCount(
-        comment.postId.toString(),
+        asMongoId(comment.postId.toString()),
         -1,
       );
     });
   }
 
-  async deleteCommentByPublicId(commentId: string, userPublicId: string) {
+  async deleteCommentByPublicId(commentId: string, userPublicId: UserPublicId) {
     const user = await this.userRepository.findByPublicId(userPublicId);
     if (!user) throw Errors.notFound("User");
     return this.deleteComment(commentId, user.id);
   }
 
   async getCommentsByUserPublicId(
-    userPublicId: string,
+    userPublicId: UserPublicId,
     page: number = 1,
     limit: number = 10,
     sortBy: string = "createdAt",
@@ -234,9 +236,7 @@ export class CommentService {
     );
   }
 
-  async deleteCommentsByPostId(
-    postId: string,
-  ): Promise<number> {
+  async deleteCommentsByPostId(postId: string): Promise<number> {
     return await this.commentRepository.deleteCommentsByPostId(postId);
   }
 
@@ -255,7 +255,7 @@ export class CommentService {
     page: number = 1,
     limit: number = 10,
   ) {
-    const comment = await this.commentRepository.findById(commentId);
+    const comment = await this.commentRepository.findById(asMongoId(commentId));
     if (!comment) {
       throw Errors.notFound("Comment");
     }

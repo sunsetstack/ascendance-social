@@ -4,6 +4,7 @@ import { IFollow } from "@/types";
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
 import { TOKENS } from "@/types/tokens";
+import { MongoId, UserPublicId, asMongoId } from "@/types/branded";
 
 @injectable()
 export class FollowRepository extends BaseRepository<IFollow> {
@@ -19,8 +20,8 @@ export class FollowRepository extends BaseRepository<IFollow> {
    * @returns {Promise<boolean>} - Returns `true` if the user is following, otherwise `false`.
    */
   async isFollowing(
-    followerId: string,
-    followeeId: string,
+    followerId: MongoId,
+    followeeId: MongoId,
   ): Promise<boolean> {
     try {
       const session = this.getSession();
@@ -41,8 +42,8 @@ export class FollowRepository extends BaseRepository<IFollow> {
    * @returns {Promise<boolean>} - Returns `true` if the user is following, otherwise `false`.
    */
   async isFollowingByPublicId(
-    followerPublicId: string,
-    followeePublicId: string,
+    followerPublicId: UserPublicId,
+    followeePublicId: UserPublicId,
   ): Promise<boolean> {
     try {
       const session = this.getSession();
@@ -77,10 +78,7 @@ export class FollowRepository extends BaseRepository<IFollow> {
    * @returns {Promise<IFollow>} - The newly created follow record.
    * @throws {Error} - Throws a "DuplicateError" if the follow relationship already exists.
    */
-  async addFollow(
-    followerId: string,
-    followeeId: string,
-  ): Promise<IFollow> {
+  async addFollow(followerId: MongoId, followeeId: MongoId): Promise<IFollow> {
     try {
       const session = this.getSession();
       // Note: Ensure your schema has a compound unique index on {followerId, followeeId}
@@ -102,8 +100,8 @@ export class FollowRepository extends BaseRepository<IFollow> {
    * @throws {Error} - Throws a "DuplicateError" if the follow relationship already exists.
    */
   async addFollowByPublicId(
-    followerPublicId: string,
-    followeePublicId: string,
+    followerPublicId: UserPublicId,
+    followeePublicId: UserPublicId,
   ): Promise<IFollow> {
     try {
       const session = this.getSession();
@@ -143,10 +141,7 @@ export class FollowRepository extends BaseRepository<IFollow> {
    * @returns {Promise<void>} - Resolves when the follow relationship is removed.
    * @throws {Error} - Throws a "NotFoundError" if the follow relationship does not exist.
    */
-  async removeFollow(
-    followerId: string,
-    followeeId: string,
-  ): Promise<void> {
+  async removeFollow(followerId: MongoId, followeeId: MongoId): Promise<void> {
     try {
       const session = this.getSession();
       const query = this.model.findOneAndDelete({ followerId, followeeId });
@@ -170,8 +165,8 @@ export class FollowRepository extends BaseRepository<IFollow> {
    * @throws {Error} - Throws a "NotFoundError" if the follow relationship does not exist.
    */
   async removeFollowByPublicId(
-    followerPublicId: string,
-    followeePublicId: string,
+    followerPublicId: UserPublicId,
+    followeePublicId: UserPublicId,
   ): Promise<void> {
     try {
       const session = this.getSession();
@@ -193,7 +188,9 @@ export class FollowRepository extends BaseRepository<IFollow> {
       const followeeId = followeeUser._id.toString();
 
       // Ensure that the follow relationship exists before attempting to remove it
-      if (!(await this.isFollowing(followerId, followeeId))) {
+      if (
+        !(await this.isFollowing(asMongoId(followerId), asMongoId(followeeId)))
+      ) {
         throw Errors.notFound("Resource");
       }
 
@@ -205,7 +202,7 @@ export class FollowRepository extends BaseRepository<IFollow> {
   }
 
   private normalizeId(
-    id: string | mongoose.Types.ObjectId,
+    id: string | MongoId | mongoose.Types.ObjectId,
   ): mongoose.Types.ObjectId {
     if (id instanceof mongoose.Types.ObjectId) {
       return id;
@@ -242,8 +239,8 @@ export class FollowRepository extends BaseRepository<IFollow> {
   }
 
   async getFollowerObjectIds(
-    userId: string | mongoose.Types.ObjectId,
-  ): Promise<string[]> {
+    userId: MongoId | mongoose.Types.ObjectId,
+  ): Promise<MongoId[]> {
     try {
       const normalized = this.normalizeId(userId);
       const followers = await this.model
@@ -254,17 +251,17 @@ export class FollowRepository extends BaseRepository<IFollow> {
       return followers
         .map((doc) => doc?.followerId)
         .filter((id): id is mongoose.Types.ObjectId => id != null)
-        .map((id) => id.toString());
+        .map((id) => asMongoId(id.toString()));
     } catch (error) {
       handleMongoError(error);
     }
   }
 
   async getFollowerObjectIdsPaginated(
-    userId: string | mongoose.Types.ObjectId,
+    userId: MongoId | mongoose.Types.ObjectId,
     page: number,
     limit: number,
-  ): Promise<{ ids: string[]; total: number }> {
+  ): Promise<{ ids: MongoId[]; total: number }> {
     try {
       const normalized = this.normalizeId(userId);
       const safePage = Math.max(1, Math.floor(page || 1));
@@ -285,7 +282,7 @@ export class FollowRepository extends BaseRepository<IFollow> {
       const ids = followers
         .map((doc) => doc?.followerId)
         .filter((id): id is mongoose.Types.ObjectId => id != null)
-        .map((id) => id.toString());
+        .map((id) => asMongoId(id.toString()));
 
       return { ids, total };
     } catch (error) {
@@ -294,8 +291,8 @@ export class FollowRepository extends BaseRepository<IFollow> {
   }
 
   async getFollowingObjectIds(
-    userId: string | mongoose.Types.ObjectId,
-  ): Promise<string[]> {
+    userId: MongoId | mongoose.Types.ObjectId,
+  ): Promise<MongoId[]> {
     try {
       const normalized = this.normalizeId(userId);
       const following = await this.model
@@ -306,17 +303,17 @@ export class FollowRepository extends BaseRepository<IFollow> {
       return following
         .map((doc) => doc?.followeeId)
         .filter((id): id is mongoose.Types.ObjectId => id != null)
-        .map((id) => id.toString());
+        .map((id) => asMongoId(id.toString()));
     } catch (error) {
       handleMongoError(error);
     }
   }
 
   async getFollowingObjectIdsPaginated(
-    userId: string | mongoose.Types.ObjectId,
+    userId: MongoId | mongoose.Types.ObjectId,
     page: number,
     limit: number,
-  ): Promise<{ ids: string[]; total: number }> {
+  ): Promise<{ ids: MongoId[]; total: number }> {
     try {
       const normalized = this.normalizeId(userId);
       const safePage = Math.max(1, Math.floor(page || 1));
@@ -337,7 +334,7 @@ export class FollowRepository extends BaseRepository<IFollow> {
       const ids = following
         .map((doc) => doc?.followeeId)
         .filter((id): id is mongoose.Types.ObjectId => id != null)
-        .map((id) => id.toString());
+        .map((id) => asMongoId(id.toString()));
 
       return { ids, total };
     } catch (error) {
@@ -346,8 +343,8 @@ export class FollowRepository extends BaseRepository<IFollow> {
   }
 
   async getFollowerPublicIdsByPublicId(
-    userPublicId: string,
-  ): Promise<string[]> {
+    userPublicId: UserPublicId,
+  ): Promise<UserPublicId[]> {
     try {
       const user = await this.model.db
         .collection("users")
@@ -373,7 +370,7 @@ export class FollowRepository extends BaseRepository<IFollow> {
       return followers
         .map((doc) => doc?.publicId)
         .filter(
-          (value): value is string =>
+          (value): value is UserPublicId =>
             typeof value === "string" && value.length > 0,
         );
     } catch (error) {
@@ -381,9 +378,7 @@ export class FollowRepository extends BaseRepository<IFollow> {
     }
   }
 
-  async deleteAllFollowsByUserId(
-    userId: string,
-  ): Promise<number> {
+  async deleteAllFollowsByUserId(userId: MongoId): Promise<number> {
     try {
       const session = this.getSession();
       const userObjectId = this.normalizeId(userId);

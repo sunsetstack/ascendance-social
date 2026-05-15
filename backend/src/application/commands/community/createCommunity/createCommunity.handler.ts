@@ -12,6 +12,7 @@ import { logger } from "@/utils/winston";
 import { ICommunity, IUser } from "@/types";
 import type { IImageStorageService } from "@/types";
 import { TOKENS } from "@/types/tokens";
+import { asMongoId, asUserPublicId } from "@/types/branded";
 
 @injectable()
 export class CreateCommunityCommandHandler implements ICommandHandler<
@@ -32,7 +33,9 @@ export class CreateCommunityCommandHandler implements ICommandHandler<
   async execute(command: CreateCommunityCommand): Promise<ICommunity> {
     const { name, description, creatorId, avatarBuffer } = command;
 
-    const user = await this.userRepository.findByPublicId(creatorId);
+    const user = await this.userRepository.findByPublicId(
+      asUserPublicId(creatorId),
+    );
     if (!user) {
       throw Errors.notFound("User");
     }
@@ -91,7 +94,7 @@ export class CreateCommunityCommandHandler implements ICommandHandler<
         });
 
         // 3. Update User Cache
-        await this.userRepository.update(userId.toString(), {
+        await this.userRepository.update(asMongoId(userId.toString()), {
           $push: {
             joinedCommunities: {
               $each: [

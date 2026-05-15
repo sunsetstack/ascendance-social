@@ -3,6 +3,7 @@ import { container, inject, injectable } from "tsyringe";
 import { performance } from "perf_hooks";
 import type { RedisClientType } from "redis";
 import { RedisService } from "@/services/redis.service";
+import { asPostPublicId } from "@/types/branded";
 import { PostRepository } from "@/repositories/post.repository";
 import { FeedPost } from "@/types";
 import { logger } from "@/utils/winston";
@@ -238,8 +239,9 @@ export class TrendingWorker {
         try {
           const postIds = chunk.map(([postId]) => postId);
 
-          const posts: FeedPost[] =
-            await this.postRepo.findPostsByPublicIds(postIds);
+          const posts: FeedPost[] = await this.postRepo.findPostsByPublicIds(
+            postIds.map(asPostPublicId),
+          );
           const postMap = new Map<string, FeedPost>();
           for (const p of posts) {
             postMap.set(p.publicId, p);
@@ -371,7 +373,10 @@ export class TrendingWorker {
 
       for (const msg of claimed) {
         try {
-          await this.handleStreamMessage(String(msg.id), msg.message as Record<string, string>);
+          await this.handleStreamMessage(
+            String(msg.id),
+            msg.message as Record<string, string>,
+          );
         } catch (err) {
           logger.error("[trending] error handling reclaimed message", {
             id: msg.id,

@@ -5,6 +5,7 @@ import { FeedPost, UserLookupData } from "@/types";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { CacheConfig } from "@/config/cacheConfig";
 import { TOKENS } from "@/types/tokens";
+import { asUserPublicId, asPostPublicId } from "@/types/branded";
 
 @injectable()
 export class FeedEnrichmentService {
@@ -32,7 +33,7 @@ export class FeedEnrichmentService {
 
     const postPublicIds = [
       ...new Set(coreFeedData.map((item) => item.publicId).filter(Boolean)),
-    ];
+    ].map(asPostPublicId);
     let userMap = new Map<string, UserLookupData>();
 
     if (options.refreshUserData) {
@@ -91,7 +92,9 @@ export class FeedEnrichmentService {
   ): Promise<UserLookupData[]> {
     if (userPublicIds.length === 0) return [];
 
-    const keys = userPublicIds.map((id) => CacheKeyBuilder.getUserDataKey(id));
+    const keys = userPublicIds.map((id) =>
+      CacheKeyBuilder.getUserDataKey(asUserPublicId(id)),
+    );
 
     // single MGET round-trip to check all users at once
     const cached = await this.redisService.mGet<UserLookupData>(keys);
@@ -108,8 +111,9 @@ export class FeedEnrichmentService {
     }
 
     if (missingIds.length > 0) {
-      const fetchedUsers =
-        await this.userReadRepository.findUsersByPublicIds(missingIds);
+      const fetchedUsers = await this.userReadRepository.findUsersByPublicIds(
+        missingIds.map(asUserPublicId),
+      );
 
       // Store missing back to cache using a pipeline to batch the operations
       if (fetchedUsers.length > 0) {

@@ -7,6 +7,7 @@ import mongoose, {
 import { IRepository } from "@/types";
 import { handleMongoError } from "@/utils/errors";
 import { sessionALS } from "@/database/UnitOfWork";
+import { MongoId } from "@/types/branded";
 
 /**
  * BaseRepository provides generic CRUD operations for MongoDB models.
@@ -43,7 +44,7 @@ export abstract class BaseRepository<
    * @param item - The update operations.
    * @returns The updated document or null if not found.
    */
-  async update(id: string, item: Partial<T>): Promise<T | null> {
+  async update(id: MongoId, item: Partial<T>): Promise<T | null> {
     try {
       const session = this.getSession();
       const query = this.model.findByIdAndUpdate(
@@ -63,7 +64,7 @@ export abstract class BaseRepository<
    * @param id - The document ID to delete.
    * @returns True if deleted, false otherwise.
    */
-  async delete(id: string): Promise<boolean> {
+  async delete(id: MongoId): Promise<boolean> {
     try {
       const session = this.getSession();
       const query = this.model.findOneAndDelete({ _id: id });
@@ -81,7 +82,7 @@ export abstract class BaseRepository<
    * @returns The document or null if not found.
    */
   async findById(
-    id: string,
+    id: MongoId,
     options?: { selectPassword?: boolean },
   ): Promise<T | null> {
     try {

@@ -11,9 +11,17 @@ import {
   ICommunity,
   ICommunityMember,
 } from "@/types";
+import {
+  UserPublicId,
+  CommunityPublicId,
+  asUserPublicId,
+  asPostPublicId,
+  asImagePublicId,
+  asCommunityPublicId,
+} from "@/types/branded";
 
 export interface PublicUserDTO {
-  publicId: string;
+  publicId: UserPublicId;
   handle: string;
   username: string;
   avatar: string;
@@ -26,7 +34,7 @@ export interface PublicUserDTO {
 }
 
 export interface HandleSuggestionDTO {
-  publicId: string;
+  publicId: UserPublicId;
   handle: string;
   username: string;
   avatar: string;
@@ -39,7 +47,7 @@ export interface AuthenticatedUserDTO extends PublicUserDTO {
 
 // sensitive account info for settings page (not exposed to other users)
 export interface AccountInfoDTO {
-  publicId: string;
+  publicId: UserPublicId;
   handle: string;
   username: string;
   email: string;
@@ -61,7 +69,7 @@ export interface AdminUserDTO extends AuthenticatedUserDTO {
 }
 
 export interface CommunityDTO {
-  publicId: string;
+  publicId: CommunityPublicId;
   name: string;
   slug: string;
   description: string;
@@ -124,14 +132,19 @@ export class DTOService {
 
     const image =
       post.image?.url && post.image?.publicId
-        ? { url: post.image.url, publicId: post.image.publicId }
+        ? {
+            url: post.image.url,
+            publicId: asImagePublicId(post.image.publicId),
+          }
         : null;
 
     const url = post.image?.url ?? undefined;
-    const imagePublicId = post.image?.publicId ?? undefined;
+    const imagePublicId = post.image?.publicId
+      ? asImagePublicId(post.image.publicId)
+      : undefined;
 
     return {
-      publicId: post.publicId,
+      publicId: asPostPublicId(post.publicId),
       body: post.body,
       slug: post.slug,
       type: "original",
@@ -146,7 +159,7 @@ export class DTOService {
       viewsCount: post.viewsCount,
       createdAt: post.createdAt,
       user: {
-        publicId: post.user.publicId,
+        publicId: asUserPublicId(post.user.publicId),
         handle: post.user.handle,
         username: post.user.username,
         avatar: post.user.avatar,
@@ -164,7 +177,10 @@ export class DTOService {
     // post.toObject() has a narrow return type in Mongoose that does not include
     // schema fields. We cast once here at the Mongoose boundary to access all
     // document fields. This is the correct single-point-of-cast pattern.
-    const rawObj = (post.toObject ? post.toObject() : post) as Record<string, unknown>;
+    const rawObj = (post.toObject ? post.toObject() : post) as Record<
+      string,
+      unknown
+    >;
 
     // Tags may be populated objects or raw ObjectIds from the schema
     const tags = Array.isArray(rawObj.tags)
@@ -183,7 +199,9 @@ export class DTOService {
         ? (imageRef as { url?: string; publicId?: string })
         : null;
     const url = imageData?.url ?? undefined;
-    const imagePublicId = imageData?.publicId ?? undefined;
+    const imagePublicId = imageData?.publicId
+      ? asImagePublicId(imageData.publicId)
+      : undefined;
     const image =
       url && imagePublicId ? { url, publicId: imagePublicId } : null;
 
@@ -207,7 +225,7 @@ export class DTOService {
         : null;
 
     return {
-      publicId: rawObj.publicId as string,
+      publicId: asPostPublicId(rawObj.publicId as string),
       body: rawObj.body as string | undefined,
       slug: rawObj.slug as string | undefined,
       type: (rawObj.type as "original" | "repost") ?? "original",
@@ -231,7 +249,7 @@ export class DTOService {
   ): PostDTO["community"] {
     if (!community) return null;
     return {
-      publicId: community.publicId,
+      publicId: asCommunityPublicId(community.publicId),
       name: community.name,
       slug: community.slug,
       avatar: community.avatar,
@@ -246,7 +264,7 @@ export class DTOService {
   }): PostDTO["community"] {
     if (!source.publicId) return null;
     return {
-      publicId: source.publicId,
+      publicId: asCommunityPublicId(source.publicId),
       name: source.name ?? "",
       slug: source.slug ?? "",
       avatar: source.avatar,
@@ -254,18 +272,14 @@ export class DTOService {
   }
 
   private resolveIPostUserSnapshot(rawObj: Record<string, unknown>): {
-    publicId: string;
+    publicId: UserPublicId;
     handle: string;
     username: string;
     avatar: string;
   } {
     // Prefer a populated user object (when caller uses .populate("user"))
     const userRef = rawObj.user;
-    if (
-      userRef &&
-      typeof userRef === "object" &&
-      !("_bsontype" in userRef)
-    ) {
+    if (userRef && typeof userRef === "object" && !("_bsontype" in userRef)) {
       const u = userRef as {
         publicId?: string;
         handle?: string;
@@ -274,7 +288,7 @@ export class DTOService {
       };
       if (u.publicId) {
         return {
-          publicId: u.publicId,
+          publicId: asUserPublicId(u.publicId),
           handle: u.handle ?? "",
           username: u.username ?? "",
           avatar: u.avatar ?? "",
@@ -291,7 +305,7 @@ export class DTOService {
       avatarUrl?: string;
     };
     return {
-      publicId: author.publicId ?? "",
+      publicId: asUserPublicId(author.publicId ?? ""),
       handle: author.handle ?? "",
       username: author.username ?? author.displayName ?? "",
       avatar: author.avatarUrl ?? "",
@@ -331,13 +345,13 @@ export class DTOService {
 
     const image =
       r.image?.url && r.image?.publicId
-        ? { url: r.image.url, publicId: r.image.publicId }
+        ? { url: r.image.url, publicId: asImagePublicId(r.image.publicId) }
         : null;
 
     return {
-      publicId: r.publicId,
+      publicId: asPostPublicId(r.publicId),
       user: {
-        publicId: r.author?.publicId ?? "",
+        publicId: asUserPublicId(r.author?.publicId ?? ""),
         handle: r.author?.handle ?? "",
         username: r.author?.username ?? r.author?.displayName ?? "",
         avatar: r.author?.avatarUrl ?? "",
@@ -405,7 +419,7 @@ export class DTOService {
     const stats = source?.stats ?? {};
 
     return {
-      publicId: this.pickString(source?.publicId),
+      publicId: asCommunityPublicId(this.pickString(source?.publicId)),
       name: this.pickString(source?.name),
       slug: this.pickString(source?.slug),
       description: this.pickString(source?.description),
@@ -461,7 +475,7 @@ export class DTOService {
   toHandleSuggestionDTO(user: IUser): HandleSuggestionDTO {
     const source = user?.toObject ? user.toObject() : user;
     return {
-      publicId: this.pickString(source?.publicId),
+      publicId: asUserPublicId(this.pickString(source?.publicId)),
       handle: this.pickString(source?.handle),
       username: this.pickString(source?.username),
       avatar: this.pickString(source?.avatar),

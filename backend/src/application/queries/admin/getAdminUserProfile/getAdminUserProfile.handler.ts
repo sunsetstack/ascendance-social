@@ -5,6 +5,7 @@ import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRep
 import { DTOService, AdminUserDTO } from "@/services/dto.service";
 import { Errors } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
+import { asUserPublicId } from "@/types/branded";
 
 @injectable()
 export class GetAdminUserProfileQueryHandler implements IQueryHandler<
@@ -18,7 +19,9 @@ export class GetAdminUserProfileQueryHandler implements IQueryHandler<
   ) {}
 
   async execute(query: GetAdminUserProfileQuery): Promise<AdminUserDTO> {
-    const user = await this.userReadRepository.findByPublicId(query.publicId);
+    const user = await this.userReadRepository.findByPublicId(
+      asUserPublicId(query.publicId),
+    );
     if (!user) {
       throw Errors.notFound("User");
     }

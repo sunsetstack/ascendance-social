@@ -4,6 +4,7 @@ import { LogRequestCommand } from "./logRequest.command";
 import { RequestLogRepository } from "@/repositories/requestLog.repository";
 import type { IUserWriteRepository } from "@/repositories/interfaces/IUserWriteRepository";
 import { TOKENS } from "@/types/tokens";
+import { asUserPublicId } from "@/types/branded";
 
 @injectable()
 export class LogRequestCommandHandler implements ICommandHandler<
@@ -38,7 +39,7 @@ export class LogRequestCommandHandler implements ICommandHandler<
 
     if (userId) {
       tasks.push(
-        this.userWriteRepository.updateByPublicId(userId, {
+        this.userWriteRepository.updateByPublicId(asUserPublicId(userId), {
           $set: { lastActive: new Date(), lastIp: ip },
         }),
       );

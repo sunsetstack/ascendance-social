@@ -1,11 +1,7 @@
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { inject, injectable } from "tsyringe";
 import { LikeActionByPublicIdCommand } from "./likeActionByPublicId.command";
-import {
-  IPost,
-  PostDTO,
-  PopulatedPostUser,
-} from "@/types/index";
+import { IPost, PostDTO, PopulatedPostUser } from "@/types/index";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { UserInteractedWithPostEvent } from "@/application/events/user/user-interaction.event";
 import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRepository";
@@ -18,9 +14,9 @@ import { DTOService } from "@/services/dto.service";
 import { Errors } from "@/utils/errors";
 import { Types } from "mongoose";
 import { UnitOfWork } from "@/database/UnitOfWork";
-import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 import { extractTagNames, buildPostPreview } from "@/utils/post-helpers";
+import { asMongoId, asUserPublicId } from "@/types/branded";
 
 @injectable()
 export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
@@ -74,7 +70,8 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
       throw Errors.notFound("Post");
     }
 
-    const postOwnerPublicId = await this.resolveOwnerPublicIdAsync(existingPost);
+    const postOwnerPublicId =
+      await this.resolveOwnerPublicIdAsync(existingPost);
 
     await this.unitOfWork.executeInTransaction(async () => {
       const existingLike = await this.postLikeRepository.hasUserLiked(
@@ -99,7 +96,7 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
           isLikeAction ? "like" : "unlike",
           existingPost.publicId,
           postTags,
-          postOwnerPublicId,
+          asUserPublicId(postOwnerPublicId),
         ),
       );
     });
@@ -126,7 +123,7 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
       throw Errors.validation("like already exists for user and post");
     }
 
-    await this.postWriteRepository.updateLikeCount(postId, 1);
+    await this.postWriteRepository.updateLikeCount(asMongoId(postId!), 1);
 
     await this.userActionRepository.logAction(
       userMongoId,
@@ -135,11 +132,13 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
     );
 
     if (postOwnerPublicId && postOwnerPublicId !== command.userPublicId) {
-      const actorUser = await this.userReadRepository.findById(userMongoId);
+      const actorUser = await this.userReadRepository.findById(
+        asMongoId(userMongoId),
+      );
 
       await this.eventBus.queueTransactional(
         new NotificationRequestedEvent({
-          receiverId: postOwnerPublicId,
+          receiverId: asUserPublicId(postOwnerPublicId),
           actionType: "like",
           actorId: command.userPublicId,
           actorUsername: actorUser?.username ?? "Unknown",
@@ -153,10 +152,7 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
     }
   }
 
-  private async handleUnlike(
-    userMongoId: string,
-    postId: string,
-  ) {
+  private async handleUnlike(userMongoId: string, postId: string) {
     const removed = await this.postLikeRepository.removeLike(
       postId,
       userMongoId,
@@ -165,7 +161,7 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
       throw Errors.notFound("Resource");
     }
     await this.userActionRepository.logAction(userMongoId, "unlike", postId);
-    await this.postWriteRepository.updateLikeCount(postId, -1);
+    await this.postWriteRepository.updateLikeCount(asMongoId(postId), -1);
   }
 
   /** Async resolution of post owner publicId — falls back to DB lookup when not populated */
@@ -175,7 +171,9 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
       return (owner as PopulatedPostUser).publicId ?? "";
     }
     if (owner) {
-      const ownerUser = await this.userReadRepository.findById(owner.toString());
+      const ownerUser = await this.userReadRepository.findById(
+        asMongoId(owner.toString()),
+      );
       return ownerUser?.publicId ?? "";
     }
     return "";

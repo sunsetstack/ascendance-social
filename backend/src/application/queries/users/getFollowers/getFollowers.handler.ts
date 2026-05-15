@@ -5,6 +5,7 @@ import { FollowRepository } from "@/repositories/follow.repository";
 import type { IUserReadRepository } from "@/repositories/interfaces";
 import { Errors } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
+import { asMongoId } from "@/types/branded";
 
 export interface FollowUserItem {
   publicId: string;
@@ -45,7 +46,7 @@ export class GetFollowersQueryHandler implements IQueryHandler<
 
       const { ids: followerIds, total } =
         await this.followRepository.getFollowerObjectIdsPaginated(
-          String(user._id),
+          asMongoId(String(user._id)),
           query.page,
           query.limit,
         );

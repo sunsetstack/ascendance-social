@@ -1,9 +1,14 @@
 import { Response } from "express";
 import { inject, injectable } from "tsyringe";
-import { FavoriteService } from "@/services/favorite.service";
+import { CommandBus } from "@/application/common/buses/command.bus";
+import { QueryBus } from "@/application/common/buses/query.bus";
+import { AddFavoriteCommand } from "@/application/commands/favorite/addFavorite/addFavorite.command";
+import { RemoveFavoriteCommand } from "@/application/commands/favorite/removeFavorite/removeFavorite.command";
+import { GetFavoritesQuery } from "@/application/queries/favorite/getFavorites/getFavorites.query";
 import { Errors } from "@/utils/errors";
-import { TypedRequest } from "@/types";
+import { TypedRequest, PaginationResult, PostDTO } from "@/types";
 import { TOKENS } from "@/types/tokens";
+import { asPostPublicId } from "@/types/branded";
 import type { PublicIdParams as PostPublicIdParams } from "@/utils/schemas/post.schemas";
 import type { PublicUserListQuery } from "@/utils/schemas/user.schemas";
 
@@ -13,8 +18,8 @@ type EmptyBody = Record<string, never>;
 @injectable()
 export class FavoriteController {
   constructor(
-    @inject(TOKENS.Services.Favorite)
-    private readonly favoriteService: FavoriteService,
+    @inject(TOKENS.CQRS.Commands.Bus) private readonly commandBus: CommandBus,
+    @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
   ) {}
 
   /**
@@ -34,9 +39,8 @@ export class FavoriteController {
       "",
     );
 
-    await this.favoriteService.addFavoriteByPublicIds(
-      actorPublicId,
-      sanitizedPostId,
+    await this.commandBus.dispatch(
+      new AddFavoriteCommand(actorPublicId, asPostPublicId(sanitizedPostId)),
     );
     res.status(204).send();
   };
@@ -60,9 +64,8 @@ export class FavoriteController {
       "",
     );
 
-    await this.favoriteService.removeFavoriteByPublicIds(
-      actorPublicId,
-      sanitizedPostId,
+    await this.commandBus.dispatch(
+      new RemoveFavoriteCommand(actorPublicId, asPostPublicId(sanitizedPostId)),
     );
     res.status(204).send();
   };
@@ -81,10 +84,8 @@ export class FavoriteController {
 
     const { page, limit } = req.query;
 
-    const favorites = await this.favoriteService.getFavoritesForViewer(
-      viewerPublicId,
-      page,
-      limit,
+    const favorites = await this.queryBus.execute<PaginationResult<PostDTO>>(
+      new GetFavoritesQuery(viewerPublicId, Number(page), Number(limit)),
     );
     res.status(200).json(favorites);
   };

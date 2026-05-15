@@ -28,3 +28,4 @@ export * from "./customCommunities/communityCacheItem.types";
 export * from "./customRequestLog/requestLog.types";
 export * from "./customCore/mongo.types";
 export * from "./tokens";
+export * from "./branded";

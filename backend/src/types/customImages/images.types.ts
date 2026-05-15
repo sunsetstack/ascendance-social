@@ -1,29 +1,29 @@
-import { Types } from "mongoose";
-import { Document } from "mongoose";
+import { Types, Document } from "mongoose";
+import { ImagePublicId, UserPublicId } from "@/types/branded";
 
 export interface IImage extends Document {
-	url: string;
-	publicId: string;
-	user: {
-		publicId: string;
-		handle: string;
-		username: string;
-		avatar: string;
-	};
-	title?: string;
-	slug: string;
-	originalName: string;
-	createdAt: Date;
+  url: string;
+  publicId: ImagePublicId;
+  user: {
+    publicId: UserPublicId;
+    handle: string;
+    username: string;
+    avatar: string;
+  };
+  title?: string;
+  slug: string;
+  originalName: string;
+  createdAt: Date;
 }
 
 export interface ImageDocWithId extends IImage {
-	_id: Types.ObjectId;
-	slug: string;
+  _id: Types.ObjectId;
+  slug: string;
 }
 
 export interface PopulatedUserField {
-	publicId: string;
-	handle?: string;
-	username?: string;
-	avatar?: string;
+  publicId: UserPublicId;
+  handle?: string;
+  username?: string;
+  avatar?: string;
 }

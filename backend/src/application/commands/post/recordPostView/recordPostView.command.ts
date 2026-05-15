@@ -1,10 +1,11 @@
+import { UserPublicId, PostPublicId } from "@/types/branded";
 import { ICommand } from "@/application/common/interfaces/command.interface";
 
 export class RecordPostViewCommand implements ICommand {
-	readonly type = "RecordPostViewCommand";
+  readonly type = "RecordPostViewCommand";
 
-	constructor(
-		public readonly postPublicId: string,
-		public readonly userPublicId: string // only authenticated users
-	) {}
+  constructor(
+    public readonly postPublicId: PostPublicId,
+    public readonly userPublicId: UserPublicId, // only authenticated users
+  ) {}
 }

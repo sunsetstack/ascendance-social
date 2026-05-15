@@ -1,3 +1,4 @@
+import { UserPublicId } from "@/types/branded";
 import { IEventHandler } from "@/application/common/interfaces/event-handler.interface";
 import { inject, injectable } from "tsyringe";
 import { ImageUploadedEvent } from "@/application/events/image/image.event";
@@ -127,7 +128,9 @@ export class ImageUploadHandler implements IEventHandler<ImageUploadedEvent> {
     }
   }
 
-  private async getFollowersOfUser(userPublicId: string): Promise<string[]> {
+  private async getFollowersOfUser(
+    userPublicId: UserPublicId,
+  ): Promise<string[]> {
     try {
       const followers =
         await this.userRepository.findUsersFollowing(userPublicId);

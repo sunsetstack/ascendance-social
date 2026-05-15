@@ -12,6 +12,7 @@ import { FollowRepository } from "./follow.repository";
 import { logger } from "@/utils/winston";
 import { escapeRegex } from "@/utils/sanitizers";
 import { TOKENS } from "@/types/tokens";
+import { MongoId, UserPublicId, asMongoId } from "@/types/branded";
 
 /**
  * UserRepository provides database access for user-related operations.
@@ -48,7 +49,9 @@ export class UserRepository extends BaseRepository<IUser> {
           context: { operation: "create", repository: "userRepository" },
         });
       }
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -61,7 +64,7 @@ export class UserRepository extends BaseRepository<IUser> {
    * @returns The updated user object or null if not found.
    */
   async update(
-    id: string,
+    id: MongoId,
     updateData: UpdateQuery<IUser>,
   ): Promise<IUser | null> {
     try {
@@ -82,12 +85,14 @@ export class UserRepository extends BaseRepository<IUser> {
           context: { operation: "create", repository: "userRepository" },
         });
       }
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
   async updateByPublicId(
-    publicId: string,
+    publicId: UserPublicId,
     updateData: UpdateQuery<IUser>,
   ): Promise<IUser | null> {
     try {
@@ -107,7 +112,9 @@ export class UserRepository extends BaseRepository<IUser> {
           },
         });
       }
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -154,14 +161,17 @@ export class UserRepository extends BaseRepository<IUser> {
 
       return result;
     } catch (error) {
-      throw Errors.database(error instanceof Error ? error.message : String(error), {
-        context: { operation: "getAll", options },
-      });
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+        {
+          context: { operation: "getAll", options },
+        },
+      );
     }
   }
 
   // Find user by public id
-  async findByPublicId(publicId: string): Promise<IUser | null> {
+  async findByPublicId(publicId: UserPublicId): Promise<IUser | null> {
     const session = this.getSession();
     if (session) {
       return this.model.findOne({ publicId }).session(session).exec();
@@ -175,13 +185,15 @@ export class UserRepository extends BaseRepository<IUser> {
   }
 
   // Lightweight internal id lookup by publicId (projection only _id)
-  async findInternalIdByPublicId(publicId: string): Promise<string | null> {
+  async findInternalIdByPublicId(
+    publicId: UserPublicId,
+  ): Promise<MongoId | null> {
     const doc = await this.model
       .findOne({ publicId })
       .select("_id")
       .lean<{ _id: Types.ObjectId }>()
       .exec();
-    return doc ? doc._id.toString() : null;
+    return doc ? asMongoId(doc._id.toString()) : null;
   }
 
   /**
@@ -197,7 +209,9 @@ export class UserRepository extends BaseRepository<IUser> {
       if (session) query.session(session);
       return await query.exec();
     } catch (error) {
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -211,7 +225,9 @@ export class UserRepository extends BaseRepository<IUser> {
       if (session) query.session(session);
       return await query.exec();
     } catch (error) {
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -228,7 +244,9 @@ export class UserRepository extends BaseRepository<IUser> {
       if (session) query.session(session);
       return await query.exec();
     } catch (error) {
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -241,7 +259,9 @@ export class UserRepository extends BaseRepository<IUser> {
       if (session) query.session(session);
       return await query.exec();
     } catch (error) {
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -261,7 +281,9 @@ export class UserRepository extends BaseRepository<IUser> {
       if (session) query.session(session);
       return await query.exec();
     } catch (error) {
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -298,7 +320,9 @@ export class UserRepository extends BaseRepository<IUser> {
         totalPages: Math.ceil(total / limit),
       };
     } catch (error) {
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -311,7 +335,7 @@ export class UserRepository extends BaseRepository<IUser> {
    * @returns {Promise<void>} - Resolves when the update is complete.
    * @throws {Error} - Throws a 'DatabaseError' if the update operation fails.
    */
-  async updateAvatar(userId: string, avatarUrl: string): Promise<void> {
+  async updateAvatar(userId: MongoId, avatarUrl: string): Promise<void> {
     try {
       const session = this.getSession();
       const query = this.model.findByIdAndUpdate(userId, {
@@ -321,7 +345,9 @@ export class UserRepository extends BaseRepository<IUser> {
       await query.exec();
     } catch (error) {
       logger.error(error);
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -332,7 +358,7 @@ export class UserRepository extends BaseRepository<IUser> {
    * @returns {Promise<void>} - Resolves when the update is complete.
    * @throws {Error} - Throws a 'DatabaseError' if the update operation fails.
    */
-  async updateCover(userId: string, coverUrl: string): Promise<void> {
+  async updateCover(userId: MongoId, coverUrl: string): Promise<void> {
     try {
       const session = this.getSession();
       const query = this.model.findByIdAndUpdate(userId, {
@@ -341,11 +367,13 @@ export class UserRepository extends BaseRepository<IUser> {
       if (session) query.session(session);
       await query.exec();
     } catch (error) {
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
-  async findUsersFollowing(userPublicId: string): Promise<IUser[]> {
+  async findUsersFollowing(userPublicId: UserPublicId): Promise<IUser[]> {
     try {
       const user = await this.model
         .findOne({ publicId: userPublicId })
@@ -385,7 +413,7 @@ export class UserRepository extends BaseRepository<IUser> {
     }
   }
 
-  async findUsersByPublicIds(userPublicIds: string[]): Promise<IUser[]> {
+  async findUsersByPublicIds(userPublicIds: UserPublicId[]): Promise<IUser[]> {
     try {
       return await this.model
         .find({
@@ -441,7 +469,7 @@ export class UserRepository extends BaseRepository<IUser> {
    * @param limit - Maximum number of suggestions to return
    */
   async getSuggestedUsersToFollow(
-    currentUserId: string,
+    currentUserId: MongoId,
     limit: number = 5,
   ): Promise<UserSuggestion[]> {
     try {
@@ -567,7 +595,9 @@ export class UserRepository extends BaseRepository<IUser> {
       return result;
     } catch (error) {
       logger.error("Error in getSuggestedUsersToFollow:", error);
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -580,9 +610,9 @@ export class UserRepository extends BaseRepository<IUser> {
    * @param recentlyActiveUserPublicIds optional list of publicIds to prioritize (from activity tracking)
    */
   async getSuggestedUsersLowTraffic(
-    currentUserId: string,
+    currentUserId: MongoId,
     limit: number = 5,
-    recentlyActiveUserPublicIds?: string[],
+    recentlyActiveUserPublicIds?: UserPublicId[],
   ): Promise<UserSuggestion[]> {
     try {
       const followingIds = (
@@ -682,7 +712,9 @@ export class UserRepository extends BaseRepository<IUser> {
       return result;
     } catch (error) {
       logger.error("Error in getSuggestedUsersLowTraffic:", error);
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -693,7 +725,7 @@ export class UserRepository extends BaseRepository<IUser> {
    * @param limit maximum results
    */
   async getSuggestedUsersHighTraffic(
-    currentUserId: string,
+    currentUserId: MongoId,
     limit: number = 5,
   ): Promise<UserSuggestion[]> {
     try {
@@ -864,11 +896,13 @@ export class UserRepository extends BaseRepository<IUser> {
       return result;
     } catch (error) {
       logger.error("Error in getSuggestedUsersHighTraffic:", error);
-      throw Errors.database(error instanceof Error ? error.message : String(error));
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
-  async updateFollowerCount(userId: string, increment: number): Promise<void> {
+  async updateFollowerCount(userId: MongoId, increment: number): Promise<void> {
     try {
       const session = this.getSession();
       const query = this.model.findByIdAndUpdate(
@@ -885,7 +919,10 @@ export class UserRepository extends BaseRepository<IUser> {
     }
   }
 
-  async updateFollowingCount(userId: string, increment: number): Promise<void> {
+  async updateFollowingCount(
+    userId: MongoId,
+    increment: number,
+  ): Promise<void> {
     try {
       const session = this.getSession();
       const query = this.model.findByIdAndUpdate(

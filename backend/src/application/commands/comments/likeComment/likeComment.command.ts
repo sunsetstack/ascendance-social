@@ -1,10 +1,11 @@
+import { UserPublicId } from "@/types/branded";
 import { ICommand } from "@/application/common/interfaces/command.interface";
 
 export class LikeCommentCommand implements ICommand {
-	readonly type = "LikeCommentCommand";
+  readonly type = "LikeCommentCommand";
 
-	constructor(
-		public readonly userPublicId: string,
-		public readonly commentId: string
-	) {}
+  constructor(
+    public readonly userPublicId: UserPublicId,
+    public readonly commentId: string,
+  ) {}
 }

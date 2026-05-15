@@ -4,6 +4,7 @@ import { IPost } from "@/types";
 import type { IPostWriteRepository } from "../interfaces/IPostWriteRepository";
 import { PostRepository } from "../post.repository";
 import { TOKENS } from "@/types/tokens";
+import { MongoId } from "@/types/branded";
 
 /**
  * Write-only repository for post mutations
@@ -21,11 +22,11 @@ export class PostWriteRepository implements IPostWriteRepository {
     return this.postRepository.create(item);
   }
 
-  async update(id: string, item: Partial<IPost>): Promise<IPost | null> {
+  async update(id: MongoId, item: Partial<IPost>): Promise<IPost | null> {
     return this.postRepository.update(id, item);
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: MongoId): Promise<boolean> {
     return this.postRepository.delete(id);
   }
 
@@ -33,19 +34,19 @@ export class PostWriteRepository implements IPostWriteRepository {
     return this.postRepository.incrementViewCount(postId);
   }
 
-  async updateCommentCount(postId: string, increment: number): Promise<void> {
+  async updateCommentCount(postId: MongoId, increment: number): Promise<void> {
     return this.postRepository.updateCommentCount(postId, increment);
   }
 
-  async updateLikeCount(postId: string, increment: number): Promise<void> {
+  async updateLikeCount(postId: MongoId, increment: number): Promise<void> {
     return this.postRepository.updateLikeCount(postId, increment);
   }
 
-  async updateRepostCount(postId: string, increment: number): Promise<void> {
+  async updateRepostCount(postId: MongoId, increment: number): Promise<void> {
     return this.postRepository.updateRepostCount(postId, increment);
   }
 
-  async deleteManyByUserId(userId: string): Promise<number> {
+  async deleteManyByUserId(userId: MongoId): Promise<number> {
     return this.postRepository.deleteManyByUserId(userId);
   }
 

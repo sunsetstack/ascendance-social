@@ -4,14 +4,11 @@ import { CloudinaryService } from "@/services/cloudinary.service";
 import { AuthService } from "@/services/auth.service";
 import { ImageService } from "@/services/image.service";
 import { CommentService } from "@/services/comment.service";
-import { NotificationService } from "@/services/notification.service";
 import { DTOService } from "@/services/dto.service";
 import { FeedService } from "@/services/feed/feed.service";
 import { RedisService } from "@/services/redis.service";
 import { UserActionService } from "@/services/userAction.service";
 import { RealTimeFeedService } from "@/services/feed/real-time-feed.service";
-import { FavoriteService } from "@/services/favorite.service";
-import { MessagingService } from "@/services/messaging.service";
 import { TagService } from "@/services/tag.service";
 import { LocalStorageService } from "@/services/localStorage.service";
 import { UserActivityService } from "@/services/user-activity.service";
@@ -24,7 +21,6 @@ import { LikeUpdateMessageHandler } from "@/application/handlers/realtime/LikeUp
 import { AvatarUpdateMessageHandler } from "@/application/handlers/realtime/AvatarUpdateMessageHandler";
 import { MessageSentHandler as RealtimeMessageSentHandler } from "@/application/handlers/realtime/MessageSentHandler";
 import { MessageStatusUpdatedHandler as RealtimeMessageStatusUpdatedHandler } from "@/application/handlers/realtime/MessageStatusUpdatedHandler";
-import { SearchService } from "@/services/search.service";
 import { logger } from "@/utils/winston";
 import { MetricsService } from "../metrics/metrics.service";
 import { RetryService } from "@/services/retry.service";
@@ -58,16 +54,11 @@ export function registerServices(): void {
 
   container.registerSingleton(TOKENS.Services.Metrics, MetricsService);
   container.registerSingleton(TOKENS.Services.Telemetry, TelemetryService);
-  container.registerSingleton(TOKENS.Services.Search, SearchService);
   container.registerSingleton(TOKENS.Services.Auth, AuthService);
   container.registerSingleton(TOKENS.Services.AuthSession, AuthSessionService);
   container.registerSingleton(TOKENS.Services.BloomFilter, BloomFilterService);
   container.registerSingleton(TOKENS.Services.Image, ImageService);
   container.registerSingleton(TOKENS.Services.Comment, CommentService);
-  container.registerSingleton(
-    TOKENS.Services.Notification,
-    NotificationService,
-  );
   container.registerSingleton<IImageStorageService>(
     TOKENS.Services.ImageStorage,
     ImageStorageService,
@@ -115,8 +106,6 @@ export function registerServices(): void {
     TOKENS.Services.RealTimeFeed,
     RealTimeFeedService,
   );
-  container.registerSingleton(TOKENS.Services.Favorite, FavoriteService);
-  container.registerSingleton(TOKENS.Services.Messaging, MessagingService);
   container.registerSingleton(TOKENS.Services.Tag, TagService);
 
   logger.info("[di] Services registered");

@@ -28,6 +28,7 @@ import { safeFireAndForget } from "@/utils/helpers";
 import { PublicUserDTO } from "@/services/dto.service";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import { asPostPublicId, asUserPublicId } from "@/types/branded";
 import type {
   CreatePostBody,
   HandlePostsQuery,
@@ -132,7 +133,7 @@ export class PostController {
     const { page, limit, sortBy, sortOrder } = req.query;
 
     const query = new GetPostsByUserQuery(
-      publicId,
+      asUserPublicId(publicId),
       page,
       limit,
       sortBy,
@@ -161,7 +162,7 @@ export class PostController {
     const viewerPublicId = req.decodedUser?.publicId;
 
     const query = new GetLikedPostsByUserQuery(
-      publicId,
+      asUserPublicId(publicId),
       page,
       limit,
       viewerPublicId,
@@ -211,7 +212,7 @@ export class PostController {
       );
     const post = looksLikeUUID
       ? await this.queryBus.execute<PostDTO>(
-          new GetPostByPublicIdQuery(sanitizedSlug),
+          new GetPostByPublicIdQuery(asPostPublicId(sanitizedSlug)),
         )
       : await this.queryBus.execute<PostDTO>(
           new GetPostBySlugQuery(sanitizedSlug),
@@ -235,7 +236,7 @@ export class PostController {
     // Strip file extension if present (e.g., "abc-123.png" -> "abc-123")
     const sanitizedPublicId = publicId.replace(FILE_EXTENSION_REGEX, "");
     const command = new GetPostByPublicIdQuery(
-      sanitizedPublicId,
+      asPostPublicId(sanitizedPublicId),
       viewerPublicId,
     );
     const postDTO = await this.queryBus.execute<PostDTO>(command);
@@ -243,7 +244,10 @@ export class PostController {
     if (viewerPublicId) {
       safeFireAndForget(
         this.commandBus.dispatch(
-          new RecordPostViewCommand(sanitizedPublicId, viewerPublicId),
+          new RecordPostViewCommand(
+            asPostPublicId(sanitizedPublicId),
+            viewerPublicId,
+          ),
         ),
       );
     }
@@ -293,7 +297,7 @@ export class PostController {
 
     const sanitizedPublicId = publicId.replace(FILE_EXTENSION_REGEX, "");
     const command = new DeletePostCommand(
-      sanitizedPublicId,
+      asPostPublicId(sanitizedPublicId),
       decodedUser.publicId,
     );
     const result = await this.commandBus.dispatch(command);
@@ -315,7 +319,7 @@ export class PostController {
     const { body } = req.body;
     const command = new RepostPostCommand(
       decodedUser.publicId,
-      sanitizedPublicId,
+      asPostPublicId(sanitizedPublicId),
       body,
     );
     const postDTO = await this.commandBus.dispatch<PostDTO>(command);
@@ -336,7 +340,7 @@ export class PostController {
     const sanitizedPublicId = publicId.replace(FILE_EXTENSION_REGEX, "");
     const command = new UnrepostPostCommand(
       decodedUser.publicId,
-      sanitizedPublicId,
+      asPostPublicId(sanitizedPublicId),
     );
     const result = await this.commandBus.dispatch(command);
     res.status(200).json(result);

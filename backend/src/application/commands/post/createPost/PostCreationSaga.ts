@@ -1,3 +1,9 @@
+import {
+  CommunityPublicId,
+  asPostPublicId,
+  asCommunityPublicId,
+  asUserPublicId,
+} from "@/types/branded";
 import mongoose, { Types } from "mongoose";
 import { v4 as uuidv4 } from "uuid";
 
@@ -98,7 +104,7 @@ export class PostCreationSaga {
       if (command.communityPublicId) {
         PublicId.of(command.communityPublicId);
         const { communityId } = await this.validateCommunityMembership(
-          command.communityPublicId,
+          asCommunityPublicId(command.communityPublicId),
           user._id as Types.ObjectId,
         );
         communityInternalId = communityId;
@@ -120,7 +126,9 @@ export class PostCreationSaga {
         }
       }
 
-      const txResult = await this.deps.unitOfWork.executeInTransaction(async () => this.runTransaction(command, user, communityInternalId, uploadResult),
+      const txResult = await this.deps.unitOfWork.executeInTransaction(
+        async () =>
+          this.runTransaction(command, user, communityInternalId, uploadResult),
       );
 
       // Commit boundary - errors after this line must NOT trigger compensation
@@ -151,13 +159,15 @@ export class PostCreationSaga {
   // ── Private helpers ───────────────────────────────────────────────────────
 
   private async validateUser(publicId: string): Promise<IUser> {
-    const user = await this.deps.userReadRepository.findByPublicId(publicId);
+    const user = await this.deps.userReadRepository.findByPublicId(
+      asUserPublicId(publicId),
+    );
     if (!user) throw new UserNotFoundError();
     return user;
   }
 
   private async validateCommunityMembership(
-    communityPublicId: string,
+    communityPublicId: CommunityPublicId,
     userId: Types.ObjectId,
   ): Promise<{ communityId: Types.ObjectId }> {
     const community =
@@ -196,9 +206,20 @@ export class PostCreationSaga {
       await this.deps.tagService.incrementUsage(tagIds);
     }
 
-    const imageSummary = await this.createImageRecord(command, internalUserId, uploadResult);
+    const imageSummary = await this.createImageRecord(
+      command,
+      internalUserId,
+      uploadResult,
+    );
 
-    const post = await this.buildPost(user, internalUserId, normalizedBody, tagIds, imageSummary, communityInternalId);
+    const post = await this.buildPost(
+      user,
+      internalUserId,
+      normalizedBody,
+      tagIds,
+      imageSummary,
+      communityInternalId,
+    );
 
     if (!communityInternalId) {
       await this.deps.userWriteRepository.update(user.id, {
@@ -255,7 +276,7 @@ export class PostCreationSaga {
       `${generateSlug(normalizedBody, 60) || "post"}-${Date.now()}`;
 
     const payload: Partial<IPost> = {
-      publicId: uuidv4(),
+      publicId: asPostPublicId(uuidv4()),
       user: internalUserId,
       author: {
         _id: internalUserId,
@@ -274,7 +295,9 @@ export class PostCreationSaga {
       ...(communityId ? { communityId } : {}),
     };
 
-    return this.deps.postWriteRepository.create(sanitizeForMongo(payload) as unknown as IPost);
+    return this.deps.postWriteRepository.create(
+      sanitizeForMongo(payload) as unknown as IPost,
+    );
   }
 
   private async queueMentionNotifications(

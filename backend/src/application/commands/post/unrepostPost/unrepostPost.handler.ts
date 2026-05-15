@@ -13,6 +13,7 @@ import { Errors } from "@/utils/errors";
 import { isValidPublicId } from "@/utils/sanitizers";
 import { IUser } from "@/types";
 import { TOKENS } from "@/types/tokens";
+import { asMongoId } from "@/types/branded";
 
 export interface UnrepostResult {
   message: string;
@@ -70,10 +71,10 @@ export class UnrepostPostCommandHandler implements ICommandHandler<
 
     await this.unitOfWork.executeInTransaction(async () => {
       const repostInternalId = repost._id!.toString();
-      await this.postWriteRepository.delete(repostInternalId);
+      await this.postWriteRepository.delete(asMongoId(repostInternalId));
       await this.commentRepository.deleteCommentsByPostId(repostInternalId);
       await this.postWriteRepository.updateRepostCount(
-        targetPost._id!.toString(),
+        asMongoId(targetPost._id!.toString()),
         -1,
       );
     });

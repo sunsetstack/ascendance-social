@@ -2,13 +2,14 @@ import { describe, beforeEach, afterEach, it } from "mocha";
 import * as chai from "chai";
 import { expect } from "chai";
 import chaiAsPromised from "chai-as-promised";
-import sinon, { SinonStub } from "sinon";
-import { SearchService } from "@/services/search.service";
+import sinon from "sinon";
+import { SearchAllQueryHandler } from "@/application/queries/search/searchAll/searchAll.handler";
+import { SearchAllQuery } from "@/application/queries/search/searchAll/searchAll.query";
 
 chai.use(chaiAsPromised);
 
-describe("SearchService", () => {
-	let searchService: SearchService;
+describe("SearchAllQueryHandler", () => {
+	let handler: SearchAllQueryHandler;
 	let mockPostRepository: any;
 	let mockUserRepository: any;
 	let mockTagRepository: any;
@@ -35,7 +36,7 @@ describe("SearchService", () => {
 			toCommunityDTO: sinon.stub().returns({ publicId: "community-dto" }),
 		};
 
-		searchService = new SearchService(
+		handler = new SearchAllQueryHandler(
 			mockPostRepository,
 			mockUserRepository,
 			mockTagRepository,
@@ -48,9 +49,9 @@ describe("SearchService", () => {
 		sinon.restore();
 	});
 
-	describe("searchAll", () => {
+	describe("execute", () => {
 		it("should call searchByText and include results", async () => {
-			const query = ["test"];
+			const query = new SearchAllQuery(["test"]);
 
 			mockUserRepository.getAll.resolves([]);
 			mockCommunityRepository.search.resolves([]);
@@ -62,15 +63,15 @@ describe("SearchService", () => {
 
 			mockDTOService.toPostDTO.withArgs(textPost).returns({ publicId: "p1", body: "test post" });
 
-			const result = await searchService.searchAll(query);
+			const result = await handler.execute(query);
 
-			expect(mockPostRepository.searchByText.calledWith(query)).to.be.true;
+			expect(mockPostRepository.searchByText.calledWith(query.query)).to.be.true;
 			expect(result.posts).to.have.lengthOf(1);
 			expect(result.posts![0].publicId).to.equal("p1");
 		});
 
 		it("should deduplicate posts found by text and by tags", async () => {
-			const query = ["test"];
+			const query = new SearchAllQuery(["test"]);
 
 			mockUserRepository.getAll.resolves([]);
 			mockCommunityRepository.search.resolves([]);
@@ -88,9 +89,9 @@ describe("SearchService", () => {
 
 			mockDTOService.toPostDTO.callsFake((post: any) => post);
 
-			const result = await searchService.searchAll(query);
+			const result = await handler.execute(query);
 
-			expect(mockPostRepository.searchByText.calledWith(query)).to.be.true;
+			expect(mockPostRepository.searchByText.calledWith(query.query)).to.be.true;
 			expect(mockPostRepository.findByTags.called).to.be.true;
 
 			expect(result.posts).to.have.lengthOf(2);
@@ -101,18 +102,15 @@ describe("SearchService", () => {
 		});
 
 		it("should handle null results from repositories", async () => {
-			const query = ["test"];
+			const query = new SearchAllQuery(["test"]);
 
 			mockUserRepository.getAll.resolves(null);
 			mockCommunityRepository.search.resolves(null);
 			mockTagRepository.searchTags.resolves([]); 
 			mockPostRepository.searchByText.resolves(null); 
-
-
-
 			mockPostRepository.findByTags.resolves(null); 
 
-			const result = await searchService.searchAll(query);
+			const result = await handler.execute(query);
 
 			expect(result.posts).to.be.null;
 			expect(result.users).to.be.null;

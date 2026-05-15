@@ -8,6 +8,7 @@ import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRep
 import { DTOService, CommunityDTO } from "@/services/dto.service";
 import { Errors } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
+import { asUserPublicId } from "@/types/branded";
 
 @injectable()
 export class GetCommunityDetailsQueryHandler implements IQueryHandler<
@@ -44,7 +45,7 @@ export class GetCommunityDetailsQueryHandler implements IQueryHandler<
     // check if viewer is a member
     if (query.viewerPublicId) {
       const user = await this.userRepository.findByPublicId(
-        query.viewerPublicId,
+        asUserPublicId(query.viewerPublicId),
       );
       if (user) {
         const membership =

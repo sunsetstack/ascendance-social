@@ -1,3 +1,4 @@
+import { UserPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import { RedisService } from "./redis.service";
 import {
@@ -30,7 +31,7 @@ export class UserActivityService {
    * Track user posting activity for dynamic cache TTL and strategy selection
    * Called when a post is created
    */
-  async trackPostCreated(userPublicId: string): Promise<void> {
+  async trackPostCreated(userPublicId: UserPublicId): Promise<void> {
     const now = Date.now();
     const oneHourMs = 3600000;
 
@@ -108,7 +109,9 @@ export class UserActivityService {
    * Track users who have recently posted (for low-traffic mode)
    * Uses a sorted set with timestamp scores for easy time-based queries
    */
-  private async trackRecentlyActiveUser(userPublicId: string): Promise<void> {
+  private async trackRecentlyActiveUser(
+    userPublicId: UserPublicId,
+  ): Promise<void> {
     const key = "who_to_follow:recently_active_users";
     const score = Date.now();
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;

@@ -9,6 +9,7 @@ import { DeleteCommentCommand } from "@/application/commands/comments/deleteComm
 import { LikeCommentCommand } from "@/application/commands/comments/likeComment/likeComment.command";
 import { TypedRequest } from "@/types";
 import { TOKENS } from "@/types/tokens";
+import { asPostPublicId, asUserPublicId } from "@/types/branded";
 import type {
   CommentIdParams,
   CommentsQuery,
@@ -50,7 +51,7 @@ export class CommentController {
 
     const command = new CreateCommentCommand(
       decodedUser.publicId,
-      postPublicId,
+      asPostPublicId(postPublicId),
       content,
       parentId ?? null,
     );
@@ -70,7 +71,7 @@ export class CommentController {
     const maxLimit = Math.min(limit, 50);
 
     const result = await this.commentService.getCommentsByPostPublicId(
-      postPublicId,
+      asPostPublicId(postPublicId),
       page,
       maxLimit,
       parentId ?? null,
@@ -143,7 +144,7 @@ export class CommentController {
     const maxLimit = Math.min(limit, 100);
 
     const result = await this.commentService.getCommentsByUserPublicId(
-      publicId,
+      asUserPublicId(publicId),
       page,
       maxLimit,
       sortBy,

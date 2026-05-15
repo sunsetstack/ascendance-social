@@ -2,6 +2,11 @@ import crypto from "crypto";
 import { inject, injectable } from "tsyringe";
 import { RedisService } from "@/services/redis.service";
 import { AuthSessionRecord } from "@/types";
+import {
+  asSessionId,
+  asUserPublicId,
+  asRefreshTokenHash,
+} from "@/types/branded";
 import { Errors } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
 
@@ -59,9 +64,11 @@ export class AuthSessionService {
     const ttlSeconds = this.normalizeTtlSeconds(input.ttlSeconds);
     const now = Date.now();
     const session: AuthSessionRecord = {
-      sid: input.sid,
-      publicId: input.publicId,
-      refreshTokenHash: this.hashRefreshToken(input.refreshToken),
+      sid: asSessionId(input.sid),
+      publicId: asUserPublicId(input.publicId),
+      refreshTokenHash: asRefreshTokenHash(
+        this.hashRefreshToken(input.refreshToken),
+      ),
       createdAt: now,
       lastSeenAt: now,
       ip: input.ip,
@@ -184,7 +191,9 @@ export class AuthSessionService {
     const normalizedTtl = this.normalizeTtlSeconds(ttlSeconds);
     const next: AuthSessionRecord = {
       ...current,
-      refreshTokenHash: this.hashRefreshToken(nextRefreshToken),
+      refreshTokenHash: asRefreshTokenHash(
+        this.hashRefreshToken(nextRefreshToken),
+      ),
       previousRefreshTokenHash: current.refreshTokenHash,
       previousRefreshTokenGraceUntil: now + this.getRefreshRotationGraceMs(),
       lastSeenAt: now,
