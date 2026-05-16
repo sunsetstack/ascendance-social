@@ -43,8 +43,8 @@ describe("Transactional Outbox Pattern", () => {
     outboxWorker = new OutboxWorker(outboxRepository as any, eventBus);
   });
 
-  afterEach(() => {
-    outboxWorker.stop();
+  afterEach(async () => {
+    await outboxWorker.stop();
     sandbox.restore();
   });
 
@@ -72,7 +72,7 @@ describe("Transactional Outbox Pattern", () => {
       expect(outboxRepository.saveEvent.calledOnce).to.be.true;
       expect(outboxRepository.saveEvent.firstCall.args[0]).to.equal("TestEvent");
       expect(outboxRepository.saveEvent.firstCall.args[1]).to.equal(event);
-      expect(outboxRepository.saveEvent.firstCall.args[2]).to.equal(mockSession);
+      expect(outboxRepository.saveEvent.firstCall.args).to.have.lengthOf(2);
     });
   });
 
@@ -91,7 +91,7 @@ describe("Transactional Outbox Pattern", () => {
     });
   });
 
-  describe("OutboxWorker.processOutbox", () => {
+      describe("OutboxWorker.processOutbox", () => {
     it("should process unprocessed events and mark them as processed", async () => {
       // Setup handler
       const handler = new TestEventHandler();
@@ -106,8 +106,7 @@ describe("Transactional Outbox Pattern", () => {
       outboxRepository.getUnprocessedEvents.resolves(mockEvents as any);
       outboxRepository.markAsProcessed.resolves();
 
-      // Make processOutbox public for testing by calling it via any or casting
-      await (outboxWorker as any).processOutbox();
+      await (outboxWorker as any).tick();
 
       expect(outboxRepository.getUnprocessedEvents.calledOnce).to.be.true;
       expect(handleSpy.calledTwice).to.be.true;
@@ -133,7 +132,7 @@ describe("Transactional Outbox Pattern", () => {
       outboxRepository.getUnprocessedEvents.resolves(mockEvents as any);
       outboxRepository.markAsFailed.resolves();
 
-      await (outboxWorker as any).processOutbox();
+      await (outboxWorker as any).tick();
 
       expect(handleSpy.calledOnce).to.be.true;
       expect(outboxRepository.markAsProcessed.called).to.be.false;

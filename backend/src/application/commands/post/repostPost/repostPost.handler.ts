@@ -10,7 +10,7 @@ import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRep
 import { NotificationRequestedEvent } from "@/application/events/notification/notification.event";
 import { DTOService } from "@/services/dto.service";
 import { UnitOfWork } from "@/database/UnitOfWork";
-import { Errors } from "@/utils/errors";
+import { Errors, createError } from "@/utils/errors";
 import {
   isValidPublicId,
   sanitizeTextInput,
@@ -56,14 +56,20 @@ export class RepostPostCommandHandler implements ICommandHandler<
       command.userPublicId,
     );
     if (!user) {
-      throw Errors.notFound("User");
+      throw createError(
+        "NotFoundError",
+        `User with publicId ${command.userPublicId} not found`,
+      );
     }
 
     const targetPost = await this.postReadRepository.findByPublicId(
       command.targetPostPublicId,
     );
     if (!targetPost) {
-      throw Errors.notFound("Post");
+      throw createError(
+        "NotFoundError",
+        `Post ${command.targetPostPublicId} not found`,
+      );
     }
 
     // prevent duplicate repost by same user

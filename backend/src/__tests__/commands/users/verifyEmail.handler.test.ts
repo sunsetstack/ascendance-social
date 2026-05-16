@@ -49,7 +49,12 @@ describe("VerifyEmailHandler", () => {
 
 	it("should return user when already verified", async () => {
 		const command = new VerifyEmailCommand("user@example.com", "12345");
-		const user = { id: "1", isAdmin: false, isEmailVerified: true };
+		const user = {
+			_id: { toString: () => "1" },
+			id: "1",
+			isAdmin: false,
+			isEmailVerified: true,
+		};
 		const dto = { publicId: "p1", email: "user@example.com", isEmailVerified: true };
 		mockUserReadRepository.findByEmailVerificationToken.resolves(user);
 		mockDtoService.toAuthenticatedUserDTO.returns(dto);
@@ -62,8 +67,18 @@ describe("VerifyEmailHandler", () => {
 
 	it("should verify and return updated user", async () => {
 		const command = new VerifyEmailCommand("user@example.com", "12345");
-		const user = { id: "1", isAdmin: false, isEmailVerified: false };
-		const updatedUser = { id: "1", isAdmin: false, isEmailVerified: true };
+		const user = {
+			_id: { toString: () => "1" },
+			id: "1",
+			isAdmin: false,
+			isEmailVerified: false,
+		};
+		const updatedUser = {
+			_id: { toString: () => "1" },
+			id: "1",
+			isAdmin: false,
+			isEmailVerified: true,
+		};
 		const dto = { publicId: "p1", email: "user@example.com", isEmailVerified: true };
 
 		mockUserReadRepository.findByEmailVerificationToken.resolves(user);

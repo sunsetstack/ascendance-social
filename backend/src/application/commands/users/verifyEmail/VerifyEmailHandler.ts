@@ -11,6 +11,7 @@ import {
   AdminUserDTO,
   AuthenticatedUserDTO,
 } from "@/services/dto.service";
+import { asMongoId } from "@/types/branded";
 import { TOKENS } from "@/types/tokens";
 
 export type VerifyEmailResult = AdminUserDTO | AuthenticatedUserDTO;
@@ -43,7 +44,9 @@ export class VerifyEmailHandler implements ICommandHandler<
         : this.dtoService.toAuthenticatedUserDTO(user);
     }
 
-    const updatedUser = await this.userWriteRepository.update(user.id, {
+    const userId = asMongoId(user._id.toString());
+
+    const updatedUser = await this.userWriteRepository.update(userId, {
       $set: { isEmailVerified: true },
       $unset: { emailVerificationToken: 1, emailVerificationExpires: 1 },
     });

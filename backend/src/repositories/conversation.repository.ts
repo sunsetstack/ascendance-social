@@ -5,6 +5,7 @@ import { IConversation, HydratedConversation, PaginationResult, CursorPagination
 import { Errors } from "@/utils/errors";
 import { encodeCursor, decodeCursor } from "@/utils/cursorCodec";
 import { TOKENS } from "@/types/tokens";
+import { ConversationPublicId } from "@/types/branded";
 
 interface ConversationCursor {
 	lastMessageAt: string;
@@ -41,7 +42,7 @@ export class ConversationRepository extends BaseRepository<IConversation> {
 	}
 
 	async findByPublicId(
-		publicId: string,
+		publicId: ConversationPublicId,
 		options?: { populateParticipants?: boolean; includeLastMessage?: boolean }
 	): Promise<IConversation | null> {
 		const session = this.getSession();

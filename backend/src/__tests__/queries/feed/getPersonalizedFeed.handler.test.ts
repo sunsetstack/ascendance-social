@@ -60,14 +60,13 @@ describe("GetPersonalizedFeedQueryHandler", () => {
 
 		const result = await handler.execute(new GetPersonalizedFeedQuery("viewer", 1, 10));
 
-		expect(mockFeedCoreService.generatePersonalizedCoreFeed.calledOnceWith("viewer", 1, 10)).to.be.true;
+		expect(mockFeedCoreService.generatePersonalizedCoreFeed.calledOnceWith("viewer", 10, undefined)).to.be.true;
 		expect(
 			mockRedisService.setWithTags.calledOnceWith(
-				CacheKeyBuilder.getCoreFeedKey("viewer", 1, 10),
+				`${CacheKeyBuilder.PREFIXES.CORE_FEED}:cursor:viewer:first_page:10`,
 				sinon.match.object,
 				[
 					CacheKeyBuilder.getUserFeedTag("viewer"),
-					CacheKeyBuilder.getFeedPageTag(1),
 					CacheKeyBuilder.getFeedLimitTag(10),
 				],
 				300,

@@ -9,6 +9,29 @@ export class CommandBus {
   // Registering handlers in a map with command's name as key. 
   private handlers = new Map<string, unknown>(); 
 
+  private resolveCommandType<TCommand extends ICommand>(
+    commandType: { new(...args: any[]): TCommand },
+  ): TCommand["type"] {
+    try {
+      const probe = new commandType(
+        ...new Array(commandType.length).fill(undefined),
+      );
+      if (typeof probe.type === "string" && probe.type.length > 0) {
+        return probe.type;
+      }
+    } catch (error) {
+      throw Errors.internal(
+        `Could not resolve command type for ${commandType.name}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
+    throw Errors.internal(
+      `Could not resolve command type for ${commandType.name}`,
+    );
+  }
+
   /**
    * Registers a command handler for a specific command type.
    * Can register any TCommand type that implements the ICommand interface. 
@@ -30,7 +53,7 @@ export class CommandBus {
   {
     // Registering the handler in the handlers map. 
     // Types are verified at boundary (by generics), so internal map uses unknown
-    this.handlers.set(commandType.name, handler);
+    this.handlers.set(this.resolveCommandType(commandType), handler);
   }
 
   /**
@@ -40,14 +63,11 @@ export class CommandBus {
    * @throws An error if no handler is found for the command.
    */
   async dispatch<TResult>(command: ICommand): Promise<TResult>{
-    //.constructor.name retrieves the name of the class that created the command 
-    // It guarantees the correct handler is found based on the class name. 
-    // 'command' itself has no property 'name'. 
-    const handler = this.handlers.get(command.constructor.name) as ICommandHandler<ICommand, TResult> | undefined; 
+    const handler = this.handlers.get(command.type) as ICommandHandler<ICommand, TResult> | undefined; 
     
 
     if(!handler){
-      throw Errors.internal(`No handler found for command ${command.constructor.name}`);
+      throw Errors.internal(`No handler found for command ${command.type}`);
     }
 
     return handler.execute(command);

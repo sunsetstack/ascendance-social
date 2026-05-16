@@ -303,7 +303,9 @@ export class DeletePostCommandHandler implements ICommandHandler<
       )[]
     ).map((tag) => {
       const id = typeof tag === "object" && "_id" in tag ? tag._id : tag; // Handle both populated object and direct ID (fallback)
-      return new mongoose.Types.ObjectId(id);
+      return id instanceof mongoose.Types.ObjectId
+        ? id
+        : new mongoose.Types.ObjectId(id);
     });
 
     await this.tagService.decrementUsage(tagIds);

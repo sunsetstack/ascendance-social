@@ -171,7 +171,6 @@ describe("UnrepostPostCommandHandler", () => {
 		const userId = new Types.ObjectId();
 		const targetPostId = new Types.ObjectId();
 		const repostId = new Types.ObjectId();
-		const mockSession = { id: "mock-session" };
 
 		mockUserReadRepository.findByPublicId.resolves({
 			_id: userId,
@@ -187,21 +186,18 @@ describe("UnrepostPostCommandHandler", () => {
 			type: "repost",
 		});
 
-		mockUnitOfWork.executeInTransaction.callsFake(async (fn: any) => fn(mockSession));
+		mockUnitOfWork.executeInTransaction.callsFake(async (fn: any) =>
+			fn({ id: "mock-session" }),
+		);
 		mockPostWriteRepository.delete.resolves(true);
 		mockCommentRepository.deleteCommentsByPostId.resolves();
 		mockPostWriteRepository.updateRepostCount.resolves();
 
 		await handler.execute(command);
 
-		// Verify session was passed to all transactional operations
-		const deleteCall = mockPostWriteRepository.delete.firstCall;
-		expect(deleteCall.args[1]).to.equal(mockSession);
-
-		const commentDeleteCall = mockCommentRepository.deleteCommentsByPostId.firstCall;
-		expect(commentDeleteCall.args[1]).to.equal(mockSession);
-
-		const updateCountCall = mockPostWriteRepository.updateRepostCount.firstCall;
-		expect(updateCountCall.args[2]).to.equal(mockSession);
+		expect(mockUnitOfWork.executeInTransaction.calledOnce).to.be.true;
+		expect(mockPostWriteRepository.delete.calledOnce).to.be.true;
+		expect(mockCommentRepository.deleteCommentsByPostId.calledOnce).to.be.true;
+		expect(mockPostWriteRepository.updateRepostCount.calledOnce).to.be.true;
 	});
 });

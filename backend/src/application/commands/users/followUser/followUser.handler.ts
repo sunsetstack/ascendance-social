@@ -1,4 +1,4 @@
-import { UserPublicId } from "@/types/branded";
+import { MongoId, UserPublicId, asMongoId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import { FollowUserCommand } from "./followUser.command";
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
@@ -51,20 +51,20 @@ export class FollowUserCommandHandler implements ICommandHandler<
       throw Errors.notFound("User");
     }
 
-    if (follower.id === followee.id) {
+    const followerId = asMongoId(follower._id.toString());
+    const followeeId = asMongoId(followee._id.toString());
+
+    if (followerId === followeeId) {
       throw Errors.validation("Cannot follow yourself");
     }
 
     const wasFollowing = await this.followRepository.isFollowing(
-      follower.id,
-      followee.id,
+      followerId,
+      followeeId,
     );
 
     try {
       await this.unitOfWork.executeInTransaction(async () => {
-        const followerId = follower.id;
-        const followeeId = followee.id;
-
         if (wasFollowing) {
           // unfollow logic
           await this.followRepository.removeFollow(followerId, followeeId);

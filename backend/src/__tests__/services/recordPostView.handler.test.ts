@@ -18,6 +18,7 @@ describe("RecordPostViewCommandHandler", () => {
   let feedServiceStub: any;
   let transactionQueueStub: any;
   let bloomFilterServiceStub: any;
+  let unitOfWorkStub: any;
 
   const postId = new mongoose.Types.ObjectId();
   const userId = new mongoose.Types.ObjectId();
@@ -39,6 +40,9 @@ describe("RecordPostViewCommandHandler", () => {
     feedServiceStub = sinon.createStubInstance(FeedService);
     transactionQueueStub = sinon.createStubInstance(TransactionQueueService);
     bloomFilterServiceStub = sinon.createStubInstance(BloomFilterService);
+    unitOfWorkStub = {
+      executeInTransaction: sinon.stub().callsFake(async (work: () => Promise<void>) => await work()),
+    };
 
     // Default successful mocks
     postReadRepoStub.findOneByPublicId.resolves({
@@ -67,6 +71,7 @@ describe("RecordPostViewCommandHandler", () => {
       feedServiceStub,
       transactionQueueStub,
       bloomFilterServiceStub,
+      unitOfWorkStub,
     );
   });
 
@@ -86,7 +91,7 @@ describe("RecordPostViewCommandHandler", () => {
     // Verify transaction queue usage
     expect(transactionQueueStub.executeOrQueue.calledOnce).to.be.true;
     const args = transactionQueueStub.executeOrQueue.firstCall.args;
-    expect(args[1]).to.deep.include({ priority: "low", loadThreshold: 30 });
+    expect(args[2]).to.deep.include({ priority: "low", loadThreshold: 30 });
   });
 
   it("should not increment view count if view is not new", async () => {

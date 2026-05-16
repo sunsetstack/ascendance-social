@@ -108,6 +108,6 @@ describe("DeleteUserCommandHandler", () => {
 		]);
 
 		// verify community membership deletion
-		expect(mocks.communityMemberRepository.deleteManyByUserId.calledWith(userId.toString(), "session")).to.be.true;
+		expect(mocks.communityMemberRepository.deleteManyByUserId.calledWith(userId.toString())).to.be.true;
 	});
 });

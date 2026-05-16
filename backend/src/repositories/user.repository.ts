@@ -45,7 +45,7 @@ export class UserRepository extends BaseRepository<IUser> {
     } catch (error) {
       if (isMongoDBDuplicateKeyError(error)) {
         const field = Object.keys(error.keyValue)[0];
-        throw Errors.validation(`${field} already exists`, {
+        throw Errors.duplicate(`${field} already exists`, {
           context: { operation: "create", repository: "userRepository" },
         });
       }
@@ -81,7 +81,7 @@ export class UserRepository extends BaseRepository<IUser> {
     } catch (error) {
       if (isMongoDBDuplicateKeyError(error)) {
         const field = Object.keys(error.keyValue)[0];
-        throw Errors.validation(`${field} already exists`, {
+        throw Errors.duplicate(`${field} already exists`, {
           context: { operation: "create", repository: "userRepository" },
         });
       }
@@ -105,7 +105,7 @@ export class UserRepository extends BaseRepository<IUser> {
     } catch (error) {
       if (isMongoDBDuplicateKeyError(error)) {
         const field = Object.keys(error.keyValue)[0];
-        throw Errors.validation(`${field} already exists`, {
+        throw Errors.duplicate(`${field} already exists`, {
           context: {
             operation: "updateByPublicId",
             repository: "userRepository",

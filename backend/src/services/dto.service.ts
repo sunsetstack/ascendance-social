@@ -12,6 +12,7 @@ import {
   ICommunityMember,
 } from "@/types";
 import {
+  ConversationPublicId,
   UserPublicId,
   CommunityPublicId,
   asUserPublicId,
@@ -555,7 +556,7 @@ export class DTOService {
 
   toPublicMessageDTO(
     message: IMessage | IMessagePopulated,
-    conversationPublicId: string,
+    conversationPublicId: ConversationPublicId,
   ): MessageDTO {
     const populatedMessage = message as IMessagePopulated;
     const sender = populatedMessage.sender || {};

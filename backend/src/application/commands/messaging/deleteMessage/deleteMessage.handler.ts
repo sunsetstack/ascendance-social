@@ -6,10 +6,14 @@ import { UnitOfWork } from "@/database/UnitOfWork";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { MessageAttachmentsDeletedEvent } from "@/application/events/message/message.event";
 import { Errors, wrapError } from "@/utils/errors";
-import { isPopulatedSender } from "@/utils/messaging-helpers";
 import { logger } from "@/utils/winston";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
+import {
+  assertMessageOwnedByUser,
+  requireMessage,
+  requireUserInternalId,
+} from "@/application/messaging/messaging-support";
 
 @injectable()
 export class DeleteMessageCommandHandler
@@ -29,24 +33,17 @@ export class DeleteMessageCommandHandler
     try {
       const { userPublicId, messageId } = command;
 
-      const userInternalId =
-        await this.userRepository.findInternalIdByPublicId(userPublicId);
-      if (!userInternalId) {
-        throw Errors.notFound("User");
-      }
-
-      const message = await this.messageRepository.findByPublicId(messageId);
-      if (!message) {
-        throw Errors.notFound("Resource");
-      }
-
-      const senderRef: unknown = message.sender;
-      const senderId = isPopulatedSender(senderRef)
-        ? (senderRef._id ? senderRef._id.toString() : senderRef.publicId ?? "")
-        : message.sender.toString();
-      if (senderId !== userInternalId) {
-        throw Errors.forbidden("You can only delete your own messages");
-      }
+      const userInternalId = await requireUserInternalId(
+        this.userRepository,
+        userPublicId,
+      );
+      const message = await requireMessage(this.messageRepository, messageId);
+      assertMessageOwnedByUser(
+        message,
+        userPublicId,
+        userInternalId,
+        "You can only delete your own messages",
+      );
 
       await this.unitOfWork.executeInTransaction(async () => {
         const attachmentPublicIds =

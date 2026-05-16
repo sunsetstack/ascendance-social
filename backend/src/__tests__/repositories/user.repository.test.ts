@@ -122,20 +122,6 @@ describe("UserRepository", () => {
 			expect(result).to.deep.equal(expectedDocInstance);
 		});
 
-		it("should create a user with a session if provided", async () => {
-			const expectedDocInstance = createMockUserDocInstance(userData);
-			mockModel.withArgs(userData).returns(expectedDocInstance);
-			expectedDocInstance.save.resolves(expectedDocInstance as IUser);
-
-			await repository.create(userData, mockSession);
-
-			expect(mockModel.calledOnceWith(userData)).to.be.true;
-
-			expect(expectedDocInstance.$session.calledOnceWith(mockSession)).to.be.true;
-			expect(expectedDocInstance.$session.calledBefore(expectedDocInstance.save)).to.be.true;
-			expect(expectedDocInstance.save.calledOnce).to.be.true;
-		});
-
 		it("should throw DuplicateError for duplicate username (error code 11000)", async () => {
 			const duplicateError: any = new Error("Duplicate key error");
 			duplicateError.code = 11000;
@@ -205,16 +191,6 @@ describe("UserRepository", () => {
 			expect(mockModel.findOneAndUpdate.calledOnceWith({ _id: userId }, updateData, { new: true })).to.be.true;
 			expect(mockQuery.exec.calledOnce).to.be.true;
 			expect(result).to.deep.equal(updatedUserDoc);
-		});
-
-		it("should use session when updating", async () => {
-			mockQuery.exec.resolves(updatedUserDoc);
-
-			await repository.update(userId, updateData, mockSession);
-
-			expect(mockModel.findOneAndUpdate.calledOnce).to.be.true;
-			expect(mockQuery.session.calledOnceWith(mockSession)).to.be.true;
-			expect(mockQuery.exec.calledOnce).to.be.true;
 		});
 
 		it("should return null if user to update is not found", async () => {

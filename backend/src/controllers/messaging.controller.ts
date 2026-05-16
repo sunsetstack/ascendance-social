@@ -22,6 +22,11 @@ import type {
   SendMessageBody,
 } from "@/utils/schemas/messaging.schemas";
 import { STREAM_THRESHOLD } from "@/utils/post-helpers";
+import {
+  asConversationPublicId,
+  asMessagePublicId,
+  asUserPublicId,
+} from "@/types/branded";
 
 type EmptyParams = Record<string, never>;
 type EmptyBody = Record<string, never>;
@@ -47,7 +52,7 @@ export class MessagingController {
     const { page, limit } = req.query;
 
     const result = await this.queryBus.execute<any>(
-      new ListConversationsQuery(userPublicId, page, limit)
+      new ListConversationsQuery(asUserPublicId(userPublicId), page, limit)
     );
     res.status(200).json(result);
   };
@@ -65,7 +70,12 @@ export class MessagingController {
     const { page, limit } = req.query;
 
     const result = await this.queryBus.execute<any>(
-      new GetConversationMessagesQuery(userPublicId, conversationId, page, limit)
+      new GetConversationMessagesQuery(
+        asUserPublicId(userPublicId),
+        asConversationPublicId(conversationId),
+        page,
+        limit,
+      )
     );
 
     if (result.messages.length >= STREAM_THRESHOLD) {
@@ -98,7 +108,10 @@ export class MessagingController {
 
     const { conversationId } = req.params;
     await this.commandBus.dispatch(
-      new MarkConversationReadCommand(userPublicId, conversationId)
+      new MarkConversationReadCommand(
+        asUserPublicId(userPublicId),
+        asConversationPublicId(conversationId),
+      )
     );
     res.status(204).send();
   };
@@ -117,7 +130,10 @@ export class MessagingController {
     const { recipientPublicId } = req.body;
 
     const conversation = await this.commandBus.dispatch(
-      new InitiateConversationCommand(senderPublicId, recipientPublicId)
+      new InitiateConversationCommand(
+        asUserPublicId(senderPublicId),
+        asUserPublicId(recipientPublicId),
+      )
     );
     res.status(201).json({ conversation });
   };
@@ -131,10 +147,18 @@ export class MessagingController {
       throw Errors.authentication("User must be logged in to send messages");
     }
 
-    const payload: SendMessagePayload = req.body;
+    const payload: SendMessagePayload = {
+      ...req.body,
+      conversationPublicId: req.body.conversationPublicId
+        ? asConversationPublicId(req.body.conversationPublicId)
+        : undefined,
+      recipientPublicId: req.body.recipientPublicId
+        ? asUserPublicId(req.body.recipientPublicId)
+        : undefined,
+    };
 
     const message = await this.commandBus.dispatch(
-      new SendMessageCommand(senderPublicId, payload, req.file)
+      new SendMessageCommand(asUserPublicId(senderPublicId), payload, req.file)
     );
     res.status(201).json({ message });
   };
@@ -152,7 +176,11 @@ export class MessagingController {
     const { body } = req.body;
 
     const message = await this.commandBus.dispatch(
-      new EditMessageCommand(userPublicId, messageId, body)
+      new EditMessageCommand(
+        asUserPublicId(userPublicId),
+        asMessagePublicId(messageId),
+        body,
+      )
     );
     res.status(200).json({ message });
   };
@@ -169,7 +197,10 @@ export class MessagingController {
     const { messageId } = req.params;
 
     await this.commandBus.dispatch(
-      new DeleteMessageCommand(userPublicId, messageId)
+      new DeleteMessageCommand(
+        asUserPublicId(userPublicId),
+        asMessagePublicId(messageId),
+      )
     );
     res.status(204).send();
   };

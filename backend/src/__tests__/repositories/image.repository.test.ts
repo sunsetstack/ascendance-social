@@ -130,25 +130,6 @@ describe("ImageRepository", () => {
 			expect(mockQuery.session.called).to.be.false;
 		});
 
-		it("should use session if provided", async () => {
-			const mockImage = createMockImage(generateMockData(1)) as IImage;
-			const mockId = mockImage._id.toString();
-
-			const mockQuery = {
-				populate: sinon.stub().returnsThis(),
-				session: sinon.stub().returnsThis(),
-				exec: sinon.stub().resolves(mockImage),
-			};
-			mockModel.findById.withArgs(mockId).returns(mockQuery);
-
-			const result = await repository.findById(mockId, mockSession);
-
-			expect(result).to.deep.equal(mockImage);
-			expect(mockModel.findById.calledOnceWith(mockId)).to.be.true;
-			expect(mockQuery.session.calledOnceWith(mockSession)).to.be.true;
-			expect(mockQuery.exec.calledOnce).to.be.true;
-		});
-
 		it("should return null if image not found", async () => {
 			const validId = generateRandomObjectId().toString();
 
