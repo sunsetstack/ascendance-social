@@ -54,6 +54,8 @@ The `RedisService` goes beyond basic key-value storage:
 * **Tag-Based Invalidation:** Uses Sets to map logical tags to cache keys, allowing precise O(1) invalidation of complex dependency trees.
 * **Write-Behind Caching:** High-velocity counters (likes/views) are buffered in Redis and flushed to MongoDB in batches.
 * **Pub/Sub & Streams:** Handles real-time notifications (Socket.io) and decoupling of background jobs.
+* **Probabilistic Data Structures:** Implements Bloom Filters to preemptively screen high-velocity existence checks (e.g., 'Has User X viewed Post Y?'), eliminating expensive database lookups for negative results and preserving I/O bandwidth.
+* **Redis-backed session management:** Implements a hybrid auth architecture that combines short-lived stateless JWTs for low-latency API checks with persistent Redis sessions to enable immediate revocation, rotating refresh tokens, and replay attack detection.
 
 #### 3. CQRS & Event-Driven Design
 * **Command Bus:** Handles writes (e.g., `CreatePostCommand`) ensuring data integrity via Unit of Work transactions.
@@ -61,10 +63,10 @@ The `RedisService` goes beyond basic key-value storage:
 * **Separation of Concerns:** Read models (DTOs) are optimized for specific UI views, distinct from Domain Models.
   
 #### 4. Resilient Transaction Orchestration
-* To ensure data integrity under high concurrency, the system implements a custom Resiliency Layer on top of MongoDB transactions:
-* **Transaction Queueing:** TransactionQueueService serializes conflicting write operations to prevent race conditions during "thundering herd" scenarios.
-* **Smart Retries:** A RetryService with exponential backoff handles transient database failures (like WriteConflict exceptions), ensuring user requests succeed even when the database is under stress.
-* **ACID Compliance:** All side effects (notifications, feed updates) are strictly coupled to transaction commits via the UnitOfWork pattern.
+* In order to preserve data integrity under high concurrency, the system implements a custom Resiliency Layer on top of MongoDB transactions:
+  * **Transaction Queueing:** TransactionQueueService serializes conflicting write operations to prevent race conditions during "thundering herd" scenarios.
+  * **Smart Retries:** A RetryService with exponential backoff handles transient database failures (like WriteConflict exceptions), ensuring user requests succeed even when the database is under stress.
+  * **ACID Compliance:** All side effects (notifications, feed updates) are strictly coupled to transaction commits via the UnitOfWork pattern.
 
 #### 5. Observability & Monitoring
 * The system is instrumented for real-time production monitoring:
@@ -160,7 +162,7 @@ npm run dev
 
 ## 🛡 Security Features
 
-* **JWT Authentication:** Secure, HTTP-only cookie-based auth strategy.
+* **Hybrid Redis+JWT Auth:** Secure, HTTP-only cookie strategy using short-lived access tokens and rotating refresh tokens to prevent replay attacks.
 * **Rate Limiting:** IP-based throttling at the API Gateway level.
 * **Secure Recovery:** Token-based Password Reset flow with short-lived expiry (via Resend). 
 * **Input Sanitization:** Custom sanitizers for NoSQL injection and XSS prevention.
