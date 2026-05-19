@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { inject, injectable } from "tsyringe";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import {
   DTOService,
   AdminUserDTO,
@@ -46,8 +46,8 @@ export class AuthService {
    * - wires token logic to server-backed session storage
    */
   constructor(
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
     @inject(TOKENS.Services.AuthSession)
     private readonly authSessionService: AuthSessionService,
@@ -64,7 +64,7 @@ export class AuthService {
     password: string,
     context: AuthSessionContext = {},
   ): Promise<AuthenticatedSessionResult> {
-    const user = await this.userRepository.findByEmail(email);
+    const user = await this.userReadRepository.findByEmail(email);
     if (
       !user ||
       typeof user.comparePassword !== "function" ||
@@ -121,7 +121,7 @@ export class AuthService {
   ): Promise<AuthenticatedSessionResult> {
     const session =
       await this.authSessionService.validateRefreshToken(refreshToken);
-    const user = await this.userRepository.findByPublicId(session.publicId);
+    const user = await this.userReadRepository.findByPublicId(session.publicId);
     if (!user) {
       await this.authSessionService.revokeSession(session.sid);
       throw Errors.authentication("User not found");

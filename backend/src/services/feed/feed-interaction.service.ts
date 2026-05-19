@@ -1,7 +1,6 @@
 import { UserPublicId, asPostPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
-import type { IPostReadRepository } from "@/repositories/interfaces";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IPostReadRepository, IUserReadRepository } from "@/repositories/interfaces";
 import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
 import { UserActionRepository } from "@/repositories/userAction.repository";
 import { RedisService } from "../redis.service";
@@ -15,7 +14,8 @@ export class FeedInteractionService {
   constructor(
     @inject(TOKENS.Repositories.PostRead)
     private postReadRepository: IPostReadRepository,
-    @inject(TOKENS.Repositories.User) private userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UserPreference)
     private userPreferenceRepository: UserPreferenceRepository,
     @inject(TOKENS.Repositories.UserAction)
@@ -33,7 +33,7 @@ export class FeedInteractionService {
       `Running recordInteraction... for ${userPublicId}, actionType: ${actionType}, targetId: ${targetIdentifier}, tags: ${tags}`,
     );
 
-    const user = await this.userRepository.findByPublicId(userPublicId);
+    const user = await this.userReadRepository.findByPublicId(userPublicId);
     if (!user) throw Errors.notFound("User not found");
 
     let internalTargetId = targetIdentifier;

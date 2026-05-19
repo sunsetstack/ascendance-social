@@ -2,8 +2,7 @@ import { ICommandHandler } from "@/application/common/interfaces/command-handler
 import { RemoveFavoriteCommand } from "./removeFavorite.command";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
-import { UserRepository } from "@/repositories/user.repository";
-import type { IPostReadRepository } from "@/repositories/interfaces";
+import type { IPostReadRepository, IUserReadRepository } from "@/repositories/interfaces";
 import { Errors, wrapError } from "@/utils/errors";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
@@ -18,8 +17,8 @@ export class RemoveFavoriteCommandHandler implements ICommandHandler<
     private readonly favoriteRepository: FavoriteRepository,
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.PostRead)
     private readonly postRepository: IPostReadRepository,
   ) {}
@@ -29,7 +28,7 @@ export class RemoveFavoriteCommandHandler implements ICommandHandler<
       const { actorPublicId, postPublicId } = command;
 
       const [actorId, postId] = await Promise.all([
-        this.userRepository.findInternalIdByPublicId(actorPublicId),
+        this.userReadRepository.findInternalIdByPublicId(actorPublicId),
         this.postRepository.findInternalIdByPublicId(postPublicId),
       ]);
 

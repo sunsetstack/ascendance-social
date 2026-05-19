@@ -3,8 +3,8 @@ import { CommentRepository } from "@/repositories/comment.repository";
 import type {
   IPostReadRepository,
   IPostWriteRepository,
+  IUserReadRepository,
 } from "@/repositories/interfaces";
-import { UserRepository } from "@/repositories/user.repository";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { Errors } from "@/utils/errors";
 import { IComment, TransformedComment } from "@/types";
@@ -26,8 +26,8 @@ export class CommentService {
     private readonly postReadRepository: IPostReadRepository,
     @inject(TOKENS.Repositories.PostWrite)
     private readonly postWriteRepository: IPostWriteRepository,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
   ) {}
@@ -85,7 +85,7 @@ export class CommentService {
     postPublicId: PostPublicId,
     content: string,
   ) {
-    const user = await this.userRepository.findByPublicId(userPublicId);
+    const user = await this.userReadRepository.findByPublicId(userPublicId);
     if (!user) throw Errors.notFound("User");
     return this.createComment(user.id, postPublicId, content);
   }
@@ -155,7 +155,7 @@ export class CommentService {
     userPublicId: UserPublicId,
     content: string,
   ) {
-    const user = await this.userRepository.findByPublicId(userPublicId);
+    const user = await this.userReadRepository.findByPublicId(userPublicId);
     if (!user) throw Errors.notFound("User");
     return this.updateComment(commentId, user.id, content, user.isAdmin);
   }
@@ -200,7 +200,7 @@ export class CommentService {
   }
 
   async deleteCommentByPublicId(commentId: string, userPublicId: UserPublicId) {
-    const user = await this.userRepository.findByPublicId(userPublicId);
+    const user = await this.userReadRepository.findByPublicId(userPublicId);
     if (!user) throw Errors.notFound("User");
     return this.deleteComment(commentId, user.id);
   }
@@ -212,7 +212,7 @@ export class CommentService {
     sortBy: string = "createdAt",
     sortOrder: "asc" | "desc" = "desc",
   ) {
-    const user = await this.userRepository.findByPublicId(userPublicId);
+    const user = await this.userReadRepository.findByPublicId(userPublicId);
     if (!user) {
       throw Errors.notFound("User");
     }

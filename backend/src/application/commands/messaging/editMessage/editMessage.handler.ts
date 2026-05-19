@@ -2,7 +2,7 @@ import { ICommandHandler } from "@/application/common/interfaces/command-handler
 import { EditMessageCommand } from "./editMessage.command";
 import { ConversationRepository } from "@/repositories/conversation.repository";
 import { MessageRepository } from "@/repositories/message.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import { DTOService } from "@/services/dto.service";
 import { Errors, wrapError } from "@/utils/errors";
 import { sanitizeTextInput } from "@/utils/sanitizers";
@@ -26,8 +26,8 @@ export class EditMessageCommandHandler implements ICommandHandler<
     private readonly conversationRepository: ConversationRepository,
     @inject(TOKENS.Repositories.Message)
     private readonly messageRepository: MessageRepository,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
   ) {}
 
@@ -36,7 +36,7 @@ export class EditMessageCommandHandler implements ICommandHandler<
       const { userPublicId, messageId, newBody } = command;
 
       const userInternalId = await requireUserInternalId(
-        this.userRepository,
+        this.userReadRepository,
         userPublicId,
       );
       const message = await requireMessage(this.messageRepository, messageId);

@@ -4,7 +4,7 @@ import { ICommandHandler } from "@/application/common/interfaces/command-handler
 import { UpdateCommunityCommand } from "./updateCommunity.command";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import { ICommunity } from "@/types";
 import type { IImageStorageService } from "@/types";
 import { Errors } from "@/utils/errors";
@@ -27,7 +27,8 @@ export class UpdateCommunityCommandHandler implements ICommandHandler<
     private communityRepository: CommunityRepository,
     @inject(CommunityMemberRepository)
     private communityMemberRepository: CommunityMemberRepository,
-    @inject(UserRepository) private userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Services.ImageStorage)
     private readonly imageStorageService: IImageStorageService,
   ) {}
@@ -47,7 +48,7 @@ export class UpdateCommunityCommandHandler implements ICommandHandler<
     }
     const communityId = community._id as Types.ObjectId;
 
-    const user = await this.userRepository.findByPublicId(
+    const user = await this.userReadRepository.findByPublicId(
       asUserPublicId(userPublicId),
     );
     if (!user) {

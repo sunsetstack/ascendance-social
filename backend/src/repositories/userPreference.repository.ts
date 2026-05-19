@@ -3,15 +3,17 @@ import { BaseRepository } from "./base.repository";
 import { Model } from "mongoose";
 import { IUser, IUserPreference } from "@/types";
 import { Errors, wrapError } from "@/utils/errors";
-import { UserRepository } from "./user.repository";
+import type { IUserReadRepository } from "./interfaces";
 import { TOKENS } from "@/types/tokens";
 import { logger } from "@/utils/winston";
+import { asMongoId } from "@/types/branded";
 
 @injectable()
 export class UserPreferenceRepository extends BaseRepository<IUserPreference> {
   constructor(
     @inject(TOKENS.Models.UserPreference) model: Model<IUserPreference>,
-    @inject(TOKENS.Repositories.User) private userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
   ) {
     super(model);
   }
@@ -95,11 +97,19 @@ export class UserPreferenceRepository extends BaseRepository<IUserPreference> {
 
       const userIds = [...new Set(preferences.map((pref) => pref.userId))];
 
-      return await this.userRepository
-        .find({
-          _id: { $in: userIds },
-        })
-        .exec();
+      const users = await Promise.all(
+        userIds.map(async (userId) => {
+          try {
+            return await this.userReadRepository.findById(
+              asMongoId(String(userId)),
+            );
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      return users.filter((user): user is IUser => user !== null);
     } catch (error) {
       if (error instanceof Error) {
         throw wrapError(error);

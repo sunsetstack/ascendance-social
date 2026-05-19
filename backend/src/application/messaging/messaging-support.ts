@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { sessionALS } from "@/database/UnitOfWork";
 import { ConversationRepository } from "@/repositories/conversation.repository";
 import { MessageRepository } from "@/repositories/message.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import { DTOService } from "@/services/dto.service";
 import type {
   ConversationSummaryDTO,
@@ -34,11 +34,11 @@ export interface ConversationAccessResult {
 }
 
 export async function requireUserInternalId(
-  userRepository: UserRepository,
+  userReadRepository: Pick<IUserReadRepository, "findInternalIdByPublicId">,
   userPublicId: UserPublicId,
 ): Promise<MongoId> {
   const userInternalId =
-    await userRepository.findInternalIdByPublicId(userPublicId);
+    await userReadRepository.findInternalIdByPublicId(userPublicId);
   if (!userInternalId) {
     throw Errors.notFound("User");
   }
@@ -47,7 +47,7 @@ export async function requireUserInternalId(
 
 export async function ensureConversationAccess(
   conversationRepository: ConversationRepository,
-  userRepository: UserRepository,
+  userReadRepository: Pick<IUserReadRepository, "findInternalIdByPublicId">,
   userPublicId: UserPublicId,
   conversationPublicId: ConversationPublicId,
 ): Promise<ConversationAccessResult> {
@@ -61,7 +61,7 @@ export async function ensureConversationAccess(
   }
 
   const userInternalId = await requireUserInternalId(
-    userRepository,
+    userReadRepository,
     userPublicId,
   );
   const participantIds = getParticipantIds(conversation.participants);
@@ -78,21 +78,25 @@ export async function ensureConversationAccess(
 }
 
 export async function resolveParticipantPublicIds(
-  userRepository: UserRepository,
+  userReadRepository: Pick<IUserReadRepository, "findById">,
   participantIds: string[],
 ): Promise<UserPublicId[]> {
-  const participantObjectIds = participantIds.map(
-    (participantId) => new mongoose.Types.ObjectId(participantId),
-  );
-  const alsSession = sessionALS.getStore() ?? null;
-  const participantDocs = await userRepository
-    .find({ _id: { $in: participantObjectIds } })
-    .select("publicId")
-    .session(alsSession)
-    .lean<UserPublicIdLean[]>()
-    .exec();
+  const alsSession = sessionALS.getStore();
+  void alsSession;
 
-  return participantDocs.map((doc) => doc.publicId).filter(Boolean);
+  const docs = await Promise.all(
+    participantIds.map(async (participantId) => {
+      try {
+        return await userReadRepository.findById(participantId as MongoId);
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return docs
+    .map((doc) => doc?.publicId)
+    .filter((publicId): publicId is UserPublicId => Boolean(publicId));
 }
 
 export function mapConversationSummary(

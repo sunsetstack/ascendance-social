@@ -1,7 +1,7 @@
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { ListConversationsQuery } from "./listConversations.query";
 import { ConversationRepository } from "@/repositories/conversation.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import { DTOService } from "@/services/dto.service";
 import { PaginatedConversationSummaryResult } from "@/types";
 import { wrapError } from "@/utils/errors";
@@ -22,8 +22,8 @@ export class ListConversationsQueryHandler
   constructor(
     @inject(TOKENS.Repositories.Conversation)
     private readonly conversationRepository: ConversationRepository,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
   ) {}
 
@@ -34,7 +34,7 @@ export class ListConversationsQueryHandler
       const { userPublicId, page = 1, limit = 20 } = query;
 
       const userInternalId = await requireUserInternalId(
-        this.userRepository,
+        this.userReadRepository,
         userPublicId,
       );
 

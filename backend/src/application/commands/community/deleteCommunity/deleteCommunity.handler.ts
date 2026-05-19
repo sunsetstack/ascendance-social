@@ -4,7 +4,7 @@ import { ICommandHandler } from "@/application/common/interfaces/command-handler
 import { DeleteCommunityCommand } from "./deleteCommunity.command";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { Errors } from "@/utils/errors";
 import {
@@ -12,6 +12,7 @@ import {
   asUserPublicId,
   asCommunityPublicId,
 } from "@/types/branded";
+import { TOKENS } from "@/types/tokens";
 
 @injectable()
 export class DeleteCommunityCommandHandler implements ICommandHandler<
@@ -23,7 +24,8 @@ export class DeleteCommunityCommandHandler implements ICommandHandler<
     private communityRepository: CommunityRepository,
     @inject(CommunityMemberRepository)
     private communityMemberRepository: CommunityMemberRepository,
-    @inject(UserRepository) private userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(UnitOfWork) private uow: UnitOfWork,
   ) {}
 
@@ -38,7 +40,7 @@ export class DeleteCommunityCommandHandler implements ICommandHandler<
     }
     const communityId = community._id as Types.ObjectId;
 
-    const user = await this.userRepository.findByPublicId(
+    const user = await this.userReadRepository.findByPublicId(
       asUserPublicId(userPublicId),
     );
     if (!user) {

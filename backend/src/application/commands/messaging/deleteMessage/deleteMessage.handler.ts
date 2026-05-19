@@ -1,7 +1,7 @@
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { DeleteMessageCommand } from "./deleteMessage.command";
 import { MessageRepository } from "@/repositories/message.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { MessageAttachmentsDeletedEvent } from "@/application/events/message/message.event";
@@ -22,8 +22,8 @@ export class DeleteMessageCommandHandler
   constructor(
     @inject(TOKENS.Repositories.Message)
     private readonly messageRepository: MessageRepository,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
@@ -34,7 +34,7 @@ export class DeleteMessageCommandHandler
       const { userPublicId, messageId } = command;
 
       const userInternalId = await requireUserInternalId(
-        this.userRepository,
+        this.userReadRepository,
         userPublicId,
       );
       const message = await requireMessage(this.messageRepository, messageId);

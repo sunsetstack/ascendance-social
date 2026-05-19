@@ -1,7 +1,7 @@
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { InitiateConversationCommand } from "./initiateConversation.command";
 import { ConversationRepository } from "@/repositories/conversation.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { DTOService } from "@/services/dto.service";
 import { ConversationSummaryDTO, HydratedConversation } from "@/types";
@@ -22,8 +22,8 @@ export class InitiateConversationCommandHandler
   constructor(
     @inject(TOKENS.Repositories.Conversation)
     private readonly conversationRepository: ConversationRepository,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
@@ -38,8 +38,8 @@ export class InitiateConversationCommandHandler
       }
 
       const [userInternalId, recipientInternalId] = await Promise.all([
-        requireUserInternalId(this.userRepository, userPublicId),
-        requireUserInternalId(this.userRepository, recipientPublicId),
+        requireUserInternalId(this.userReadRepository, userPublicId),
+        requireUserInternalId(this.userReadRepository, recipientPublicId),
       ]);
 
       const participantIds = [userInternalId, recipientInternalId];

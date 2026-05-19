@@ -1,8 +1,7 @@
 import { UserPublicId, asUserPublicId, asPostPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
-import type { IPostReadRepository } from "@/repositories/interfaces";
+import type { IPostReadRepository, IUserReadRepository } from "@/repositories/interfaces";
 import { PostLikeRepository } from "@/repositories/postLike.repository";
-import { UserRepository } from "@/repositories/user.repository";
 import { TagRepository } from "@/repositories/tag.repository";
 import { DTOService } from "./dto.service";
 import { Errors, wrapError } from "@/utils/errors";
@@ -18,8 +17,8 @@ export class PostService {
     private readonly postRepository: IPostReadRepository,
     @inject(TOKENS.Repositories.PostLike)
     private readonly postLikeRepository: PostLikeRepository,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.Tag)
     private readonly tagRepository: TagRepository,
     @inject(TOKENS.Repositories.Favorite)
@@ -44,7 +43,7 @@ export class PostService {
     if (viewerPublicId) {
       const postInternalId = toObjectId(post._id).toString();
       const viewerInternalId =
-        await this.userRepository.findInternalIdByPublicId(
+        await this.userReadRepository.findInternalIdByPublicId(
           asUserPublicId(viewerPublicId),
         );
 
