@@ -92,7 +92,7 @@ const CommunityMembers: React.FC = () => {
 						<CircularProgress />
 					</Box>
 				) : (
-					members.map((member, idx) => (
+					members.map((member) => (
 						<Box
 							key={`${member.userId.publicId}-${member.role}-${member.joinedAt}`}
 							sx={{

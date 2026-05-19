@@ -7,21 +7,28 @@ import { TOKENS } from "@/types/tokens";
 
 @injectable()
 export class UserCoverChangedHandler implements IEventHandler<UserCoverChangedEvent> {
-	constructor(@inject(TOKENS.Services.Redis) private readonly redis: RedisService) {}
+  constructor(
+    @inject(TOKENS.Services.Redis) private readonly redis: RedisService,
+  ) {}
 
-	async handle(event: UserCoverChangedEvent): Promise<void> {
-		logger.info(
-			`User ${event.userPublicId} changed cover from "${event.oldCoverUrl || "none"}" to "${event.newCoverUrl}"`
-		);
+  async handle(event: UserCoverChangedEvent): Promise<void> {
+    logger.info(
+      `User ${event.userPublicId} changed cover from "${event.oldCoverUrl || "none"}" to "${event.newCoverUrl}"`,
+    );
 
-		try {
-			// invalidate user data caches
-			const coverTags = [`user_data:${event.userPublicId}`];
-			await this.redis.invalidateByTags(coverTags);
+    try {
+      // invalidate user data caches
+      const coverTags = [`user_data:${event.userPublicId}`];
+      await this.redis.invalidateByTags(coverTags);
 
-			logger.info(`Cache invalidation completed for cover change of user ${event.userPublicId}`);
-		} catch (error) {
-			console.error(`Error while handling cover change for user ${event.userPublicId}:`, error);
-		}
-	}
+      logger.info(
+        `Cache invalidation completed for cover change of user ${event.userPublicId}`,
+      );
+    } catch (error) {
+      logger.error(
+        `Error while handling cover change for user ${event.userPublicId}`,
+        { error },
+      );
+    }
+  }
 }

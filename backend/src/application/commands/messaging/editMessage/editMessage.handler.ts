@@ -5,12 +5,16 @@ import { MessageRepository } from "@/repositories/message.repository";
 import { UserRepository } from "@/repositories/user.repository";
 import { DTOService } from "@/services/dto.service";
 import { Errors, wrapError } from "@/utils/errors";
-import { isPopulatedSender } from "@/utils/messaging-helpers";
 import { sanitizeTextInput } from "@/utils/sanitizers";
 import { MessageDTO } from "@/types";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 import { asMongoId } from "@/types/branded";
+import {
+  assertMessageOwnedByUser,
+  requireMessage,
+  requireUserInternalId,
+} from "@/application/messaging/messaging-support";
 
 @injectable()
 export class EditMessageCommandHandler implements ICommandHandler<
@@ -31,31 +35,17 @@ export class EditMessageCommandHandler implements ICommandHandler<
     try {
       const { userPublicId, messageId, newBody } = command;
 
-      const userInternalId =
-        await this.userRepository.findInternalIdByPublicId(userPublicId);
-      if (!userInternalId) {
-        throw Errors.notFound("User");
-      }
-
-      const message = await this.messageRepository.findByPublicId(messageId);
-      if (!message) {
-        throw Errors.notFound("Resource");
-      }
-
-      const sender: unknown = message.sender;
-      if (isPopulatedSender(sender)) {
-        if (sender.publicId !== undefined && sender.publicId !== userPublicId) {
-          throw Errors.forbidden("You can only edit your own messages");
-        }
-        const senderId = sender._id ? sender._id.toString() : "";
-        if (senderId && senderId !== userInternalId) {
-          throw Errors.forbidden("You can only edit your own messages");
-        }
-      } else {
-        if (message.sender.toString() !== userInternalId) {
-          throw Errors.forbidden("You can only edit your own messages");
-        }
-      }
+      const userInternalId = await requireUserInternalId(
+        this.userRepository,
+        userPublicId,
+      );
+      const message = await requireMessage(this.messageRepository, messageId);
+      assertMessageOwnedByUser(
+        message,
+        userPublicId,
+        userInternalId,
+        "You can only edit your own messages",
+      );
 
       const hasAttachments =
         message.attachments && message.attachments.length > 0;

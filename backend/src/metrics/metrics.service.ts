@@ -15,6 +15,10 @@ export class MetricsService {
 	private readonly workerRestarts: client.Counter<string>;
 	private readonly redisUp: client.Gauge<string>;
 	private readonly optionalAuthFailuresTotal: client.Counter<string>;
+	private readonly outboxPendingEvents: client.Gauge<string>;
+	private readonly outboxEventsTotal: client.Counter<string>;
+	private readonly outboxBatchSize: client.Histogram<string>;
+	private readonly outboxEventDuration: client.Histogram<string>;
 
 	constructor() {
 		this.registry = new client.Registry();
@@ -70,6 +74,34 @@ export class MetricsService {
 			labelNames: ["reason", "route"],
 			registers: [this.registry],
 		});
+
+		this.outboxPendingEvents = new client.Gauge({
+			name: "outbox_pending_events",
+			help: "Outbox events waiting to be dispatched",
+			registers: [this.registry],
+		});
+
+		this.outboxEventsTotal = new client.Counter({
+			name: "outbox_events_total",
+			help: "Outbox event processing attempts grouped by event type and outcome",
+			labelNames: ["event_type", "status"],
+			registers: [this.registry],
+		});
+
+		this.outboxBatchSize = new client.Histogram({
+			name: "outbox_batch_size",
+			help: "Number of outbox records fetched per worker tick",
+			buckets: [0, 1, 5, 10, 25, 50, 100],
+			registers: [this.registry],
+		});
+
+		this.outboxEventDuration = new client.Histogram({
+			name: "outbox_event_processing_duration_seconds",
+			help: "Outbox event processing duration by event type and outcome",
+			labelNames: ["event_type", "status"],
+			buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+			registers: [this.registry],
+		});
 	}
 
 	public httpMetricsMiddleware(): RequestHandler {
@@ -112,6 +144,28 @@ export class MetricsService {
 
 	public recordOptionalAuthFailure(reason: string, route: string): void {
 		this.optionalAuthFailuresTotal.labels(reason || "unknown", route || "unknown").inc();
+	}
+
+	public setOutboxPendingCount(count: number): void {
+		this.outboxPendingEvents.set(Math.max(0, count));
+	}
+
+	public recordOutboxBatchSize(size: number): void {
+		this.outboxBatchSize.observe(Math.max(0, size));
+	}
+
+	public recordOutboxAttempt(
+		eventType: string,
+		status: "processed" | "failed",
+		durationMs: number,
+	): void {
+		const normalizedEventType = eventType || "unknown";
+		const normalizedDurationSeconds = Math.max(0, durationMs) / 1000;
+
+		this.outboxEventsTotal.labels(normalizedEventType, status).inc();
+		this.outboxEventDuration
+			.labels(normalizedEventType, status)
+			.observe(normalizedDurationSeconds);
 	}
 
 	/**

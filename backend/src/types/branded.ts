@@ -35,6 +35,10 @@ export type PostPublicId = Branded<string, "PostPublicId">;
 export type ImagePublicId = Branded<string, "ImagePublicId">;
 /** Opaque public identifier for a Community entity. */
 export type CommunityPublicId = Branded<string, "CommunityPublicId">;
+/** Opaque public identifier for a conversation entity. */
+export type ConversationPublicId = Branded<string, "ConversationPublicId">;
+/** Opaque public identifier for a message entity. */
+export type MessagePublicId = Branded<string, "MessagePublicId">;
 /** Opaque public identifier for a Tag entity. */
 export type TagPublicId = Branded<string, "TagPublicId">;
 
@@ -66,6 +70,10 @@ export const asPostPublicId = (s: string): PostPublicId => s as PostPublicId;
 export const asImagePublicId = (s: string): ImagePublicId => s as ImagePublicId;
 export const asCommunityPublicId = (s: string): CommunityPublicId =>
   s as CommunityPublicId;
+export const asConversationPublicId = (s: string): ConversationPublicId =>
+  s as ConversationPublicId;
+export const asMessagePublicId = (s: string): MessagePublicId =>
+  s as MessagePublicId;
 export const asTagPublicId = (s: string): TagPublicId => s as TagPublicId;
 export const asMongoId = (s: string): MongoId => s as MongoId;
 export const asSessionId = (s: string): SessionId => s as SessionId;

@@ -1,12 +1,11 @@
 import React, { useState } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Box, useTheme, useMediaQuery } from "@mui/material";
-import LeftSidebar from "./LeftSidebar";
-import RightSidebar from "./RightSidebar";
-import UploadForm from "./UploadForm";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useTheme, useMediaQuery } from "@mui/material";
 import { MobileLayout } from "./mobile";
 import { useAuth } from "../hooks/context/useAuth";
-import VerifyEmail from "../screens/VerifyEmail";
+import { useEmailVerificationLock } from "../hooks/layout/useEmailVerificationLock";
+import { DesktopAppShell } from "./layout/DesktopAppShell";
+import { EmailVerificationGate } from "./auth/EmailVerificationGate";
 
 const Layout: React.FC = () => {
 	const theme = useTheme();
@@ -15,8 +14,7 @@ const Layout: React.FC = () => {
 	const isMobile = useMediaQuery(theme.breakpoints.down("md"));
 	const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 	const { user } = useAuth();
-	const isEmailVerified = user ? !("isEmailVerified" in user) || user.isEmailVerified !== false : true;
-	const shouldLockToVerification = !!user && !isEmailVerified;
+	const { shouldLockToVerification } = useEmailVerificationLock();
 
 	const isMessagesPage = location.pathname.startsWith("/messages");
 	const isAdminPage = location.pathname.startsWith("/admin");
@@ -37,113 +35,18 @@ const Layout: React.FC = () => {
 	}
 
 	if (shouldLockToVerification) {
-		return (
-			<Box
-				sx={{
-					minHeight: "100vh",
-					display: "flex",
-					alignItems: "center",
-					justifyContent: "center",
-					bgcolor: "background.default",
-				}}
-			>
-				<VerifyEmail />
-			</Box>
-		);
+		return <EmailVerificationGate />;
 	}
 
-	// desktop layout
 	return (
-		<Box
-			sx={{
-				height: isMessagesPage ? "100vh" : "auto",
-				minHeight: "100vh",
-				display: "flex",
-				bgcolor: "background.default",
-				justifyContent: "center",
-				overflow: isMessagesPage ? "hidden" : "visible",
-			}}
-		>
-			<Box
-				sx={{
-					display: "flex",
-					width: "100%",
-					maxWidth: "1280px",
-					height: isMessagesPage ? "100%" : "auto",
-				}}
-			>
-				{/* --- Left Sidebar --- */}
-				<Box
-					component="header"
-					sx={{
-						width: { md: 88, lg: 275 },
-						flexShrink: 0,
-						display: "flex",
-						flexDirection: "column",
-						alignItems: { md: "center", lg: "flex-start" },
-					}}
-				>
-					<Box
-						sx={{
-							position: "fixed",
-							height: "100vh",
-							width: { md: 88, lg: 275 },
-							zIndex: 10,
-							borderRight: `1px solid ${theme.palette.divider}`,
-						}}
-					>
-						<LeftSidebar onPostClick={handleOpenUploadModal} />
-					</Box>
-				</Box>
-
-				{/* --- Main Content Area --- */}
-				<Box
-					component="main"
-					sx={{
-						flexGrow: 1,
-						flexShrink: 1,
-						display: "flex",
-						flexDirection: "column",
-						minWidth: 0,
-						minHeight: 0,
-						borderRight: !isMessagesPage && !isAdminPage && !isSettingsPage ? `1px solid ${theme.palette.divider}` : "none",
-						maxWidth: isMessagesPage || isAdminPage ? "100%" : isSettingsPage ? 900 : 600,
-						width: "100%",
-						height: isMessagesPage ? "100%" : "auto",
-						overflow: isMessagesPage ? "hidden" : "visible",
-					}}
-				>
-					<Outlet />
-				</Box>
-
-				{/* --- Right Sidebar (Desktop) --- */}
-				{!isMessagesPage && !isAdminPage && !isSettingsPage && (
-					<Box
-						sx={{
-							marginLeft: 3,
-							width: 350,
-							flexShrink: 0,
-							display: { xs: "none", md: "none", lg: "block" },
-						}}
-					>
-						<Box
-							sx={{
-								position: "fixed",
-								height: "100vh",
-								width: 350,
-								zIndex: 10,
-								overflowY: "auto",
-							}}
-						>
-							<RightSidebar />
-						</Box>
-					</Box>
-				)}
-			</Box>
-
-			{/* Upload Modal */}
-			{isUploadModalOpen && <UploadForm onClose={handleCloseUploadModal} />}
-		</Box>
+		<DesktopAppShell
+			isMessagesPage={isMessagesPage}
+			isAdminPage={isAdminPage}
+			isSettingsPage={isSettingsPage}
+			isUploadModalOpen={isUploadModalOpen}
+			onCloseUploadModal={handleCloseUploadModal}
+			onOpenUploadModal={handleOpenUploadModal}
+		/>
 	);
 };
 

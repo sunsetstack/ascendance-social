@@ -256,7 +256,7 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
 				{hasChildren && isExplore && (
 					<Collapse in={exploreExpanded} timeout="auto" unmountOnExit>
 						<Box sx={{ pl: 2 }}>
-							{item.children!.map((child, childIndex) => (
+							{item.children?.map((child, childIndex) => (
 								<Box
 									key={child.label + childIndex}
 									onClick={() => handleNavClick(child.path)}
@@ -290,6 +290,12 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
 			</React.Fragment>
 		);
 	};
+
+	const renderSection = (items: NavItem[], divider: boolean = true) => (
+		<Box sx={{ py: 1, ...(divider && { borderBottom: `1px solid ${theme.palette.divider}` }) }}>
+			{items.map(renderNavItem)}
+		</Box>
+	);
 
 	return (
 		<>
@@ -369,17 +375,13 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
 						</Box>
 
 						{/* dangerous actions at bottom (settings, logout) */}
-						<Box sx={{ pt: 1, pb: 1, borderBottom: `1px solid ${theme.palette.divider}` }}>
-							{topNavItems.map(renderNavItem)}
-						</Box>
+						{renderSection(topNavItems)}
 
 						{/* middle items (profile, favorites, admin) */}
-						<Box sx={{ py: 1, borderBottom: `1px solid ${theme.palette.divider}` }}>
-							{middleNavItems.map(renderNavItem)}
-						</Box>
+						{renderSection(middleNavItems)}
 
 						{/* frequent actions at bottom (home, explore, communities, messages, notifications) */}
-						<Box sx={{ py: 1 }}>{bottomNavItems.map(renderNavItem)}</Box>
+						{renderSection(bottomNavItems, false)}
 					</>
 				) : (
 					<Box sx={{ p: 3, textAlign: "center" }}>

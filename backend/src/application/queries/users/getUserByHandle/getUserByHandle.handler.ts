@@ -1,6 +1,6 @@
 import { inject, injectable } from "tsyringe";
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
-import { GetUserByHandleQuery } from "./getUserByUsername.query";
+import { GetUserByHandleQuery } from "./getUserByHandle.query";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
 import { DTOService, PublicUserDTO } from "@/services/dto.service";
 import { Errors } from "@/utils/errors";

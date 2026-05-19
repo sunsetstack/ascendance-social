@@ -3,13 +3,15 @@ import { singleton } from "tsyringe";
 import { z } from "zod";
 import pino from "pino";
 
-// Validate & parse env early
 const envSchema = z.object({
-  MONGODB_URI: z.string().url().default("mongodb://127.0.0.1:27017/image-app"),
+  MONGODB_URI: z.string().url(),
   DB_MAX_RETRIES: z.coerce.number().default(10),
   DB_RETRY_INTERVAL_MS: z.coerce.number().default(5000),
 });
-const env = envSchema.parse(process.env);
+
+function readDatabaseEnv() {
+  return envSchema.parse(process.env);
+}
 
 // Central logger
 const logger = pino({
@@ -18,11 +20,15 @@ const logger = pino({
 
 @singleton()
 export class DatabaseConfig {
-  private uri = env.MONGODB_URI;
-  private maxRetries = env.DB_MAX_RETRIES;
-  private retryInterval = env.DB_RETRY_INTERVAL_MS;
+  private readonly uri: string;
+  private readonly maxRetries: number;
+  private readonly retryInterval: number;
 
   constructor() {
+    const env = readDatabaseEnv();
+    this.uri = env.MONGODB_URI;
+    this.maxRetries = env.DB_MAX_RETRIES;
+    this.retryInterval = env.DB_RETRY_INTERVAL_MS;
     this.handleProcessSignals();
   }
 

@@ -6,17 +6,14 @@ import {
 	ListItemButton,
 	ListItemIcon,
 	ListItemText,
-	Paper,
 	useMediaQuery,
 	useTheme,
-	IconButton,
 	alpha,
 } from "@mui/material";
 import {
 	Person as PersonIcon,
 	Lock as LockIcon,
 	PersonOff as PersonOffIcon,
-	ArrowBack as ArrowBackIcon,
 	ChevronRight as ChevronRightIcon,
 } from "@mui/icons-material";
 import AccountInfo from "../components/settings/AccountInfo";

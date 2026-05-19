@@ -1,4 +1,8 @@
-import { UserPublicId } from "@/types/branded";
+import {
+  ConversationPublicId,
+  MessagePublicId,
+  UserPublicId,
+} from "@/types/branded";
 import { IEvent } from "@/application/common/interfaces/event.interface";
 
 export class MessageSentEvent implements IEvent {
@@ -6,10 +10,10 @@ export class MessageSentEvent implements IEvent {
   public readonly timestamp = new Date();
 
   constructor(
-    public readonly conversationPublicId: string,
+    public readonly conversationPublicId: ConversationPublicId,
     public readonly senderPublicId: UserPublicId,
-    public readonly recipientPublicIds: string[],
-    public readonly messagePublicId: string,
+    public readonly recipientPublicIds: UserPublicId[],
+    public readonly messagePublicId: MessagePublicId,
   ) {}
 }
 
@@ -18,8 +22,8 @@ export class MessageStatusUpdatedEvent implements IEvent {
   public readonly timestamp = new Date();
 
   constructor(
-    public readonly conversationPublicId: string,
-    public readonly participantPublicIds: string[],
+    public readonly conversationPublicId: ConversationPublicId,
+    public readonly participantPublicIds: UserPublicId[],
     public readonly status: "delivered" | "read",
   ) {}
 }

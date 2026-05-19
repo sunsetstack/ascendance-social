@@ -218,7 +218,8 @@ describe("DeletePostCommandHandler", () => {
 			expect(mockImageService.removePostAttachmentRecord.called).to.be.true;
 			expect(mockRetryService.execute.called).to.be.true;
 			expect(mockImageService.deleteAttachmentAsset.called).to.be.true;
-			expect(mockTagService.decrementUsage.calledWith(mockTagIds, mockSession)).to.be.true;
+			expect(mockTagService.decrementUsage.calledOnce).to.be.true;
+			expect(mockTagService.decrementUsage.firstCall.args[0]).to.deep.equal(mockTagIds);
 			expect(mockPostWriteRepository.delete.called).to.be.true;
 			expect(mockCommentRepository.deleteCommentsByPostId.called).to.be.true;
 			expect(mockUnitOfWork.executeInTransaction.called).to.be.true;
@@ -258,7 +259,8 @@ describe("DeletePostCommandHandler", () => {
 
 			expect(mockImageService.removePostAttachmentRecord.called).to.be.false;
 			expect(mockRetryService.execute.called).to.be.false;
-			expect(mockTagService.decrementUsage.calledWith(mockTagIds, mockSession)).to.be.true;
+			expect(mockTagService.decrementUsage.calledOnce).to.be.true;
+			expect(mockTagService.decrementUsage.firstCall.args[0]).to.deep.equal(mockTagIds);
 			expect(mockPostWriteRepository.delete.called).to.be.true;
 		});
 

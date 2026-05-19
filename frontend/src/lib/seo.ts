@@ -1,25 +1,24 @@
-import { Helmet } from "react-helmet-async";
-
 const SITE_NAME = "Ascendance Social";
 const DEFAULT_SITE_URL = "https://ascendance.social";
-const DEFAULT_TITLE = `${SITE_NAME} - Community-driven social media`;
-const DEFAULT_DESCRIPTION =
+
+export const DEFAULT_TITLE = `${SITE_NAME} - Community-driven social media`;
+export const DEFAULT_DESCRIPTION =
 	"Ascendance Social is a modern social media platform for discovering communities, sharing posts, and connecting with people.";
-const DEFAULT_IMAGE = "/logo.svg";
+export const DEFAULT_IMAGE = "/logo.svg";
 
 const siteUrl = (import.meta.env.VITE_SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, "");
 
-const normalizeText = (value: string | undefined, fallback: string): string => {
+export const normalizeText = (value: string | undefined, fallback: string): string => {
 	const normalized = value?.replace(/\s+/g, " ").trim();
 	return normalized && normalized.length > 0 ? normalized : fallback;
 };
 
-const truncate = (value: string, max = 160): string => {
+export const truncate = (value: string, max = 160): string => {
 	if (value.length <= max) return value;
 	return `${value.slice(0, max - 1).trimEnd()}...`;
 };
 
-const buildAbsoluteUrl = (value: string): string => {
+export const buildAbsoluteUrl = (value: string): string => {
 	if (value.startsWith("http://") || value.startsWith("https://")) return value;
 	const normalizedPath = value.startsWith("/") ? value : `/${value}`;
 	return `${siteUrl}${normalizedPath}`;
@@ -142,7 +141,14 @@ export const buildProfileMetadata = ({ id, handle, username, bio }: ProfileMetad
 	};
 };
 
-export const buildPostMetadata = ({ id, body, authorHandle, authorName, image, communityName }: PostMetadataOptions): SeoMetadata => {
+export const buildPostMetadata = ({
+	id,
+	body,
+	authorHandle,
+	authorName,
+	image,
+	communityName,
+}: PostMetadataOptions): SeoMetadata => {
 	const author = normalizeText(authorName, authorHandle ? `@${authorHandle}` : "Ascendance user");
 	const fallback = communityName
 		? `Read a post by ${author} in ${communityName} on Ascendance Social.`
@@ -157,36 +163,4 @@ export const buildPostMetadata = ({ id, body, authorHandle, authorName, image, c
 		type: "article",
 		keywords: "social post, community post, discussion",
 	};
-};
-
-export const PageSeo = ({ title, description, path = "/", image, type = "website", noindex, keywords }: SeoMetadata) => {
-	const resolvedTitle = title || DEFAULT_TITLE;
-	const resolvedDescription = truncate(normalizeText(description, DEFAULT_DESCRIPTION));
-	const canonicalUrl = buildAbsoluteUrl(path);
-	const imageUrl = buildAbsoluteUrl(image || DEFAULT_IMAGE);
-	const robots = noindex
-		? "noindex,nofollow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"
-		: "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1";
-
-	return (
-		<Helmet prioritizeSeoTags>
-			<title>{resolvedTitle}</title>
-			<meta name="description" content={resolvedDescription} />
-			<meta name="robots" content={robots} />
-			{keywords ? <meta name="keywords" content={keywords} /> : null}
-			<link rel="canonical" href={canonicalUrl} />
-
-			<meta property="og:type" content={type} />
-			<meta property="og:site_name" content={SITE_NAME} />
-			<meta property="og:title" content={resolvedTitle} />
-			<meta property="og:description" content={resolvedDescription} />
-			<meta property="og:url" content={canonicalUrl} />
-			<meta property="og:image" content={imageUrl} />
-
-			<meta name="twitter:card" content="summary_large_image" />
-			<meta name="twitter:title" content={resolvedTitle} />
-			<meta name="twitter:description" content={resolvedDescription} />
-			<meta name="twitter:image" content={imageUrl} />
-		</Helmet>
-	);
 };

@@ -4,7 +4,8 @@ import { usePostsByTag } from "../hooks/posts/usePosts";
 import { Avatar, Box, Button, CircularProgress, Typography } from "@mui/material";
 import Gallery from "../components/Gallery";
 import { Link, useLocation } from "react-router-dom";
-import { PageSeo, buildSearchMetadata } from "../lib/seo";
+import { PageSeo } from "../lib/PageSeo";
+import { buildSearchMetadata } from "../lib/seo";
 
 const SearchResults = () => {
 	const location = useLocation();

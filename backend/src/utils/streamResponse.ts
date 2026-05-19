@@ -101,7 +101,7 @@ export function streamCursorResponse<T>(
 
     // Close array and object
     safeWrite(res, "]}");
-  } catch (error) {
+  } catch {
     // If we havent started writing, we can still send a proper error
     // If we have then the response is already corrupted so we just end it
     if (!res.headersSent) {
@@ -186,7 +186,7 @@ export function streamPaginatedResponse<T>(
 
     // Close array and object
     safeWrite(res, "]}");
-  } catch (error) {
+  } catch {
     if (!res.headersSent) {
       res.status(500).json({ error: "Failed to serialize response" });
       return;
@@ -266,7 +266,7 @@ export async function streamFromGenerator<T>(
       // Close object
       safeWrite(res, "}");
     }
-  } catch (error) {
+  } catch {
     if (!res.headersSent) {
       res.status(500).json({ error: "Failed to stream response" });
       return;

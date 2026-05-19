@@ -215,10 +215,9 @@ export class GetTrendingTagsQueryHandler implements IQueryHandler<
         `[GetTrendingTagsQuery] Cache invalidated (keys deleted: ${deleted})`,
       );
     } catch (error) {
-      console.error(
-        "[GetTrendingTagsQuery] Failed to invalidate cache:",
+      logger.error("[GetTrendingTagsQuery] Failed to invalidate cache", {
         error,
-      );
+      });
     }
   }
 

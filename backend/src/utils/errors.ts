@@ -422,9 +422,8 @@ export class ErrorHandler {
       ...(appError.errorCode && { errorCode: appError.errorCode }),
     };
 
-    if (appError.context) response.context = appError.context;
-
     if (process.env.NODE_ENV !== "production") {
+      if (appError.context) response.context = appError.context;
       response.stack = appError.stack;
       if (appError.cause instanceof Error) {
         // Expose DB layer stacktrace locally

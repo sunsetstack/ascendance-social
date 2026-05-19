@@ -19,13 +19,13 @@ import { BanUserCommand } from "@/application/commands/admin/banUser/banUser.com
 import { UnbanUserCommand } from "@/application/commands/admin/unbanUser/unbanUser.command";
 import { PromoteToAdminCommand } from "@/application/commands/admin/promoteToAdmin/promoteToAdmin.command";
 import { DemoteFromAdminCommand } from "@/application/commands/admin/demoteFromAdmin/demoteFromAdmin.command";
+import { ClearCacheCommand } from "@/application/commands/admin/clearCache/clearCache.command";
 import { DeleteCommentCommand } from "@/application/commands/comments/deleteComment/deleteComment.command";
 import { RemoveFavoriteAdminCommand } from "@/application/commands/favorite/removeFavoriteAdmin/removeFavoriteAdmin.command";
 import { AdminUserDTO } from "@/services/dto.service";
 import { escapeRegex } from "@/utils/sanitizers";
-import { RedisService } from "@/services/redis.service";
-import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
+import { ClearCacheResult } from "@/application/commands/admin/clearCache/clearCache.handler";
 import { asPostPublicId, asUserPublicId } from "@/types/branded";
 import type {
   AdminFavoriteParams,
@@ -51,7 +51,6 @@ export class AdminUserController {
   constructor(
     @inject(TOKENS.CQRS.Commands.Bus) private readonly commandBus: CommandBus,
     @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
-    @inject(TOKENS.Services.Redis) private readonly redisService: RedisService,
   ) {}
 
   getAllUsersAdmin = async (
@@ -291,31 +290,10 @@ export class AdminUserController {
     req: TypedRequest<EmptyParams, EmptyBody, CacheClearQuery>,
     res: Response,
   ) => {
-    const { pattern } = req.query;
-    const patternToDelete = pattern ?? "all_feeds";
-
-    let deletedCount = 0;
-
-    if (patternToDelete === "all_feeds") {
-      // clear all feed-related cache patterns
-      const patterns = [
-        ...CacheKeyBuilder.getGlobalFeedPatterns(true),
-        "tag:*",
-        "key_tags:*",
-      ];
-
-      for (const p of patterns) {
-        deletedCount += await this.redisService.del(p);
-      }
-    } else {
-      deletedCount = await this.redisService.del(patternToDelete);
-    }
-
-    res.status(200).json({
-      message: "Cache cleared successfully",
-      pattern: patternToDelete,
-      deletedKeys: deletedCount,
-    });
+    const result = await this.commandBus.dispatch<ClearCacheResult>(
+      new ClearCacheCommand(req.query.pattern),
+    );
+    res.status(200).json(result);
   };
 
   // === REQUEST LOGS ===

@@ -16,6 +16,9 @@ import { logger } from "@/utils/winston";
 import { authCookieNames } from "@/config/cookieConfig";
 import { AuthSessionService } from "@/services/auth-session.service";
 import { MetricsService } from "@/metrics/metrics.service";
+import { getClientIp } from "@/utils/request-ip";
+import { getRateLimitStoreOptions } from "@/config/rateLimit";
+import { TOKENS } from "@/types/tokens";
 
 declare global {
   namespace Express {
@@ -31,7 +34,10 @@ export abstract class AuthStrategy {
 }
 
 export class BearerTokenStrategy extends AuthStrategy {
-  constructor(private secret: string) {
+  constructor(
+    private secret: string,
+    private readonly authSessionService: AuthSessionService,
+  ) {
     super();
   }
 
@@ -43,10 +49,9 @@ export class BearerTokenStrategy extends AuthStrategy {
     if (!token) {
       // Some proxies may strip cookie; log incoming headers for diagnostics in dev
       if (process.env.NODE_ENV !== "production") {
-        logger.info(
-          "[AUTH][DEBUG] No token cookie. Incoming headers:",
-          req.headers,
-        );
+        logger.debug("[AUTH][DEBUG] No token cookie header values available", {
+          headerKeys: Object.keys(req.headers),
+        });
       }
     }
     if (!token) {
@@ -91,16 +96,16 @@ export class BearerTokenStrategy extends AuthStrategy {
           typeof verified.isAdmin === "boolean" ? verified.isAdmin : false,
       };
 
-      const authSessionService =
-        container.resolve<AuthSessionService>("AuthSessionService");
-      await authSessionService.assertAccessSession(
+      const session = await this.authSessionService.assertAccessSession(
         verified.sid,
         verified.publicId,
       );
+      if (typeof session.isEmailVerified === "boolean") {
+        payload.isEmailVerified = session.isEmailVerified;
+      } else if (typeof verified.isEmailVerified === "boolean") {
+        payload.isEmailVerified = verified.isEmailVerified;
+      }
 
-      logger.info(
-        `[AUTH] User from token: ${payload.username} (${payload.publicId})`,
-      );
       return payload;
     } catch (err) {
       if (isErrorWithStatusCode(err)) {
@@ -122,12 +127,30 @@ export class BearerTokenStrategy extends AuthStrategy {
 }
 
 export class AuthenticationMiddleware {
-  constructor(private strategy: AuthStrategy) {}
+  constructor(
+    private strategy: AuthStrategy,
+    private readonly userReadRepository: IUserReadRepository,
+    private readonly metricsService: MetricsService | null,
+  ) {}
 
   private async enforceVerifiedEmail(decodedUser: DecodedUser): Promise<void> {
-    const userReadRepository =
-      container.resolve<IUserReadRepository>("UserReadRepository");
-    const user = await userReadRepository.findByPublicId(decodedUser.publicId);
+    if (decodedUser.isEmailVerified === true) {
+      return;
+    }
+
+    if (decodedUser.isEmailVerified === false) {
+      throw Errors.forbidden("Email verification required", {
+        context: {
+          userId: decodedUser.publicId,
+          emailVerified: false,
+        },
+        errorCode: ErrorCode.EMAIL_NOT_VERIFIED,
+      });
+    }
+
+    const user = await this.userReadRepository.findByPublicId(
+      decodedUser.publicId,
+    );
 
     if (!user) {
       throw Errors.authentication("User not found", {
@@ -144,6 +167,8 @@ export class AuthenticationMiddleware {
         errorCode: ErrorCode.EMAIL_NOT_VERIFIED,
       });
     }
+
+    decodedUser.isEmailVerified = true;
   }
 
   private getOptionalAuthFailureReason(error: unknown): string {
@@ -176,9 +201,7 @@ export class AuthenticationMiddleware {
     }
 
     try {
-      const metricsService =
-        container.resolve<MetricsService>("MetricsService");
-      metricsService.recordOptionalAuthFailure(reason, route);
+      this.metricsService?.recordOptionalAuthFailure(reason, route);
     } catch (metricsError) {
       logger.warn("[AUTH][OPTIONAL] Failed to record auth metric", {
         error:
@@ -194,9 +217,6 @@ export class AuthenticationMiddleware {
       try {
         req.decodedUser = await this.strategy.authenticate(req);
         await this.enforceVerifiedEmail(req.decodedUser);
-        logger.info(
-          `[AUTH] User authenticated: ${req.decodedUser.username} (${req.decodedUser.publicId})`,
-        );
         next();
       } catch (error) {
         // Preserve original AppError Wwith statusCode
@@ -221,9 +241,6 @@ export class AuthenticationMiddleware {
       try {
         req.decodedUser = await this.strategy.authenticate(req);
         await this.enforceVerifiedEmail(req.decodedUser);
-        logger.info(
-          `[AUTH] Optional auth - User authenticated: ${req.decodedUser.username}`,
-        );
       } catch (error) {
         req.decodedUser = undefined;
         this.recordOptionalAuthFailure(req, error);
@@ -235,24 +252,28 @@ export class AuthenticationMiddleware {
 
 // Admin-specific rate limiting
 export const adminRateLimit = rateLimit({
+  ...getRateLimitStoreOptions("admin"),
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 50, // 50 admin actions per 5 minutes
   message: "Too many admin actions, please slow down",
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `admin-${req.decodedUser?.publicId || req.ip}`,
+  keyGenerator: (req) =>
+    `admin-${req.decodedUser?.publicId || getClientIp(req)}`,
 });
 
 export const forgotPasswordIpRateLimit = rateLimit({
+  ...getRateLimitStoreOptions("forgot-password-ip"),
   windowMs: Number(process.env.FORGOT_PASSWORD_IP_WINDOW_MS) || 15 * 60 * 1000,
   max: Number(process.env.FORGOT_PASSWORD_IP_MAX) || 5,
   message: "Too many password reset requests, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `forgot-password-ip:${req.ip}`,
+  keyGenerator: (req) => `forgot-password-ip:${getClientIp(req)}`,
 });
 
 export const forgotPasswordEmailRateLimit = rateLimit({
+  ...getRateLimitStoreOptions("forgot-password-email"),
   windowMs:
     Number(process.env.FORGOT_PASSWORD_EMAIL_WINDOW_MS) || 60 * 60 * 1000,
   max: Number(process.env.FORGOT_PASSWORD_EMAIL_MAX) || 3,
@@ -267,6 +288,18 @@ export const forgotPasswordEmailRateLimit = rateLimit({
     return `forgot-password-email:${email || "unknown"}`;
   },
 });
+
+let userReadRepository: IUserReadRepository | null = null;
+
+function getUserReadRepository(): IUserReadRepository {
+  if (!userReadRepository) {
+    userReadRepository = container.resolve<IUserReadRepository>(
+      TOKENS.Repositories.UserRead,
+    );
+  }
+
+  return userReadRepository;
+}
 
 // Enhanced admin-only middleware (requires authentication first)
 export const enhancedAdminOnly = async (
@@ -295,9 +328,9 @@ export const enhancedAdminOnly = async (
 
     // Fetch fresh user data from DB to check current ban status
     // JWT may have been issued before user was banned
-    const userReadRepository =
-      container.resolve<IUserReadRepository>("UserReadRepository");
-    const user = await userReadRepository.findByPublicId(decodedUser.publicId);
+    const user = await getUserReadRepository().findByPublicId(
+      decodedUser.publicId,
+    );
 
     if (!user) {
       logger.warn(
@@ -386,17 +419,57 @@ export const adminActionValidation = (requiredFields: string[] = []) => {
 
 // Factory for common authentication types
 export class AuthFactory {
+  private static resolveDependencies(): {
+    authSessionService: AuthSessionService;
+    userReadRepository: IUserReadRepository;
+    metricsService: MetricsService | null;
+  } {
+    let metricsService: MetricsService | null = null;
+
+    try {
+      metricsService = container.resolve<MetricsService>(
+        TOKENS.Services.Metrics,
+      );
+    } catch {
+      metricsService = null;
+    }
+
+    return {
+      authSessionService: container.resolve<AuthSessionService>(
+        TOKENS.Services.AuthSession,
+      ),
+      userReadRepository: container.resolve<IUserReadRepository>(
+        TOKENS.Repositories.UserRead,
+      ),
+      metricsService,
+    };
+  }
+
   static bearerToken(): AuthenticationMiddleware {
     const secret = process.env.JWT_SECRET;
     if (!secret) throw Errors.config("JWT_SECRET not configured");
 
-    return new AuthenticationMiddleware(new BearerTokenStrategy(secret));
+    const { authSessionService, userReadRepository, metricsService } =
+      this.resolveDependencies();
+
+    return new AuthenticationMiddleware(
+      new BearerTokenStrategy(secret, authSessionService),
+      userReadRepository,
+      metricsService,
+    );
   }
 
   static optionalBearerToken(): AuthenticationMiddleware {
     const secret = process.env.JWT_SECRET;
     if (!secret) throw Errors.config("JWT_SECRET not configured");
 
-    return new AuthenticationMiddleware(new BearerTokenStrategy(secret));
+    const { authSessionService, userReadRepository, metricsService } =
+      this.resolveDependencies();
+
+    return new AuthenticationMiddleware(
+      new BearerTokenStrategy(secret, authSessionService),
+      userReadRepository,
+      metricsService,
+    );
   }
 }

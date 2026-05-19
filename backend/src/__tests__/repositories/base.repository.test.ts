@@ -106,19 +106,19 @@ describe("BaseRepository", () => {
 			expect(result).to.deep.equal(expectedDoc);
 		});
 
-		it("should create a document with session if provided", async () => {
+		it("should create a document without binding a session outside UnitOfWork", async () => {
 			const expectedDoc = createMockDocInstance(testData);
 			mockModel.withArgs(testData).returns(expectedDoc);
 			expectedDoc.save.resolves(expectedDoc);
 
-			await repository.create(testData, mockSession);
+			await repository.create(testData);
 
 			expect(mockModel.calledOnceWith(testData)).to.be.true;
-			expect(expectedDoc.$session.calledOnceWith(mockSession)).to.be.true;
-			expect(expectedDoc.save.calledOnce).to.be.true;
+			expect(expectedDoc.$session.called).to.be.false;
+			expect(expectedDoc.save.calledOnceWith({ session: undefined })).to.be.true;
 		});
 
-		it("should throw UoWError on save failure", async () => {
+		it("should throw DatabaseError on save failure", async () => {
 			const saveError = new Error("Save failed");
 			const expectedDoc = createMockDocInstance(testData);
 			mockModel.withArgs(testData).returns(expectedDoc);
@@ -128,7 +128,7 @@ describe("BaseRepository", () => {
 				await repository.create(testData);
 				throw new Error("Expected create() to throw");
 			} catch (err: any) {
-				expect(err.name).to.equal("UoWError");
+				expect(err.name).to.equal("DatabaseError");
 				expect(err.message).to.equal(saveError.message);
 			}
 		});
@@ -150,16 +150,6 @@ describe("BaseRepository", () => {
 			expect(result).to.deep.equal(updatedDoc);
 		});
 
-		it("should use session when updating", async () => {
-			mockQuery.exec.resolves(updatedDoc);
-
-			await repository.update(docId, updateData, mockSession);
-
-			expect(mockModel.findByIdAndUpdate.calledOnce).to.be.true;
-			expect(mockQuery.session.calledOnceWith(mockSession)).to.be.true;
-			expect(mockQuery.exec.calledOnce).to.be.true;
-		});
-
 		it("should return null if document to update is not found", async () => {
 			mockQuery.exec.resolves(null);
 
@@ -168,7 +158,7 @@ describe("BaseRepository", () => {
 			expect(result).to.be.null;
 		});
 
-		it("should throw UoWError on update failure", async () => {
+		it("should throw DatabaseError on update failure", async () => {
 			const updateError = new Error("Update failed");
 			mockQuery.exec.rejects(updateError);
 
@@ -176,7 +166,7 @@ describe("BaseRepository", () => {
 				await repository.update(docId, updateData);
 				throw new Error("Expected update() to throw");
 			} catch (err: any) {
-				expect(err.name).to.equal("UoWError");
+				expect(err.name).to.equal("DatabaseError");
 				expect(err.message).to.equal(updateError.message);
 			}
 		});
@@ -197,16 +187,6 @@ describe("BaseRepository", () => {
 			expect(result).to.be.true;
 		});
 
-		it("should use session when deleting", async () => {
-			mockQuery.exec.resolves(deletedDoc);
-
-			await repository.delete(docId, mockSession);
-
-			expect(mockModel.findOneAndDelete.calledOnce).to.be.true;
-			expect(mockQuery.session.calledOnceWith(mockSession)).to.be.true;
-			expect(mockQuery.exec.calledOnce).to.be.true;
-		});
-
 		it("should return false if document to delete is not found", async () => {
 			mockQuery.exec.resolves(null);
 
@@ -215,7 +195,7 @@ describe("BaseRepository", () => {
 			expect(result).to.be.false;
 		});
 
-		it("should throw UoWError on delete failure", async () => {
+		it("should throw DatabaseError on delete failure", async () => {
 			const deleteError = new Error("Delete failed");
 			mockQuery.exec.rejects(deleteError);
 
@@ -223,7 +203,7 @@ describe("BaseRepository", () => {
 				await repository.delete(docId);
 				throw new Error("Expected delete() to throw");
 			} catch (err: any) {
-				expect(err.name).to.equal("UoWError");
+				expect(err.name).to.equal("DatabaseError");
 				expect(err.message).to.equal(deleteError.message);
 			}
 		});
@@ -238,27 +218,17 @@ describe("BaseRepository", () => {
 
 			const result = await repository.findById(docId);
 
-			expect(mockModel.findById.calledOnceWith({ _id: docId })).to.be.true;
+			expect(mockModel.findById.calledOnceWith(docId)).to.be.true;
 			expect(mockQuery.session.called).to.be.false;
 			expect(mockQuery.select.called).to.be.false;
 			expect(mockQuery.exec.calledOnce).to.be.true;
 			expect(result).to.deep.equal(foundDoc);
 		});
 
-		it("should use session when finding by ID", async () => {
-			mockQuery.exec.resolves(foundDoc);
-
-			await repository.findById(docId, mockSession);
-
-			expect(mockModel.findById.calledOnce).to.be.true;
-			expect(mockQuery.session.calledOnceWith(mockSession)).to.be.true;
-			expect(mockQuery.exec.calledOnce).to.be.true;
-		});
-
 		it("should select password field when option is provided", async () => {
 			mockQuery.exec.resolves(foundDoc);
 
-			await repository.findById(docId, undefined, { selectPassword: true });
+			await repository.findById(docId, { selectPassword: true });
 
 			expect(mockModel.findById.calledOnce).to.be.true;
 			expect(mockQuery.select.calledOnceWith("+password")).to.be.true;
@@ -273,7 +243,7 @@ describe("BaseRepository", () => {
 			expect(result).to.be.null;
 		});
 
-		it("should throw UoWError on find failure", async () => {
+		it("should throw DatabaseError on find failure", async () => {
 			const findError = new Error("Find failed");
 			mockQuery.exec.rejects(findError);
 
@@ -281,7 +251,7 @@ describe("BaseRepository", () => {
 				await repository.findById(docId);
 				throw new Error("Expected findById() to throw");
 			} catch (err: any) {
-				expect(err.name).to.equal("UoWError");
+				expect(err.name).to.equal("DatabaseError");
 				expect(err.message).to.equal(findError.message);
 			}
 		});
@@ -303,16 +273,6 @@ describe("BaseRepository", () => {
 			expect(result).to.deep.equal(updatedDoc);
 		});
 
-		it("should use session when finding and updating", async () => {
-			mockQuery.exec.resolves(updatedDoc);
-
-			await repository.findOneAndUpdate(filter, update, mockSession);
-
-			expect(mockModel.findOneAndUpdate.calledOnce).to.be.true;
-			expect(mockQuery.session.calledOnceWith(mockSession)).to.be.true;
-			expect(mockQuery.exec.calledOnce).to.be.true;
-		});
-
 		it("should return null if document is not found", async () => {
 			mockQuery.exec.resolves(null);
 
@@ -321,7 +281,7 @@ describe("BaseRepository", () => {
 			expect(result).to.be.null;
 		});
 
-		it("should throw UoWError on findOneAndUpdate failure", async () => {
+		it("should throw DatabaseError on findOneAndUpdate failure", async () => {
 			const updateError = new Error("FindOneAndUpdate failed");
 			mockQuery.exec.rejects(updateError);
 
@@ -329,7 +289,7 @@ describe("BaseRepository", () => {
 				await repository.findOneAndUpdate(filter, update);
 				throw new Error("Expected findOneAndUpdate() to throw");
 			} catch (err: any) {
-				expect(err.name).to.equal("UoWError");
+				expect(err.name).to.equal("DatabaseError");
 				expect(err.message).to.equal(updateError.message);
 			}
 		});
@@ -360,18 +320,7 @@ describe("BaseRepository", () => {
 			expect(result).to.equal(expectedCount);
 		});
 
-		it("should use session when counting documents", async () => {
-			const expectedCount = 30;
-			mockQuery.exec.resolves(expectedCount);
-
-			await repository.countDocuments({}, mockSession);
-
-			expect(mockModel.countDocuments.calledOnce).to.be.true;
-			expect(mockQuery.session.calledOnceWith(mockSession)).to.be.true;
-			expect(mockQuery.exec.calledOnce).to.be.true;
-		});
-
-		it("should throw UoWError on count failure", async () => {
+		it("should throw DatabaseError on count failure", async () => {
 			const countError = new Error("Count failed");
 			mockQuery.exec.rejects(countError);
 
@@ -379,7 +328,7 @@ describe("BaseRepository", () => {
 				await repository.countDocuments();
 				throw new Error("Expected countDocuments() to throw");
 			} catch (err: any) {
-				expect(err.name).to.equal("UoWError");
+				expect(err.name).to.equal("DatabaseError");
 				expect(err.message).to.equal(countError.message);
 			}
 		});

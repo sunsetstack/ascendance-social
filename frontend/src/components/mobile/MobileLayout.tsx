@@ -7,12 +7,14 @@ import MobileFAB from "./MobileFAB";
 import UploadForm from "../UploadForm";
 import { useSwipeDrawer } from "../../hooks/useSwipeDrawer";
 import { useAuth } from "../../hooks/context/useAuth";
-import VerifyEmail from "../../screens/VerifyEmail";
+import { useEmailVerificationLock } from "../../hooks/layout/useEmailVerificationLock";
+import { EmailVerificationGate } from "../auth/EmailVerificationGate";
 
 const MobileLayout: React.FC = () => {
 	const location = useLocation();
 	const navigate = useNavigate();
 	const { user } = useAuth();
+	const { shouldLockToVerification } = useEmailVerificationLock();
 	const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
 	const {
@@ -24,9 +26,6 @@ const MobileLayout: React.FC = () => {
 		dragOffset,
 		isDragging,
 	} = useSwipeDrawer();
-
-	const isEmailVerified = user ? !("isEmailVerified" in user) || user.isEmailVerified !== false : true;
-	const shouldLockToVerification = !!user && !isEmailVerified;
 
 	// pages where FAB should be hidden
 	const isMessagesPage = location.pathname.startsWith("/messages");
@@ -45,20 +44,14 @@ const MobileLayout: React.FC = () => {
 
 	if (shouldLockToVerification) {
 		return (
-			<Box
+			<EmailVerificationGate
 				sx={{
 					minHeight: "100dvh",
-					display: "flex",
-					alignItems: "center",
-					justifyContent: "center",
-					bgcolor: "background.default",
 					"@supports not (min-height: 100dvh)": {
 						minHeight: "100vh",
 					},
 				}}
-			>
-				<VerifyEmail />
-			</Box>
+			/>
 		);
 	}
 

@@ -9,7 +9,6 @@ import { Errors, wrapError } from "@/utils/errors";
 import { ITag, PaginationResult, PostDTO, toObjectId } from "@/types";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
 import { TagService } from "./tag.service";
-import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
@@ -41,10 +40,6 @@ export class PostService {
     }
     const dto = this.dtoService.toPostDTO(post);
 
-    logger.info("[PostService.getPostByPublicId] viewerPublicId:", {
-      viewerPublicId,
-    });
-
     // Add viewer-specific fields if viewer is logged in
     if (viewerPublicId) {
       const postInternalId = toObjectId(post._id).toString();
@@ -52,11 +47,6 @@ export class PostService {
         await this.userRepository.findInternalIdByPublicId(
           asUserPublicId(viewerPublicId),
         );
-
-      logger.info("[PostService.getPostByPublicId] IDs:", {
-        postInternalId,
-        viewerInternalId,
-      });
 
       if (postInternalId && viewerInternalId) {
         const [hasLiked, favoriteRecord] = await Promise.all([
@@ -70,22 +60,9 @@ export class PostService {
           ),
         ]);
         dto.isLikedByViewer = hasLiked;
-        logger.info("[PostService.getPostByPublicId] like match:", {
-          isLikedByViewer: dto.isLikedByViewer,
-        });
-
         dto.isFavoritedByViewer = !!favoriteRecord;
-        logger.info("[PostService.getPostByPublicId] favoriteRecord:", {
-          isFavoritedByViewer: !!favoriteRecord,
-        });
       }
     }
-
-    logger.info("[PostService.getPostByPublicId] Returning DTO:", {
-      publicId: dto.publicId,
-      isLikedByViewer: dto.isLikedByViewer,
-      isFavoritedByViewer: dto.isFavoritedByViewer,
-    });
 
     return dto;
   }

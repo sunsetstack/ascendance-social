@@ -2,6 +2,40 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
+const vendorChunkGroups: Array<[string, string[]]> = [
+  [
+    "react-vendor",
+    [
+      "react-dom",
+      "react-router-dom",
+      "react-router",
+      "react-redux",
+      "@reduxjs",
+      "react",
+      "scheduler",
+    ],
+  ],
+  ["mui-vendor", ["@mui", "@emotion", "@popperjs"]],
+];
+
+const resolveManualChunk = (id: string): string | undefined => {
+  const normalizedId = id.replace(/\\/g, "/");
+
+  if (!normalizedId.includes("/node_modules/")) {
+    return undefined;
+  }
+
+  for (const [chunkName, packages] of vendorChunkGroups) {
+    if (
+      packages.some((pkg) => normalizedId.includes(`/node_modules/${pkg}/`))
+    ) {
+      return chunkName;
+    }
+  }
+
+  return "vendor";
+};
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
 
@@ -16,26 +50,32 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "src"),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: resolveManualChunk,
+        },
+      },
+    },
 
     server: {
       port: 5173,
       proxy: {
-        // forward /api/* → API Gateway on :3000
         "/api": {
-          target: "http://localhost:3000",
+          target: `http://localhost:${env.PORT || 8000}`,
           changeOrigin: true,
           secure: false,
-          ws: true, // proxy websockets for socket.io
+          ws: true,
+          proxyTimeout: 120_000,
+          timeout: 120_000,
         },
-        // forward /uploads/* → Gateway
         "/uploads": {
-          target: "http://localhost:3000",
+          target: `http://localhost:${env.PORT || 8000}`,
           changeOrigin: true,
           secure: false,
         },
-        // forward socket.io
         "/socket.io": {
-          target: "http://localhost:3000",
+          target: `http://localhost:${env.PORT || 8000}`,
           changeOrigin: true,
           secure: false,
           ws: true,

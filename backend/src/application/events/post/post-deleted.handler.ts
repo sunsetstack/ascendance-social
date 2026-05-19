@@ -69,7 +69,7 @@ export class PostDeleteHandler implements IEventHandler<PostDeletedEvent> {
 
       logger.info(`Feed invalidation complete for post deletion`);
     } catch (error) {
-      console.error("Error handling post deletion:", error);
+      logger.error("Error handling post deletion", { error });
       const fallbackPatterns = CacheKeyBuilder.getGlobalFeedPatterns();
       await this.redis.deletePatterns(fallbackPatterns);
     }
@@ -83,7 +83,9 @@ export class PostDeleteHandler implements IEventHandler<PostDeletedEvent> {
         await this.userRepository.findUsersFollowing(userPublicId);
       return followers.map((user) => user.publicId);
     } catch (error) {
-      console.error(`Error getting followers for user ${userPublicId}:`, error);
+      logger.error(`Error getting followers for user ${userPublicId}`, {
+        error,
+      });
       return [];
     }
   }

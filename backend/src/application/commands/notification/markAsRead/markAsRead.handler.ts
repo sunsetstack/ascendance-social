@@ -11,6 +11,10 @@ import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 import { asMongoId } from "@/types/branded";
 
+type NotificationWithToJSON = INotification & {
+  toJSON?: () => NotificationPlain;
+};
+
 @injectable()
 export class MarkAsReadCommandHandler implements ICommandHandler<
   MarkAsReadCommand,
@@ -28,12 +32,12 @@ export class MarkAsReadCommandHandler implements ICommandHandler<
   private toPlainNotification(
     notification: INotification | NotificationPlain,
   ): NotificationPlain {
+    const notificationWithToJSON = notification as NotificationWithToJSON;
     const raw =
       typeof notification === "object" &&
       notification !== null &&
-      "toJSON" in notification &&
-      typeof (notification as any).toJSON === "function"
-        ? (notification as any).toJSON()
+      typeof notificationWithToJSON.toJSON === "function"
+        ? notificationWithToJSON.toJSON()
         : notification;
 
     return normalizeNotificationPlain(raw) ?? {};
@@ -66,6 +70,16 @@ export class MarkAsReadCommandHandler implements ICommandHandler<
       });
 
       try {
+        await this.redisService.markNotificationRead(notificationId);
+      } catch (error) {
+        logger.warn("Error syncing notification read state to Redis cache", {
+          notificationId,
+          userPublicId,
+          error,
+        });
+      }
+
+      try {
         const plain = this.toPlainNotification(updatedNotification);
         logger.info(`Sending notification_read to user ${userPublicId}:`, {
           notification: plain,
@@ -76,13 +90,14 @@ export class MarkAsReadCommandHandler implements ICommandHandler<
           .emit("notification_read", plain);
         logger.info("Notification read event sent successfully");
       } catch (error) {
-        logger.error("Error sending notification read event:", { error });
-        throw wrapError(error);
+        logger.warn("Error sending notification read event", {
+          notificationId,
+          userPublicId,
+          error,
+        });
       }
 
-      await this.redisService.markNotificationRead(notificationId);
-
-      return updatedNotification as any;
+      return updatedNotification;
     } catch (error) {
       if (isErrorWithStatusCode(error)) throw error;
       throw wrapError(error, "InternalServerError", {

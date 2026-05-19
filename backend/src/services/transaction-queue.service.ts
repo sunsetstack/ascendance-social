@@ -198,7 +198,7 @@ export class TransactionQueueService {
         try {
           await this.unitOfWork.executeInTransaction(() => handler(job.payload));
           this.metrics.totalProcessed++;
-        } catch (error) {
+        } catch {
           if (job.attempts < job.maxAttempts) {
             logger.warn(`[TransactionQueue] Retrying job ${job.id}`, { attempt: job.attempts });
             // re-queue (use rPush as we BRPOP from the right)

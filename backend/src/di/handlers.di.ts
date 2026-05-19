@@ -3,10 +3,12 @@ import { container } from "tsyringe";
 import { CommandBus } from "@/application/common/buses/command.bus";
 import { QueryBus } from "@/application/common/buses/query.bus";
 import { EventBus } from "@/application/common/buses/event.bus";
-import { FollowUserCommand } from "@/application/commands/users/followUser/followUser.command";
-import { FollowUserCommandHandler } from "@/application/commands/users/followUser/followUser.handler";
+import { SetFollowStateCommand } from "@/application/commands/users/setFollowState/setFollowState.command";
+import { SetFollowStateCommandHandler } from "@/application/commands/users/setFollowState/setFollowState.handler";
 import { RegisterUserCommandHandler } from "@/application/commands/users/register/register.handler";
 import { RegisterUserCommand } from "@/application/commands/users/register/register.command";
+import { ClearCacheCommand } from "@/application/commands/admin/clearCache/clearCache.command";
+import { ClearCacheCommandHandler } from "@/application/commands/admin/clearCache/clearCache.handler";
 import { GetDashboardStatsQuery } from "@/application/queries/admin/getDashboardStats/getDashboardStats.query";
 import { GetDashboardStatsQueryHandler } from "@/application/queries/admin/getDashboardStats/getDashboardStats.handler";
 import { GetMeQueryHandler } from "@/application/queries/users/getMe/getMe.handler";
@@ -43,6 +45,8 @@ import { DeleteCommentCommand } from "@/application/commands/comments/deleteComm
 import { DeleteCommentCommandHandler } from "@/application/commands/comments/deleteComment/delete-comment.handler";
 import { LikeCommentCommand } from "@/application/commands/comments/likeComment/likeComment.command";
 import { LikeCommentCommandHandler } from "@/application/commands/comments/likeComment/like-comment.handler";
+import { UpdateCommentCommand } from "@/application/commands/comments/updateComment/updateComment.command";
+import { UpdateCommentCommandHandler } from "@/application/commands/comments/updateComment/update-comment.handler";
 import { MessageSentHandler } from "@/application/events/message/message-sent.handler";
 import { MessageStatusUpdatedHandler as MessageStatusUpdatedEventHandler } from "@/application/events/message/message-status-updated.handler";
 import { MessageAttachmentsDeletedHandler } from "@/application/handlers/message/MessageAttachmentsDeletedHandler";
@@ -65,6 +69,16 @@ import { RecordPostViewCommand } from "@/application/commands/post/recordPostVie
 import { RecordPostViewCommandHandler } from "@/application/commands/post/recordPostView/recordPostView.handler";
 import { GetPersonalizedFeedQuery } from "@/application/queries/feed/getPersonalizedFeed/getPersonalizedFeed.query";
 import { GetPersonalizedFeedQueryHandler } from "@/application/queries/feed/getPersonalizedFeed/getPersonalizedFeed.handler";
+import { GetNewFeedQuery } from "@/application/queries/feed/getNewFeed/getNewFeed.query";
+import { GetNewFeedQueryHandler } from "@/application/queries/feed/getNewFeed/getNewFeed.handler";
+import { GetCommentsByPostQuery } from "@/application/queries/comments/getCommentsByPost/getCommentsByPost.query";
+import { GetCommentsByPostQueryHandler } from "@/application/queries/comments/getCommentsByPost/getCommentsByPost.handler";
+import { GetCommentsByUserQuery } from "@/application/queries/comments/getCommentsByUser/getCommentsByUser.query";
+import { GetCommentsByUserQueryHandler } from "@/application/queries/comments/getCommentsByUser/getCommentsByUser.handler";
+import { GetCommentThreadQuery } from "@/application/queries/comments/getCommentThread/getCommentThread.query";
+import { GetCommentThreadQueryHandler } from "@/application/queries/comments/getCommentThread/getCommentThread.handler";
+import { GetCommentRepliesQuery } from "@/application/queries/comments/getCommentReplies/getCommentReplies.query";
+import { GetCommentRepliesQueryHandler } from "@/application/queries/comments/getCommentReplies/getCommentReplies.handler";
 import { GetPostByPublicIdQuery } from "@/application/queries/post/getPostByPublicId/getPostByPublicId.query";
 import { GetPostByPublicIdQueryHandler } from "@/application/queries/post/getPostByPublicId/getPostByPublicId.handler";
 import { GetPostBySlugQuery } from "@/application/queries/post/getPostBySlug/getPostBySlug.query";
@@ -115,14 +129,6 @@ import { GetAllTagsQuery } from "@/application/queries/tags/getAllTags/getAllTag
 import { GetAllTagsQueryHandler } from "@/application/queries/tags/getAllTags/getAllTags.handler";
 import { GetLikedPostsByUserQuery } from "@/application/queries/post/getLikedPostsByUser/getLikedPostsByUser.query";
 import { GetLikedPostsByUserHandler } from "@/application/queries/post/getLikedPostsByUser/getLikedPostsByUser.handler";
-import { NewPostMessageHandler } from "@/application/handlers/realtime/NewPostMessageHandler";
-import { GlobalNewPostMessageHandler } from "@/application/handlers/realtime/GlobalNewPostMessageHandler";
-import { PostDeletedMessageHandler } from "@/application/handlers/realtime/PostDeletedMessageHandler";
-import { InteractionMessageHandler } from "@/application/handlers/realtime/InteractionMessageHandler";
-import { LikeUpdateMessageHandler } from "@/application/handlers/realtime/LikeUpdateMessageHandler";
-import { AvatarUpdateMessageHandler } from "@/application/handlers/realtime/AvatarUpdateMessageHandler";
-import { MessageSentHandler as RealtimeMessageSentHandler } from "@/application/handlers/realtime/MessageSentHandler";
-import { MessageStatusUpdatedHandler as RealtimeMessageStatusUpdatedHandler } from "@/application/handlers/realtime/MessageStatusUpdatedHandler";
 import { GetForYouFeedQueryHandler } from "@/application/queries/feed/getForYouFeed/getForYouFeed.handler";
 import { GetForYouFeedQuery } from "@/application/queries/feed/getForYouFeed/getForYouFeed.query";
 import { GetTrendingFeedQueryHandler } from "@/application/queries/feed/getTrendingFeed/getTrendingFeed.handler";
@@ -141,8 +147,8 @@ import { UserCoverChangedHandler } from "@/application/events/user/user-cover-ch
 import { UserDeletedHandler } from "@/application/events/user/user-deleted.handler";
 import { GetUserByPublicIdQuery } from "@/application/queries/users/getUserByPublicId/getUserByPublicId.query";
 import { GetUserByPublicIdQueryHandler } from "@/application/queries/users/getUserByPublicId/getUserByPublicId.handler";
-import { GetUserByHandleQuery } from "@/application/queries/users/getUserByUsername/getUserByUsername.query";
-import { GetUserByHandleQueryHandler } from "@/application/queries/users/getUserByUsername/getUserByUsername.handler";
+import { GetUserByHandleQuery } from "@/application/queries/users/getUserByHandle/getUserByHandle.query";
+import { GetUserByHandleQueryHandler } from "@/application/queries/users/getUserByHandle/getUserByHandle.handler";
 import { GetUsersQuery } from "@/application/queries/users/getUsers/getUsers.query";
 import { GetUsersQueryHandler } from "@/application/queries/users/getUsers/getUsers.handler";
 import { CheckFollowStatusQuery } from "@/application/queries/users/checkFollowStatus/checkFollowStatus.query";
@@ -214,8 +220,8 @@ export function registerCQRS(): void {
   container.register(TOKENS.CQRS.Commands.RegisterUser, {
     useClass: RegisterUserCommandHandler,
   });
-  container.register(TOKENS.CQRS.Commands.FollowUser, {
-    useClass: FollowUserCommandHandler,
+  container.register(TOKENS.CQRS.Commands.SetFollowState, {
+    useClass: SetFollowStateCommandHandler,
   });
   container.register(TOKENS.CQRS.Commands.DeleteUser, {
     useClass: DeleteUserCommandHandler,
@@ -232,6 +238,9 @@ export function registerCQRS(): void {
   container.register(TOKENS.CQRS.Commands.ChangePassword, {
     useClass: ChangePasswordCommandHandler,
   });
+  container.register(TOKENS.CQRS.Commands.ClearCache, {
+    useClass: ClearCacheCommandHandler,
+  });
 
   container.register(TOKENS.CQRS.Commands.LikeAction, {
     useClass: LikeActionCommandHandler,
@@ -242,6 +251,9 @@ export function registerCQRS(): void {
 
   container.register(TOKENS.CQRS.Commands.CreateComment, {
     useClass: CreateCommentCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Commands.UpdateComment, {
+    useClass: UpdateCommentCommandHandler,
   });
   container.register(TOKENS.CQRS.Commands.DeleteComment, {
     useClass: DeleteCommentCommandHandler,
@@ -434,6 +446,21 @@ export function registerCQRS(): void {
   container.register(TOKENS.CQRS.Queries.GetPersonalizedFeed, {
     useClass: GetPersonalizedFeedQueryHandler,
   });
+  container.register(TOKENS.CQRS.Queries.GetNewFeed, {
+    useClass: GetNewFeedQueryHandler,
+  });
+  container.register(TOKENS.CQRS.Queries.GetCommentsByPost, {
+    useClass: GetCommentsByPostQueryHandler,
+  });
+  container.register(TOKENS.CQRS.Queries.GetCommentsByUser, {
+    useClass: GetCommentsByUserQueryHandler,
+  });
+  container.register(TOKENS.CQRS.Queries.GetCommentThread, {
+    useClass: GetCommentThreadQueryHandler,
+  });
+  container.register(TOKENS.CQRS.Queries.GetCommentReplies, {
+    useClass: GetCommentRepliesQueryHandler,
+  });
   container.register(TOKENS.CQRS.Queries.GetForYouFeed, {
     useClass: GetForYouFeedQueryHandler,
   });
@@ -515,9 +542,9 @@ export function initCQRS(): void {
     ),
   );
   commandBus.register(
-    FollowUserCommand,
-    container.resolve<FollowUserCommandHandler>(
-      TOKENS.CQRS.Commands.FollowUser,
+    SetFollowStateCommand,
+    container.resolve<SetFollowStateCommandHandler>(
+      TOKENS.CQRS.Commands.SetFollowState,
     ),
   );
   commandBus.register(
@@ -539,6 +566,12 @@ export function initCQRS(): void {
     ),
   );
   commandBus.register(
+    ClearCacheCommand,
+    container.resolve<ClearCacheCommandHandler>(
+      TOKENS.CQRS.Commands.ClearCache,
+    ),
+  );
+  commandBus.register(
     LikeActionCommand,
     container.resolve<LikeActionCommandHandler>(
       TOKENS.CQRS.Commands.LikeAction,
@@ -554,6 +587,12 @@ export function initCQRS(): void {
     CreateCommentCommand,
     container.resolve<CreateCommentCommandHandler>(
       TOKENS.CQRS.Commands.CreateComment,
+    ),
+  );
+  commandBus.register(
+    UpdateCommentCommand,
+    container.resolve<UpdateCommentCommandHandler>(
+      TOKENS.CQRS.Commands.UpdateComment,
     ),
   );
   commandBus.register(
@@ -820,6 +859,34 @@ export function initCQRS(): void {
     ),
   );
   queryBus.register(
+    GetNewFeedQuery,
+    container.resolve<GetNewFeedQueryHandler>(TOKENS.CQRS.Queries.GetNewFeed),
+  );
+  queryBus.register(
+    GetCommentsByPostQuery,
+    container.resolve<GetCommentsByPostQueryHandler>(
+      TOKENS.CQRS.Queries.GetCommentsByPost,
+    ),
+  );
+  queryBus.register(
+    GetCommentsByUserQuery,
+    container.resolve<GetCommentsByUserQueryHandler>(
+      TOKENS.CQRS.Queries.GetCommentsByUser,
+    ),
+  );
+  queryBus.register(
+    GetCommentThreadQuery,
+    container.resolve<GetCommentThreadQueryHandler>(
+      TOKENS.CQRS.Queries.GetCommentThread,
+    ),
+  );
+  queryBus.register(
+    GetCommentRepliesQuery,
+    container.resolve<GetCommentRepliesQueryHandler>(
+      TOKENS.CQRS.Queries.GetCommentReplies,
+    ),
+  );
+  queryBus.register(
     GetForYouFeedQuery,
     container.resolve<GetForYouFeedQueryHandler>(
       TOKENS.CQRS.Queries.GetForYouFeed,
@@ -861,9 +928,7 @@ export function initCQRS(): void {
   );
   queryBus.register(
     SearchAllQuery,
-    container.resolve<SearchAllQueryHandler>(
-      TOKENS.CQRS.Queries.SearchAll,
-    ),
+    container.resolve<SearchAllQueryHandler>(TOKENS.CQRS.Queries.SearchAll),
   );
   queryBus.register(
     GetAllTagsQuery,
@@ -1042,20 +1107,6 @@ export function initCQRS(): void {
       TOKENS.CQRS.Queries.GetCommunityMembers,
     ),
   );
-
-  const realtimeHandlers = [
-    container.resolve(NewPostMessageHandler),
-    container.resolve(GlobalNewPostMessageHandler),
-    container.resolve(PostDeletedMessageHandler),
-    container.resolve(InteractionMessageHandler),
-    container.resolve(LikeUpdateMessageHandler),
-    container.resolve(AvatarUpdateMessageHandler),
-    container.resolve(RealtimeMessageSentHandler),
-    container.resolve(RealtimeMessageStatusUpdatedHandler),
-  ];
-  container.register(TOKENS.CQRS.Handlers.Realtime, {
-    useValue: realtimeHandlers,
-  });
 
   logger.info("[di] CQRS initialized");
 }

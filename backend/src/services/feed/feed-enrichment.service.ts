@@ -117,26 +117,13 @@ export class FeedEnrichmentService {
 
       // Store missing back to cache using a pipeline to batch the operations
       if (fetchedUsers.length > 0) {
-        const pipeline = this.redisService.clientInstance.multi();
-
-        fetchedUsers.forEach((user) => {
-          const key = CacheKeyBuilder.getUserDataKey(user.publicId);
-          const tagKey = `tag:user_data:${user.publicId}`;
-          const keyTagKey = `key_tags:${key}`;
-          const ttl = CacheConfig.FEED.USER_DATA;
-          const stringValue = JSON.stringify(user);
-
-          pipeline.setEx(key, ttl, stringValue);
-          pipeline.sAdd(tagKey, key);
-          pipeline.expire(tagKey, ttl);
-          pipeline.sAdd(keyTagKey, `user_data:${user.publicId}`);
-          pipeline.expire(keyTagKey, ttl);
-        });
-
-        await pipeline.exec();
-        this.redisService.clientInstance.emit(
-          "info",
-          `Pipeline batch set completed for ${fetchedUsers.length} users.`,
+        await this.redisService.setManyWithTags(
+          fetchedUsers.map((user) => ({
+            key: CacheKeyBuilder.getUserDataKey(user.publicId),
+            value: user,
+            tags: [`user_data:${user.publicId}`],
+          })),
+          CacheConfig.FEED.USER_DATA,
         );
       }
 

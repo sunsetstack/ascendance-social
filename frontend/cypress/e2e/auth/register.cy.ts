@@ -1,5 +1,3 @@
-import Cypress from 'cypress';
-
 describe('User Registration', () => {
   beforeEach(() => {
     cy.visit('/register'); 

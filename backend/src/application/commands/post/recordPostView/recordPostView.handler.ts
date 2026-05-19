@@ -134,13 +134,10 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
       }
 
       let isNewView = false;
-      await this.unitOfWork.executeInTransaction(async () => {
-        isNewView = await this.postViewRepository.recordView(postId, userId);
-
-        if (isNewView) {
-          await this.postWriteRepository.incrementViewCount(postId);
-        }
-      });
+      isNewView = await this.postViewRepository.recordView(postId, userId);
+      if (isNewView) {
+        await this.postWriteRepository.incrementViewCount(postId);
+      }
 
       await this.markViewSeenInBloom(bloomKey, bloomItem);
 

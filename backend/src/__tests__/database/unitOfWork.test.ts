@@ -2,23 +2,20 @@ import "reflect-metadata";
 import { expect } from "chai";
 import sinon from "sinon";
 import mongoose from "mongoose";
-import { UnitOfWork, TransactionMetrics } from "@/database/UnitOfWork";
+import { UnitOfWork } from "@/database/UnitOfWork";
 
-// skipping UnitOfWork tests - mongoose.connection.readyState is a non-configurable property
-// that cannot be stubbed with sinon, these tests require integration testing with a real
-// MongoDB instance or a more sophisticated mocking approach
-describe.skip("UnitOfWork", () => {
+describe("UnitOfWork", () => {
 	let unitOfWork: UnitOfWork;
-	let connectionStub: sinon.SinonStub;
 
 	beforeEach(() => {
-		// stub mongoose connection to report as connected
-		connectionStub = sinon.stub(mongoose.connection, "readyState").value(1);
-
+		mongoose.connection.readyState = 1;
 		unitOfWork = new UnitOfWork();
 	});
 
 	afterEach(() => {
+		mongoose.connection.readyState = 0;
+		delete process.env.MAX_CONCURRENT_TRANSACTIONS;
+		delete process.env.MAX_CONCURRENT_READS;
 		sinon.restore();
 	});
 
@@ -54,6 +51,14 @@ describe.skip("UnitOfWork", () => {
 			expect(metrics.successfulTransactions).to.equal(0);
 			expect(metrics.failedTransactions).to.equal(0);
 			expect(metrics.retriedTransactions).to.equal(0);
+		});
+	});
+
+	describe("constructor", () => {
+		it("throws when the database is not fully connected", () => {
+			mongoose.connection.readyState = 2;
+
+			expect(() => new UnitOfWork()).to.throw("Database connection not established");
 		});
 	});
 
@@ -94,6 +99,31 @@ describe.skip("UnitOfWork", () => {
 		});
 	});
 
+	describe("executeWithoutTransaction", () => {
+		it("does not consume transaction semaphore permits for reads", async () => {
+			process.env.MAX_CONCURRENT_TRANSACTIONS = "1";
+			process.env.MAX_CONCURRENT_READS = "2";
+			const controlledUnitOfWork = new UnitOfWork();
+
+			let releaseRead!: () => void;
+			const readStarted = new Promise<void>((resolve) => {
+				releaseRead = resolve;
+			});
+
+			const readPromise = controlledUnitOfWork.executeWithoutTransaction(async () => {
+				await readStarted;
+				return "done";
+			});
+
+			await Promise.resolve();
+
+			expect(controlledUnitOfWork.getMetrics().availablePermits).to.equal(1);
+
+			releaseRead();
+			await readPromise;
+		});
+	});
+
 	describe("backoffWithJitter", () => {
 		it("should return delay within expected range", async () => {
 			const attempt = 2;
@@ -125,13 +155,12 @@ describe.skip("UnitOfWork", () => {
 	});
 });
 
-// Skipped: mongoose.connection.readyState is non-configurable and cannot be stubbed in Sinon
-describe.skip("Semaphore", () => {
+describe("Semaphore", () => {
 	// test the internal Semaphore class behavior through UnitOfWork
 	let unitOfWork: UnitOfWork;
 
 	beforeEach(() => {
-		sinon.stub(mongoose.connection, "readyState").value(1);
+		mongoose.connection.readyState = 1;
 
 		// create with small concurrency limit for testing
 		process.env.MAX_CONCURRENT_TRANSACTIONS = "2";
@@ -140,6 +169,8 @@ describe.skip("Semaphore", () => {
 
 	afterEach(() => {
 		delete process.env.MAX_CONCURRENT_TRANSACTIONS;
+		delete process.env.MAX_CONCURRENT_READS;
+		mongoose.connection.readyState = 0;
 		sinon.restore();
 	});
 

@@ -7,7 +7,8 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import Gallery from "../components/Gallery";
 import { useAuth } from "../hooks/context/useAuth";
 import { useTrendingFeed, useNewFeed, useForYouFeed } from "../hooks/posts/usePosts";
-import { PageSeo, buildDiscoveryMetadata } from "../lib/seo";
+import { PageSeo } from "../lib/PageSeo";
+import { buildDiscoveryMetadata } from "../lib/seo";
 
 interface TabPanelProps {
 	children?: React.ReactNode;

@@ -83,9 +83,14 @@ export class FavoriteController {
     }
 
     const { page, limit } = req.query;
+    const parsedPage = Number(page);
+    const parsedLimit = Number(limit);
+    const safePage = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const safeLimit =
+      Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 20;
 
     const favorites = await this.queryBus.execute<PaginationResult<PostDTO>>(
-      new GetFavoritesQuery(viewerPublicId, Number(page), Number(limit)),
+      new GetFavoritesQuery(viewerPublicId, safePage, safeLimit),
     );
     res.status(200).json(favorites);
   };

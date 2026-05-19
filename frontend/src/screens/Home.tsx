@@ -4,7 +4,8 @@ import { usePosts } from "../hooks/posts/usePosts";
 import Gallery from "../components/Gallery";
 import CreatePost from "../components/CreatePost";
 import { Box, Typography, useMediaQuery, useTheme, Card, Skeleton, CardActions } from "@mui/material";
-import { PageSeo, buildHomeMetadata } from "../lib/seo";
+import { PageSeo } from "../lib/PageSeo";
+import { buildHomeMetadata } from "../lib/seo";
 
 const Home: React.FC = () => {
 	const theme = useTheme();

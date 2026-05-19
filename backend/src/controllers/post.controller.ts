@@ -14,7 +14,7 @@ import { GetPostsByUserQuery } from "@/application/queries/post/getPostsByUser/g
 import { GetLikedPostsByUserQuery } from "@/application/queries/post/getLikedPostsByUser/getLikedPostsByUser.query";
 import { SearchPostsByTagsQuery } from "@/application/queries/post/searchPostsByTags/searchPostsByTags.query";
 import { GetAllTagsQuery } from "@/application/queries/tags/getAllTags/getAllTags.query";
-import { GetUserByHandleQuery } from "@/application/queries/users/getUserByUsername/getUserByUsername.query";
+import { GetUserByHandleQuery } from "@/application/queries/users/getUserByHandle/getUserByHandle.query";
 import { Errors } from "@/utils/errors";
 import {
   ITag,

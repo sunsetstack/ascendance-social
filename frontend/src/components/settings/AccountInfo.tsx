@@ -4,11 +4,8 @@ import {
 	IconButton,
 	List,
 	ListItem,
-	ListItemText,
 	Divider,
 	CircularProgress,
-	useTheme,
-	alpha,
 } from "@mui/material";
 import { ArrowBack as ArrowBackIcon } from "@mui/icons-material";
 import { useAccountInfo } from "../../hooks/settings";
@@ -29,7 +26,6 @@ const formatDate = (dateString: string) => {
 };
 
 const AccountInfo = ({ onBack }: AccountInfoProps) => {
-	const theme = useTheme();
 	const { data: accountInfo, isLoading, error } = useAccountInfo();
 
 	if (isLoading) {

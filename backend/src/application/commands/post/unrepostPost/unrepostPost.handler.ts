@@ -9,7 +9,7 @@ import { CommentRepository } from "@/repositories/comment.repository";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { PostDeletedEvent } from "@/application/events/post/post.event";
-import { Errors } from "@/utils/errors";
+import { Errors, createError } from "@/utils/errors";
 import { isValidPublicId } from "@/utils/sanitizers";
 import { IUser } from "@/types";
 import { TOKENS } from "@/types/tokens";
@@ -47,14 +47,20 @@ export class UnrepostPostCommandHandler implements ICommandHandler<
       command.userPublicId,
     );
     if (!user) {
-      throw Errors.notFound("User");
+      throw createError(
+        "NotFoundError",
+        `User with publicId ${command.userPublicId} not found`,
+      );
     }
 
     const targetPost = await this.postReadRepository.findByPublicId(
       command.targetPostPublicId,
     );
     if (!targetPost) {
-      throw Errors.notFound("Post");
+      throw createError(
+        "NotFoundError",
+        `Post ${command.targetPostPublicId} not found`,
+      );
     }
 
     // Find the user's repost of the target post
@@ -66,7 +72,7 @@ export class UnrepostPostCommandHandler implements ICommandHandler<
     });
 
     if (!repost) {
-      throw Errors.notFound("Resource");
+      throw createError("NotFoundError", "You have not reposted this post");
     }
 
     await this.unitOfWork.executeInTransaction(async () => {

@@ -12,7 +12,7 @@ chai.use(chaiAsPromised);
 describe("GetTrendingFeedQueryHandler", () => {
 	let handler: GetTrendingFeedQueryHandler;
 
-	let mockFeedReadDao: { getTrendingFeedWithCursor: SinonStub };
+	let mockFeedReadDao: { getTrendingFeedWithCursor: SinonStub; getNewFeedWithCursor: SinonStub };
 	let mockPostReadRepository: {
 		findPostsByPublicIds: SinonStub;
 		getTrendingFeedWithCursor: SinonStub;
@@ -23,7 +23,10 @@ describe("GetTrendingFeedQueryHandler", () => {
 	let mockFeedEnrichmentService: { enrichFeedWithCurrentData: SinonStub };
 
 	beforeEach(() => {
-		mockFeedReadDao = { getTrendingFeedWithCursor: sinon.stub() };
+		mockFeedReadDao = {
+			getTrendingFeedWithCursor: sinon.stub(),
+			getNewFeedWithCursor: sinon.stub(),
+		};
 		mockPostReadRepository = {
 			findPostsByPublicIds: sinon.stub(),
 			getTrendingFeedWithCursor: sinon.stub(),
@@ -101,6 +104,11 @@ describe("GetTrendingFeedQueryHandler", () => {
 					tags: [],
 				},
 			],
+			hasMore: false,
+			nextCursor: undefined,
+		});
+		mockFeedReadDao.getNewFeedWithCursor.resolves({
+			data: [],
 			hasMore: false,
 			nextCursor: undefined,
 		});

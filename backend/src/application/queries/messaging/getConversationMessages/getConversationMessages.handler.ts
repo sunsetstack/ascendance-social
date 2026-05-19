@@ -3,22 +3,23 @@ import { GetConversationMessagesQuery } from "./getConversationMessages.query";
 import { ConversationRepository } from "@/repositories/conversation.repository";
 import { MessageRepository } from "@/repositories/message.repository";
 import { UserRepository } from "@/repositories/user.repository";
-import { UnitOfWork, sessionALS } from "@/database/UnitOfWork";
+import { UnitOfWork } from "@/database/UnitOfWork";
 import { DTOService } from "@/services/dto.service";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { MessageStatusUpdatedEvent } from "@/application/events/message/message.event";
-import { Errors, wrapError } from "@/utils/errors";
-import { getParticipantIds } from "@/utils/messaging-helpers";
-import { toObjectId, UserPublicIdLean } from "@/types";
-import { UserPublicId } from "@/types/branded";
+import { wrapError } from "@/utils/errors";
+import { PaginatedMessageResult } from "@/types";
+import {
+  ensureConversationAccess,
+  resolveParticipantPublicIds,
+} from "@/application/messaging/messaging-support";
 import { inject, injectable } from "tsyringe";
-import mongoose from "mongoose";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
 export class GetConversationMessagesQueryHandler implements IQueryHandler<
   GetConversationMessagesQuery,
-  any
+  PaginatedMessageResult
 > {
   constructor(
     @inject(TOKENS.Repositories.Conversation)
@@ -33,35 +34,7 @@ export class GetConversationMessagesQueryHandler implements IQueryHandler<
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
   ) {}
 
-  private async ensureConversationAccess(
-    userPublicId: UserPublicId,
-    conversationPublicId: string,
-  ) {
-    const conversation = await this.conversationRepository.findByPublicId(
-      conversationPublicId,
-      { populateParticipants: true },
-    );
-
-    if (!conversation) {
-      throw Errors.notFound("Conversation");
-    }
-
-    const userInternalId =
-      await this.userRepository.findInternalIdByPublicId(userPublicId);
-    if (!userInternalId) {
-      throw Errors.notFound("User");
-    }
-
-    const participantIds = getParticipantIds(conversation.participants);
-
-    if (!new Set(participantIds).has(userInternalId)) {
-      throw Errors.forbidden("You do not have access to this conversation");
-    }
-
-    return conversation;
-  }
-
-  async execute(query: GetConversationMessagesQuery): Promise<any> {
+  async execute(query: GetConversationMessagesQuery): Promise<PaginatedMessageResult> {
     try {
       const {
         userPublicId,
@@ -70,16 +43,14 @@ export class GetConversationMessagesQueryHandler implements IQueryHandler<
         limit = 30,
       } = query;
 
-      const conversation = await this.ensureConversationAccess(
-        userPublicId,
-        conversationPublicId,
-      );
-      const conversationId = toObjectId(conversation._id).toString();
-      const userInternalId =
-        await this.userRepository.findInternalIdByPublicId(userPublicId);
-      if (!userInternalId) {
-        throw Errors.notFound("User");
-      }
+      const { conversation, userInternalId, participantIds } =
+        await ensureConversationAccess(
+          this.conversationRepository,
+          this.userRepository,
+          userPublicId,
+          conversationPublicId,
+        );
+      const conversationId = conversation._id.toString();
 
       if (page === 1) {
         await this.unitOfWork.executeInTransaction(async () => {
@@ -92,20 +63,10 @@ export class GetConversationMessagesQueryHandler implements IQueryHandler<
             return;
           }
 
-          const participantIds = getParticipantIds(conversation.participants);
-          const participantObjectIds = participantIds.map(
-            (participantId) => new mongoose.Types.ObjectId(participantId),
+          const participantPublicIds = await resolveParticipantPublicIds(
+            this.userRepository,
+            participantIds,
           );
-          const alsSession = sessionALS.getStore() ?? null;
-          const participantDocs = await this.userRepository
-            .find({ _id: { $in: participantObjectIds } })
-            .select("publicId")
-            .session(alsSession)
-            .lean<UserPublicIdLean[]>()
-            .exec();
-          const participantPublicIds = participantDocs
-            .map((doc) => doc.publicId)
-            .filter(Boolean);
 
           await this.eventBus.queueTransactional(
             new MessageStatusUpdatedEvent(

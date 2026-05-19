@@ -8,6 +8,7 @@ const cookieDomain =
 
 const accessCookieMaxAge = Number(process.env.ACCESS_TOKEN_MAX_AGE_MS) || 1000 * 60 * 15;
 const refreshCookieMaxAge = Number(process.env.REFRESH_TOKEN_MAX_AGE_MS) || 1000 * 60 * 60 * 24 * 30;
+const refreshCookiePath = "/api/users/refresh";
 
 const baseCookieOptions: CookieOptions = {
 	httpOnly: true,
@@ -31,10 +32,15 @@ export const accessCookieOptions: CookieOptions = {
 export const refreshCookieOptions: CookieOptions = {
 	...baseCookieOptions,
 	maxAge: refreshCookieMaxAge,
-	path: "/",
+	path: refreshCookiePath,
 };
 
 export const clearAuthCookieOptions: CookieOptions = {
 	...baseCookieOptions,
 	path: "/",
+};
+
+export const clearRefreshCookieOptions: CookieOptions = {
+	...baseCookieOptions,
+	path: refreshCookiePath,
 };

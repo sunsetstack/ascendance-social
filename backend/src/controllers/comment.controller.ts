@@ -1,15 +1,24 @@
 import { NextFunction, Response } from "express";
-import { CommentService } from "@/services/comment.service";
 import { Errors } from "@/utils/errors";
 import { streamPaginatedResponse } from "@/utils/streamResponse";
 import { inject, injectable } from "tsyringe";
 import { CommandBus } from "@/application/common/buses/command.bus";
+import { QueryBus } from "@/application/common/buses/query.bus";
 import { CreateCommentCommand } from "@/application/commands/comments/createComment/createComment.command";
 import { DeleteCommentCommand } from "@/application/commands/comments/deleteComment/deleteComment.command";
 import { LikeCommentCommand } from "@/application/commands/comments/likeComment/likeComment.command";
+import { UpdateCommentCommand } from "@/application/commands/comments/updateComment/updateComment.command";
+import { GetCommentsByPostQuery } from "@/application/queries/comments/getCommentsByPost/getCommentsByPost.query";
+import { GetCommentsByUserQuery } from "@/application/queries/comments/getCommentsByUser/getCommentsByUser.query";
+import { GetCommentThreadQuery } from "@/application/queries/comments/getCommentThread/getCommentThread.query";
+import { GetCommentRepliesQuery } from "@/application/queries/comments/getCommentReplies/getCommentReplies.query";
 import { TypedRequest } from "@/types";
 import { TOKENS } from "@/types/tokens";
 import { asPostPublicId, asUserPublicId } from "@/types/branded";
+import {
+  CommentListResult,
+  CommentThreadResult,
+} from "@/application/comments/comment-query.types";
 import type {
   CommentIdParams,
   CommentsQuery,
@@ -32,9 +41,8 @@ type EmptyBody = Record<string, never>;
 @injectable()
 export class CommentController {
   constructor(
-    @inject(TOKENS.Services.Comment)
-    private readonly commentService: CommentService,
     @inject(TOKENS.CQRS.Commands.Bus) private readonly commandBus: CommandBus,
+    @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
   ) {}
 
   createComment = async (
@@ -70,11 +78,13 @@ export class CommentController {
     // Limit max comments per page to prevent abuse
     const maxLimit = Math.min(limit, 50);
 
-    const result = await this.commentService.getCommentsByPostPublicId(
-      asPostPublicId(postPublicId),
-      page,
-      maxLimit,
-      parentId ?? null,
+    const result = await this.queryBus.execute<CommentListResult>(
+      new GetCommentsByPostQuery(
+        asPostPublicId(postPublicId),
+        page,
+        maxLimit,
+        parentId ?? null,
+      ),
     );
     res.json(result);
   };
@@ -91,10 +101,12 @@ export class CommentController {
       throw Errors.authentication("User authentication required");
     }
 
-    const comment = await this.commentService.updateCommentByPublicId(
-      commentId,
-      decodedUser.publicId,
-      content,
+    const comment = await this.commandBus.dispatch(
+      new UpdateCommentCommand(
+        commentId,
+        asUserPublicId(decodedUser.publicId),
+        content,
+      ),
     );
     res.json(comment);
   };
@@ -143,12 +155,14 @@ export class CommentController {
     // Limit max comments per page
     const maxLimit = Math.min(limit, 100);
 
-    const result = await this.commentService.getCommentsByUserPublicId(
-      asUserPublicId(publicId),
-      page,
-      maxLimit,
-      sortBy,
-      sortOrder,
+    const result = await this.queryBus.execute<CommentListResult>(
+      new GetCommentsByUserQuery(
+        asUserPublicId(publicId),
+        page,
+        maxLimit,
+        sortBy,
+        sortOrder,
+      ),
     );
 
     if (result.comments.length >= STREAM_THRESHOLD) {
@@ -174,7 +188,9 @@ export class CommentController {
     next: NextFunction,
   ): Promise<void> => {
     const { commentId } = req.params;
-    const result = await this.commentService.getCommentThread(commentId);
+    const result = await this.queryBus.execute<CommentThreadResult>(
+      new GetCommentThreadQuery(commentId),
+    );
 
     if (!result.comment) {
       next(Errors.notFound("Comment"));
@@ -193,10 +209,8 @@ export class CommentController {
 
     const maxLimit = Math.min(limit, 50);
 
-    const result = await this.commentService.getCommentReplies(
-      commentId,
-      page,
-      maxLimit,
+    const result = await this.queryBus.execute<CommentListResult>(
+      new GetCommentRepliesQuery(commentId, page, maxLimit),
     );
     res.json(result);
   };

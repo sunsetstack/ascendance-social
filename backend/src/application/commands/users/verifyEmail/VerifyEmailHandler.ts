@@ -11,6 +11,8 @@ import {
   AdminUserDTO,
   AuthenticatedUserDTO,
 } from "@/services/dto.service";
+import { AuthSessionService } from "@/services/auth-session.service";
+import { asMongoId } from "@/types/branded";
 import { TOKENS } from "@/types/tokens";
 
 export type VerifyEmailResult = AdminUserDTO | AuthenticatedUserDTO;
@@ -26,6 +28,8 @@ export class VerifyEmailHandler implements ICommandHandler<
     @inject(TOKENS.Repositories.UserWrite)
     private readonly userWriteRepository: IUserWriteRepository,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
+    @inject(TOKENS.Services.AuthSession)
+    private readonly authSessionService: AuthSessionService,
   ) {}
 
   async execute(command: VerifyEmailCommand): Promise<VerifyEmailResult> {
@@ -43,7 +47,9 @@ export class VerifyEmailHandler implements ICommandHandler<
         : this.dtoService.toAuthenticatedUserDTO(user);
     }
 
-    const updatedUser = await this.userWriteRepository.update(user.id, {
+    const userId = asMongoId(user._id.toString());
+
+    const updatedUser = await this.userWriteRepository.update(userId, {
       $set: { isEmailVerified: true },
       $unset: { emailVerificationToken: 1, emailVerificationExpires: 1 },
     });
@@ -51,6 +57,8 @@ export class VerifyEmailHandler implements ICommandHandler<
     if (!updatedUser) {
       throw Errors.database("Failed to verify email");
     }
+
+    await this.authSessionService.markUserEmailVerified(updatedUser.publicId);
 
     return updatedUser.isAdmin
       ? this.dtoService.toAdminDTO(updatedUser)

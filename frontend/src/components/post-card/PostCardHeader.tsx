@@ -1,0 +1,147 @@
+import React from "react";
+import {
+	Avatar,
+	Box,
+	Chip,
+	IconButton,
+	Tooltip,
+	Typography,
+} from "@mui/material";
+import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import DeleteIcon from "@mui/icons-material/Delete";
+import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { IPost } from "../../types";
+
+interface PostCardHeaderProps {
+	post: IPost;
+	avatarUrl: string | null;
+	hasCommunity: boolean;
+	isAdmin: boolean;
+	onDeleteClick: (event: React.MouseEvent) => void;
+	children: React.ReactNode;
+}
+
+export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
+	post,
+	avatarUrl,
+	hasCommunity,
+	isAdmin,
+	onDeleteClick,
+	children,
+}) => {
+	const { t } = useTranslation();
+	const navigate = useNavigate();
+
+	return (
+		<Box
+			sx={{
+				px: 2,
+				pt: hasCommunity ? 0.5 : 1.5,
+				pb: 1,
+				display: "flex",
+				alignItems: "flex-start",
+				gap: 1.5,
+			}}
+		>
+			<Avatar
+				sx={{ width: 40, height: 40, cursor: "pointer" }}
+				onClick={(event) => {
+					event.stopPropagation();
+					navigate(`/profile/${post.user?.handle || post.user?.publicId}`);
+				}}
+			>
+				{post.user?.avatar ? (
+					<img
+						src={avatarUrl ?? undefined}
+						alt={post.user.username}
+						loading="lazy"
+						decoding="async"
+						width={40}
+						height={40}
+						style={{ width: "100%", height: "100%", objectFit: "cover" }}
+					/>
+				) : (
+					<span>{post.user?.username?.charAt(0).toUpperCase()}</span>
+				)}
+			</Avatar>
+
+			<Box sx={{ flex: 1, minWidth: 0 }}>
+				{post.type === "repost" && post.repostOf?.user && (
+					<Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.25 }}>
+						{t("post.reposted_from", {
+							username: post.repostOf.user.username,
+						})}
+					</Typography>
+				)}
+				<Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+					<Typography
+						variant="body1"
+						sx={{
+							fontWeight: 700,
+							color: "text.primary",
+							"&:hover": { textDecoration: "underline" },
+						}}
+						onClick={(event) => {
+							event.stopPropagation();
+							navigate(`/profile/${post.user?.handle || post.user?.publicId}`);
+						}}
+					>
+						{post.user?.username || t("post.unknown_user")}
+					</Typography>
+					{post.authorCommunityRole === "admin" && (
+						<Chip
+							icon={<AdminPanelSettingsIcon sx={{ fontSize: 14 }} />}
+							label="Admin"
+							size="small"
+							color="primary"
+							variant="outlined"
+							sx={{
+								height: 18,
+								fontSize: "0.65rem",
+								"& .MuiChip-icon": { width: 14, height: 14 },
+							}}
+						/>
+					)}
+					{post.authorCommunityRole === "moderator" && (
+						<Chip
+							label="Mod"
+							size="small"
+							color="secondary"
+							variant="outlined"
+							sx={{ height: 18, fontSize: "0.65rem" }}
+						/>
+					)}
+					<Typography variant="body2" color="text.secondary">
+						{new Date(post.createdAt).toLocaleDateString(undefined, {
+							month: "short",
+							day: "numeric",
+						})}
+					</Typography>
+
+					{isAdmin && (
+						<Tooltip
+							title={t("admin.delete_post", {
+								defaultValue: "Delete Post (Admin)",
+							})}
+						>
+							<IconButton
+								size="small"
+								onClick={onDeleteClick}
+								sx={{
+									ml: "auto",
+									color: "error.main",
+									padding: 0.5,
+									"&:hover": { bgcolor: "rgba(244, 33, 46, 0.1)" },
+								}}
+							>
+								<DeleteIcon sx={{ fontSize: 18 }} />
+							</IconButton>
+						</Tooltip>
+					)}
+				</Box>
+				{children}
+			</Box>
+		</Box>
+	);
+};

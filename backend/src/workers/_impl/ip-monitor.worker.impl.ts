@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { container } from "tsyringe";
+import { inject, injectable } from "tsyringe";
 import { logger } from "@/utils/winston";
 import { CommandBus } from "@/application/common/buses/command.bus";
 import { CreateNotificationCommand } from "@/application/commands/notification/createNotification/createNotification.command";
@@ -8,19 +8,17 @@ import User from "@/models/user.model";
 import { RequestLogModel } from "@/models/requestLog.model";
 import { SystemActor } from "@/utils/actors/SystemActor";
 
+@injectable()
 export class IpMonitorWorker {
     private CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 
-    private commandBus!: CommandBus;
     private timer?: NodeJS.Timeout;
     private running = false;
 
-    constructor() {}
-
-    async init(): Promise<void> {
-        this.commandBus = container.resolve(TOKENS.CQRS.Commands.Bus);
-        logger.info("[ip-monitor] Worker initialized");
-    }
+    constructor(
+        @inject(TOKENS.CQRS.Commands.Bus)
+        private readonly commandBus: CommandBus,
+    ) {}
 
     start(): void {
         if (this.running) return;

@@ -1,5 +1,3 @@
-import Cypress from 'cypress'
-
 describe("Like a random photo via modal", () => {
   beforeEach(() => {
     cy.readFile("cypress/fixtures/cookies.json").then((cookies) => {

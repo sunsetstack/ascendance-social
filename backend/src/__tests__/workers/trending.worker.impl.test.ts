@@ -9,17 +9,15 @@ describe("TrendingWorker", () => {
   });
 
   it("defers ACKs until a flush successfully updates Redis", async () => {
-    const worker = new TrendingWorker({} as any);
     const ackStreamMessages = sinon.stub().resolves(1);
     const updateTrendingScore = sinon.stub().resolves();
     const setWithTags = sinon.stub().resolves();
-
-    (worker as any).redisService = {
+    const redisService = {
       ackStreamMessages,
       updateTrendingScore,
       setWithTags,
-    };
-    (worker as any).postRepo = {
+    } as any;
+    const postRepo = {
       findPostsByPublicIds: sinon.stub().resolves([
         {
           publicId: "post-1",
@@ -29,7 +27,8 @@ describe("TrendingWorker", () => {
           createdAt: new Date("2024-01-01T00:00:00.000Z"),
         },
       ]),
-    };
+    } as any;
+    const worker = new TrendingWorker({} as any, redisService, postRepo);
 
     await (worker as any).handleStreamMessage("1-0", { postId: "post-1" });
 
@@ -47,17 +46,15 @@ describe("TrendingWorker", () => {
   });
 
   it("requeues staged messages when flush fails before ACKing", async () => {
-    const worker = new TrendingWorker({} as any);
     const ackStreamMessages = sinon.stub().resolves(1);
     const updateTrendingScore = sinon.stub().rejects(new Error("Redis write failed"));
     const setWithTags = sinon.stub().resolves();
-
-    (worker as any).redisService = {
+    const redisService = {
       ackStreamMessages,
       updateTrendingScore,
       setWithTags,
-    };
-    (worker as any).postRepo = {
+    } as any;
+    const postRepo = {
       findPostsByPublicIds: sinon.stub().resolves([
         {
           publicId: "post-1",
@@ -67,7 +64,8 @@ describe("TrendingWorker", () => {
           createdAt: new Date("2024-01-01T00:00:00.000Z"),
         },
       ]),
-    };
+    } as any;
+    const worker = new TrendingWorker({} as any, redisService, postRepo);
 
     await (worker as any).handleStreamMessage("1-0", { postId: "post-1" });
     await (worker as any).flushPending();

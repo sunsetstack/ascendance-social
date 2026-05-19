@@ -1,3 +1,4 @@
+import { isAxiosError } from "axios";
 import { useState } from "react";
 import {
 	Box,
@@ -34,8 +35,11 @@ const DeactivateAccount = ({ onBack }: DeactivateAccountProps) => {
 
 		try {
 			await deactivateAccount.mutateAsync({ password });
-		} catch (err: any) {
-			setError(err.response?.data?.error || "Failed to deactivate account");
+		} catch (err: unknown) {
+			const message = isAxiosError<{ error?: string }>(err)
+				? (err.response?.data?.error ?? "Failed to deactivate account")
+				: "Failed to deactivate account";
+			setError(message);
 			setConfirmOpen(false);
 		}
 	};

@@ -5,6 +5,7 @@ import { IMessage, IMessageWithPopulatedSender, PaginationResult, CursorPaginati
 import { Errors } from "@/utils/errors";
 import { encodeCursor, decodeCursor } from "@/utils/cursorCodec";
 import { TOKENS } from "@/types/tokens";
+import { MessagePublicId } from "@/types/branded";
 
 interface MessageCursor {
 	createdAt: string;
@@ -18,7 +19,7 @@ export class MessageRepository extends BaseRepository<IMessage> {
 		super(model);
 	}
 
-	async findByPublicId(publicId: string): Promise<IMessage | null> {
+	async findByPublicId(publicId: MessagePublicId): Promise<IMessage | null> {
 		const session = this.getSession();
 		const query = this.model.findOne({ publicId }).populate("sender", "publicId handle username avatar");
 		if (session) query.session(session);
@@ -193,7 +194,7 @@ export class MessageRepository extends BaseRepository<IMessage> {
 		return result.modifiedCount || 0;
 	}
 
-	async updateMessage(publicId: string, updates: Partial<IMessage>): Promise<IMessage | null> {
+	async updateMessage(publicId: MessagePublicId, updates: Partial<IMessage>): Promise<IMessage | null> {
 		const session = this.getSession();
 		const query = this.model
 			.findOneAndUpdate({ publicId }, { $set: updates }, { new: true })
