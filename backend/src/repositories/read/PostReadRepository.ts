@@ -112,6 +112,9 @@ export class PostReadRepository
       const session = this.getSession();
       const query = this.model
         .findOne({ publicId })
+        .select(
+          "publicId user author body slug type repostOf repostCount image tags likesCount commentsCount viewsCount createdAt updatedAt communityId",
+        )
         .populate("tags", "tag")
         .populate({ path: "image", select: "_id url publicId slug createdAt" })
         .populate({ path: "communityId", select: "publicId name slug avatar" })
