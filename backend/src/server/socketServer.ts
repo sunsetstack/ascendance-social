@@ -1,7 +1,7 @@
 import { UserPublicId } from "@/types/branded";
-import { Request } from "express";
+import { Request, RequestHandler } from "express";
 import { Server as HttpServer } from "http";
-import { AuthFactory } from "../middleware/authentication.middleware";
+import { AuthMiddlewareService } from "../middleware/authentication.middleware";
 import { Server as SocketIOServer } from "socket.io";
 import { injectable, inject } from "tsyringe";
 import cookieParser from "cookie-parser";
@@ -10,6 +10,7 @@ import { logger } from "@/utils/winston";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { RedisService } from "@/services/redis.service";
 import { getAllowedOrigins } from "@/config/corsConfig";
+import { TOKENS } from "@/types/tokens";
 
 let ioInstance: SocketIOServer | null = null;
 
@@ -30,18 +31,21 @@ export async function isUserViewingConversation(
 @injectable()
 export class WebSocketServer {
   private io: SocketIOServer | null = null; // Stores the socket.io server instance
+  private readonly socketAuthHandler: RequestHandler;
 
   constructor(
     @inject(RedisService) private readonly redisService: RedisService,
-  ) {}
+    @inject(TOKENS.Services.AuthMiddleware)
+    authMiddlewareService: AuthMiddlewareService,
+  ) {
+    this.socketAuthHandler = authMiddlewareService.required();
+  }
 
   /**
    * Initializes the WebSocket server with authentication and event handling.
    * @param {HttpServer} server - The HTTP server instance to attach the WebSocket server to.
    */
   initialize(server: HttpServer): void {
-    const socketAuthHandler = AuthFactory.bearerToken().handle();
-
     this.io = new SocketIOServer(server, {
       cors: {
         origin: getAllowedOrigins(),
@@ -91,7 +95,7 @@ export class WebSocketServer {
         }
 
         // Handle authentication using the bearer token strategy
-        socketAuthHandler(req, {} as any, (error?: any) => {
+        this.socketAuthHandler(req, {} as any, (error?: any) => {
           if (error) {
             logger.error("Auth error:", error);
             return next(Errors.authentication(error.message));

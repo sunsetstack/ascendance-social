@@ -1,11 +1,12 @@
 import express from "express";
+import { RequestHandler } from "express";
 import { asyncHandler } from "@/middleware/async-handler.middleware";
 import { AuthController } from "../controllers/auth.controller";
 import { ProfileController } from "../controllers/profile.controller";
 import { SocialController } from "../controllers/social.controller";
 import { UserQueryController } from "../controllers/userQuery.controller";
 import {
-  AuthFactory,
+  AuthMiddlewareService,
   forgotPasswordEmailRateLimit,
   forgotPasswordIpRateLimit,
 } from "../middleware/authentication.middleware";
@@ -34,8 +35,8 @@ import { TOKENS } from "@/types/tokens";
 @injectable()
 export class UserRoutes {
   private router: express.Router;
-  private auth = AuthFactory.bearerToken().handle();
-  private optionalAuth = AuthFactory.optionalBearerToken().handleOptional();
+  private auth: RequestHandler;
+  private optionalAuth: RequestHandler;
 
   constructor(
     @inject(TOKENS.Controllers.Auth)
@@ -46,8 +47,12 @@ export class UserRoutes {
     private readonly socialController: SocialController,
     @inject(TOKENS.Controllers.UserQuery)
     private readonly userQueryController: UserQueryController,
+    @inject(TOKENS.Services.AuthMiddleware)
+    authMiddlewareService: AuthMiddlewareService,
   ) {
     this.router = express.Router();
+    this.auth = authMiddlewareService.required();
+    this.optionalAuth = authMiddlewareService.optional();
     this.initializeRoutes();
   }
 

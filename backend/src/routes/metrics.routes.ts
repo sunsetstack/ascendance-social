@@ -1,10 +1,9 @@
-import { Router } from "express";
+import { Router, RequestHandler } from "express";
 import { injectable, inject } from "tsyringe";
 import { MetricsService } from "../metrics/metrics.service";
 import {
-  AuthFactory,
+  AuthMiddlewareService,
   adminRateLimit,
-  enhancedAdminOnly,
 } from "../middleware/authentication.middleware";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { TransactionQueueService } from "@/services/transaction-queue.service";
@@ -13,22 +12,27 @@ import { TOKENS } from "@/types/tokens";
 @injectable()
 export class MetricsRoutes {
   private readonly router: Router;
+  private readonly auth: RequestHandler;
+  private readonly adminOnly: RequestHandler;
 
   constructor(
     @inject(TOKENS.Services.Metrics) private readonly metricsService: MetricsService,
     @inject(TOKENS.Repositories.UnitOfWork) private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.Services.TransactionQueue)
     private readonly transactionQueue: TransactionQueueService,
+    @inject(TOKENS.Services.AuthMiddleware)
+    authMiddlewareService: AuthMiddlewareService,
   ) {
     this.router = Router();
+    this.auth = authMiddlewareService.required();
+    this.adminOnly = authMiddlewareService.adminOnly();
     this.initializeRoutes();
   }
 
   private initializeRoutes(): void {
-    const auth = AuthFactory.bearerToken().handle();
-    this.router.use(auth);
+    this.router.use(this.auth);
     this.router.use(adminRateLimit);
-    this.router.use(enhancedAdminOnly);
+    this.router.use(this.adminOnly);
 
     this.router.get("/", async (_req, res) => {
       const metrics = await this.metricsService.getMetrics();

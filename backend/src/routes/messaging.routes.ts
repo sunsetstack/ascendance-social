@@ -1,7 +1,8 @@
 import express from "express";
+import { RequestHandler } from "express";
 import { asyncHandler } from "@/middleware/async-handler.middleware";
 import { inject, injectable } from "tsyringe";
-import { AuthFactory } from "../middleware/authentication.middleware";
+import { AuthMiddlewareService } from "../middleware/authentication.middleware";
 import { MessagingController } from "../controllers/messaging.controller";
 import { ValidationMiddleware } from "../middleware/validation.middleware";
 import upload from "../config/multer";
@@ -18,13 +19,16 @@ import {
 @injectable()
 export class MessagingRoutes {
   private readonly router: express.Router;
-  private readonly auth = AuthFactory.bearerToken().handle();
+  private readonly auth: RequestHandler;
 
   constructor(
     @inject(TOKENS.Controllers.Messaging)
     private readonly messagingController: MessagingController,
+    @inject(TOKENS.Services.AuthMiddleware)
+    authMiddlewareService: AuthMiddlewareService,
   ) {
     this.router = express.Router();
+    this.auth = authMiddlewareService.required();
     this.initializeRoutes();
   }
 
