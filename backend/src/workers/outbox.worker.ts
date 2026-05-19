@@ -13,7 +13,8 @@ export class OutboxWorker extends BasePollingWorker {
   private readonly workerId = randomUUID();
 
   constructor(
-    @inject(TOKENS.Repositories.Outbox) private readonly outboxRepository: OutboxRepository,
+    @inject(TOKENS.Repositories.Outbox)
+    private readonly outboxRepository: OutboxRepository,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
     @inject(TOKENS.Services.Metrics)
     private readonly metricsService: MetricsService,
@@ -23,7 +24,10 @@ export class OutboxWorker extends BasePollingWorker {
 
   protected async tick(): Promise<void> {
     const limit = 50;
-    const staleClaimMs = parseInt(process.env.OUTBOX_CLAIM_TIMEOUT_MS || "60000", 10);
+    const staleClaimMs = parseInt(
+      process.env.OUTBOX_CLAIM_TIMEOUT_MS || "60000",
+      10,
+    );
     const pendingCount = await this.outboxRepository.countPendingEvents();
     this.metricsService.setOutboxPendingCount(pendingCount);
 
@@ -58,7 +62,10 @@ export class OutboxWorker extends BasePollingWorker {
             }
 
             await handler.handle(record.payload);
-            await this.outboxRepository.markHandlerProcessed(eventId, handler.key);
+            await this.outboxRepository.markHandlerProcessed(
+              eventId,
+              handler.key,
+            );
             processedHandlers.add(handler.key);
           }
         });

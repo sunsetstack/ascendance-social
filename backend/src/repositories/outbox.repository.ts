@@ -31,11 +31,14 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
             processedHandlers: [],
           },
         ],
-        { session }
+        { session },
       );
       return outboxDocs[0];
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to save outbox event");
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
+          "failed to save outbox event",
+      );
     }
   }
 
@@ -47,7 +50,10 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
         .limit(limit)
         .exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to fetch unprocessed events");
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
+          "failed to fetch unprocessed events",
+      );
     }
   }
 
@@ -95,7 +101,10 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
 
       return claimed;
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to claim pending outbox events");
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
+          "failed to claim pending outbox events",
+      );
     }
   }
 
@@ -105,55 +114,76 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
         .countDocuments({ processed: false, retries: { $lt: 5 } })
         .exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to count pending outbox events");
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
+          "failed to count pending outbox events",
+      );
     }
   }
 
   async markAsProcessed(eventId: string): Promise<void> {
     try {
-      await this.model.updateOne(
-        { _id: eventId },
-        {
-          $set: {
-            processed: true,
-            processedAt: new Date(),
-            processing: false,
+      await this.model
+        .updateOne(
+          { _id: eventId },
+          {
+            $set: {
+              processed: true,
+              processedAt: new Date(),
+              processing: false,
+            },
+            $unset: {
+              processingOwner: 1,
+              processingStartedAt: 1,
+              error: 1,
+            },
           },
-          $unset: {
-            processingOwner: 1,
-            processingStartedAt: 1,
-            error: 1,
-          },
-        }
-      ).exec();
+        )
+        .exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to mark event as processed");
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
+          "failed to mark event as processed",
+      );
     }
   }
 
-  async markHandlerProcessed(eventId: string, handlerKey: string): Promise<void> {
+  async markHandlerProcessed(
+    eventId: string,
+    handlerKey: string,
+  ): Promise<void> {
     try {
-      await this.model.updateOne(
-        { _id: eventId },
-        { $addToSet: { processedHandlers: handlerKey } }
-      ).exec();
+      await this.model
+        .updateOne(
+          { _id: eventId },
+          { $addToSet: { processedHandlers: handlerKey } },
+        )
+        .exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to mark handler as processed");
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
+          "failed to mark handler as processed",
+      );
     }
   }
 
   async markAsFailed(eventId: string, errorMessage: string): Promise<void> {
     try {
-      await this.model.updateOne(
-        { _id: eventId },
-        { 
-          $inc: { retries: 1 }, 
-          $set: { error: errorMessage, processing: false }, 
-          $unset: { processingOwner: 1, processingStartedAt: 1 },
-        }
-      ).exec();
+      await this.model
+        .updateOne(
+          { _id: eventId },
+          {
+            $inc: { retries: 1 },
+            $set: { error: errorMessage, processing: false },
+            $unset: { processingOwner: 1, processingStartedAt: 1 },
+          },
+        )
+        .exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to mark event as failed");
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
+          "failed to mark event as failed",
+      );
     }
   }
 }

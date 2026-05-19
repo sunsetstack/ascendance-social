@@ -44,7 +44,8 @@ export class EventBus {
    * @param event - The event instance to be published.
    */
   async publish<TEvent extends IEvent>(event: TEvent): Promise<void> {
-    const handlers = (this.subscriptions.get(event.constructor.name) || []) as RegisteredEventHandler<TEvent>[];
+    const handlers = (this.subscriptions.get(event.constructor.name) ||
+      []) as RegisteredEventHandler<TEvent>[];
 
     await Promise.all(handlers.map((handler) => handler.handle(event)));
   }

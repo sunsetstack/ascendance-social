@@ -68,9 +68,12 @@ const outboxSchema = new Schema<IOutboxEvent>(
       type: Date,
     },
   },
-  { timestamps: { createdAt: true, updatedAt: false } }
+  { timestamps: { createdAt: true, updatedAt: false } },
 );
 
 outboxSchema.index({ processed: 1, processing: 1, retries: 1, createdAt: 1 }); // Compound index for background worker
 
-export const OutboxModel: Model<IOutboxEvent> = mongoose.model<IOutboxEvent>("Outbox", outboxSchema);
+export const OutboxModel: Model<IOutboxEvent> = mongoose.model<IOutboxEvent>(
+  "Outbox",
+  outboxSchema,
+);

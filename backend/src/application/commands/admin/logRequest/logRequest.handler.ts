@@ -28,8 +28,7 @@ export class LogRequestCommandHandler implements ICommandHandler<
       correlationId,
       userId,
       userAgent,
-    } =
-      command.payload;
+    } = command.payload;
 
     const tasks: Promise<any>[] = [
       this.requestLogRepository.create({
