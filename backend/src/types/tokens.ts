@@ -161,7 +161,6 @@ export const TOKENS = {
     Outbox: "OutboxRepository",
     PostLike: "PostLikeRepository",
     PostRead: "PostReadRepository",
-    Post: "PostRepository",
     PostView: "PostViewRepository",
     PostWrite: "PostWriteRepository",
     RequestLog: "RequestLogRepository",
@@ -170,7 +169,6 @@ export const TOKENS = {
     UserAction: "UserActionRepository",
     UserPreference: "UserPreferenceRepository",
     UserRead: "UserReadRepository",
-    User: "UserRepository",
     UserWrite: "UserWriteRepository",
   },
   Routes: {
