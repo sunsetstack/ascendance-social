@@ -19,7 +19,16 @@ export class LogRequestCommandHandler implements ICommandHandler<
   ) {}
 
   async execute(command: LogRequestCommand): Promise<void> {
-    const { method, route, ip, statusCode, responseTimeMs, userId, userAgent } =
+    const {
+      method,
+      route,
+      ip,
+      statusCode,
+      responseTimeMs,
+      correlationId,
+      userId,
+      userAgent,
+    } =
       command.payload;
 
     const tasks: Promise<any>[] = [
@@ -31,6 +40,7 @@ export class LogRequestCommandHandler implements ICommandHandler<
           ip,
           statusCode,
           responseTimeMs,
+          correlationId,
           userId,
           userAgent,
         },

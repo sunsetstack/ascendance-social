@@ -19,6 +19,7 @@ import {
   detailedRequestLogging,
   logBehaviour,
 } from "../middleware/logMiddleware";
+import { correlationIdMiddleware } from "../middleware/correlationId.middleware";
 import { requestLogger } from "../middleware/requestLogger";
 import { NotificationRoutes } from "../routes/notification.routes";
 import { FeedRoutes } from "../routes/feed.routes";
@@ -83,6 +84,7 @@ export class Server {
    */
   private initializeMiddlewares(): void {
     this.app.set("trust proxy", this.resolveTrustProxySetting());
+    this.app.use(correlationIdMiddleware);
     this.app.use(helmet());
 
     const corsOptions = buildCorsOptions();

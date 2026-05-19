@@ -69,6 +69,11 @@ export class UnitOfWork {
     work: (session: ClientSession) => Promise<T>,
     config?: TransactionConfig,
   ): Promise<T> {
+    const existingSession = sessionALS.getStore();
+    if (existingSession?.inTransaction()) {
+      return await work(existingSession);
+    }
+
     const cfg = { ...DEFAULT_CONFIG, ...config };
 
     // acquire semaphore to limit concurrency

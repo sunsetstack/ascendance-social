@@ -10,5 +10,6 @@ export interface IRequestLog extends Document {
 		userAgent?: string;
 		statusCode: number;
 		responseTimeMs: number;
+		correlationId?: string;
 	};
 }

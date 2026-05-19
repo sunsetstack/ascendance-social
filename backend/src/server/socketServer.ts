@@ -2,7 +2,7 @@ import { UserPublicId } from "@/types/branded";
 import { Request, RequestHandler } from "express";
 import { Server as HttpServer } from "http";
 import { AuthMiddlewareService } from "../middleware/authentication.middleware";
-import { Server as SocketIOServer } from "socket.io";
+import { Server as SocketIOServer, Socket as SocketIOSocket } from "socket.io";
 import { injectable, inject } from "tsyringe";
 import cookieParser from "cookie-parser";
 import { Errors } from "@/utils/errors";
@@ -13,11 +13,27 @@ import { getAllowedOrigins } from "@/config/corsConfig";
 import { TOKENS } from "@/types/tokens";
 
 let ioInstance: SocketIOServer | null = null;
+let viewingStateRedisService: RedisService | null = null;
 
 export async function isUserViewingConversation(
   userPublicId: UserPublicId,
   conversationPublicId: string,
 ): Promise<boolean> {
+  if (viewingStateRedisService) {
+    try {
+      return await viewingStateRedisService.isConversationActive(
+        userPublicId,
+        conversationPublicId,
+      );
+    } catch (error) {
+      logger.warn("[Socket] Falling back to socket presence lookup", {
+        error,
+        userPublicId,
+        conversationPublicId,
+      });
+    }
+  }
+
   if (!ioInstance) {
     return false;
   }
@@ -39,6 +55,7 @@ export class WebSocketServer {
     authMiddlewareService: AuthMiddlewareService,
   ) {
     this.socketAuthHandler = authMiddlewareService.required();
+    viewingStateRedisService = this.redisService;
   }
 
   /**
@@ -190,32 +207,16 @@ export class WebSocketServer {
 
       // track when user opens a conversation (for suppressing notifications)
       socket.on("conversation_opened", (conversationId: string) => {
-        const userId = socket.data.user?.publicId;
-        if (userId && conversationId) {
-          socket.data.activeConversationId = conversationId;
-          logger.info(`User ${userId} opened conversation ${conversationId}`);
-        }
+        void this.handleConversationOpened(socket, conversationId);
       });
 
       // track when user closes/leaves a conversation
       socket.on("conversation_closed", (conversationId?: string) => {
-        const userId = socket.data.user?.publicId;
-        if (
-          userId &&
-          (!conversationId ||
-            socket.data.activeConversationId === conversationId)
-        ) {
-          delete socket.data.activeConversationId;
-          logger.info(
-            conversationId
-              ? `User ${userId} closed conversation ${conversationId}`
-              : `User ${userId} closed conversation`,
-          );
-        }
+        void this.handleConversationClosed(socket, conversationId);
       });
 
       socket.on("disconnect", () => {
-        delete socket.data.activeConversationId;
+        void this.handleConversationClosed(socket);
         logger.info("Client disconnected:", socket.id);
       });
     });
@@ -261,5 +262,97 @@ export class WebSocketServer {
       throw Errors.internal("WebSocket server is not initialized.");
     }
     return this.io;
+  }
+
+  private async handleConversationOpened(
+    socket: SocketIOSocket,
+    conversationId: string,
+  ): Promise<void> {
+    const userId = socket.data.user?.publicId;
+    if (!userId || !conversationId) {
+      return;
+    }
+
+    const previousConversationId = socket.data.activeConversationId;
+    if (previousConversationId && previousConversationId !== conversationId) {
+      await this.safeClearConversationPresence(
+        userId,
+        previousConversationId,
+        socket.id,
+      );
+    }
+
+    socket.data.activeConversationId = conversationId;
+
+    try {
+      const ttlSeconds = parseInt(
+        process.env.ACTIVE_CONVERSATION_TTL_SECONDS || "90",
+        10,
+      );
+      await this.redisService.markConversationPresence(
+        userId,
+        conversationId,
+        socket.id,
+        ttlSeconds,
+      );
+      logger.info(`User ${userId} opened conversation ${conversationId}`);
+    } catch (error) {
+      logger.warn("[Socket] Failed to store conversation presence", {
+        error,
+        userId,
+        conversationId,
+        socketId: socket.id,
+      });
+    }
+  }
+
+  private async handleConversationClosed(
+    socket: SocketIOSocket,
+    conversationId?: string,
+  ): Promise<void> {
+    const userId = socket.data.user?.publicId;
+    const activeConversationId = socket.data.activeConversationId;
+
+    if (
+      !userId ||
+      !activeConversationId ||
+      (conversationId && activeConversationId !== conversationId)
+    ) {
+      return;
+    }
+
+    await this.safeClearConversationPresence(
+      userId,
+      activeConversationId,
+      socket.id,
+    );
+    delete socket.data.activeConversationId;
+
+    logger.info(
+      conversationId
+        ? `User ${userId} closed conversation ${conversationId}`
+        : `User ${userId} closed conversation`,
+    );
+  }
+
+  private async safeClearConversationPresence(
+    userId: string,
+    conversationId: string,
+    socketId: string,
+  ): Promise<void> {
+    try {
+      await this.redisService.clearConversationPresence(
+        userId,
+        conversationId,
+        socketId,
+      );
+    } catch (error) {
+      logger.warn("[Socket] Failed to clear conversation presence", {
+        error,
+        userId,
+        conversationId,
+        socketId,
+      });
+    }
   }
 }

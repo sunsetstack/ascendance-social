@@ -1,4 +1,31 @@
 import winston from "winston";
+import { getCorrelationId } from "@/runtime/request-context";
+
+const attachCorrelationId = winston.format((info) => {
+	const correlationId = getCorrelationId();
+	if (correlationId && info.correlationId === undefined) {
+		info.correlationId = correlationId;
+	}
+
+	return info;
+});
+
+const jsonLogFormat = winston.format.combine(
+	attachCorrelationId(),
+	winston.format.timestamp(),
+	winston.format.json(),
+);
+
+const consoleLogFormat = winston.format.combine(
+	attachCorrelationId(),
+	winston.format.colorize(),
+	winston.format.timestamp(),
+	winston.format.printf(({ timestamp, level, message, correlationId, ...meta }) => {
+		const correlation = typeof correlationId === "string" ? ` [${correlationId}]` : "";
+		const metaStr = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : "";
+		return `[${timestamp}]${correlation} ${level}: ${message}${metaStr}`;
+	}),
+);
 
 const isTest = process.env.NODE_ENV === "test";
 const testTransport = isTest ? new winston.transports.Console({ silent: true }) : null;
@@ -6,14 +33,14 @@ const combinedTransport = isTest ? null : new winston.transports.File({ filename
 
 export const logger = winston.createLogger({
 	level: "info",
-	format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
+	format: jsonLogFormat,
 	transports: [
 		...(combinedTransport ? [combinedTransport] : []),
 		...(testTransport ? [testTransport] : []),
 		...(process.env.NODE_ENV !== "production" && !isTest
 			? [
 					new winston.transports.Console({
-						format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
+						format: consoleLogFormat,
 					}),
 				]
 			: []),
@@ -22,7 +49,7 @@ export const logger = winston.createLogger({
 
 export const httpLogger = winston.createLogger({
 	level: "info",
-	format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
+	format: jsonLogFormat,
 	transports: isTest
 		? [...(testTransport ? [testTransport] : [])]
 		: [new winston.transports.File({ filename: "http-requests.log" }), ...(combinedTransport ? [combinedTransport] : [])],
@@ -30,7 +57,7 @@ export const httpLogger = winston.createLogger({
 
 export const behaviourLogger = winston.createLogger({
 	level: "info",
-	format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
+	format: jsonLogFormat,
 	transports: isTest
 		? [...(testTransport ? [testTransport] : [])]
 		: [
@@ -41,7 +68,7 @@ export const behaviourLogger = winston.createLogger({
 
 export const errorLogger = winston.createLogger({
 	level: "error",
-	format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
+	format: jsonLogFormat,
 	transports: [
 		...(isTest ? [] : [new winston.transports.File({ filename: "errors.log" })]),
 		...(combinedTransport ? [combinedTransport] : []),
@@ -50,7 +77,7 @@ export const errorLogger = winston.createLogger({
 		...(process.env.NODE_ENV !== "production" && !isTest
 			? [
 					new winston.transports.Console({
-						format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
+						format: consoleLogFormat,
 					}),
 				]
 			: []),
@@ -59,7 +86,7 @@ export const errorLogger = winston.createLogger({
 
 export const detailedRequestLogger = winston.createLogger({
 	level: "info",
-	format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
+	format: jsonLogFormat,
 	transports: isTest
 		? [...(testTransport ? [testTransport] : [])]
 		: [
@@ -71,11 +98,13 @@ export const detailedRequestLogger = winston.createLogger({
 export const redisLogger = winston.createLogger({
 	level: "debug",
 	format: winston.format.combine(
+		attachCorrelationId(),
 		winston.format.timestamp(),
 		winston.format.colorize(),
-		winston.format.printf(({ timestamp, level, message, ...meta }) => {
+		winston.format.printf(({ timestamp, level, message, correlationId, ...meta }) => {
+			const correlation = typeof correlationId === "string" ? ` [${correlationId}]` : "";
 			const metaStr = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : "";
-			return `[${timestamp}] [REDIS] ${level}: ${message} ${metaStr}`;
+			return `[${timestamp}] [REDIS]${correlation} ${level}: ${message} ${metaStr}`;
 		})
 	),
 	transports: isTest

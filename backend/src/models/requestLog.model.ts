@@ -6,6 +6,7 @@ const RequestLogSchema = new Schema<IRequestLog>(
 		timestamp: { type: Date, required: true },
 		metadata: {
 			userId: { type: String },
+			correlationId: { type: String },
 			method: { type: String, required: true },
 			route: { type: String, required: true },
 			ip: { type: String, required: true },
@@ -29,6 +30,7 @@ RequestLogSchema.index({ "metadata.userId": 1 });
 RequestLogSchema.index({ "metadata.ip": 1 });
 RequestLogSchema.index({ "metadata.method": 1 });
 RequestLogSchema.index({ "metadata.statusCode": 1 });
+RequestLogSchema.index({ "metadata.correlationId": 1 });
 // Route might be high cardinality, but useful for exact match filtering if we add it later
 RequestLogSchema.index({ "metadata.route": 1 });
 

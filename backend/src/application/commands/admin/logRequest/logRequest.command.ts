@@ -6,6 +6,7 @@ export interface LogRequestPayload {
 	ip: string;
 	statusCode: number;
 	responseTimeMs: number;
+	correlationId?: string;
 	userId?: string;
 	userAgent?: string;
 }

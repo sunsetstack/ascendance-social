@@ -5,6 +5,7 @@ import { LogRequestCommand } from "@/application/commands/admin/logRequest/logRe
 import { logger } from "@/utils/winston";
 import { getClientIp } from "@/utils/request-ip";
 import { TOKENS } from "@/types/tokens";
+import { getCorrelationId } from "@/runtime/request-context";
 
 let commandBus: CommandBus | null = null;
 
@@ -40,6 +41,7 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction) =
 			ip: getClientIp(req),
 			statusCode: res.statusCode,
 			responseTimeMs,
+			correlationId: req.correlationId ?? getCorrelationId(),
 			userId,
 			userAgent,
 		});

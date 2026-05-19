@@ -13,6 +13,7 @@ export interface RequestLogDTO {
 	ip: string;
 	statusCode: number;
 	responseTimeMs: number;
+	correlationId?: string;
 	userId?: string;
 	userAgent?: string;
 }
@@ -48,6 +49,7 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<GetRequestLogsQ
 				{ "metadata.ip": regex },
 				{ "metadata.method": regex },
 				{ "metadata.route": regex },
+				{ "metadata.correlationId": regex },
 				{ "metadata.userId": regex },
 			];
 		}
@@ -67,6 +69,7 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<GetRequestLogsQ
 			ip: log.metadata.ip,
 			statusCode: log.metadata.statusCode,
 			responseTimeMs: log.metadata.responseTimeMs,
+			correlationId: log.metadata.correlationId,
 			userId: log.metadata.userId,
 			userAgent: log.metadata.userAgent,
 		}));

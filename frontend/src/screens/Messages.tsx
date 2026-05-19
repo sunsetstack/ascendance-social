@@ -53,6 +53,7 @@ import { useSocket } from "../hooks/context/useSocket";
 import { ConversationSummaryDTO, MessageDTO } from "../types";
 
 const CONVERSATION_PANEL_WIDTH = 380;
+const CONVERSATION_PRESENCE_HEARTBEAT_MS = 30_000;
 
 const formatTimestamp = (timestamp: string) => {
 	try {
@@ -132,16 +133,21 @@ const Messages = () => {
 
 	// notify backend when viewing a conversation to suppress notifications
 	useEffect(() => {
-		if (!socket) return;
+		if (!socket || !selectedConversationId) return;
 
-		if (selectedConversationId) {
+		const emitPresence = () => {
 			socket.emit("conversation_opened", selectedConversationId);
-		}
+		};
+
+		emitPresence();
+		const heartbeatId = window.setInterval(
+			emitPresence,
+			CONVERSATION_PRESENCE_HEARTBEAT_MS,
+		);
 
 		return () => {
-			if (selectedConversationId) {
-				socket.emit("conversation_closed", selectedConversationId);
-			}
+			window.clearInterval(heartbeatId);
+			socket.emit("conversation_closed", selectedConversationId);
 		};
 	}, [selectedConversationId, socket]);
 

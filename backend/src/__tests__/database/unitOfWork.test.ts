@@ -2,7 +2,7 @@ import "reflect-metadata";
 import { expect } from "chai";
 import sinon from "sinon";
 import mongoose from "mongoose";
-import { UnitOfWork } from "@/database/UnitOfWork";
+import { UnitOfWork, sessionALS } from "@/database/UnitOfWork";
 
 describe("UnitOfWork", () => {
 	let unitOfWork: UnitOfWork;
@@ -121,6 +121,26 @@ describe("UnitOfWork", () => {
 
 			releaseRead();
 			await readPromise;
+		});
+	});
+
+	describe("executeInTransaction", () => {
+		it("reuses the ambient session when a transaction is already active", async () => {
+			const startSessionStub = sinon.stub(mongoose, "startSession");
+			const existingSession = {
+				inTransaction: sinon.stub().returns(true),
+			} as any;
+
+			const result = await sessionALS.run(existingSession, async () =>
+				unitOfWork.executeInTransaction(async (session) => {
+					expect(session).to.equal(existingSession);
+					return "reused";
+				}),
+			);
+
+			expect(result).to.equal("reused");
+			expect(startSessionStub.called).to.be.false;
+			expect(unitOfWork.getMetrics().totalAttempts).to.equal(0);
 		});
 	});
 

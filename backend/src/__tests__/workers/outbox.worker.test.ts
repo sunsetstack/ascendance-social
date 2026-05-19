@@ -9,6 +9,7 @@ import { IEvent } from "@/application/common/interfaces/event.interface";
 import { IEventHandler } from "@/application/common/interfaces/event-handler.interface";
 import { sessionALS } from "@/database/UnitOfWork";
 import { ClientSession } from "mongoose";
+import { runWithRequestContext } from "@/runtime/request-context";
 
 class TestEvent implements IEvent {
   readonly type = "TestEvent";
@@ -20,6 +21,18 @@ class TestEvent implements IEvent {
 class TestEventHandler implements IEventHandler<TestEvent> {
   async handle(event: TestEvent): Promise<void> {
     // mock handle
+  }
+}
+
+class FirstTestEventHandler implements IEventHandler<TestEvent> {
+  async handle(event: TestEvent): Promise<void> {
+    void event;
+  }
+}
+
+class SecondTestEventHandler implements IEventHandler<TestEvent> {
+  async handle(event: TestEvent): Promise<void> {
+    void event;
   }
 }
 
@@ -38,7 +51,9 @@ describe("Transactional Outbox Pattern", () => {
     outboxRepository = {
       saveEvent: sandbox.stub(),
       countPendingEvents: sandbox.stub().resolves(0),
+      claimPendingEvents: sandbox.stub().resolves([]),
       getUnprocessedEvents: sandbox.stub(),
+      markHandlerProcessed: sandbox.stub(),
       markAsProcessed: sandbox.stub(),
       markAsFailed: sandbox.stub(),
     } as unknown as sinon.SinonStubbedInstance<OutboxRepository>;
@@ -73,17 +88,20 @@ describe("Transactional Outbox Pattern", () => {
       const event = new TestEvent("test");
       const mockSession = {} as ClientSession;
 
-      await sessionALS.run(mockSession, async () => {
-        await eventBus.queueTransactional(event);
-      });
+      await runWithRequestContext({ correlationId: "request-123" }, async () =>
+        sessionALS.run(mockSession, async () => {
+          await eventBus.queueTransactional(event);
+        }),
+      );
 
       expect(outboxRepository.saveEvent.calledOnce).to.be.true;
       expect(outboxRepository.saveEvent.firstCall.args[0]).to.equal("TestEvent");
       expect(outboxRepository.saveEvent.firstCall.args[1]).to.equal(event);
-      expect(outboxRepository.saveEvent.firstCall.args).to.have.lengthOf(3);
+      expect(outboxRepository.saveEvent.firstCall.args).to.have.lengthOf(4);
       expect(String(outboxRepository.saveEvent.firstCall.args[2])).to.match(
         uuidPattern,
       );
+      expect(outboxRepository.saveEvent.firstCall.args[3]).to.equal("request-123");
     });
   });
 
@@ -115,6 +133,7 @@ describe("Transactional Outbox Pattern", () => {
           payload: { payload: "first" },
           retries: 0,
           traceId: "trace-1",
+          processedHandlers: [],
         },
         {
           _id: "event2",
@@ -122,11 +141,13 @@ describe("Transactional Outbox Pattern", () => {
           payload: { payload: "second" },
           retries: 0,
           traceId: "trace-2",
+          processedHandlers: [],
         },
       ];
       outboxRepository.countPendingEvents.onFirstCall().resolves(2);
       outboxRepository.countPendingEvents.onSecondCall().resolves(0);
-      outboxRepository.getUnprocessedEvents.resolves(mockEvents as any);
+      outboxRepository.claimPendingEvents.resolves(mockEvents as any);
+      outboxRepository.markHandlerProcessed.resolves();
       outboxRepository.markAsProcessed.resolves();
 
       await (outboxWorker as any).tick();
@@ -134,11 +155,20 @@ describe("Transactional Outbox Pattern", () => {
       expect(metricsService.setOutboxPendingCount.firstCall.args[0]).to.equal(2);
       expect(metricsService.recordOutboxBatchSize.calledOnceWithExactly(2)).to.be
         .true;
-      expect(outboxRepository.getUnprocessedEvents.calledOnce).to.be.true;
+      expect(outboxRepository.claimPendingEvents.calledOnce).to.be.true;
       expect(handleSpy.calledTwice).to.be.true;
       expect(handleSpy.firstCall.args[0]).to.deep.equal({ payload: "first" });
       expect(handleSpy.secondCall.args[0]).to.deep.equal({ payload: "second" });
 
+      expect(outboxRepository.markHandlerProcessed.calledTwice).to.be.true;
+      expect(outboxRepository.markHandlerProcessed.firstCall.args).to.deep.equal([
+        "event1",
+        "TestEventHandler",
+      ]);
+      expect(outboxRepository.markHandlerProcessed.secondCall.args).to.deep.equal([
+        "event2",
+        "TestEventHandler",
+      ]);
       expect(outboxRepository.markAsProcessed.calledTwice).to.be.true;
       expect(outboxRepository.markAsProcessed.firstCall.args[0]).to.equal("event1");
       expect(outboxRepository.markAsProcessed.secondCall.args[0]).to.equal("event2");
@@ -165,17 +195,19 @@ describe("Transactional Outbox Pattern", () => {
           payload: { payload: "first" },
           retries: 2,
           traceId: "trace-1",
+          processedHandlers: [],
         },
       ];
       outboxRepository.countPendingEvents.onFirstCall().resolves(1);
       outboxRepository.countPendingEvents.onSecondCall().resolves(1);
-      outboxRepository.getUnprocessedEvents.resolves(mockEvents as any);
+      outboxRepository.claimPendingEvents.resolves(mockEvents as any);
       outboxRepository.markAsFailed.resolves();
 
       await (outboxWorker as any).tick();
 
       expect(handleSpy.calledOnce).to.be.true;
       expect(outboxRepository.markAsProcessed.called).to.be.false;
+      expect(outboxRepository.markHandlerProcessed.called).to.be.false;
       expect(outboxRepository.markAsFailed.calledOnce).to.be.true;
       expect(outboxRepository.markAsFailed.firstCall.args[0]).to.equal("event1");
       expect(outboxRepository.markAsFailed.firstCall.args[1]).to.equal("Handler failed");
@@ -205,6 +237,7 @@ describe("Transactional Outbox Pattern", () => {
           payload: { payload: "first" },
           retries: 0,
           traceId: "trace-1",
+          processedHandlers: [],
         },
         {
           _id: "event2",
@@ -212,11 +245,13 @@ describe("Transactional Outbox Pattern", () => {
           payload: { payload: "second" },
           retries: 0,
           traceId: "trace-2",
+          processedHandlers: [],
         },
       ];
       outboxRepository.countPendingEvents.onFirstCall().resolves(2);
       outboxRepository.countPendingEvents.onSecondCall().resolves(1);
-      outboxRepository.getUnprocessedEvents.resolves(mockEvents as any);
+      outboxRepository.claimPendingEvents.resolves(mockEvents as any);
+      outboxRepository.markHandlerProcessed.resolves();
       outboxRepository.markAsFailed.resolves();
       outboxRepository.markAsProcessed.resolves();
 
@@ -225,6 +260,42 @@ describe("Transactional Outbox Pattern", () => {
       expect(handleSpy.calledTwice).to.be.true;
       expect(outboxRepository.markAsFailed.calledOnceWithExactly("event1", "first failed")).to.be.true;
       expect(outboxRepository.markAsProcessed.calledOnceWithExactly("event2")).to.be.true;
+    });
+
+    it("should resume from the first unprocessed handler on retry", async () => {
+      const firstHandler = new FirstTestEventHandler();
+      const secondHandler = new SecondTestEventHandler();
+      const firstHandleSpy = sandbox.stub(firstHandler, "handle").resolves();
+      const secondHandleSpy = sandbox.stub(secondHandler, "handle").resolves();
+      eventBus.subscribe(TestEvent, firstHandler);
+      eventBus.subscribe(TestEvent, secondHandler);
+
+      const mockEvents = [
+        {
+          _id: "event1",
+          eventType: "TestEvent",
+          payload: { payload: "resume" },
+          retries: 1,
+          traceId: "trace-1",
+          processedHandlers: ["FirstTestEventHandler"],
+        },
+      ];
+
+      outboxRepository.countPendingEvents.onFirstCall().resolves(1);
+      outboxRepository.countPendingEvents.onSecondCall().resolves(0);
+      outboxRepository.claimPendingEvents.resolves(mockEvents as any);
+      outboxRepository.markHandlerProcessed.resolves();
+      outboxRepository.markAsProcessed.resolves();
+
+      await (outboxWorker as any).tick();
+
+      expect(firstHandleSpy.called).to.be.false;
+      expect(secondHandleSpy.calledOnceWithExactly({ payload: "resume" })).to.be.true;
+      expect(outboxRepository.markHandlerProcessed.calledOnceWithExactly(
+        "event1",
+        "SecondTestEventHandler",
+      )).to.be.true;
+      expect(outboxRepository.markAsProcessed.calledOnceWithExactly("event1")).to.be.true;
     });
   });
 });
