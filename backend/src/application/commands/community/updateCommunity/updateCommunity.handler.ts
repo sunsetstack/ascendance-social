@@ -120,7 +120,7 @@ export class UpdateCommunityCommandHandler implements ICommandHandler<
 
     // Update
     const updatedCommunity = await this.communityRepository.update(
-      asMongoId(asMongoId(communityId.toString())),
+      asMongoId(communityId.toString()),
       updateData,
     );
     if (!updatedCommunity) {

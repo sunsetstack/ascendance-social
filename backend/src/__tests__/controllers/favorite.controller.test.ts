@@ -4,8 +4,12 @@ import { expect } from "chai";
 import chaiAsPromised from "chai-as-promised";
 import sinon, { SinonStub } from "sinon";
 import { Request, Response } from "express";
+import { CommandBus } from "@/application/common/buses/command.bus";
+import { QueryBus } from "@/application/common/buses/query.bus";
+import { AddFavoriteCommand } from "@/application/commands/favorite/addFavorite/addFavorite.command";
+import { RemoveFavoriteCommand } from "@/application/commands/favorite/removeFavorite/removeFavorite.command";
+import { GetFavoritesQuery } from "@/application/queries/favorite/getFavorites/getFavorites.query";
 import { FavoriteController } from "@/controllers/favorite.controller";
-import { FavoriteService } from "@/services/favorite.service";
 import { DecodedUser, PaginationResult, PostDTO } from "@/types";
 
 chai.use(chaiAsPromised);
@@ -20,7 +24,8 @@ const createDecodedUser = (publicId: string): DecodedUser => ({
 
 describe("FavoriteController", () => {
 	let controller: FavoriteController;
-	let favoriteService: sinon.SinonStubbedInstance<FavoriteService>;
+	let commandBus: sinon.SinonStubbedInstance<CommandBus>;
+	let queryBus: sinon.SinonStubbedInstance<QueryBus>;
 	let res: Partial<Response>;
 
 	const createResponse = (): Partial<Response> => {
@@ -32,8 +37,12 @@ describe("FavoriteController", () => {
 	};
 
 	beforeEach(() => {
-		favoriteService = sinon.createStubInstance(FavoriteService);
-		controller = new FavoriteController(favoriteService as unknown as FavoriteService);
+		commandBus = sinon.createStubInstance(CommandBus);
+		queryBus = sinon.createStubInstance(QueryBus);
+		controller = new FavoriteController(
+			commandBus as unknown as CommandBus,
+			queryBus as unknown as QueryBus,
+		);
 		res = createResponse();
 	});
 
@@ -47,11 +56,15 @@ describe("FavoriteController", () => {
 				params: { publicId: "post-123.jpg" },
 				decodedUser: createDecodedUser("user-1"),
 			};
-			favoriteService.addFavoriteByPublicIds.resolves();
+			commandBus.dispatch.resolves(undefined);
 
 			await controller.addFavorite(req as Request, res as Response);
 
-			expect(favoriteService.addFavoriteByPublicIds.calledWith("user-1", "post-123")).to.be.true;
+			expect(commandBus.dispatch.calledOnce).to.be.true;
+			const command = commandBus.dispatch.firstCall.args[0] as AddFavoriteCommand;
+			expect(command).to.be.instanceOf(AddFavoriteCommand);
+			expect(command.actorPublicId).to.equal("user-1");
+			expect(command.postPublicId).to.equal("post-123");
 			expect((res.status as SinonStub).calledWith(204)).to.be.true;
 			expect((res.send as SinonStub).calledOnce).to.be.true;
 		});
@@ -78,11 +91,15 @@ describe("FavoriteController", () => {
 				params: { publicId: "post-999.png" },
 				decodedUser: createDecodedUser("user-5"),
 			};
-			favoriteService.removeFavoriteByPublicIds.resolves();
+			commandBus.dispatch.resolves(undefined);
 
 			await controller.removeFavorite(req as Request, res as Response);
 
-			expect(favoriteService.removeFavoriteByPublicIds.calledWith("user-5", "post-999")).to.be.true;
+			expect(commandBus.dispatch.calledOnce).to.be.true;
+			const command = commandBus.dispatch.firstCall.args[0] as RemoveFavoriteCommand;
+			expect(command).to.be.instanceOf(RemoveFavoriteCommand);
+			expect(command.actorPublicId).to.equal("user-5");
+			expect(command.postPublicId).to.equal("post-999");
 			expect((res.status as SinonStub).calledWith(204)).to.be.true;
 			expect((res.send as SinonStub).calledOnce).to.be.true;
 		});
@@ -112,7 +129,7 @@ describe("FavoriteController", () => {
 				total: 1,
 				totalPages: 1,
 			};
-			favoriteService.getFavoritesForViewer.resolves(result);
+			queryBus.execute.resolves(result);
 
 			const req: Partial<Request> = {
 				decodedUser: createDecodedUser("user-1"),
@@ -121,13 +138,18 @@ describe("FavoriteController", () => {
 
 			await controller.getFavorites(req as Request, res as Response);
 
-			expect(favoriteService.getFavoritesForViewer.calledWith("user-1", 1, 20)).to.be.true;
+			expect(queryBus.execute.calledOnce).to.be.true;
+			const query = queryBus.execute.firstCall.args[0] as GetFavoritesQuery;
+			expect(query).to.be.instanceOf(GetFavoritesQuery);
+			expect(query.viewerPublicId).to.equal("user-1");
+			expect(query.page).to.equal(1);
+			expect(query.limit).to.equal(20);
 			expect((res.status as SinonStub).calledWith(200)).to.be.true;
 			expect((res.json as SinonStub).calledWith(result)).to.be.true;
 		});
 
 		it("passes pagination params", async () => {
-			favoriteService.getFavoritesForViewer.resolves({
+			queryBus.execute.resolves({
 				data: [],
 				page: 2,
 				limit: 10,
@@ -142,7 +164,10 @@ describe("FavoriteController", () => {
 
 			await controller.getFavorites(req as Request, res as Response);
 
-			expect(favoriteService.getFavoritesForViewer.calledWith("user-1", 2, 10)).to.be.true;
+			const query = queryBus.execute.firstCall.args[0] as GetFavoritesQuery;
+			expect(query.viewerPublicId).to.equal("user-1");
+			expect(query.page).to.equal(2);
+			expect(query.limit).to.equal(10);
 		});
 
 		it("bubbles authentication error", async () => {

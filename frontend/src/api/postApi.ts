@@ -137,12 +137,10 @@ export const uploadPost = async (post: FormData): Promise<IPost> => {
 
 export const fetchTags = async (): Promise<ITag[]> => {
   const { data } = await axiosClient.get("/api/posts/tags");
-  console.log("TAGS:", data);
   return data;
 };
 
 export const deletePostByPublicId = async (publicId: string): Promise<void> => {
-  console.log("Deleting post with public ID:", publicId);
   await axiosClient.delete(`/api/posts/${publicId}`);
 };
 

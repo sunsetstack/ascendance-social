@@ -8,6 +8,15 @@ import {
   getErrorLabels,
 } from "@/utils/errors";
 import { AsyncLocalStorage } from "async_hooks";
+import { TransactionSemaphore } from "./transaction-semaphore";
+import {
+  backoffWithJitter,
+  isRetryableTransactionError,
+} from "./transaction-retry";
+import {
+  TransactionMetrics,
+  TransactionMetricsTracker,
+} from "./transaction-metrics";
 
 export const sessionALS = new AsyncLocalStorage<ClientSession>();
 
@@ -28,74 +37,15 @@ const DEFAULT_CONFIG: Required<TransactionConfig> = {
   priority: "normal",
 };
 
-/**
- * Semaphore implementation for concurrency limiting
- */
-class Semaphore {
-  private permits: number;
-  private waiting: Array<() => void> = [];
-
-  constructor(permits: number) {
-    this.permits = permits;
-  }
-
-  async acquire(): Promise<void> {
-    if (this.permits > 0) {
-      this.permits--;
-      return;
-    }
-    return new Promise<void>((resolve) => {
-      this.waiting.push(resolve);
-    });
-  }
-
-  release(): void {
-    const next = this.waiting.shift();
-    if (next) {
-      next();
-    } else {
-      this.permits++;
-    }
-  }
-
-  get availablePermits(): number {
-    return this.permits;
-  }
-
-  get queueLength(): number {
-    return this.waiting.length;
-  }
-}
-
-/**
- * Metrics for monitoring transaction health
- */
-export interface TransactionMetrics {
-  totalAttempts: number;
-  successfulTransactions: number;
-  failedTransactions: number;
-  retriedTransactions: number;
-  avgRetryCount: number;
-  currentQueueLength: number;
-  availablePermits: number;
-}
-
 @injectable()
 export class UnitOfWork {
   // limits concurrent transactions to prevent overwhelming MongoDB
-  private readonly transactionSemaphore: Semaphore;
-
-  // metrics for monitoring
-  private metrics = {
-    totalAttempts: 0,
-    successfulTransactions: 0,
-    failedTransactions: 0,
-    retriedTransactions: 0,
-    totalRetries: 0,
-  };
+  private readonly transactionSemaphore: TransactionSemaphore;
+  private readonly readSemaphore: TransactionSemaphore;
+  private metrics: TransactionMetricsTracker = new TransactionMetricsTracker();
 
   constructor() {
-    if (!mongoose.connection.readyState) {
+    if (mongoose.connection.readyState !== 1) {
       throw Errors.database("Database connection not established");
     }
     // allow up to 50 concurrent transactions
@@ -103,7 +53,12 @@ export class UnitOfWork {
       process.env.MAX_CONCURRENT_TRANSACTIONS || "50",
       10,
     );
-    this.transactionSemaphore = new Semaphore(maxConcurrent);
+    const maxConcurrentReads = parseInt(
+      process.env.MAX_CONCURRENT_READS || String(maxConcurrent * 4),
+      10,
+    );
+    this.transactionSemaphore = new TransactionSemaphore(maxConcurrent);
+    this.readSemaphore = new TransactionSemaphore(maxConcurrentReads);
   }
 
   /**
@@ -123,7 +78,7 @@ export class UnitOfWork {
     try {
       while (true) {
         attempt++;
-        this.metrics.totalAttempts++;
+        this.metrics.recordAttempt();
         const session = await mongoose.startSession();
 
         try {
@@ -141,14 +96,9 @@ export class UnitOfWork {
             },
           );
 
-          this.metrics.successfulTransactions++;
-          if (attempt > 1) {
-            this.metrics.retriedTransactions++;
-            this.metrics.totalRetries += attempt - 1;
-          }
+          this.metrics.recordSuccess(attempt);
           return result as T;
         } catch (error: unknown) {
-
           const retryable = this.isRetryableError(error);
           const shouldRetry = retryable && attempt < cfg.maxAttempts;
 
@@ -169,7 +119,7 @@ export class UnitOfWork {
             continue;
           }
 
-          this.metrics.failedTransactions++;
+          this.metrics.recordFailure();
           logger.error(
             `[UnitOfWork] Transaction failed after ${attempt} attempts`,
             {
@@ -191,118 +141,45 @@ export class UnitOfWork {
 
   /**
    * Execute work without a transaction (for read-heavy operations)
-   * still respects concurrency limits
+   * uses a separate semaphore so reads are not throttled by write contention
    */
   async executeWithoutTransaction<T>(work: () => Promise<T>): Promise<T> {
-    await this.transactionSemaphore.acquire();
+    await this.readSemaphore.acquire();
     try {
       return await work();
     } finally {
-      this.transactionSemaphore.release();
+      this.readSemaphore.release();
     }
   }
 
-  /**
-   * Check if an error is retryable
-   * Covers MongoDB transient transaction errors and write conflicts
-   */
   private isRetryableError(error: unknown): boolean {
-    if (!error) return false;
-
-    // check error labels first (most reliable)
-    const labels = getErrorLabels(error);
-    if (labels) {
-      if (labels.includes("TransientTransactionError")) return true;
-      if (labels.includes("UnknownTransactionCommitResult")) return true;
-    }
-
-    // check specific error codes
-    const retryableCodes = new Set([
-      112, // WriteConflict
-      251, // NoSuchTransaction (transaction expired)
-      11600, // InterruptedAtShutdown
-      11602, // InterruptedDueToReplStateChange
-      189, // PrimarySteppedDown
-      91, // ShutdownInProgress
-      10107, // NotWritablePrimary
-      13435, // NotPrimaryNoSecondaryOk
-      13436, // NotPrimaryOrSecondary
-      64, // WriteConcernFailed (can be transient)
-    ]);
-
-    const code = getErrorCode(error);
-    if (typeof code === "number" && retryableCodes.has(code)) {
-      return true;
-    }
-
-    // check error message as fallback
-    const message = getErrorMessage(error).toLowerCase();
-    const retryableMessages = [
-      "write conflict",
-      "writeconflict",
-      "transient transaction",
-      "please retry",
-      "transaction was aborted",
-      "transaction number",
-      "network error",
-      "socket exception",
-      "connection closed",
-      "not primary",
-      "node is recovering",
-    ];
-
-    return retryableMessages.some((msg) => message.includes(msg));
+    return isRetryableTransactionError(error);
   }
 
-  /**
-   * Exponential backoff with full jitter
-   * prevents thundering herd when multiple transactions retry simultaneously
-   */
   private async backoffWithJitter(
     attempt: number,
     baseMs: number,
     maxMs: number,
   ): Promise<void> {
-    // exponential backoff: baseMs * 2^(attempt-1)
-    const exponentialDelay = Math.min(baseMs * Math.pow(2, attempt - 1), maxMs);
-    // full jitter: random value between 0 and exponentialDelay
-    const jitteredDelay = Math.floor(Math.random() * exponentialDelay);
-    // add small minimum delay to prevent immediate retries
-    const finalDelay = Math.max(jitteredDelay, 10);
-
-    return new Promise((resolve) => setTimeout(resolve, finalDelay));
+    await backoffWithJitter(attempt, baseMs, maxMs);
   }
 
   /**
    * Get current transaction metrics for monitoring
    */
   getMetrics(): TransactionMetrics {
-    const avgRetryCount =
-      this.metrics.retriedTransactions > 0
-        ? this.metrics.totalRetries / this.metrics.retriedTransactions
-        : 0;
-
-    return {
-      totalAttempts: this.metrics.totalAttempts,
-      successfulTransactions: this.metrics.successfulTransactions,
-      failedTransactions: this.metrics.failedTransactions,
-      retriedTransactions: this.metrics.retriedTransactions,
-      avgRetryCount: Math.round(avgRetryCount * 100) / 100,
-      currentQueueLength: this.transactionSemaphore.queueLength,
-      availablePermits: this.transactionSemaphore.availablePermits,
-    };
+    return this.metrics.snapshot(this.transactionSemaphore);
   }
 
   /**
    * Reset metrics (useful for testing)
    */
   resetMetrics(): void {
-    this.metrics = {
-      totalAttempts: 0,
-      successfulTransactions: 0,
-      failedTransactions: 0,
-      retriedTransactions: 0,
-      totalRetries: 0,
-    };
+    if (this.metrics instanceof TransactionMetricsTracker) {
+      this.metrics.reset();
+      return;
+    }
+
+    this.metrics = new TransactionMetricsTracker();
   }
 }

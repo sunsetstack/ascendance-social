@@ -92,7 +92,12 @@ export class FeedReadService {
         limit: coreFeed!.limit ?? safeLimit,
       };
     } catch (error) {
-      console.error("Failed to generate personalized feed:", error);
+      logger.error("Failed to generate personalized feed", {
+        userId,
+        page: safePage,
+        limit: safeLimit,
+        error,
+      });
       throw Errors.internal(
         `Could not generate personalized feed for user ${userId}: ${(error as Error).message}`,
       );

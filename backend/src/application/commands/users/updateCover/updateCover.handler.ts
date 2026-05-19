@@ -14,6 +14,7 @@ import { RetryPresets, RetryService } from "@/services/retry.service";
 import { Errors, wrapError } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { UserCoverChangedEvent } from "@/application/events/user/user-interaction.event";
+import { asMongoId } from "@/types/branded";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
@@ -74,7 +75,7 @@ export class UpdateCoverCommandHandler implements ICommandHandler<
 
     try {
       await this.unitOfWork.executeInTransaction(async () => {
-        const userId = user.id;
+        const userId = asMongoId(user._id.toString());
 
         await this.userWriteRepository.updateCover(userId, newCoverUrl!);
       });
@@ -98,7 +99,7 @@ export class UpdateCoverCommandHandler implements ICommandHandler<
       }
 
       const postCount = await this.postReadRepository.countDocuments({
-        user: updatedUser.id,
+        user: updatedUser._id,
       });
       updatedUser.postCount = postCount;
 

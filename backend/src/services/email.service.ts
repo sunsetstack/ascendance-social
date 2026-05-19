@@ -26,9 +26,8 @@ export class EmailService {
         subject: "Password Reset Request",
         html: `<p>You requested a password reset. Click <a href="${link}">here</a> to reset your password.</p>`,
       });
-    } catch (error) {
-      throw Errors.internal("Failed to send password reset email",
-      );
+    } catch {
+      throw Errors.internal("Failed to send password reset email");
     }
   }
 
@@ -49,9 +48,8 @@ export class EmailService {
         subject: "Verify your email",
         html: `<p>Use this code to verify your email: <strong>${verificationToken}</strong></p><p>Or click <a href="${link}">here</a> to verify.</p>`,
       });
-    } catch (error) {
-      throw Errors.internal("Failed to send verification email",
-      );
+    } catch {
+      throw Errors.internal("Failed to send verification email");
     }
   }
 }

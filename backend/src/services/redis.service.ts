@@ -10,12 +10,13 @@ import { MetricsService } from "../metrics/metrics.service";
 import { RedisNotificationModule } from "./redis/redis-notification.module";
 import { RedisFeedModule } from "./redis/redis-feed.module";
 import { RedisStreamModule } from "./redis/redis-stream.module";
+import {
+  RedisSessionModule,
+  SessionWithTtl,
+} from "./redis/redis-session.module";
 import { RedisFeedType } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
-import {
-  XPendingRangeEntry,
-  XClaimReply,
-} from "./redis/redis-stream.module";
+import { XPendingRangeEntry, XClaimReply } from "./redis/redis-stream.module";
 
 /**
  * Configuration for resilient Redis operations
@@ -39,6 +40,16 @@ type RedisScanResult = {
   keys: string[];
 };
 
+type TaggedCacheEntry<T> = {
+  key: string;
+  value: T;
+  tags: string[];
+};
+
+type RedisSubscribeOptions = {
+  timeoutMs?: number;
+};
+
 const DEFAULT_RESILIENCE: Required<ResilienceConfigBase> = {
   maxAttempts: 3,
   baseDelayMs: 50,
@@ -57,15 +68,19 @@ export class RedisService {
   private readonly notificationModule: RedisNotificationModule;
   private readonly feedModule: RedisFeedModule;
   private readonly streamModule: RedisStreamModule;
+  private readonly sessionModule: RedisSessionModule;
   private readonly subscribers = new Map<string, RedisClientType>();
 
   constructor(
-    @inject(TOKENS.Services.Metrics) private readonly metricsService: MetricsService,
+    @inject(TOKENS.Services.Metrics)
+    private readonly metricsService: MetricsService,
   ) {
     const runningInDocker = fs.existsSync("/.dockerenv"); // check if inside docker environment
     const redisUrl =
       process.env.REDIS_URL ||
-      (runningInDocker ? "redis://redis:6379" : "redis://127.0.0.1:6379");
+      (runningInDocker
+        ? "redis://redis-service:6379"
+        : "redis://127.0.0.1:6379");
 
     this.metricsService.setRedisConnectionState(false);
 
@@ -73,6 +88,7 @@ export class RedisService {
     this.notificationModule = new RedisNotificationModule(this.client);
     this.feedModule = new RedisFeedModule(this.client);
     this.streamModule = new RedisStreamModule(this.client);
+    this.sessionModule = new RedisSessionModule(this.client);
 
     this.client.on("connect", () => {
       redisLogger.info(`Redis connected`, { url: redisUrl });
@@ -102,6 +118,12 @@ export class RedisService {
     return this.client;
   }
 
+  async createDedicatedClient(): Promise<RedisClientType> {
+    const client = this.client.duplicate();
+    await client.connect();
+    return client;
+  }
+
   private parseJson<T>(payload: string): T {
     return JSON.parse(payload) as T;
   }
@@ -118,8 +140,7 @@ export class RedisService {
     const raw = await this.get<string>(key);
     if (raw === null) return null;
     try {
-      const parsed: unknown =
-        typeof raw === "string" ? JSON.parse(raw) : raw;
+      const parsed: unknown = typeof raw === "string" ? JSON.parse(raw) : raw;
       return guard(parsed) ? parsed : null;
     } catch {
       return null;
@@ -167,11 +188,51 @@ export class RedisService {
    * Ensures the Redis client is connected.
    * Useful for workers that need to wait for connection before starting processing loops.
    */
-  async waitForConnection(): Promise<void> {
-    if (this.client.isOpen) return;
+  async waitForConnection(timeoutMs?: number): Promise<boolean> {
+    if (this.client.isOpen) return true;
+
     return new Promise((resolve) => {
-      if (this.client.isOpen) return resolve();
-      this.client.once("connect", () => resolve());
+      if (this.client.isOpen) {
+        resolve(true);
+        return;
+      }
+
+      let settled = false;
+      let timeout: NodeJS.Timeout | undefined;
+
+      const cleanup = () => {
+        this.client.off("connect", onConnect);
+        this.client.off("error", onError);
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+      };
+
+      const settle = (connected: boolean) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(connected);
+      };
+
+      const onConnect = () => settle(true);
+      const onError = (error: unknown) => {
+        if (timeoutMs === undefined && !this.isRetryableRedisError(error)) {
+          settle(false);
+          return;
+        }
+
+        if (timeoutMs !== undefined) {
+          settle(false);
+        }
+      };
+
+      this.client.once("connect", onConnect);
+      this.client.once("error", onError);
+
+      if (timeoutMs !== undefined) {
+        timeout = setTimeout(() => settle(this.client.isOpen), timeoutMs);
+      }
     });
   }
 
@@ -426,7 +487,16 @@ export class RedisService {
   async subscribe<T>(
     channels: string[],
     messageHandler: (channel: string, message: T) => void,
-  ): Promise<void> {
+    options?: RedisSubscribeOptions,
+  ): Promise<boolean> {
+    const ready = await this.waitForConnection(options?.timeoutMs);
+    if (!ready) {
+      redisLogger.warn("Redis unavailable, skipping subscription", {
+        channels,
+      });
+      return false;
+    }
+
     // Use a composite key so multiple subscribe() calls to different channel
     // sets each get their own tracked connection.
     const subscriberKey = channels.sort().join(",");
@@ -437,24 +507,47 @@ export class RedisService {
       try {
         await existing.unsubscribe();
         await existing.quit();
-      } catch { /* best-effort cleanup */ }
+      } catch {
+        /* best-effort cleanup */
+      }
     }
 
     const subscriber = this.client.duplicate();
-    await subscriber.connect();
-    this.subscribers.set(subscriberKey, subscriber);
+    try {
+      await subscriber.connect();
+      this.subscribers.set(subscriberKey, subscriber);
 
-    await subscriber.subscribe(channels, (message, channel) => {
-      try {
-        const parsedMessage = this.parseJson<T>(message);
-        messageHandler(channel, parsedMessage);
-      } catch (error) {
-        redisLogger.error("Error parsing Redis message", {
-          channel,
+      await subscriber.subscribe(channels, (message, channel) => {
+        try {
+          const parsedMessage = this.parseJson<T>(message);
+          messageHandler(channel, parsedMessage);
+        } catch (error) {
+          redisLogger.error("Error parsing Redis message", {
+            channel,
+            error: getErrorMessage(error) || String(error),
+          });
+        }
+      });
+      return true;
+    } catch (error) {
+      if (subscriber.isOpen) {
+        try {
+          await subscriber.quit();
+        } catch {
+          // ignore cleanup failures during degraded startup
+        }
+      }
+
+      if (this.isRetryableRedisError(error)) {
+        redisLogger.warn("Redis unavailable, subscription not started", {
+          channels,
           error: getErrorMessage(error) || String(error),
         });
+        return false;
       }
-    });
+
+      throw error;
+    }
   }
 
   /**
@@ -545,6 +638,74 @@ export class RedisService {
         const durationMs = performance.now() - start;
         redisLogger.info(
           `[Redis] setWithTags key=${key} tags=${uniqueTags.length} duration=${durationMs.toFixed(2)}ms`,
+        );
+      },
+      { maxAttempts: 3 },
+    );
+  }
+
+  async setManyWithTags<T>(
+    entries: Array<TaggedCacheEntry<T>>,
+    ttl?: number,
+  ): Promise<void> {
+    if (entries.length === 0) return;
+
+    return this.withResilience(
+      async () => {
+        const normalizedEntries = entries.map((entry) => ({
+          ...entry,
+          tags: [...new Set(entry.tags)],
+        }));
+        const tagTTL = ttl || 600;
+        const setKeysToEnsure = new Set<string>();
+
+        for (const entry of normalizedEntries) {
+          if (entry.tags.length === 0) {
+            continue;
+          }
+
+          setKeysToEnsure.add(`key_tags:${entry.key}`);
+          for (const tag of entry.tags) {
+            setKeysToEnsure.add(`tag:${tag}`);
+          }
+        }
+
+        await Promise.all(
+          [...setKeysToEnsure].map((keyToEnsure) =>
+            this.ensureSetKey(keyToEnsure),
+          ),
+        );
+
+        const start = performance.now();
+        const pipeline = this.client.multi();
+
+        for (const entry of normalizedEntries) {
+          const stringValue = JSON.stringify(entry.value);
+
+          if (ttl) {
+            pipeline.setEx(entry.key, ttl, stringValue);
+          } else {
+            pipeline.set(entry.key, stringValue);
+          }
+
+          if (entry.tags.length === 0) {
+            continue;
+          }
+
+          const keyTagKey = `key_tags:${entry.key}`;
+          for (const tag of entry.tags) {
+            const tagKey = `tag:${tag}`;
+            pipeline.sAdd(tagKey, entry.key);
+            pipeline.expire(tagKey, tagTTL);
+            pipeline.sAdd(keyTagKey, tag);
+          }
+          pipeline.expire(keyTagKey, tagTTL);
+        }
+
+        await pipeline.exec();
+        const durationMs = performance.now() - start;
+        redisLogger.info(
+          `[Redis] setManyWithTags keys=${normalizedEntries.length} duration=${durationMs.toFixed(2)}ms`,
         );
       },
       { maxAttempts: 3 },
@@ -676,6 +837,71 @@ export class RedisService {
     return this.notificationModule.getUnreadNotificationCount(userId);
   }
 
+  // ====== AUTH SESSIONS ======
+
+  async getAuthSession<T>(sid: string): Promise<T | null> {
+    return this.sessionModule.getSession<T>(sid);
+  }
+
+  async saveAuthSession<T extends { sid: string; publicId: string }>(
+    session: T,
+    ttlSeconds: number,
+  ): Promise<void> {
+    return this.sessionModule.saveSession(session, ttlSeconds);
+  }
+
+  async updateAuthSession<T>(
+    sid: string,
+    session: T,
+    ttlSeconds: number,
+  ): Promise<void> {
+    return this.sessionModule.updateSession(sid, session, ttlSeconds);
+  }
+
+  async removeAuthSession(sid: string, publicId: string): Promise<void> {
+    return this.sessionModule.removeSession(sid, publicId);
+  }
+
+  async removeAuthSessionMembership(
+    publicId: string,
+    sid: string,
+  ): Promise<void> {
+    return this.sessionModule.removeSessionMembership(publicId, sid);
+  }
+
+  async getUserAuthSessionIds(publicId: string): Promise<string[]> {
+    return this.sessionModule.getUserSessionIds(publicId);
+  }
+
+  async deleteUserAuthSessions(
+    publicId: string,
+    sessionIds: string[],
+  ): Promise<void> {
+    return this.sessionModule.deleteUserSessions(publicId, sessionIds);
+  }
+
+  async getAuthSessionTtl(sid: string): Promise<number> {
+    return this.sessionModule.getSessionTtl(sid);
+  }
+
+  async getAuthSessionsWithTtl<T>(
+    sessionIds: string[],
+  ): Promise<Array<SessionWithTtl<T>>> {
+    return this.sessionModule.getSessionsWithTtl<T>(sessionIds);
+  }
+
+  async updateAuthSessions<T>(
+    publicId: string,
+    updates: Array<SessionWithTtl<T>>,
+    staleSessionIds: string[] = [],
+  ): Promise<void> {
+    return this.sessionModule.updateSessions(
+      publicId,
+      updates,
+      staleSessionIds,
+    );
+  }
+
   // ====== FEEDS ======
   async addToFeed(
     userId: string,
@@ -738,11 +964,17 @@ export class RedisService {
     return this.feedModule.removeFromFeedsBatch(userIds, postId, feedType);
   }
 
-  async invalidateFeed(userId: string, feedType: RedisFeedType = "for_you"): Promise<void> {
+  async invalidateFeed(
+    userId: string,
+    feedType: RedisFeedType = "for_you",
+  ): Promise<void> {
     return this.feedModule.invalidateFeed(userId, feedType);
   }
 
-  async getFeedSize(userId: string, feedType: RedisFeedType = "for_you"): Promise<number> {
+  async getFeedSize(
+    userId: string,
+    feedType: RedisFeedType = "for_you",
+  ): Promise<number> {
     return this.feedModule.getFeedSize(userId, feedType);
   }
 

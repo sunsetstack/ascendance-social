@@ -1,4 +1,4 @@
-import { Model, Types, UpdateQuery } from "mongoose";
+import { FilterQuery, Model, Types, UpdateQuery } from "mongoose";
 import {
   IUser,
   PaginationOptions,
@@ -28,7 +28,104 @@ export class UserRepository extends BaseRepository<IUser> {
     super(model);
   }
 
-  // TODO: REFACTOR AND REMOVE OLD METHODS
+  private withSession<TQuery extends { session(session: unknown): TQuery }>(
+    query: TQuery,
+  ): TQuery {
+    const session = this.getSession();
+    return session ? query.session(session) : query;
+  }
+
+  private throwDatabaseError(
+    operation: string,
+    error: unknown,
+    context: Record<string, unknown> = {},
+  ): never {
+    throw Errors.database(error instanceof Error ? error.message : String(error), {
+      context: {
+        operation,
+        repository: "userRepository",
+        ...context,
+      },
+    });
+  }
+
+  private handleWriteError(error: unknown, operation: string): never {
+    if (isMongoDBDuplicateKeyError(error)) {
+      const field = Object.keys(error.keyValue)[0];
+      throw Errors.duplicate(`${field} already exists`, {
+        context: { operation, repository: "userRepository" },
+      });
+    }
+
+    this.throwDatabaseError(operation, error);
+  }
+
+  private async findUser(
+    filter: FilterQuery<IUser>,
+    select?: string,
+  ): Promise<IUser | null> {
+    const query = this.model.findOne(filter);
+    if (select) {
+      query.select(select);
+    }
+
+    return await this.withSession(query).exec();
+  }
+
+  private async updateUser(
+    filter: FilterQuery<IUser>,
+    updateData: UpdateQuery<IUser>,
+  ): Promise<IUser | null> {
+    const query = this.model.findOneAndUpdate(filter, updateData, {
+      new: true,
+    });
+
+    return await this.withSession(query).exec();
+  }
+
+  private async updateUserById(
+    userId: MongoId,
+    updateData: UpdateQuery<IUser>,
+  ): Promise<void> {
+    const query = this.model.findByIdAndUpdate(userId, updateData);
+    await this.withSession(query).exec();
+  }
+
+  private normalizeHandles(handles: string[]): string[] {
+    return handles
+      .map((handle) => handle.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  private toObjectIds(ids: string[]): Types.ObjectId[] {
+    return ids.reduce<Types.ObjectId[]>((acc, id) => {
+      try {
+        acc.push(new Types.ObjectId(id));
+      } catch {
+        // Ignore invalid IDs
+      }
+      return acc;
+    }, []);
+  }
+
+  private buildCaseInsensitiveRegexes(values: string[]): RegExp[] {
+    return values.map((value) => new RegExp(`^${escapeRegex(value)}$`, "i"));
+  }
+
+  private async findPublicUsers(
+    filter: FilterQuery<IUser>,
+    operation: string,
+  ): Promise<IUser[]> {
+    try {
+      return await this.model
+        .find(filter)
+        .select("publicId handle username avatar")
+        .exec();
+    } catch (error) {
+      logger.error(`UserRepository.${operation} failed`, { error });
+      return [];
+    }
+  }
 
   /**
    * Creates a new user in the database, handling duplicate key errors.
@@ -44,14 +141,9 @@ export class UserRepository extends BaseRepository<IUser> {
       return await doc.save();
     } catch (error) {
       if (isMongoDBDuplicateKeyError(error)) {
-        const field = Object.keys(error.keyValue)[0];
-        throw Errors.validation(`${field} already exists`, {
-          context: { operation: "create", repository: "userRepository" },
-        });
+        this.handleWriteError(error, "create");
       }
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      this.throwDatabaseError("create", error);
     }
   }
 
@@ -68,26 +160,9 @@ export class UserRepository extends BaseRepository<IUser> {
     updateData: UpdateQuery<IUser>,
   ): Promise<IUser | null> {
     try {
-      const session = this.getSession();
-      logger.info("updateData in user repo:", updateData);
-
-      const query = this.model.findOneAndUpdate({ _id: id }, updateData, {
-        new: true,
-      });
-
-      if (session) query.session(session);
-      const result = await query.exec();
-      return result;
+      return await this.updateUser({ _id: id }, updateData);
     } catch (error) {
-      if (isMongoDBDuplicateKeyError(error)) {
-        const field = Object.keys(error.keyValue)[0];
-        throw Errors.validation(`${field} already exists`, {
-          context: { operation: "create", repository: "userRepository" },
-        });
-      }
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      this.handleWriteError(error, "update");
     }
   }
 
@@ -96,25 +171,9 @@ export class UserRepository extends BaseRepository<IUser> {
     updateData: UpdateQuery<IUser>,
   ): Promise<IUser | null> {
     try {
-      const session = this.getSession();
-      const query = this.model.findOneAndUpdate({ publicId }, updateData, {
-        new: true,
-      });
-      if (session) query.session(session);
-      return await query.exec();
+      return await this.updateUser({ publicId }, updateData);
     } catch (error) {
-      if (isMongoDBDuplicateKeyError(error)) {
-        const field = Object.keys(error.keyValue)[0];
-        throw Errors.validation(`${field} already exists`, {
-          context: {
-            operation: "updateByPublicId",
-            repository: "userRepository",
-          },
-        });
-      }
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      this.handleWriteError(error, "updateByPublicId");
     }
   }
 
@@ -172,11 +231,7 @@ export class UserRepository extends BaseRepository<IUser> {
 
   // Find user by public id
   async findByPublicId(publicId: UserPublicId): Promise<IUser | null> {
-    const session = this.getSession();
-    if (session) {
-      return this.model.findOne({ publicId }).session(session).exec();
-    }
-    return this.model.findOne({ publicId }).exec();
+    return await this.findUser({ publicId });
   }
 
   //find by query
@@ -188,11 +243,10 @@ export class UserRepository extends BaseRepository<IUser> {
   async findInternalIdByPublicId(
     publicId: UserPublicId,
   ): Promise<MongoId | null> {
-    const doc = await this.model
-      .findOne({ publicId })
-      .select("_id")
-      .lean<{ _id: Types.ObjectId }>()
-      .exec();
+    const query = this.model.findOne({ publicId }).select("_id").lean<{
+      _id: Types.ObjectId;
+    }>();
+    const doc = await this.withSession(query).exec();
     return doc ? asMongoId(doc._id.toString()) : null;
   }
 
@@ -204,30 +258,18 @@ export class UserRepository extends BaseRepository<IUser> {
    */
   async findByUsername(username: string): Promise<IUser | null> {
     try {
-      const session = this.getSession();
-      const query = this.model.findOne({ username }).select("+password");
-      if (session) query.session(session);
-      return await query.exec();
+      return await this.findUser({ username }, "+password");
     } catch (error) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      this.throwDatabaseError("findByUsername", error);
     }
   }
 
   async findByHandle(handle: string): Promise<IUser | null> {
     try {
-      const session = this.getSession();
       const handleNormalized = handle.trim().toLowerCase();
-      const query = this.model
-        .findOne({ handleNormalized })
-        .select("+password");
-      if (session) query.session(session);
-      return await query.exec();
+      return await this.findUser({ handleNormalized }, "+password");
     } catch (error) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      this.throwDatabaseError("findByHandle", error);
     }
   }
 
@@ -239,29 +281,20 @@ export class UserRepository extends BaseRepository<IUser> {
    */
   async findByEmail(email: string): Promise<IUser | null> {
     try {
-      const session = this.getSession();
-      const query = this.model.findOne({ email }).select("+password");
-      if (session) query.session(session);
-      return await query.exec();
+      return await this.findUser({ email }, "+password");
     } catch (error) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      this.throwDatabaseError("findByEmail", error);
     }
   }
 
   async findByResetToken(token: string): Promise<IUser | null> {
     try {
-      const session = this.getSession();
-      const query = this.model
-        .findOne({ resetToken: token, resetTokenExpires: { $gt: new Date() } })
-        .select("+password +resetToken +resetTokenExpires");
-      if (session) query.session(session);
-      return await query.exec();
-    } catch (error) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
+      return await this.findUser(
+        { resetToken: token, resetTokenExpires: { $gt: new Date() } },
+        "+password +resetToken +resetTokenExpires",
       );
+    } catch (error) {
+      this.throwDatabaseError("findByResetToken", error);
     }
   }
 
@@ -270,20 +303,16 @@ export class UserRepository extends BaseRepository<IUser> {
     token: string,
   ): Promise<IUser | null> {
     try {
-      const session = this.getSession();
-      const query = this.model
-        .findOne({
+      return await this.findUser(
+        {
           email,
           emailVerificationToken: token,
           emailVerificationExpires: { $gt: new Date() },
-        })
-        .select("+emailVerificationToken +emailVerificationExpires");
-      if (session) query.session(session);
-      return await query.exec();
-    } catch (error) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
+        },
+        "+emailVerificationToken +emailVerificationExpires",
       );
+    } catch (error) {
+      this.throwDatabaseError("findByEmailVerificationToken", error);
     }
   }
 
@@ -337,17 +366,9 @@ export class UserRepository extends BaseRepository<IUser> {
    */
   async updateAvatar(userId: MongoId, avatarUrl: string): Promise<void> {
     try {
-      const session = this.getSession();
-      const query = this.model.findByIdAndUpdate(userId, {
-        $set: { avatar: avatarUrl },
-      });
-      if (session) query.session(session);
-      await query.exec();
+      await this.updateUserById(userId, { $set: { avatar: avatarUrl } });
     } catch (error) {
-      logger.error(error);
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      this.throwDatabaseError("updateAvatar", error);
     }
   }
 
@@ -360,106 +381,63 @@ export class UserRepository extends BaseRepository<IUser> {
    */
   async updateCover(userId: MongoId, coverUrl: string): Promise<void> {
     try {
-      const session = this.getSession();
-      const query = this.model.findByIdAndUpdate(userId, {
-        $set: { cover: coverUrl },
-      });
-      if (session) query.session(session);
-      await query.exec();
+      await this.updateUserById(userId, { $set: { cover: coverUrl } });
     } catch (error) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      this.throwDatabaseError("updateCover", error);
     }
   }
 
   async findUsersFollowing(userPublicId: UserPublicId): Promise<IUser[]> {
     try {
-      const user = await this.model
-        .findOne({ publicId: userPublicId })
-        .select("_id")
-        .lean();
-      if (!user?._id) {
+      const userId = await this.findInternalIdByPublicId(userPublicId);
+      if (!userId) {
         return [];
       }
-      const userId = new Types.ObjectId(user._id.toString());
       const followerIds =
-        await this.followRepository.getFollowerObjectIds(userId);
-      const followerObjectIds = followerIds.reduce<Types.ObjectId[]>(
-        (acc, id) => {
-          try {
-            acc.push(new Types.ObjectId(id));
-          } catch {
-            // Ignore invalid IDs
-          }
-          return acc;
-        },
-        [],
-      );
+        await this.followRepository.getFollowerObjectIds(new Types.ObjectId(userId));
+      const followerObjectIds = this.toObjectIds(followerIds);
 
       if (followerObjectIds.length === 0) {
         return [];
       }
 
-      return await this.model
-        .find({
-          _id: { $in: followerObjectIds },
-        })
-        .select("publicId handle username avatar")
-        .exec();
+      return await this.findPublicUsers(
+        { _id: { $in: followerObjectIds } },
+        "findUsersFollowing",
+      );
     } catch (error) {
-      logger.error(`Error finding followers for user ${userPublicId}:`, error);
+      logger.error("UserRepository.findUsersFollowing failed", {
+        userPublicId,
+        error,
+      });
       return [];
     }
   }
 
   async findUsersByPublicIds(userPublicIds: UserPublicId[]): Promise<IUser[]> {
-    try {
-      return await this.model
-        .find({
-          publicId: { $in: userPublicIds },
-        })
-        .select("publicId handle username avatar")
-        .exec();
-    } catch (error) {
-      logger.error("Error in findUsersByPublicIds:", error);
-      return [];
-    }
+    return await this.findPublicUsers(
+      { publicId: { $in: userPublicIds } },
+      "findUsersByPublicIds",
+    );
   }
 
   async findUsersByUsernames(usernames: string[]): Promise<IUser[]> {
-    try {
-      const regexes = usernames.map((u) => new RegExp(`^${u}$`, "i"));
-      return await this.model
-        .find({
-          username: { $in: regexes },
-        })
-        .select("publicId handle username avatar")
-        .exec();
-    } catch (error) {
-      logger.error("Error in findUsersByUsernames:", error);
-      return [];
-    }
+    return await this.findPublicUsers(
+      { username: { $in: this.buildCaseInsensitiveRegexes(usernames) } },
+      "findUsersByUsernames",
+    );
   }
 
   async findUsersByHandles(handles: string[]): Promise<IUser[]> {
-    try {
-      const normalizedHandles = handles
-        .map((handle) => handle.trim().toLowerCase())
-        .filter(Boolean);
-      if (normalizedHandles.length === 0) {
-        return [];
-      }
-      return await this.model
-        .find({
-          handleNormalized: { $in: normalizedHandles },
-        })
-        .select("publicId handle username avatar")
-        .exec();
-    } catch (error) {
-      logger.error("Error in findUsersByHandles:", error);
+    const normalizedHandles = this.normalizeHandles(handles);
+    if (normalizedHandles.length === 0) {
       return [];
     }
+
+    return await this.findPublicUsers(
+      { handleNormalized: { $in: normalizedHandles } },
+      "findUsersByHandles",
+    );
   }
 
   /**
@@ -594,10 +572,8 @@ export class UserRepository extends BaseRepository<IUser> {
 
       return result;
     } catch (error) {
-      logger.error("Error in getSuggestedUsersToFollow:", error);
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      logger.error("UserRepository.getSuggestedUsersToFollow failed", { error });
+      this.throwDatabaseError("getSuggestedUsersToFollow", error);
     }
   }
 
@@ -711,10 +687,10 @@ export class UserRepository extends BaseRepository<IUser> {
 
       return result;
     } catch (error) {
-      logger.error("Error in getSuggestedUsersLowTraffic:", error);
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      logger.error("UserRepository.getSuggestedUsersLowTraffic failed", {
+        error,
+      });
+      this.throwDatabaseError("getSuggestedUsersLowTraffic", error);
     }
   }
 
@@ -895,27 +871,18 @@ export class UserRepository extends BaseRepository<IUser> {
 
       return result;
     } catch (error) {
-      logger.error("Error in getSuggestedUsersHighTraffic:", error);
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      logger.error("UserRepository.getSuggestedUsersHighTraffic failed", {
+        error,
+      });
+      this.throwDatabaseError("getSuggestedUsersHighTraffic", error);
     }
   }
 
   async updateFollowerCount(userId: MongoId, increment: number): Promise<void> {
     try {
-      const session = this.getSession();
-      const query = this.model.findByIdAndUpdate(
-        userId,
-        { $inc: { followerCount: increment } },
-        { session },
-      );
-      await query.exec();
+      await this.updateUserById(userId, { $inc: { followerCount: increment } });
     } catch (error: unknown) {
-      throw Errors.database(
-        (error instanceof Error ? error.message : String(error)) ??
-          "failed to update follower count",
-      );
+      this.throwDatabaseError("updateFollowerCount", error);
     }
   }
 
@@ -924,18 +891,9 @@ export class UserRepository extends BaseRepository<IUser> {
     increment: number,
   ): Promise<void> {
     try {
-      const session = this.getSession();
-      const query = this.model.findByIdAndUpdate(
-        userId,
-        { $inc: { followingCount: increment } },
-        { session },
-      );
-      await query.exec();
+      await this.updateUserById(userId, { $inc: { followingCount: increment } });
     } catch (error: unknown) {
-      throw Errors.database(
-        (error instanceof Error ? error.message : String(error)) ??
-          "failed to update following count",
-      );
+      this.throwDatabaseError("updateFollowingCount", error);
     }
   }
 }

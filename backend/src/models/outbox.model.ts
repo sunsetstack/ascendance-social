@@ -3,6 +3,7 @@ import mongoose, { Document, Schema, Model } from "mongoose";
 export interface IOutboxEvent extends Document {
   eventType: string;
   payload: any;
+  traceId: string;
   processed: boolean;
   error?: string;
   retries: number;
@@ -20,6 +21,11 @@ const outboxSchema = new Schema<IOutboxEvent>(
     payload: {
       type: Schema.Types.Mixed,
       required: true,
+    },
+    traceId: {
+      type: String,
+      required: true,
+      index: true,
     },
     processed: {
       type: Boolean,
@@ -40,6 +46,6 @@ const outboxSchema = new Schema<IOutboxEvent>(
   { timestamps: { createdAt: true, updatedAt: false } }
 );
 
-outboxSchema.index({ processed: 1, createdAt: 1 }); // Compound index for background worker
+outboxSchema.index({ processed: 1, retries: 1, createdAt: 1 }); // Compound index for background worker
 
 export const OutboxModel: Model<IOutboxEvent> = mongoose.model<IOutboxEvent>("Outbox", outboxSchema);

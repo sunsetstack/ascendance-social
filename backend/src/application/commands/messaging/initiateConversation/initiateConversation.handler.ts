@@ -4,9 +4,13 @@ import { ConversationRepository } from "@/repositories/conversation.repository";
 import { UserRepository } from "@/repositories/user.repository";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { DTOService } from "@/services/dto.service";
-import { ConversationSummaryDTO, HydratedConversation, MaybePopulatedParticipant } from "@/types";
+import { ConversationSummaryDTO, HydratedConversation } from "@/types";
 import { Errors, wrapError } from "@/utils/errors";
-import { buildParticipantHash, extractParticipantId, extractUnreadCounts } from "@/utils/messaging-helpers";
+import { buildParticipantHash } from "@/utils/messaging-helpers";
+import {
+  mapConversationSummary,
+  requireUserInternalId,
+} from "@/application/messaging/messaging-support";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { TOKENS } from "@/types/tokens";
@@ -25,55 +29,6 @@ export class InitiateConversationCommandHandler
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
   ) {}
 
-  private mapConversationSummary(
-    conversation: HydratedConversation,
-    userInternalId: string,
-  ): ConversationSummaryDTO {
-    const unreadCounts = extractUnreadCounts(conversation.unreadCounts);
-    const participants = Array.isArray(conversation.participants)
-      ? conversation.participants
-          .map((participant) => {
-            if (participant instanceof mongoose.Types.ObjectId) {
-              return { publicId: "", handle: "", username: "", avatar: "" };
-            }
-            const populatedParticipant = participant as MaybePopulatedParticipant;
-            return {
-              publicId:
-                populatedParticipant?.publicId ??
-                extractParticipantId(participant) ??
-                "",
-              handle: populatedParticipant?.handle ?? "",
-              username: populatedParticipant?.username ?? "",
-              avatar: populatedParticipant?.avatar ?? "",
-            };
-          })
-          .filter((participant) => Boolean(participant.publicId))
-      : [];
-
-    const hasLastMessage =
-      conversation.lastMessage &&
-      (conversation.lastMessage.publicId || conversation.lastMessage._id);
-    const lastMessage =
-      hasLastMessage && conversation.lastMessage
-        ? this.dtoService.toPublicMessageDTO(
-            conversation.lastMessage,
-            conversation.publicId,
-          )
-        : null;
-
-    return {
-      publicId: conversation.publicId,
-      participants,
-      lastMessage,
-      lastMessageAt: conversation.lastMessageAt
-        ? new Date(conversation.lastMessageAt).toISOString()
-        : null,
-      unreadCount: unreadCounts[userInternalId] || 0,
-      isGroup: Boolean(conversation.isGroup),
-      title: conversation.title,
-    };
-  }
-
   async execute(command: InitiateConversationCommand): Promise<ConversationSummaryDTO> {
     try {
       const { userPublicId, recipientPublicId } = command;
@@ -83,17 +38,9 @@ export class InitiateConversationCommandHandler
       }
 
       const [userInternalId, recipientInternalId] = await Promise.all([
-        this.userRepository.findInternalIdByPublicId(userPublicId),
-        this.userRepository.findInternalIdByPublicId(recipientPublicId),
+        requireUserInternalId(this.userRepository, userPublicId),
+        requireUserInternalId(this.userRepository, recipientPublicId),
       ]);
-
-      if (!userInternalId) {
-        throw Errors.notFound("User");
-      }
-
-      if (!recipientInternalId) {
-        throw Errors.notFound("User");
-      }
 
       const participantIds = [userInternalId, recipientInternalId];
       const participantHash = buildParticipantHash(participantIds);
@@ -137,7 +84,8 @@ export class InitiateConversationCommandHandler
         throw Errors.internal("Conversation could not be loaded");
       }
 
-      return this.mapConversationSummary(
+      return mapConversationSummary(
+        this.dtoService,
         hydratedConversation as HydratedConversation,
         userInternalId,
       );

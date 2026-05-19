@@ -7,6 +7,7 @@ import { UnitOfWork, sessionALS } from "@/database/UnitOfWork";
 import { UserActionRepository } from "@/repositories/userAction.repository";
 import { IUser } from "@/types";
 import { Errors } from "@/utils/errors";
+import { asMongoId } from "@/types/branded";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
@@ -58,13 +59,15 @@ export class ChangePasswordCommandHandler implements ICommandHandler<
         throw Errors.authentication("Current password is incorrect");
       }
 
-      await this.userWriteRepository.update(user.id, {
+      const userId = asMongoId(user._id.toString());
+
+      await this.userWriteRepository.update(userId, {
         $set: { password: command.newPassword },
       });
       await this.userActionRepository.logAction(
-        user.id,
+        userId,
         "password_change",
-        user.id,
+        userId,
       );
     });
   }

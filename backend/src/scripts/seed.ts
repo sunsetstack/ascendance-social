@@ -141,7 +141,7 @@ async function botsFollowEachOther() {
 				await api.post(`${API_BASE_URL}/users/follow/${otherBot.user.publicId}`);
 				logger.info(`   - ${bot.user.username} followed ${otherBot.user.username}`);
 				follows++;
-			} catch (e) {}
+			} catch {}
 		}
 		await sleep(50);
 	}
@@ -159,7 +159,7 @@ async function botsLikePosts() {
 			const postId = getRandomElement(postPublicIds);
 			try {
 				await api.post(`${API_BASE_URL}/users/like/post/${postId}`);
-			} catch (e) {}
+			} catch {}
 		}
 		logger.info(`   - ${bot.user.username} liked ${LIKES_PER_BOT} posts.`);
 		await sleep(50);
@@ -180,7 +180,7 @@ async function botsCommentOnPosts() {
 				await api.post(`${API_BASE_URL}/posts/${postId}/comments`, {
 					content: faker.hacker.phrase(),
 				});
-			} catch (e) {}
+			} catch {}
 		}
 		logger.info(`   - ${bot.user.username} commented on ${COMMENTS_PER_BOT} posts.`);
 		await sleep(50);

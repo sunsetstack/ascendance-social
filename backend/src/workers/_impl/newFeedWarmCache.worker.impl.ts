@@ -1,16 +1,20 @@
-import { container } from "tsyringe";
+import { inject, injectable } from "tsyringe";
 import * as cron from "node-cron";
 import { FeedService } from "@/services/feed/feed.service";
 import { logger } from "@/utils/winston";
+import { TOKENS } from "@/types/tokens";
 
+@injectable()
 export class NewFeedWarmCacheWorker {
   private cronJob?: cron.ScheduledTask;
-  private feedService!: FeedService;
+
+  constructor(
+    @inject(TOKENS.Services.Feed)
+    private readonly feedService: FeedService,
+  ) {}
 
   async init(): Promise<void> {
     logger.info("New feed warm cache worker initialized");
-    // resolve FeedService from container after DI is set up
-    this.feedService = container.resolve<FeedService>("FeedService");
     // run immediately on startup
     await this.run();
   }

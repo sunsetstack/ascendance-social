@@ -20,7 +20,7 @@ import {
 	fetchFollowing,
 	FollowListResponse,
 } from "../../api/userApi";
-import { ImagePageData, PublicUserDTO, AuthenticatedUserDTO, AdminUserDTO } from "../../types";
+import { ImagePageData, PublicUserDTO, AuthenticatedUserDTO, AdminUserDTO, CommentsPaginationResponse } from "../../types";
 import { editUserRequest, changePasswordRequest } from "../../api/userApi";
 
 type UseUserImagesOptions = Omit<
@@ -30,9 +30,9 @@ type UseUserImagesOptions = Omit<
 
 type UseUserCommentsOptions = Omit<
 	UseInfiniteQueryOptions<
-		{ comments: unknown[]; total: number; page: number; limit: number; totalPages: number },
+		CommentsPaginationResponse,
 		Error,
-		InfiniteData<{ comments: unknown[]; total: number; page: number; limit: number; totalPages: number }, number>
+		InfiniteData<CommentsPaginationResponse, number>
 	>,
 	"queryKey" | "queryFn" | "initialPageParam" | "getNextPageParam"
 >;
@@ -91,7 +91,7 @@ export const useGetUser = (identifier: string | undefined) => {
 	const currentUser = queryClient.getQueryData<AuthenticatedUserDTO | AdminUserDTO>(["currentUser"]);
 	const isViewingSelf =
 		currentUser?.publicId === identifier || currentUser?.handle === identifier || currentUser?.username === identifier;
-	const isPublicId = identifier && /^[0-9a-f]{8}-[0-9a-f]{4}-.../.test(identifier);
+	const isPublicId = !!identifier && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
 
 	return useQuery<PublicUserDTO>({
 		queryKey: ["user", identifier],
@@ -106,9 +106,10 @@ export const useGetUser = (identifier: string | undefined) => {
 				return Promise.resolve(freshCurrentUser as PublicUserDTO);
 			}
 
+			if (!identifier) throw new Error("identifier is required");
 			return isPublicId
-				? fetchUserByPublicId({ queryKey: ["user", identifier!] })
-				: fetchUserByHandle({ queryKey: ["user", identifier!] });
+				? fetchUserByPublicId({ queryKey: ["user", identifier] })
+				: fetchUserByHandle({ queryKey: ["user", identifier] });
 		},
 		enabled: !!identifier,
 		staleTime: isViewingSelf ? 0 : 60000,
@@ -169,6 +170,66 @@ export const useUserComments = (
 	});
 };
 
+// --- Page-based (non-infinite) hooks for admin/pagination use cases ---
+
+type PageQueryOptions = {
+	enabled?: boolean;
+	limit?: number;
+	sortBy?: string;
+	sortOrder?: string;
+};
+
+export const useUserPostsPage = (
+	userPublicId: string,
+	page: number,
+	options?: PageQueryOptions,
+) => {
+	const limit = options?.limit ?? 10;
+	const sortBy = options?.sortBy ?? "createdAt";
+	const sortOrder = options?.sortOrder ?? "desc";
+
+	return useQuery<ImagePageData>({
+		queryKey: ["userPostsPage", userPublicId, page, limit, sortBy, sortOrder] as const,
+		queryFn: () => fetchUserPosts(page, userPublicId, limit, sortBy, sortOrder),
+		enabled: (options?.enabled ?? true) && !!userPublicId,
+		staleTime: 30_000,
+	});
+};
+
+export const useUserLikedPostsPage = (
+	userPublicId: string,
+	page: number,
+	options?: PageQueryOptions,
+) => {
+	const limit = options?.limit ?? 10;
+	const sortBy = options?.sortBy ?? "createdAt";
+	const sortOrder = options?.sortOrder ?? "desc";
+
+	return useQuery<ImagePageData>({
+		queryKey: ["userLikedPostsPage", userPublicId, page, limit, sortBy, sortOrder] as const,
+		queryFn: () => fetchUserLikedPosts(page, userPublicId, limit, sortBy, sortOrder),
+		enabled: (options?.enabled ?? true) && !!userPublicId,
+		staleTime: 30_000,
+	});
+};
+
+export const useUserCommentsPage = (
+	userPublicId: string,
+	page: number,
+	options?: PageQueryOptions,
+) => {
+	const limit = options?.limit ?? 10;
+	const sortBy = options?.sortBy ?? "createdAt";
+	const sortOrder = options?.sortOrder ?? "desc";
+
+	return useQuery<CommentsPaginationResponse>({
+		queryKey: ["userCommentsPage", userPublicId, page, limit, sortBy, sortOrder] as const,
+		queryFn: () => fetchUserComments(page, userPublicId, limit, sortBy, sortOrder),
+		enabled: (options?.enabled ?? true) && !!userPublicId,
+		staleTime: 30_000,
+	});
+};
+
 export const useUpdateUserAvatar = () => {
 	const queryClient = useQueryClient();
 	return useMutation<AuthenticatedUserDTO | AdminUserDTO, Error, Blob>({
@@ -184,9 +245,6 @@ export const useUpdateUserAvatar = () => {
 			queryClient.invalidateQueries({ queryKey: ["currentUser"] });
 			queryClient.invalidateQueries({ queryKey: ["user"] });
 			queryClient.invalidateQueries({ queryKey: ["userPosts", data.publicId] });
-		},
-		onError(error) {
-			console.error("Avatar update failed:", error);
 		},
 	});
 };
@@ -207,21 +265,16 @@ export const useUpdateUserCover = () => {
 			queryClient.invalidateQueries({ queryKey: ["user"] });
 			queryClient.invalidateQueries({ queryKey: ["userPosts", data.publicId] });
 		},
-		onError: (error) => {
-			console.error("Cover update failed:", error);
-		},
 	});
 };
 
-export const useEditUser = () => {
+export const useEditUser = ()=> {
 	const queryClient = useQueryClient();
 
 	return useMutation<AuthenticatedUserDTO | AdminUserDTO, Error, { username?: string; bio?: string }>({
 		mutationFn: editUserRequest,
 
 		onSuccess: (data) => {
-			console.log("User updated successfully:", data);
-
 			queryClient.setQueryData(["currentUser"], data);
 			queryClient.setQueryData(["user", data.publicId], data);
 			queryClient.setQueryData(["user", "publicId", data.publicId], data);
@@ -233,19 +286,12 @@ export const useEditUser = () => {
 				queryKey: ["user"],
 			});
 		},
-		onError: (error) => {
-			console.error("User update failed:", error.message);
-		},
 	});
 };
 
 export const useChangePassword = () => {
 	return useMutation<void, Error, { currentPassword: string; newPassword: string }>({
 		mutationFn: changePasswordRequest,
-
-		onError: (error) => {
-			console.error("Change password failed:", error);
-		},
 	});
 };
 

@@ -77,7 +77,7 @@ export class RealTimeFeedService {
   private async initializePubSubListener(): Promise<void> {
     try {
       // Subscribe to feed_updates and messaging_updates channels for real time feed updates and message delivery
-      await this.redisService.subscribe(
+      const subscribed = await this.redisService.subscribe(
         ["feed_updates", "messaging_updates"],
         (channel: string, message: unknown) => {
           // Handle case where message might be a string that needs parsing
@@ -94,7 +94,16 @@ export class RealTimeFeedService {
           }
           this.handleFeedUpdate(parsedMessage, channel);
         },
+        { timeoutMs: 1500 },
       );
+
+      if (!subscribed) {
+        logger.warn(
+          "Real-time feed listener not started because Redis is unavailable",
+        );
+        return;
+      }
+
       logger.info("Real-time feed update listener initialized");
     } catch (error) {
       logger.error("Failed to initialize real-time feed listener:", { error });

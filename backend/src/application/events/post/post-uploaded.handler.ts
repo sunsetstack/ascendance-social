@@ -132,7 +132,9 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
         `[POST_UPLOAD_HANDLER] Cache invalidation complete for new post`,
       );
     } catch (error) {
-      console.error("[POST_UPLOAD_HANDLER] Error handling post upload:", error);
+      logger.error("[POST_UPLOAD_HANDLER] Error handling post upload", {
+        error,
+      });
       // Fallback: invalidate all feed patterns (except new_feed)
       const fallbackPatterns = CacheKeyBuilder.getGlobalFeedPatterns();
       await this.redis.deletePatterns(fallbackPatterns);
@@ -147,9 +149,9 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
         await this.userRepository.findUsersFollowing(userPublicId);
       return followers.map((user) => user.publicId);
     } catch (error) {
-      console.error(
-        `[POST_UPLOAD_HANDLER] Error getting followers for user ${userPublicId}:`,
-        error,
+      logger.error(
+        `[POST_UPLOAD_HANDLER] Error getting followers for user ${userPublicId}`,
+        { error },
       );
       return [];
     }
@@ -162,9 +164,9 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
         await this.userPreferenceRepository.getUsersWithTagPreferences(tags);
       return interestedUsers.map((user) => user.publicId);
     } catch (error) {
-      console.error(
-        `[POST_UPLOAD_HANDLER] Error getting users interested in tags ${tags.join(", ")}:`,
-        error,
+      logger.error(
+        `[POST_UPLOAD_HANDLER] Error getting users interested in tags ${tags.join(", ")}`,
+        { error },
       );
       return [];
     }

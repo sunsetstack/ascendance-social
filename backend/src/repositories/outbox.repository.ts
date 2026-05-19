@@ -14,6 +14,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
   async saveEvent(
     eventType: string,
     payload: any,
+    traceId: string,
   ): Promise<IOutboxEvent> {
     try {
       const session = this.getSession();
@@ -22,6 +23,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
           {
             eventType,
             payload,
+            traceId,
             processed: false,
           },
         ],
@@ -42,6 +44,16 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
         .exec();
     } catch (error: unknown) {
       throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to fetch unprocessed events");
+    }
+  }
+
+  async countPendingEvents(): Promise<number> {
+    try {
+      return await this.model
+        .countDocuments({ processed: false, retries: { $lt: 5 } })
+        .exec();
+    } catch (error: unknown) {
+      throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to count pending outbox events");
     }
   }
 

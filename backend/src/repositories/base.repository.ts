@@ -98,9 +98,8 @@ export abstract class BaseRepository<
     }
   }
 
-  // Extend the Base repository with this method as I'll need it in
-  // multiple repositories.
-  // Using .lean() instead of adjusting the return type is out of the question as it causes horrors beyond my comprehension further down the line.
+  // Extend the Base repository with this method as I'll need it in multiple repositories.
+  // Using .lean() causes horrors beyond my comprehension upstream.
   async findOneAndUpdate(
     filter: FilterQuery<T>,
     update: UpdateQuery<T>,

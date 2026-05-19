@@ -9,6 +9,7 @@ import { DTOService, PublicUserDTO } from "@/services/dto.service";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { UserUsernameChangedEvent } from "@/application/events/user/user-interaction.event";
 import { Errors } from "@/utils/errors";
+import { asMongoId } from "@/types/branded";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
@@ -68,11 +69,13 @@ export class UpdateProfileCommandHandler implements ICommandHandler<
     }
 
     await this.unitOfWork.executeInTransaction(async () => {
-      await this.userWriteRepository.update(user.id, { $set: allowedUpdates });
+      const userId = asMongoId(user._id.toString());
+
+      await this.userWriteRepository.update(userId, { $set: allowedUpdates });
       await this.userActionRepository.logAction(
-        user.id,
+        userId,
         "profile_update",
-        user.id,
+        userId,
       );
     });
 

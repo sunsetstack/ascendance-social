@@ -2,7 +2,7 @@ import { inject, injectable } from "tsyringe";
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { GetRecentActivityQuery } from "./getRecentActivity.query";
 import { UserActionRepository } from "@/repositories/userAction.repository";
-import { PaginationResult, IUserAction } from "@/types";
+import { PaginationResult } from "@/types";
 import mongoose from "mongoose";
 import { TOKENS } from "@/types/tokens";
 

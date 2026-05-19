@@ -6,7 +6,6 @@ import {
 	TextField,
 	Button,
 	Alert,
-	useTheme,
 } from "@mui/material";
 import { ArrowBack as ArrowBackIcon } from "@mui/icons-material";
 import { useChangePassword } from "../../hooks/settings";
@@ -16,7 +15,6 @@ interface ChangePasswordProps {
 }
 
 const ChangePassword = ({ onBack }: ChangePasswordProps) => {
-	const theme = useTheme();
 	const [currentPassword, setCurrentPassword] = useState("");
 	const [newPassword, setNewPassword] = useState("");
 	const [confirmPassword, setConfirmPassword] = useState("");
@@ -46,8 +44,24 @@ const ChangePassword = ({ onBack }: ChangePasswordProps) => {
 			setCurrentPassword("");
 			setNewPassword("");
 			setConfirmPassword("");
-		} catch (err: any) {
-			setError(err.response?.data?.error || "Failed to change password");
+		} catch (err: unknown) {
+			const fallbackMessage = "Failed to change password";
+			if (
+				err &&
+				typeof err === "object" &&
+				"response" in err &&
+				err.response &&
+				typeof err.response === "object" &&
+				"data" in err.response &&
+				err.response.data &&
+				typeof err.response.data === "object" &&
+				"error" in err.response.data &&
+				typeof err.response.data.error === "string"
+			) {
+				setError(err.response.data.error);
+			} else {
+				setError(fallbackMessage);
+			}
 		}
 	};
 

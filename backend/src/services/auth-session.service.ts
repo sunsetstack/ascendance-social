@@ -24,6 +24,7 @@ export interface SessionContext {
 export interface CreateSessionInput extends SessionContext {
   sid: string;
   publicId: string;
+  isEmailVerified: boolean;
   refreshToken: string;
   ttlSeconds: number;
 }
@@ -66,6 +67,7 @@ export class AuthSessionService {
     const session: AuthSessionRecord = {
       sid: asSessionId(input.sid),
       publicId: asUserPublicId(input.publicId),
+      isEmailVerified: input.isEmailVerified,
       refreshTokenHash: asRefreshTokenHash(
         this.hashRefreshToken(input.refreshToken),
       ),
@@ -76,15 +78,7 @@ export class AuthSessionService {
       status: "active",
     };
 
-    const pipeline = this.redisService.clientInstance.multi();
-    pipeline.setEx(
-      this.sessionKey(input.sid),
-      ttlSeconds,
-      JSON.stringify(session),
-    );
-    pipeline.sAdd(this.userSessionsKey(input.publicId), input.sid);
-    pipeline.expire(this.userSessionsKey(input.publicId), ttlSeconds);
-    await pipeline.exec();
+    await this.redisService.saveAuthSession(session, ttlSeconds);
 
     return session;
   }
@@ -97,7 +91,7 @@ export class AuthSessionService {
    */
   async getSession(sid: string): Promise<AuthSessionRecord | null> {
     if (!SESSION_ID_REGEX.test(sid)) return null;
-    return this.redisService.get<AuthSessionRecord>(this.sessionKey(sid));
+    return this.redisService.getAuthSession<AuthSessionRecord>(sid);
   }
 
   /**
@@ -114,10 +108,7 @@ export class AuthSessionService {
     const session = await this.getSession(sid);
     if (!session) {
       // If the session key was evicted proactively clear stale membership index entry
-      await this.redisService.clientInstance.sRem(
-        this.userSessionsKey(publicId),
-        sid,
-      );
+      await this.redisService.removeAuthSessionMembership(publicId, sid);
       throw Errors.authentication("Session is invalid or expired");
     }
     if (session.status !== "active" || session.publicId !== publicId) {
@@ -201,11 +192,7 @@ export class AuthSessionService {
       userAgent: context?.userAgent ?? current.userAgent,
     };
 
-    const pipeline = this.redisService.clientInstance.multi();
-    pipeline.setEx(this.sessionKey(sid), normalizedTtl, JSON.stringify(next));
-    pipeline.sAdd(this.userSessionsKey(next.publicId), sid);
-    pipeline.expire(this.userSessionsKey(next.publicId), normalizedTtl);
-    await pipeline.exec();
+    await this.redisService.saveAuthSession(next, normalizedTtl);
 
     return next;
   }
@@ -220,10 +207,7 @@ export class AuthSessionService {
     const session = await this.getSession(sid);
     if (!session) return;
 
-    const pipeline = this.redisService.clientInstance.multi();
-    pipeline.del(this.sessionKey(sid));
-    pipeline.sRem(this.userSessionsKey(session.publicId), sid);
-    await pipeline.exec();
+    await this.redisService.removeAuthSession(sid, session.publicId);
   }
 
   /**
@@ -234,33 +218,49 @@ export class AuthSessionService {
    * - Deletes all session keys plus the user index key
    */
   async revokeAllSessionsForUser(publicId: string): Promise<void> {
-    const userSessionsKey = this.userSessionsKey(publicId);
-    const sessionIds =
-      await this.redisService.clientInstance.sMembers(userSessionsKey);
-    if (sessionIds.length === 0) {
-      await this.redisService.clientInstance.del(userSessionsKey);
-      return;
-    }
-
-    const keysToDelete = sessionIds.map((sid) => this.sessionKey(sid));
-    keysToDelete.push(userSessionsKey);
-    await this.redisService.clientInstance.del(keysToDelete);
+    const sessionIds = await this.redisService.getUserAuthSessionIds(publicId);
+    await this.redisService.deleteUserAuthSessions(publicId, sessionIds);
   }
 
-  /**
-   * Builds the Redis key name for a single session record
-   * - One key format definition avoids inconsistencies and key-typo bugs
-   */
-  private sessionKey(sid: string): string {
-    return `session:${sid}`;
-  }
+  async markUserEmailVerified(publicId: string): Promise<void> {
+    const sessionIds = await this.redisService.getUserAuthSessionIds(publicId);
+    if (sessionIds.length === 0) return;
 
-  /**
-   * Builds the Redis key for the set of a user's active session IDs
-   * - this index supports bulk revoke and stale SID cleanup
-   */
-  private userSessionsKey(publicId: string): string {
-    return `user:sessions:${publicId}`;
+    const staleSessionIds: string[] = [];
+    const sessionsToUpdate = (
+      await this.redisService.getAuthSessionsWithTtl<AuthSessionRecord>(
+        sessionIds,
+      )
+    )
+      .map((entry) => {
+        if (!entry.session || entry.ttlSeconds <= 0) {
+          staleSessionIds.push(entry.sid);
+          return null;
+        }
+
+        return {
+          ...entry,
+          session: {
+            ...entry.session,
+            isEmailVerified: true,
+          },
+        };
+      })
+      .filter(
+        (
+          entry,
+        ): entry is {
+          sid: string;
+          session: AuthSessionRecord;
+          ttlSeconds: number;
+        } => entry !== null,
+      );
+
+    await this.redisService.updateAuthSessions(
+      publicId,
+      sessionsToUpdate,
+      staleSessionIds,
+    );
   }
 
   /**
@@ -342,11 +342,10 @@ export class AuthSessionService {
       return;
     }
 
-    const key = this.sessionKey(session.sid);
-    const ttlSeconds = await this.redisService.clientInstance.ttl(key);
+    const ttlSeconds = await this.redisService.getAuthSessionTtl(session.sid);
     if (ttlSeconds <= 0) {
-      await this.redisService.clientInstance.sRem(
-        this.userSessionsKey(session.publicId),
+      await this.redisService.removeAuthSessionMembership(
+        session.publicId,
         session.sid,
       );
       throw Errors.authentication("Session is invalid or expired");
@@ -356,11 +355,15 @@ export class AuthSessionService {
       ...session,
       lastSeenAt: now,
     };
-    await this.redisService.clientInstance.setEx(
-      key,
+    await this.redisService.updateAuthSession(
+      session.sid,
+      touchedSession,
       ttlSeconds,
-      JSON.stringify(touchedSession),
     );
+  }
+
+  private sessionKey(sid: string): string {
+    return `session:${sid}`;
   }
 
   /**

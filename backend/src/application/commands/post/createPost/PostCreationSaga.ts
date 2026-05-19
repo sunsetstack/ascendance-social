@@ -91,7 +91,13 @@ export class PostCreationSaga {
 
   async execute(command: CreatePostCommand): Promise<PostDTO> {
     // Validate publicId format via value object - throws ValidationError early
-    PublicId.of(command.userPublicId);
+    try {
+      PublicId.of(command.userPublicId);
+    } catch {
+      throw Errors.validation("Invalid userPublicId format", {
+        context: { field: "userPublicId", value: command.userPublicId },
+      });
+    }
 
     let uploadResult: { url: string; publicId: string } | null = null;
     let transactionCommitted = false;
@@ -102,7 +108,16 @@ export class PostCreationSaga {
 
       let communityInternalId: Types.ObjectId | null = null;
       if (command.communityPublicId) {
-        PublicId.of(command.communityPublicId);
+        try {
+          PublicId.of(command.communityPublicId);
+        } catch {
+          throw Errors.validation("Invalid communityPublicId format", {
+            context: {
+              field: "communityPublicId",
+              value: command.communityPublicId,
+            },
+          });
+        }
         const { communityId } = await this.validateCommunityMembership(
           asCommunityPublicId(command.communityPublicId),
           user._id as Types.ObjectId,

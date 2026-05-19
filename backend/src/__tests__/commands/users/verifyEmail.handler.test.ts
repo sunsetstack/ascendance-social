@@ -20,6 +20,9 @@ describe("VerifyEmailHandler", () => {
 		toAuthenticatedUserDTO: SinonStub;
 		toAdminDTO: SinonStub;
 	};
+	let mockAuthSessionService: {
+		markUserEmailVerified: SinonStub;
+	};
 
 	beforeEach(() => {
 		mockUserReadRepository = {
@@ -32,11 +35,15 @@ describe("VerifyEmailHandler", () => {
 			toAuthenticatedUserDTO: sinon.stub(),
 			toAdminDTO: sinon.stub(),
 		};
+		mockAuthSessionService = {
+			markUserEmailVerified: sinon.stub().resolves(),
+		};
 
 		handler = new VerifyEmailHandler(
 			mockUserReadRepository as any,
 			mockUserWriteRepository as any,
 			mockDtoService as any,
+			mockAuthSessionService as any,
 		);
 	});
 
@@ -49,7 +56,12 @@ describe("VerifyEmailHandler", () => {
 
 	it("should return user when already verified", async () => {
 		const command = new VerifyEmailCommand("user@example.com", "12345");
-		const user = { id: "1", isAdmin: false, isEmailVerified: true };
+		const user = {
+			_id: { toString: () => "1" },
+			id: "1",
+			isAdmin: false,
+			isEmailVerified: true,
+		};
 		const dto = { publicId: "p1", email: "user@example.com", isEmailVerified: true };
 		mockUserReadRepository.findByEmailVerificationToken.resolves(user);
 		mockDtoService.toAuthenticatedUserDTO.returns(dto);
@@ -58,12 +70,24 @@ describe("VerifyEmailHandler", () => {
 
 		expect(result).to.equal(dto);
 		expect(mockUserWriteRepository.update.called).to.equal(false);
+		expect(mockAuthSessionService.markUserEmailVerified.called).to.equal(false);
 	});
 
 	it("should verify and return updated user", async () => {
 		const command = new VerifyEmailCommand("user@example.com", "12345");
-		const user = { id: "1", isAdmin: false, isEmailVerified: false };
-		const updatedUser = { id: "1", isAdmin: false, isEmailVerified: true };
+		const user = {
+			_id: { toString: () => "1" },
+			id: "1",
+			isAdmin: false,
+			isEmailVerified: false,
+		};
+		const updatedUser = {
+			_id: { toString: () => "1" },
+			id: "1",
+			publicId: "p1",
+			isAdmin: false,
+			isEmailVerified: true,
+		};
 		const dto = { publicId: "p1", email: "user@example.com", isEmailVerified: true };
 
 		mockUserReadRepository.findByEmailVerificationToken.resolves(user);
@@ -74,5 +98,6 @@ describe("VerifyEmailHandler", () => {
 
 		expect(result).to.equal(dto);
 		expect(mockUserWriteRepository.update.calledOnce).to.equal(true);
+		expect(mockAuthSessionService.markUserEmailVerified.calledOnceWith("p1")).to.equal(true);
 	});
 });

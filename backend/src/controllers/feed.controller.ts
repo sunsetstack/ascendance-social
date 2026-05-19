@@ -1,5 +1,4 @@
 import { Response } from "express";
-import { FeedService } from "@/services/feed/feed.service";
 import { inject, injectable } from "tsyringe";
 import { Errors } from "@/utils/errors";
 import { QueryBus } from "@/application/common/buses/query.bus";
@@ -7,11 +6,18 @@ import { GetTrendingTagsQuery } from "@/application/queries/tags/getTrendingTags
 import { GetPersonalizedFeedQuery } from "@/application/queries/feed/getPersonalizedFeed/getPersonalizedFeed.query";
 import { GetForYouFeedQuery } from "@/application/queries/feed/getForYouFeed/getForYouFeed.query";
 import { GetTrendingFeedQuery } from "@/application/queries/feed/getTrendingFeed/getTrendingFeed.query";
+import { GetNewFeedQuery } from "@/application/queries/feed/getNewFeed/getNewFeed.query";
 import {
   streamPaginatedResponse,
   streamCursorResponse,
 } from "@/utils/streamResponse";
-import { CursorPaginationResult, FeedPost, TypedRequest } from "@/types";
+import {
+  CursorPaginationResult,
+  FeedPost,
+  PaginationResult,
+  PostDTO,
+  TypedRequest,
+} from "@/types";
 import { TOKENS } from "@/types/tokens";
 import type {
   FeedPaginationQuery,
@@ -28,7 +34,6 @@ type EmptyBody = Record<string, never>;
 @injectable()
 export class FeedController {
   constructor(
-    @inject(TOKENS.Services.Feed) private readonly feedService: FeedService,
     @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
   ) {}
 
@@ -120,12 +125,9 @@ export class FeedController {
     // only allow cache bypass for authenticated users requesting a refresh
     const forceRefresh = refresh && isAuthenticated;
 
-    const feed = await this.feedService.getNewFeed(
-      page,
-      limit,
-      forceRefresh,
-      cursor,
-    );
+    const feed = await this.queryBus.execute<
+      PaginationResult<PostDTO> & { nextCursor?: string }
+    >(new GetNewFeedQuery(page, limit, forceRefresh, cursor));
 
     // Use cursor-based streaming if cursor is available
     if (feed.nextCursor && feed.data && feed.data.length >= STREAM_THRESHOLD) {

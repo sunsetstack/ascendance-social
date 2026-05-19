@@ -7,12 +7,14 @@ describe("Favorite Feature Integration", () => {
 	it("should have all required components properly defined", () => {
 		// Test that all components can be imported without errors
 		const { FavoriteController } = require("../../controllers/favorite.controller");
-		const { FavoriteService } = require("@/services/favorite.service");
+		const { AddFavoriteCommandHandler } = require("@/application/commands/favorite/addFavorite/addFavorite.handler");
+		const { GetFavoritesQueryHandler } = require("@/application/queries/favorite/getFavorites/getFavorites.handler");
 		const { FavoriteRepository } = require("@/repositories/favorite.repository");
 		const { FavoriteRoutes } = require("../../routes/favorite.routes");
 
 		expect(FavoriteController).to.exist;
-		expect(FavoriteService).to.exist;
+		expect(AddFavoriteCommandHandler).to.exist;
+		expect(GetFavoritesQueryHandler).to.exist;
 		expect(FavoriteRepository).to.exist;
 		expect(FavoriteRoutes).to.exist;
 	});
@@ -33,8 +35,8 @@ describe("Favorite Feature Integration", () => {
 	it("should have correct favorite routes pattern", () => {
 		// Verify the API route patterns match expected frontend usage
 		const expectedRoutes = [
-			"POST /favorites/images/:publicId",
-			"DELETE /favorites/images/:publicId",
+			"POST /favorites/posts/:publicId",
+			"DELETE /favorites/posts/:publicId",
 			"GET /favorites/user",
 		];
 

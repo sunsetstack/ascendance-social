@@ -33,7 +33,8 @@ import RepeatIcon from "@mui/icons-material/Repeat";
 import GroupsIcon from "@mui/icons-material/Groups";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import CommentSection from "../components/comments/CommentSection";
-import { PageSeo, buildPostMetadata } from "../lib/seo";
+import { PageSeo } from "../lib/PageSeo";
+import { buildPostMetadata } from "../lib/seo";
 import {
   buildMediaUrl,
   buildResponsiveCloudinarySrcSet,

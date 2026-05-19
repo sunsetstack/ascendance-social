@@ -131,7 +131,7 @@ export class LikeCommentCommandHandler implements ICommandHandler<
   private async handleLike(
     command: LikeCommentCommand,
     userInternalId: MongoId,
-    comment: IComment,
+    _comment: IComment,
   ): Promise<void> {
     const added = await this.commentLikeRepository.addLike(
       asMongoId(command.commentId),

@@ -3,7 +3,7 @@ import { SendMessageCommand } from "./sendMessage.command";
 import { ConversationRepository } from "@/repositories/conversation.repository";
 import { MessageRepository } from "@/repositories/message.repository";
 import { UserRepository } from "@/repositories/user.repository";
-import { UnitOfWork, sessionALS } from "@/database/UnitOfWork";
+import { UnitOfWork } from "@/database/UnitOfWork";
 import { DTOService } from "@/services/dto.service";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { MessageSentEvent } from "@/application/events/message/message.event";
@@ -21,12 +21,14 @@ import {
   IImageStorageService,
   MessageDTO,
   toObjectId,
-  UserPublicIdLean,
 } from "@/types";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { TOKENS } from "@/types/tokens";
-import { asUserPublicId } from "@/types/branded";
+import {
+  requireUserInternalId,
+  resolveParticipantPublicIds,
+} from "@/application/messaging/messaging-support";
 
 @injectable()
 export class SendMessageCommandHandler implements ICommandHandler<
@@ -98,11 +100,10 @@ export class SendMessageCommandHandler implements ICommandHandler<
         throw Errors.validation(message);
       }
 
-      const senderInternalId =
-        await this.userRepository.findInternalIdByPublicId(senderPublicId);
-      if (!senderInternalId) {
-        throw Errors.notFound("User");
-      }
+      const senderInternalId = await requireUserInternalId(
+        this.userRepository,
+        senderPublicId,
+      );
 
       let targetConversation = payload.conversationPublicId
         ? await this.conversationRepository.findByPublicId(
@@ -158,12 +159,10 @@ export class SendMessageCommandHandler implements ICommandHandler<
 
           if (!conversationDoc) {
             const recipientInternalId =
-              await this.userRepository.findInternalIdByPublicId(
-                asUserPublicId(payload.recipientPublicId!),
+              await requireUserInternalId(
+                this.userRepository,
+                payload.recipientPublicId!,
               );
-            if (!recipientInternalId) {
-              throw Errors.notFound("User");
-            }
 
             const participantIds = [senderInternalId, recipientInternalId];
             const participantHash = buildParticipantHash(participantIds);
@@ -244,20 +243,9 @@ export class SendMessageCommandHandler implements ICommandHandler<
           await message.populate("sender", "publicId handle username avatar");
           const populatedMessage = asPopulatedMessage(message);
 
-          const participantObjectIds = participantIds.map(
-            (participantId: string) =>
-              new mongoose.Types.ObjectId(participantId),
-          );
-          const alsSession = sessionALS.getStore() ?? null;
-          const participantDocs = await this.userRepository
-            .find({ _id: { $in: participantObjectIds } })
-            .select("publicId")
-            .session(alsSession)
-            .lean<UserPublicIdLean[]>()
-            .exec();
-
-          const participantPublicIds = participantDocs.map(
-            (doc) => doc.publicId,
+          const participantPublicIds = await resolveParticipantPublicIds(
+            this.userRepository,
+            participantIds,
           );
 
           const recipients = participantPublicIds.filter(

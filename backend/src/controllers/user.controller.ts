@@ -1,13 +1,8 @@
-import { Request, Response, NextFunction } from "express";
+import { Request, Response } from "express";
 import { AuthService } from "@/services/auth.service";
 import { Errors } from "@/utils/errors";
 import { injectable, inject } from "tsyringe";
-import {
-  accessCookieOptions,
-  authCookieNames,
-  clearAuthCookieOptions,
-  refreshCookieOptions,
-} from "@/config/cookieConfig";
+import { authCookieNames } from "@/config/cookieConfig";
 import { CommandBus } from "@/application/common/buses/command.bus";
 import { QueryBus } from "@/application/common/buses/query.bus";
 import { RegisterUserCommand } from "@/application/commands/users/register/register.command";
@@ -21,19 +16,17 @@ import { GetWhoToFollowQuery } from "@/application/queries/users/getWhoToFollow/
 import { GetWhoToFollowResult } from "@/application/queries/users/getWhoToFollow/getWhoToFollow.handler";
 import { GetHandleSuggestionsQuery } from "@/application/queries/users/getHandleSuggestions/getHandleSuggestions.query";
 import {
-  AdminUserDTO,
-  AuthenticatedUserDTO,
   HandleSuggestionDTO,
   PublicUserDTO,
 } from "@/services/dto.service";
 import { UpdateAvatarCommand } from "@/application/commands/users/updateAvatar/updateAvatar.command";
 import { UpdateCoverCommand } from "@/application/commands/users/updateCover/updateCover.command";
 import { DeleteUserCommand } from "@/application/commands/users/deleteUser/deleteUser.command";
-import { FollowUserCommand } from "@/application/commands/users/followUser/followUser.command";
-import { FollowUserResult } from "@/application/commands/users/followUser/followUser.handler";
+import { SetFollowStateCommand } from "@/application/commands/users/setFollowState/setFollowState.command";
+import { SetFollowStateResult } from "@/application/commands/users/setFollowState/setFollowState.handler";
 import { UpdateProfileCommand } from "@/application/commands/users/updateProfile/updateProfile.command";
 import { ChangePasswordCommand } from "@/application/commands/users/changePassword/changePassword.command";
-import { GetUserByHandleQuery } from "@/application/queries/users/getUserByUsername/getUserByUsername.query";
+import { GetUserByHandleQuery } from "@/application/queries/users/getUserByHandle/getUserByHandle.query";
 import { GetUserByPublicIdQuery } from "@/application/queries/users/getUserByPublicId/getUserByPublicId.query";
 import { GetUsersQuery } from "@/application/queries/users/getUsers/getUsers.query";
 import { CheckFollowStatusQuery } from "@/application/queries/users/checkFollowStatus/checkFollowStatus.query";
@@ -66,6 +59,12 @@ import type {
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 import { asUserPublicId, asPostPublicId, UserPublicId } from "@/types/branded";
+import {
+  buildAuthRequestContext,
+  clearAuthCookies,
+  setAuthCookies,
+  toSessionUser,
+} from "@/controllers/helpers/user-auth-response";
 
 /** Threshold for enabling streaming responses (items) */
 import { STREAM_THRESHOLD } from "@/utils/post-helpers";
@@ -95,53 +94,6 @@ export class UserController {
     @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
   ) {}
 
-  private getRequestContext(req: Request): { ip: string; userAgent: string } {
-    const cloudflareIp = req.headers["cf-connecting-ip"];
-    const ip =
-      typeof cloudflareIp === "string" && cloudflareIp.length > 0
-        ? cloudflareIp
-        : req.ip || "unknown";
-    const userAgent = req.get("User-Agent") || "unknown";
-    return { ip, userAgent };
-  }
-
-  private toSessionUser(user: AuthenticatedUserDTO | AdminUserDTO): {
-    publicId: UserPublicId;
-    email: string;
-    handle: string;
-    username: string;
-    isAdmin: boolean;
-  } {
-    return {
-      publicId: user.publicId,
-      email: user.email,
-      handle: user.handle,
-      username: user.username,
-      isAdmin: "isAdmin" in user ? Boolean(user.isAdmin) : false,
-    };
-  }
-
-  private setAuthCookies(
-    res: Response,
-    accessToken: string,
-    refreshToken: string,
-  ): void {
-    res.cookie(authCookieNames.accessToken, accessToken, accessCookieOptions);
-    res.cookie(
-      authCookieNames.refreshToken,
-      refreshToken,
-      refreshCookieOptions,
-    );
-    // cleanup legacy cookie used by previous auth flow
-    res.clearCookie(authCookieNames.legacyToken, clearAuthCookieOptions);
-  }
-
-  private clearAuthCookies(res: Response): void {
-    res.clearCookie(authCookieNames.accessToken, clearAuthCookieOptions);
-    res.clearCookie(authCookieNames.refreshToken, clearAuthCookieOptions);
-    res.clearCookie(authCookieNames.legacyToken, clearAuthCookieOptions);
-  }
-
   private requireAuthenticatedUserPublicId(req: Request): UserPublicId {
     const userPublicId = req.decodedUser?.publicId;
     if (!userPublicId) {
@@ -150,73 +102,15 @@ export class UserController {
     return userPublicId;
   }
 
-  register = async (
-    req: TypedRequest<EmptyParams, RegistrationBody>,
-    res: Response,
-  ) => {
-    const { handle, username, email, password } = req.body;
-    const { ip, userAgent } = this.getRequestContext(req);
-    const command = new RegisterUserCommand(
-      handle,
-      username,
-      email,
-      password,
-      undefined,
-      undefined,
-      ip,
-    );
-    const { user } =
-      await this.commandBus.dispatch<RegisterUserResult>(command);
-    const { accessToken, refreshToken } =
-      await this.authService.issueTokensForUser(this.toSessionUser(user), {
-        ip,
-        userAgent,
-      });
-    this.setAuthCookies(res, accessToken, refreshToken);
-    res.status(201).json({ user });
-  };
-
-  // Refresh
-  getMe = async (req: Request, res: Response, next: NextFunction) => {
-    const { decodedUser } = req;
-    if (!decodedUser?.publicId) {
-      return next(Errors.authentication("User not authenticated."));
-    }
-    const query = new GetMeQuery(decodedUser.publicId);
-    const { user } = await this.queryBus.execute<GetMeResult>(query);
-    res.status(200).json(user);
-  };
-
-  login = async (req: TypedRequest<EmptyParams, LoginBody>, res: Response) => {
-    const { email, password } = req.body;
-    const { user, accessToken, refreshToken } = await this.authService.login(
-      email,
-      password,
-      this.getRequestContext(req),
-    );
-    this.setAuthCookies(res, accessToken, refreshToken);
-    res.status(200).json({ user });
-  };
-
-  refresh = async (req: Request, res: Response, next: NextFunction) => {
+  private requireRefreshToken(req: Request): string {
     const refreshToken = req.cookies?.[authCookieNames.refreshToken];
     if (typeof refreshToken !== "string" || refreshToken.length === 0) {
-      return next(Errors.authentication("Refresh token missing"));
+      throw Errors.authentication("Refresh token missing");
     }
+    return refreshToken;
+  }
 
-    const {
-      user,
-      accessToken,
-      refreshToken: nextRefreshToken,
-    } = await this.authService.refreshSession(
-      refreshToken,
-      this.getRequestContext(req),
-    );
-    this.setAuthCookies(res, accessToken, nextRefreshToken);
-    res.status(200).json({ user });
-  };
-
-  logout = async (req: Request, res: Response) => {
+  private async revokeSessionFromRequest(req: Request): Promise<void> {
     const refreshToken = req.cookies?.[authCookieNames.refreshToken];
     const accessToken =
       req.cookies?.[authCookieNames.accessToken] ||
@@ -233,20 +127,83 @@ export class UserController {
       );
     }
 
-    if (revocationTasks.length > 0) {
-      const revocationResults = await Promise.allSettled(revocationTasks);
-      for (const result of revocationResults) {
-        if (result.status === "rejected") {
-          const reasonMessage =
-            result.reason instanceof Error
-              ? result.reason.message
-              : String(result.reason);
-          logger.warn(`[AUTH] Logout revocation failed: ${reasonMessage}`);
-        }
-      }
+    if (revocationTasks.length === 0) {
+      return;
     }
 
-    this.clearAuthCookies(res);
+    const revocationResults = await Promise.allSettled(revocationTasks);
+    for (const result of revocationResults) {
+      if (result.status === "rejected") {
+        const reasonMessage =
+          result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason);
+        logger.warn(`[AUTH] Logout revocation failed: ${reasonMessage}`);
+      }
+    }
+  }
+
+  register = async (
+    req: TypedRequest<EmptyParams, RegistrationBody>,
+    res: Response,
+  ) => {
+    const { handle, username, email, password } = req.body;
+    const requestContext = buildAuthRequestContext(req);
+    const command = new RegisterUserCommand(
+      handle,
+      username,
+      email,
+      password,
+      undefined,
+      undefined,
+      requestContext.ip,
+    );
+    const { user } =
+      await this.commandBus.dispatch<RegisterUserResult>(command);
+    const { accessToken, refreshToken } =
+      await this.authService.issueTokensForUser(
+        toSessionUser(user),
+        requestContext,
+      );
+    setAuthCookies(res, accessToken, refreshToken);
+    res.status(201).json({ user });
+  };
+
+  getMe = async (req: Request, res: Response) => {
+    const userPublicId = this.requireAuthenticatedUserPublicId(req);
+    const query = new GetMeQuery(userPublicId);
+    const { user } = await this.queryBus.execute<GetMeResult>(query);
+    res.status(200).json(user);
+  };
+
+  login = async (req: TypedRequest<EmptyParams, LoginBody>, res: Response) => {
+    const { email, password } = req.body;
+    const { user, accessToken, refreshToken } = await this.authService.login(
+      email,
+      password,
+      buildAuthRequestContext(req),
+    );
+    setAuthCookies(res, accessToken, refreshToken);
+    res.status(200).json({ user });
+  };
+
+  refresh = async (req: Request, res: Response) => {
+    const refreshToken = this.requireRefreshToken(req);
+    const {
+      user,
+      accessToken,
+      refreshToken: nextRefreshToken,
+    } = await this.authService.refreshSession(
+      refreshToken,
+      buildAuthRequestContext(req),
+    );
+    setAuthCookies(res, accessToken, nextRefreshToken);
+    res.status(200).json({ user });
+  };
+
+  logout = async (req: Request, res: Response) => {
+    await this.revokeSessionFromRequest(req);
+    clearAuthCookies(res);
     res.status(200).json({ message: "Logged out successfully" });
   };
 
@@ -254,15 +211,9 @@ export class UserController {
     req: TypedRequest<EmptyParams, UpdateProfileBody>,
     res: Response,
   ) => {
-    const { decodedUser } = req;
     const userData = req.body;
-    if (!decodedUser) {
-      throw Errors.authentication("User not authenticated.");
-    }
-    if (!decodedUser.publicId)
-      throw Errors.authentication("User not authenticated.");
-
-    const command = new UpdateProfileCommand(decodedUser.publicId, userData);
+    const userPublicId = this.requireAuthenticatedUserPublicId(req);
+    const command = new UpdateProfileCommand(userPublicId, userData);
     const updatedUser = await this.commandBus.dispatch<PublicUserDTO>(command);
     res.status(200).json(updatedUser);
   };
@@ -271,41 +222,30 @@ export class UserController {
     req: TypedRequest<EmptyParams, ChangePasswordBody>,
     res: Response,
   ) => {
-    const { decodedUser } = req;
     const { currentPassword, newPassword } = req.body; // already validated by Zod middleware
-
-    if (!decodedUser) {
-      throw Errors.authentication("User not authenticated.");
-    }
-    if (!decodedUser.publicId)
-      throw Errors.authentication("User not authenticated.");
+    const userPublicId = this.requireAuthenticatedUserPublicId(req);
 
     const command = new ChangePasswordCommand(
-      decodedUser.publicId,
+      userPublicId,
       currentPassword,
       newPassword,
     );
     await this.commandBus.dispatch(command);
-    await this.authService.revokeAllSessionsForUser(decodedUser.publicId);
-    this.clearAuthCookies(res);
+    await this.authService.revokeAllSessionsForUser(userPublicId);
+    clearAuthCookies(res);
 
     res.status(200).json({
       message: "Password changed successfully. Please log in again.",
     });
   };
 
-  updateAvatar = async (req: Request, res: Response, next: NextFunction) => {
-    const { decodedUser } = req;
+  updateAvatar = async (req: Request, res: Response) => {
     const fileBuffer = req.file?.buffer;
     if (!fileBuffer) throw Errors.validation("No file provided");
-    if (!decodedUser) {
-      throw Errors.authentication("User not authenticated.");
-    }
-    if (!decodedUser.publicId)
-      throw Errors.authentication("User not authenticated.");
+    const userPublicId = this.requireAuthenticatedUserPublicId(req);
 
     const command = new UpdateAvatarCommand(
-      decodedUser.publicId,
+      userPublicId,
       fileBuffer,
       req.file?.originalname,
       req.file?.mimetype,
@@ -316,18 +256,13 @@ export class UserController {
     res.status(200).json(updatedUserDTO);
   };
 
-  updateCover = async (req: Request, res: Response, next: NextFunction) => {
-    const { decodedUser } = req;
+  updateCover = async (req: Request, res: Response) => {
     const fileBuffer = req.file?.buffer;
     if (!fileBuffer) throw Errors.validation("No file provided");
-    if (!decodedUser) {
-      throw Errors.authentication("User not authenticated.");
-    }
-    if (!decodedUser.publicId)
-      throw Errors.authentication("User not authenticated.");
+    const userPublicId = this.requireAuthenticatedUserPublicId(req);
 
     const command = new UpdateCoverCommand(
-      decodedUser.publicId,
+      userPublicId,
       fileBuffer,
       req.file?.originalname,
       req.file?.mimetype,
@@ -368,13 +303,13 @@ export class UserController {
     res: Response,
   ): Promise<void> => {
     const { publicId } = req.params;
-    const followerPublicId = this.requireAuthenticatedUserPublicId(req);
-
-    const command = new FollowUserCommand(
-      followerPublicId,
-      asUserPublicId(publicId),
+    const result = await this.commandBus.dispatch<SetFollowStateResult>(
+      new SetFollowStateCommand(
+        this.requireAuthenticatedUserPublicId(req),
+        asUserPublicId(publicId),
+        true,
+      ),
     );
-    const result = await this.commandBus.dispatch<FollowUserResult>(command);
     res.status(200).json(result);
   };
 
@@ -386,13 +321,13 @@ export class UserController {
     res: Response,
   ): Promise<void> => {
     const { publicId } = req.params;
-    const followerPublicId = this.requireAuthenticatedUserPublicId(req);
-
-    const command = new FollowUserCommand(
-      followerPublicId,
-      asUserPublicId(publicId),
+    const result = await this.commandBus.dispatch<SetFollowStateResult>(
+      new SetFollowStateCommand(
+        this.requireAuthenticatedUserPublicId(req),
+        asUserPublicId(publicId),
+        false,
+      ),
     );
-    const result = await this.commandBus.dispatch<FollowUserResult>(command);
     res.status(200).json(result);
   };
 
@@ -487,7 +422,7 @@ export class UserController {
     await this.commandBus.dispatch(command);
     await this.authService.revokeAllSessionsForUser(userPublicId);
 
-    this.clearAuthCookies(res);
+    clearAuthCookies(res);
     res.status(200).json({ message: "Account deleted successfully" });
   };
 
@@ -540,10 +475,6 @@ export class UserController {
     // strip file extension for backward compatibility
     publicId = publicId.replace(/\.[a-z0-9]{2,5}$/i, "");
 
-    logger.info(
-      `[LIKEACTION]: User public ID: ${userPublicId}, Post public ID: ${publicId}`,
-    );
-    logger.info(publicId);
     const command = new LikeActionByPublicIdCommand(
       userPublicId,
       asPostPublicId(publicId),
@@ -555,16 +486,10 @@ export class UserController {
   getWhoToFollow = async (
     req: TypedRequest<EmptyParams, EmptyBody, WhoToFollowQuery>,
     res: Response,
-    next: NextFunction,
   ) => {
-    const { decodedUser } = req;
-    if (!decodedUser?.publicId) {
-      return next(Errors.authentication("User not authenticated."));
-    }
-
     const { limit } = req.query;
-
-    const query = new GetWhoToFollowQuery(decodedUser.publicId, limit);
+    const userPublicId = this.requireAuthenticatedUserPublicId(req);
+    const query = new GetWhoToFollowQuery(userPublicId, limit);
     const result = await this.queryBus.execute<GetWhoToFollowResult>(query);
 
     res.status(200).json(result);

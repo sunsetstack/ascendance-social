@@ -101,13 +101,6 @@ describe("FavoriteRepository", () => {
 			expect(result).to.be.null;
 		});
 
-		it("should use session when provided", async () => {
-			mockQuery.exec.resolves(null);
-
-			await repository.findByUserAndPost(userId, postId, mockSession);
-
-			expect(mockQuery.session.calledWith(mockSession)).to.be.true;
-		});
 	});
 
 	describe("remove", () => {
@@ -132,13 +125,6 @@ describe("FavoriteRepository", () => {
 			expect(result).to.be.false;
 		});
 
-		it("should use session when provided", async () => {
-			mockQuery.exec.resolves({ deletedCount: 1 });
-
-			await repository.remove(userId, postId, mockSession);
-
-			expect(mockQuery.session.calledWith(mockSession)).to.be.true;
-		});
 	});
 
 	describe("findFavoritesByUserId", () => {

@@ -1,5 +1,9 @@
 import mongoose, { Document } from "mongoose";
-import { UserPublicId } from "@/types/branded";
+import {
+  ConversationPublicId,
+  MessagePublicId,
+  UserPublicId,
+} from "@/types/branded";
 
 export type MessageStatus = "sent" | "delivered" | "read";
 
@@ -11,7 +15,7 @@ export interface IMessageAttachment {
 }
 
 export interface IMessage extends Document {
-  publicId: string;
+  publicId: MessagePublicId;
   conversation: mongoose.Types.ObjectId;
   sender: mongoose.Types.ObjectId;
   body: string;
@@ -24,7 +28,7 @@ export interface IMessage extends Document {
 
 export interface IConversation extends Document {
   _id: mongoose.Types.ObjectId;
-  publicId: string;
+  publicId: ConversationPublicId;
   participantHash: string;
   participants: mongoose.Types.ObjectId[];
   lastMessage?: mongoose.Types.ObjectId;
@@ -44,8 +48,8 @@ export interface MessageCreateInput {
 }
 
 export interface SendMessagePayload {
-  conversationPublicId?: string;
-  recipientPublicId?: string;
+  conversationPublicId?: ConversationPublicId;
+  recipientPublicId?: UserPublicId;
   body: string;
   attachments?: IMessageAttachment[];
 }
@@ -83,6 +87,22 @@ export interface ConversationSummaryDTO {
   title?: string;
 }
 
+export interface PaginatedConversationSummaryResult {
+  conversations: ConversationSummaryDTO[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface PaginatedMessageResult {
+  messages: MessageDTO[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export interface PopulatedSender {
   _id?: mongoose.Types.ObjectId;
   publicId?: UserPublicId;
@@ -97,7 +117,7 @@ export interface IMessagePopulated extends Omit<IMessage, "sender" | "readBy"> {
   readBy?: Array<
     | string
     | mongoose.Types.ObjectId
-    | { publicId?: string; toString?: () => string }
+    | { publicId?: UserPublicId; toString?: () => string }
   >;
 }
 
@@ -118,7 +138,7 @@ export interface MaybePopulatedParticipant {
 // hydrated conversation with populated participants and last message
 // participants can be ObjectId[] or populated user objects
 export interface HydratedConversation {
-  publicId: string;
+  publicId: ConversationPublicId;
   participants: Array<mongoose.Types.ObjectId | MaybePopulatedParticipant>;
   lastMessage?: IMessage | null;
   lastMessageAt?: Date;

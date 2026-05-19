@@ -232,7 +232,7 @@ export class LocalStorageService implements IImageStorageService {
           await fs.promises.unlink(filePath);
           return;
         }
-      } catch (_err) {
+      } catch {
         continue;
       }
     }

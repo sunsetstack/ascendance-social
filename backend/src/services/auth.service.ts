@@ -30,7 +30,7 @@ export interface AuthenticatedSessionResult extends AuthTokens {
 
 type SessionUser = Pick<
   DecodedUser,
-  "publicId" | "email" | "handle" | "username" | "isAdmin"
+  "publicId" | "email" | "handle" | "username" | "isAdmin" | "isEmailVerified"
 >;
 
 @injectable()
@@ -98,6 +98,7 @@ export class AuthService {
     await this.authSessionService.createSession({
       sid,
       publicId: user.publicId,
+      isEmailVerified: user.isEmailVerified ?? false,
       refreshToken,
       ttlSeconds: this.getRefreshTokenTtlSeconds(),
       ip: context.ip,
@@ -197,6 +198,7 @@ export class AuthService {
       handle: user.handle,
       username: user.username,
       isAdmin: user.isAdmin,
+      isEmailVerified: user.isEmailVerified ?? false,
       sid: asSessionId(sid),
       jti: crypto.randomUUID(),
       ver: 1,
@@ -301,6 +303,7 @@ export class AuthService {
       handle: user.handle,
       username: user.username,
       isAdmin,
+      isEmailVerified: user.isEmailVerified ?? false,
     };
   }
 }

@@ -63,11 +63,10 @@ const Gallery: React.FC<GalleryProps> = ({
   const feedId = `${location.pathname}-${variant}`;
 
   const isProfileOwner = isLoggedIn && user?.publicId === profileId;
+  const postCount = uniquePosts.length;
   // show loading when: explicit loading state OR fetching with no posts to display
-  const isLoading =
-    isLoadingAll ||
-    (isFetchingAll && (!uniquePosts || uniquePosts.length === 0));
-  const hasPostsToShow = uniquePosts && uniquePosts.length > 0;
+  const isLoading = isLoadingAll || (isFetchingAll && postCount === 0);
+  const hasPostsToShow = postCount > 0;
   const firstImageIndex = useMemo(
     () => uniquePosts.findIndex((post) => Boolean(post.url || post.image?.url)),
     [uniquePosts],
@@ -83,10 +82,10 @@ const Gallery: React.FC<GalleryProps> = ({
 
   // track scroll depth
   useEffect(() => {
-    if (uniquePosts && uniquePosts.length > 0) {
-      telemetry.trackScrollDepth(feedId, visibleIndex, uniquePosts.length);
+    if (postCount > 0) {
+      telemetry.trackScrollDepth(feedId, visibleIndex, postCount);
     }
-  }, [feedId, visibleIndex, uniquePosts?.length, uniquePosts]);
+  }, [feedId, postCount, visibleIndex]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -102,7 +101,7 @@ const Gallery: React.FC<GalleryProps> = ({
     const currentRef = loadMoreRef.current;
     if (currentRef) observer.observe(currentRef);
     return () => {
-      if (currentRef) observer.unobserve(currentRef);
+      observer.disconnect();
     };
   }, [hasNextPage, isFetchingNext, fetchNextPage]);
 

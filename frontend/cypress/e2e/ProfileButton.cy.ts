@@ -40,10 +40,10 @@ describe("Profile Button Test", () => {
 		cy.url().then((url: string) => {
 			const pathParts = url.split("/profile/");
 			expect(pathParts).to.have.length(2);
-			expect(pathParts[1]).to.not.be.empty;
+			expect(pathParts[1]).to.not.equal("");
 			expect(pathParts[1]).to.match(/^[a-f0-9-]+/); // Should be a UUID-like string
 		});
-
+		
 		// Verify user profile content loads
 		cy.contains(user.username).should("be.visible");
 	});

@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import express, { Application, Request } from "express";
+import express, { Application } from "express";
 import cookieParser from "cookie-parser";
 import http from "http";
 import cors from "cors";
@@ -30,6 +30,9 @@ import { MetricsService } from "../metrics/metrics.service";
 import { CommunityRoutes } from "../routes/community.routes";
 import { TelemetryRoutes } from "../routes/telemetry.routes";
 import { TOKENS } from "@/types/tokens";
+import { buildCorsOptions } from "@/config/corsConfig";
+import { getClientIp } from "@/utils/request-ip";
+import { getRateLimitStoreOptions } from "@/config/rateLimit";
 
 @injectable()
 export class Server {
@@ -76,108 +79,27 @@ export class Server {
    * Initializes middleware for the Express app.
    */
   private initializeMiddlewares(): void {
-    this.app.set("trust proxy", 1);
+    this.app.set("trust proxy", this.resolveTrustProxySetting());
     this.app.use(helmet());
 
-    // CORS setup
-    const envAllowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || [];
-    const allowedOrigins = [
-      ...envAllowedOrigins,
-      "http://localhost:5173",
-      "http://localhost:5174",
-      "http://localhost:80",
-      "http://localhost",
-      "http://192.168.56.1:5173",
-      "http://192.168.1.10:5173",
-      "http://172.28.144.1:5173",
-      "http://172.18.128.1:5173",
-    ];
-
-    const corsOptions: cors.CorsOptions = {
-      origin: (
-        origin: string | undefined,
-        callback: (err: Error | null, allow?: string | boolean) => void,
-      ) => {
-        if (!origin) {
-          return callback(null, true);
-        }
-        if (allowedOrigins.includes(origin)) {
-          return callback(null, origin);
-        }
-        logger.warn(`[Backend CORS] Blocked origin: ${origin}`);
-        callback(
-          new Error("Request from this origin is blocked by CORS policy"),
-        );
-      },
-      credentials: true,
-      methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-      exposedHeaders: ["Set-Cookie"],
-      maxAge: 86400,
-    };
+    const corsOptions = buildCorsOptions();
     this.app.use(cors(corsOptions));
     this.app.options("*", cors(corsOptions));
 
     // Rate Limiting setup
-    const getClientIp = (req: Request): string => {
-      const stripPort = (raw: string): string => {
-        const t = raw.trim();
-        if (t.startsWith("[")) return t;
-        const i = t.lastIndexOf(":");
-        if (i === -1) return t;
-        return /^\d{1,5}$/.test(t.slice(i + 1)) ? t.slice(0, i) : t;
-      };
-
-      const xff = req.headers["x-forwarded-for"];
-      const forwardedIps =
-        typeof xff === "string" && xff.trim()
-          ? xff
-              .split(",")
-              .map((value) => stripPort(value))
-              .filter((value) => value.length > 0)
-          : [];
-      const firstForwardedIp = forwardedIps[0];
-
-      const cfIp = req.headers["cf-connecting-ip"];
-      if (typeof cfIp === "string" && cfIp.trim()) {
-        const normalizedCfIp = stripPort(cfIp);
-        if (
-          firstForwardedIp &&
-          firstForwardedIp !== normalizedCfIp &&
-          forwardedIps.includes(normalizedCfIp)
-        ) {
-          return firstForwardedIp;
-        }
-        return normalizedCfIp;
-      }
-      const trueClientIp = req.headers["true-client-ip"];
-      if (typeof trueClientIp === "string" && trueClientIp.trim())
-        return stripPort(trueClientIp);
-      const xRealIp = req.headers["x-real-ip"];
-      if (typeof xRealIp === "string" && xRealIp.trim())
-        return stripPort(xRealIp);
-      if (firstForwardedIp) return firstForwardedIp;
-      return stripPort(req.ip || req.socket.remoteAddress || "unknown");
-    };
-
     const limiter = rateLimit({
+      ...getRateLimitStoreOptions("global"),
       windowMs: 15 * 60 * 1000, // 15 minutes
       max: 300,
       message: "Too many requests, please try again after 15 minutes",
       standardHeaders: true,
       legacyHeaders: false,
-      keyGenerator: (req: Request) => getClientIp(req),
+      keyGenerator: (req) => getClientIp(req),
       skip: (req) => req.path === "/metrics" || req.path === "/health",
     });
     this.app.use(limiter);
 
     this.app.use(this.metricsService.httpMetricsMiddleware());
-    this.app.use((req, res, next) => {
-      logger.info(
-        `[Backend] ${req.method} ${(req.originalUrl || req.url).split("?")[0]}`,
-      );
-      next();
-    });
 
     this.app.use(cookieParser()); // Parsing cookies
     this.app.use(express.json({ limit: "1mb" })); // Parsing JSON request bodies
@@ -194,14 +116,13 @@ export class Server {
    */
   private initializeRoutes() {
     const uploadsPath = path.join(process.cwd(), "uploads");
-    logger.info("Serving static uploads from:", uploadsPath);
+    logger.info("Serving static uploads", { uploadsPath });
     this.app.use("/uploads", express.static(uploadsPath));
 
     this.app.use("/metrics", this.metricsRoutes.getRouter());
-    this.app.use("/telemetry", this.telemetryRoutes.getRouter());
 
     // Add health check endpoint
-    this.app.get("/health", (req, res) => {
+    this.app.get("/health", (_req, res) => {
       res.status(200).json({
         status: "ok",
         timestamp: new Date().toISOString(),
@@ -228,7 +149,10 @@ export class Server {
 
     // Catch-all 404 route
     this.app.use("*", (req, res) => {
-      logger.info(`[Backend] 404 - Unmatched route: ${req.method} ${req.path}`);
+      logger.debug("Unmatched route", {
+        method: req.method,
+        path: req.path,
+      });
       res.status(404).json({
         error: "Route not found",
       });
@@ -273,5 +197,27 @@ export class Server {
     server.listen(port, () => {
       logger.info(`[Server] Server running on port ${port}`);
     });
+  }
+
+  private resolveTrustProxySetting(): boolean | number | string {
+    const configuredValue = process.env.TRUST_PROXY;
+    if (!configuredValue) {
+      return 1;
+    }
+
+    if (configuredValue === "true") {
+      return true;
+    }
+
+    if (configuredValue === "false") {
+      return false;
+    }
+
+    const numericValue = Number(configuredValue);
+    if (Number.isInteger(numericValue)) {
+      return numericValue;
+    }
+
+    return configuredValue;
   }
 }

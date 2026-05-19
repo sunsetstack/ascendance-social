@@ -29,17 +29,14 @@ import {
   Email as EmailIcon,
   CalendarToday as CalendarTodayIcon,
   Delete as DeleteIcon,
-  Edit as EditIcon,
   Sort as SortIcon,
 } from "@mui/icons-material";
 import { useAdminUser, useUserStats, useRemoveUserFavoriteAdmin } from "../hooks/admin/useAdmin";
-import { useUserPosts, useUserComments, useUserLikedPosts } from "../hooks/user/useUsers";
-import { useDeletePost } from "../hooks/posts/usePosts";
-import { useDeleteComment, useUpdateComment } from "../hooks/comments/useComments";
+import { useUserPostsPage, useUserCommentsPage, useUserLikedPostsPage } from "../hooks/user/useUsers";
 import { formatDistanceToNow } from "date-fns";
 import Gallery from "../components/Gallery";
 import CommentItem from "../components/comments/CommentItem";
-import { IComment } from "../types";
+import { IComment, IPost } from "../types";
 
 const AdminUserDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -59,35 +56,30 @@ const AdminUserDetail: React.FC = () => {
   const {
     data: postsData,
     isLoading: postsLoading,
-  } = useUserPosts(user?.publicId || "", {
+  } = useUserPostsPage(user?.publicId || "", postsPage, {
     enabled: !!user?.publicId && activeTab === 0,
     limit: pageSize,
     sortOrder: sortOrder,
-    page: postsPage,
   });
 
   const {
     data: commentsData,
     isLoading: commentsLoading,
-  } = useUserComments(user?.publicId || "", {
+  } = useUserCommentsPage(user?.publicId || "", commentsPage, {
     enabled: !!user?.publicId && activeTab === 1,
     limit: pageSize,
     sortOrder: sortOrder,
-    page: commentsPage,
   });
 
   const {
     data: likesData,
     isLoading: likesLoading,
-  } = useUserLikedPosts(user?.publicId || "", {
+  } = useUserLikedPostsPage(user?.publicId || "", likesPage, {
     enabled: !!user?.publicId && activeTab === 2,
     limit: pageSize,
     sortOrder: sortOrder,
-    page: likesPage,
   });
 
-  const deletePostMutation = useDeletePost();
-  const deleteCommentMutation = useDeleteComment();
   const removeFavoriteMutation = useRemoveUserFavoriteAdmin();
 
   const handleRemoveFavorite = (postPublicId: string) => {
@@ -322,22 +314,22 @@ const AdminUserDetail: React.FC = () => {
             <Box>
               {postsLoading ? (
                 <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}><CircularProgress /></Box>
-              ) : postsData?.pages[0].data.length === 0 ? (
+              ) : postsData?.data.length === 0 ? (
                 <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
                   No posts found
                 </Typography>
               ) : (
                 <>
                   <Gallery
-                    posts={postsData?.pages[0].data || []}
+                    posts={postsData?.data || []}
                     fetchNextPage={() => { }}
                     hasNextPage={false}
                     isLoadingAll={false}
                   />
-                  {postsData && postsData.pages[0].totalPages > 1 && (
+                  {postsData && postsData.totalPages > 1 && (
                     <Box sx={{ display: "flex", justifyContent: "center", mt: 3, pb: 2 }}>
                       <Pagination
-                        count={postsData.pages[0].totalPages}
+                        count={postsData.totalPages}
                         page={postsPage}
                         onChange={(_, page) => setPostsPage(page)}
                         color="primary"
@@ -353,19 +345,19 @@ const AdminUserDetail: React.FC = () => {
             <Box>
               {commentsLoading ? (
                 <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}><CircularProgress /></Box>
-              ) : commentsData?.pages[0].comments.length === 0 ? (
+              ) : commentsData?.comments.length === 0 ? (
                 <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
                   No comments found
                 </Typography>
               ) : (
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  {commentsData?.pages[0].comments.map((comment: any) => (
-                    <CommentItem key={comment.id} comment={comment as IComment} />
+                  {commentsData?.comments.map((comment: IComment) => (
+                    <CommentItem key={comment.id} comment={comment} />
                   ))}
-                  {commentsData && commentsData.pages[0].totalPages > 1 && (
+                  {commentsData && commentsData.totalPages > 1 && (
                     <Box sx={{ display: "flex", justifyContent: "center", mt: 3, pb: 2 }}>
                       <Pagination
-                        count={commentsData.pages[0].totalPages}
+                        count={commentsData.totalPages}
                         page={commentsPage}
                         onChange={(_, page) => setCommentsPage(page)}
                         color="primary"
@@ -381,18 +373,19 @@ const AdminUserDetail: React.FC = () => {
             <Box>
               {likesLoading ? (
                 <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}><CircularProgress /></Box>
-              ) : likesData?.pages[0].data.length === 0 ? (
+              ) : likesData?.data.length === 0 ? (
                 <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
                   No liked posts found
                 </Typography>
               ) : (
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                  {likesData?.pages[0].data.map((post: any) => (
+                  {likesData?.data.map((post: IPost) => (
                     <Paper key={post.publicId} sx={{ p: 1, display: "flex", alignItems: "center", gap: 2, bgcolor: "#000000", border: "1px solid", borderColor: "divider", borderRadius: 2 }}>
                       {post.image?.url && (
                         <Box
                           component="img"
                           src={post.image.url.startsWith("http") ? post.image.url : `/api/${post.image.url}`}
+                          alt={post.body?.substring(0, 50) || "Post image"}
                           sx={{ width: 50, height: 50, borderRadius: 1, objectFit: "cover" }}
                         />
                       )}
@@ -420,10 +413,10 @@ const AdminUserDetail: React.FC = () => {
                       </Button>
                     </Paper>
                   ))}
-                  {likesData && likesData.pages[0].totalPages > 1 && (
+                  {likesData && likesData.totalPages > 1 && (
                     <Box sx={{ display: "flex", justifyContent: "center", mt: 3, pb: 2 }}>
                       <Pagination
-                        count={likesData.pages[0].totalPages}
+                        count={likesData.totalPages}
                         page={likesPage}
                         onChange={(_, page) => setLikesPage(page)}
                         color="primary"
