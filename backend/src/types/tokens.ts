@@ -190,6 +190,7 @@ export const TOKENS = {
   },
   Services: {
     Auth: "AuthService",
+    AuthMiddleware: "AuthMiddlewareService",
     AuthSession: "AuthSessionService",
     BloomFilter: "BloomFilterService",
     Comment: "CommentService",

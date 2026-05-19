@@ -2,7 +2,10 @@ import { ICommandHandler } from "@/application/common/interfaces/command-handler
 import { AddFavoriteCommand } from "./addFavorite.command";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
-import type { IPostReadRepository, IUserReadRepository } from "@/repositories/interfaces";
+import type {
+  IPostReadRepository,
+  IUserReadRepository,
+} from "@/repositories/interfaces";
 import { IFavorite } from "@/types";
 import { Errors, wrapError } from "@/utils/errors";
 import { inject, injectable } from "tsyringe";

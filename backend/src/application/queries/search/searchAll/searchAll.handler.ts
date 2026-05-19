@@ -1,6 +1,9 @@
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { SearchAllQuery } from "./searchAll.query";
-import type { IPostReadRepository, IUserReadRepository } from "@/repositories/interfaces";
+import type {
+  IPostReadRepository,
+  IUserReadRepository,
+} from "@/repositories/interfaces";
 import { TagRepository } from "@/repositories/tag.repository";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { PostDTO } from "@/types";

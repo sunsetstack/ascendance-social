@@ -9,9 +9,10 @@ import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
-export class GetFavoritesQueryHandler
-  implements IQueryHandler<GetFavoritesQuery, PaginationResult<PostDTO>>
-{
+export class GetFavoritesQueryHandler implements IQueryHandler<
+  GetFavoritesQuery,
+  PaginationResult<PostDTO>
+> {
   constructor(
     @inject(TOKENS.Repositories.Favorite)
     private readonly favoriteRepository: FavoriteRepository,
@@ -24,18 +25,20 @@ export class GetFavoritesQueryHandler
     try {
       const { viewerPublicId, page = 1, limit = 10 } = query;
 
-      const userId = await this.userReadRepository.findInternalIdByPublicId(viewerPublicId);
+      const userId =
+        await this.userReadRepository.findInternalIdByPublicId(viewerPublicId);
       if (!userId) {
         throw Errors.notFound("User", viewerPublicId);
       }
 
       const safePage = Math.max(1, Number(page));
       const safeLimit = Math.max(1, Number(limit));
-      const { data, total } = await this.favoriteRepository.findFavoritesByUserId(
-        userId,
-        safePage,
-        safeLimit,
-      );
+      const { data, total } =
+        await this.favoriteRepository.findFavoritesByUserId(
+          userId,
+          safePage,
+          safeLimit,
+        );
 
       const dtos = data.map((post) => {
         const plain = this.ensurePlain(post) as IPost & Record<string, unknown>;
@@ -55,7 +58,10 @@ export class GetFavoritesQueryHandler
       };
     } catch (error) {
       throw wrapError(error, "InternalServerError", {
-        context: { operation: "getFavoritesForViewer", viewerPublicId: query.viewerPublicId },
+        context: {
+          operation: "getFavoritesForViewer",
+          viewerPublicId: query.viewerPublicId,
+        },
       });
     }
   }

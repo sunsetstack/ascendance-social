@@ -17,11 +17,7 @@ import {
 } from "@/utils/messaging-helpers";
 import { sanitizeTextInput } from "@/utils/sanitizers";
 import { isUserViewingConversation } from "@/server/socketServer";
-import {
-  IImageStorageService,
-  MessageDTO,
-  toObjectId,
-} from "@/types";
+import { IImageStorageService, MessageDTO, toObjectId } from "@/types";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { TOKENS } from "@/types/tokens";
@@ -158,11 +154,10 @@ export class SendMessageCommandHandler implements ICommandHandler<
           }
 
           if (!conversationDoc) {
-            const recipientInternalId =
-              await requireUserInternalId(
-                this.userReadRepository,
-                payload.recipientPublicId!,
-              );
+            const recipientInternalId = await requireUserInternalId(
+              this.userReadRepository,
+              payload.recipientPublicId!,
+            );
 
             const participantIds = [senderInternalId, recipientInternalId];
             const participantHash = buildParticipantHash(participantIds);

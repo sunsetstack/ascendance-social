@@ -16,9 +16,10 @@ import {
 } from "@/application/messaging/messaging-support";
 
 @injectable()
-export class DeleteMessageCommandHandler
-  implements ICommandHandler<DeleteMessageCommand, void>
-{
+export class DeleteMessageCommandHandler implements ICommandHandler<
+  DeleteMessageCommand,
+  void
+> {
   constructor(
     @inject(TOKENS.Repositories.Message)
     private readonly messageRepository: MessageRepository,
@@ -66,13 +67,10 @@ export class DeleteMessageCommandHandler
             })
             .filter((id): id is string => !!id) || [];
 
-        await this.messageRepository.updateMessage(
-          messageId,
-          {
-            body: "message deleted by user",
-            attachments: [],
-          },
-        );
+        await this.messageRepository.updateMessage(messageId, {
+          body: "message deleted by user",
+          attachments: [],
+        });
 
         if (attachmentPublicIds.length > 0) {
           await this.eventBus.queueTransactional(
@@ -81,7 +79,7 @@ export class DeleteMessageCommandHandler
         }
       });
     } catch (error) {
-      if (error instanceof Error && error.name === 'AppError') throw error;
+      if (error instanceof Error && error.name === "AppError") throw error;
       throw wrapError(error, "InternalServerError", {
         context: { operation: "deleteMessage" },
       });

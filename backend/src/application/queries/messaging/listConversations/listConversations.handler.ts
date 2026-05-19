@@ -13,12 +13,10 @@ import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
-export class ListConversationsQueryHandler
-  implements IQueryHandler<
-    ListConversationsQuery,
-    PaginatedConversationSummaryResult
-  >
-{
+export class ListConversationsQueryHandler implements IQueryHandler<
+  ListConversationsQuery,
+  PaginatedConversationSummaryResult
+> {
   constructor(
     @inject(TOKENS.Repositories.Conversation)
     private readonly conversationRepository: ConversationRepository,
@@ -55,9 +53,12 @@ export class ListConversationsQueryHandler
         totalPages: result.totalPages,
       };
     } catch (error) {
-      if (error instanceof Error && error.name === 'AppError') throw error;
+      if (error instanceof Error && error.name === "AppError") throw error;
       throw wrapError(error, "InternalServerError", {
-        context: { operation: "listConversations", userPublicId: query.userPublicId },
+        context: {
+          operation: "listConversations",
+          userPublicId: query.userPublicId,
+        },
       });
     }
   }

@@ -3,7 +3,10 @@ import "reflect-metadata";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { RedisService } from "@/services/redis.service";
-import type { IPostWriteRepository, IUserReadRepository } from "@/repositories/interfaces";
+import type {
+  IPostWriteRepository,
+  IUserReadRepository,
+} from "@/repositories/interfaces";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 

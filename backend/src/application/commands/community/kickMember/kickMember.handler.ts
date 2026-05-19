@@ -99,11 +99,14 @@ export class KickMemberCommandHandler implements ICommandHandler<
       );
 
       // 4. Update User Cache (Remove from array)
-      await this.userWriteRepository.update(asMongoId(targetUserId.toString()), {
-        $pull: {
-          joinedCommunities: { _id: communityId },
+      await this.userWriteRepository.update(
+        asMongoId(targetUserId.toString()),
+        {
+          $pull: {
+            joinedCommunities: { _id: communityId },
+          },
         },
-      });
+      );
 
       // 5. Decrement Member Count
       await this.communityRepository.findOneAndUpdate(

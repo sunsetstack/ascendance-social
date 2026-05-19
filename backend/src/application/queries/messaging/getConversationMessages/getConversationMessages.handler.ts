@@ -34,7 +34,9 @@ export class GetConversationMessagesQueryHandler implements IQueryHandler<
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
   ) {}
 
-  async execute(query: GetConversationMessagesQuery): Promise<PaginatedMessageResult> {
+  async execute(
+    query: GetConversationMessagesQuery,
+  ): Promise<PaginatedMessageResult> {
     try {
       const {
         userPublicId,

@@ -1,6 +1,9 @@
 import { UserPublicId, asUserPublicId, asPostPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
-import type { IPostReadRepository, IUserReadRepository } from "@/repositories/interfaces";
+import type {
+  IPostReadRepository,
+  IUserReadRepository,
+} from "@/repositories/interfaces";
 import { PostLikeRepository } from "@/repositories/postLike.repository";
 import { TagRepository } from "@/repositories/tag.repository";
 import { DTOService } from "./dto.service";

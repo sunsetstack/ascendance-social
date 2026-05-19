@@ -1,6 +1,9 @@
 import { UserPublicId, asPostPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
-import type { IPostReadRepository, IUserReadRepository } from "@/repositories/interfaces";
+import type {
+  IPostReadRepository,
+  IUserReadRepository,
+} from "@/repositories/interfaces";
 import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
 import { UserActionRepository } from "@/repositories/userAction.repository";
 import { RedisService } from "../redis.service";

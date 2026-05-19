@@ -16,9 +16,10 @@ import mongoose from "mongoose";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
-export class InitiateConversationCommandHandler
-  implements ICommandHandler<InitiateConversationCommand, ConversationSummaryDTO>
-{
+export class InitiateConversationCommandHandler implements ICommandHandler<
+  InitiateConversationCommand,
+  ConversationSummaryDTO
+> {
   constructor(
     @inject(TOKENS.Repositories.Conversation)
     private readonly conversationRepository: ConversationRepository,
@@ -29,12 +30,16 @@ export class InitiateConversationCommandHandler
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
   ) {}
 
-  async execute(command: InitiateConversationCommand): Promise<ConversationSummaryDTO> {
+  async execute(
+    command: InitiateConversationCommand,
+  ): Promise<ConversationSummaryDTO> {
     try {
       const { userPublicId, recipientPublicId } = command;
 
       if (userPublicId === recipientPublicId) {
-        throw Errors.validation("You cannot start a conversation with yourself");
+        throw Errors.validation(
+          "You cannot start a conversation with yourself",
+        );
       }
 
       const [userInternalId, recipientInternalId] = await Promise.all([
@@ -46,29 +51,27 @@ export class InitiateConversationCommandHandler
       const participantHash = buildParticipantHash(participantIds);
 
       let conversation =
-        await this.conversationRepository.findByParticipantHash(participantHash);
+        await this.conversationRepository.findByParticipantHash(
+          participantHash,
+        );
 
       if (!conversation) {
-        conversation = await this.unitOfWork.executeInTransaction(
-          async () => {
-            const participantObjectIds = participantIds.map(
-              (id) => new mongoose.Types.ObjectId(id),
-            );
-            const unreadSeed = new Map<string, number>(
-              participantIds.map((id) => [id, 0]),
-            );
+        conversation = await this.unitOfWork.executeInTransaction(async () => {
+          const participantObjectIds = participantIds.map(
+            (id) => new mongoose.Types.ObjectId(id),
+          );
+          const unreadSeed = new Map<string, number>(
+            participantIds.map((id) => [id, 0]),
+          );
 
-            return this.conversationRepository.create(
-              {
-                participantHash,
-                participants: participantObjectIds,
-                lastMessageAt: new Date(),
-                unreadCounts: unreadSeed,
-                isGroup: false,
-              },
-            );
-          },
-        );
+          return this.conversationRepository.create({
+            participantHash,
+            participants: participantObjectIds,
+            lastMessageAt: new Date(),
+            unreadCounts: unreadSeed,
+            isGroup: false,
+          });
+        });
       }
 
       const hydratedConversation =
@@ -90,7 +93,7 @@ export class InitiateConversationCommandHandler
         userInternalId,
       );
     } catch (error) {
-      if (error instanceof Error && error.name === 'AppError') throw error;
+      if (error instanceof Error && error.name === "AppError") throw error;
       throw wrapError(error, "InternalServerError", {
         context: { operation: "initiateConversation" },
       });
