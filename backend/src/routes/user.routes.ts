@@ -1,6 +1,9 @@
 import express from "express";
 import { asyncHandler } from "@/middleware/async-handler.middleware";
-import { UserController } from "../controllers/user.controller";
+import { AuthController } from "../controllers/auth.controller";
+import { ProfileController } from "../controllers/profile.controller";
+import { SocialController } from "../controllers/social.controller";
+import { UserQueryController } from "../controllers/userQuery.controller";
 import {
   AuthFactory,
   forgotPasswordEmailRateLimit,
@@ -35,8 +38,14 @@ export class UserRoutes {
   private optionalAuth = AuthFactory.optionalBearerToken().handleOptional();
 
   constructor(
-    @inject(TOKENS.Controllers.User)
-    private readonly userController: UserController,
+    @inject(TOKENS.Controllers.Auth)
+    private readonly authController: AuthController,
+    @inject(TOKENS.Controllers.Profile)
+    private readonly profileController: ProfileController,
+    @inject(TOKENS.Controllers.Social)
+    private readonly socialController: SocialController,
+    @inject(TOKENS.Controllers.UserQuery)
+    private readonly userQueryController: UserQueryController,
   ) {
     this.router = express.Router();
     this.initializeRoutes();
@@ -50,18 +59,18 @@ export class UserRoutes {
       "/register",
       honeypotMiddleware,
       new ValidationMiddleware({ body: registrationSchema }).validate(),
-      asyncHandler(this.userController.register),
+      asyncHandler(this.authController.register),
     );
 
     this.router.post(
       "/login",
       honeypotMiddleware,
       new ValidationMiddleware({ body: loginSchema }).validate(),
-      asyncHandler(this.userController.login),
+      asyncHandler(this.authController.login),
     );
 
-    this.router.post("/logout", asyncHandler(this.userController.logout));
-    this.router.post("/refresh", asyncHandler(this.userController.refresh));
+    this.router.post("/logout", asyncHandler(this.authController.logout));
+    this.router.post("/refresh", asyncHandler(this.authController.refresh));
 
     this.router.post(
       "/forgot-password",
@@ -69,45 +78,45 @@ export class UserRoutes {
       honeypotMiddleware,
       new ValidationMiddleware({ body: requestPasswordResetSchema }).validate(),
       forgotPasswordEmailRateLimit,
-      asyncHandler(this.userController.requestPasswordReset),
+      asyncHandler(this.authController.requestPasswordReset),
     );
 
     this.router.post(
       "/reset-password",
       new ValidationMiddleware({ body: resetPasswordSchema }).validate(),
-      asyncHandler(this.userController.resetPassword),
+      asyncHandler(this.authController.resetPassword),
     );
 
     this.router.post(
       "/verify-email",
       new ValidationMiddleware({ body: verifyEmailSchema }).validate(),
-      asyncHandler(this.userController.verifyEmail),
+      asyncHandler(this.authController.verifyEmail),
     );
 
     // Public user data endpoints
     this.router.get(
       "/users",
       new ValidationMiddleware({ query: usersQuerySchema }).validate(),
-      asyncHandler(this.userController.getUsers),
+      asyncHandler(this.userQueryController.getUsers),
     );
 
     this.router.get(
       "/suggestions/handles",
       this.optionalAuth,
       new ValidationMiddleware({ query: handleSuggestionsSchema }).validate(),
-      asyncHandler(this.userController.getHandleSuggestions),
+      asyncHandler(this.socialController.getHandleSuggestions),
     );
 
     this.router.get(
       "/profile/:handle",
       new ValidationMiddleware({ params: handleSchema }).validate(),
-      asyncHandler(this.userController.getUserByHandle),
+      asyncHandler(this.userQueryController.getUserByHandle),
     );
 
     this.router.get(
       "/public/:publicId",
       new ValidationMiddleware({ params: publicIdSchema }).validate(),
-      asyncHandler(this.userController.getUserByPublicId),
+      asyncHandler(this.userQueryController.getUserByPublicId),
     );
 
     // followers/following lists (public)
@@ -115,82 +124,82 @@ export class UserRoutes {
       "/:publicId/followers",
       new ValidationMiddleware({ query: publicUserListQuerySchema }).validate(),
       new ValidationMiddleware({ params: publicIdSchema }).validate(),
-      asyncHandler(this.userController.getFollowers),
+      asyncHandler(this.socialController.getFollowers),
     );
 
     this.router.get(
       "/:publicId/following",
       new ValidationMiddleware({ query: publicUserListQuerySchema }).validate(),
       new ValidationMiddleware({ params: publicIdSchema }).validate(),
-      asyncHandler(this.userController.getFollowing),
+      asyncHandler(this.socialController.getFollowing),
     );
 
     // === Protected Routes (authentication required) ===
     this.router.use(this.auth);
 
     // Current user operations
-    this.router.get("/me", asyncHandler(this.userController.getMe));
+    this.router.get("/me", asyncHandler(this.profileController.getMe));
     this.router.get(
       "/me/account-info",
-      asyncHandler(this.userController.getAccountInfo),
+      asyncHandler(this.profileController.getAccountInfo),
     );
     this.router.get(
       "/suggestions/who-to-follow",
       new ValidationMiddleware({ query: whoToFollowQuerySchema }).validate(),
-      asyncHandler(this.userController.getWhoToFollow),
+      asyncHandler(this.socialController.getWhoToFollow),
     );
     this.router.put(
       "/me/edit",
       new ValidationMiddleware({ body: updateProfileSchema }).validate(),
-      asyncHandler(this.userController.updateProfile),
+      asyncHandler(this.profileController.updateProfile),
     );
     this.router.put(
       "/me/avatar",
       upload.single("avatar"),
-      asyncHandler(this.userController.updateAvatar),
+      asyncHandler(this.profileController.updateAvatar),
     );
     this.router.put(
       "/me/cover",
       upload.single("cover"),
-      asyncHandler(this.userController.updateCover),
+      asyncHandler(this.profileController.updateCover),
     );
     this.router.put(
       "/me/change-password",
       new ValidationMiddleware({ body: changePasswordSchema }).validate(),
-      asyncHandler(this.userController.changePassword),
+      asyncHandler(this.profileController.changePassword),
     );
 
     // Social actions
     this.router.post(
       "/follow/:publicId",
       new ValidationMiddleware({ params: publicIdSchema }).validate(),
-      asyncHandler(this.userController.followUserByPublicId),
+      asyncHandler(this.socialController.followUserByPublicId),
     );
 
     this.router.delete(
       "/unfollow/:publicId",
       new ValidationMiddleware({ params: publicIdSchema }).validate(),
-      asyncHandler(this.userController.unfollowUserByPublicId),
+      asyncHandler(this.socialController.unfollowUserByPublicId),
     );
 
     this.router.get(
       "/follows/:publicId",
       new ValidationMiddleware({ params: publicIdSchema }).validate(),
-      asyncHandler(this.userController.checkFollowStatus),
+      asyncHandler(this.socialController.checkFollowStatus),
     );
 
     // Post interactions
     this.router.post(
       "/like/post/:publicId",
       new ValidationMiddleware({ params: publicIdSchema }).validate(),
-      asyncHandler(this.userController.likeActionByPublicId),
+      asyncHandler(this.socialController.likeActionByPublicId),
     );
 
     // Account deletion (requires password confirmation)
     this.router.delete(
       "/me",
       new ValidationMiddleware({ body: deleteAccountSchema }).validate(),
-      asyncHandler(this.userController.deleteMyAccount),
+      asyncHandler(this.profileController.deleteMyAccount),
     );
   }
 

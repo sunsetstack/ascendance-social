@@ -1,6 +1,7 @@
 export const TOKENS = {
   Controllers: {
     AdminUser: "AdminUserController",
+    Auth: "AuthController",
     Comment: "CommentController",
     Community: "CommunityController",
     Favorite: "FavoriteController",
@@ -9,8 +10,11 @@ export const TOKENS = {
     Messaging: "MessagingController",
     Notification: "NotificationController",
     Post: "PostController",
+    Profile: "ProfileController",
     Search: "SearchController",
+    Social: "SocialController",
     User: "UserController",
+    UserQuery: "UserQueryController",
   },
   Models: {
     CommentLike: "CommentLikeModel",
