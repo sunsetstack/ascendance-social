@@ -16,8 +16,10 @@ export class MetricsRoutes {
   private readonly adminOnly: RequestHandler;
 
   constructor(
-    @inject(TOKENS.Services.Metrics) private readonly metricsService: MetricsService,
-    @inject(TOKENS.Repositories.UnitOfWork) private readonly unitOfWork: UnitOfWork,
+    @inject(TOKENS.Services.Metrics)
+    private readonly metricsService: MetricsService,
+    @inject(TOKENS.Repositories.UnitOfWork)
+    private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.Services.TransactionQueue)
     private readonly transactionQueue: TransactionQueueService,
     @inject(TOKENS.Services.AuthMiddleware)
