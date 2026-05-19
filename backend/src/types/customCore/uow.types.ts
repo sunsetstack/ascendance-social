@@ -1,14 +1,4 @@
-import { ImageRepository } from "@/repositories/image.repository";
-import { UserRepository } from "@/repositories/user.repository";
-
-export interface IUnitOfWork {
-  commit(): Promise<void>;
-  rollback(): Promise<void>;
-  userRepository: UserRepository;
-  imageRepository: ImageRepository;
-}
-
-// Interface for repositories that will use UnitOfWork
+// Generic repository contract used by BaseRepository and concrete repositories.
 export interface IRepository<T> {
   create(item: Partial<T>): Promise<T>;
   update(id: string, item: Partial<T>): Promise<T | null>;
