@@ -122,7 +122,7 @@ const MentionInput: React.FC<MentionInputProps> = ({
 
 		if (match) {
 			const query = match[2].substring(1);
-			const start = match.index! + match[1].length;
+			const start = (match.index ?? 0) + match[1].length;
 			setMentionQuery({ query, start, end: caretPos });
 			setSelectedIndex(0);
 
@@ -216,26 +216,28 @@ const MentionInput: React.FC<MentionInputProps> = ({
 	return (
 		<Box sx={{ position: "relative" }}>
 			<Box
-				sx={{
-					position: "relative",
-					width: "100%",
-					fontFamily: theme.typography.fontFamily,
-					fontSize: theme.typography.body1.fontSize,
-					lineHeight: theme.typography.body1.lineHeight,
-					borderRadius: 1,
-					border: "1px solid",
-					borderColor: "divider",
-					backgroundColor: alpha(theme.palette.common.white, 0.05),
-					"&:hover": {
-						backgroundColor: alpha(theme.palette.common.white, 0.08),
-						borderColor: "text.secondary",
+				sx={[
+					{
+						position: "relative",
+						width: "100%",
+						fontFamily: theme.typography.fontFamily,
+						fontSize: theme.typography.body1.fontSize,
+						lineHeight: theme.typography.body1.lineHeight,
+						borderRadius: 1,
+						border: "1px solid",
+						borderColor: "divider",
+						backgroundColor: alpha(theme.palette.common.white, 0.05),
+						"&:hover": {
+							backgroundColor: alpha(theme.palette.common.white, 0.08),
+							borderColor: "text.secondary",
+						},
+						"&:focus-within": {
+							borderColor: "primary.main",
+							backgroundColor: "transparent",
+						},
 					},
-					"&:focus-within": {
-						borderColor: "primary.main",
-						backgroundColor: "transparent",
-					},
-					...(sx as object),
-				}}
+					...(Array.isArray(sx) ? sx : [sx ?? {}]),
+				]}
 			>
 				{/* Backdrop for mention highlighting only */}
 				<Box
@@ -282,8 +284,13 @@ const MentionInput: React.FC<MentionInputProps> = ({
 					fullWidth
 					inputProps={{
 						onScroll: handleScroll,
+						role: "combobox",
 						"aria-autocomplete": "list",
 						"aria-expanded": showSuggestions,
+						"aria-controls": showSuggestions ? "mention-suggestion-listbox" : undefined,
+						"aria-activedescendant": showSuggestions && suggestions[selectedIndex]
+							? `mention-option-${suggestions[selectedIndex].publicId}`
+							: undefined,
 					}}
 					sx={{
 						fontFamily: "inherit",
@@ -347,11 +354,12 @@ const MentionInput: React.FC<MentionInputProps> = ({
 							overflowY: "auto",
 							borderRadius: 1.5,
 						}}
-						role="listbox"
+						id="mention-suggestion-listbox" role="listbox"
 					>
 						<List dense disablePadding>
 							{suggestions.map((user, index) => (
 								<ListItemButton
+									id={`mention-option-${user.publicId}`}
 									key={user.publicId}
 									onClick={() => selectSuggestion(user)}
 									selected={index === selectedIndex}

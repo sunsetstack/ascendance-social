@@ -9,6 +9,7 @@ import { Errors } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { RedisService } from "@/services/redis.service";
+import { getAllowedOrigins } from "@/config/corsConfig";
 
 let ioInstance: SocketIOServer | null = null;
 
@@ -39,19 +40,11 @@ export class WebSocketServer {
    * @param {HttpServer} server - The HTTP server instance to attach the WebSocket server to.
    */
   initialize(server: HttpServer): void {
-    const envOrigins =
-      process.env.ALLOWED_ORIGINS?.split(/[,\s]+/).filter(Boolean) || [];
-    const defaultOrigins = [
-      "http://localhost:5173", // Vite dev
-      "http://localhost:80", // Nginx in Docker
-      "http://localhost", // Browser default
-      "http://localhost:8000", // API Gateway
-    ];
-    const allowedOrigins = [...defaultOrigins, ...envOrigins];
+    const socketAuthHandler = AuthFactory.bearerToken().handle();
 
     this.io = new SocketIOServer(server, {
       cors: {
-        origin: allowedOrigins,
+        origin: getAllowedOrigins(),
         credentials: true,
         methods: ["GET", "POST"],
       },
@@ -62,24 +55,7 @@ export class WebSocketServer {
     ioInstance = this.io;
 
     // Add Redis Adapter for horizontal scaling of Socket.io node processes
-    const pubClient = this.redisService.clientInstance;
-    const subClient = pubClient.duplicate();
-    subClient
-      .connect()
-      .then(() => {
-        if (this.io) {
-          this.io.adapter(createAdapter(pubClient, subClient));
-          logger.info(
-            "[Websocket][Config] Redis adapter for Socket.io configured successfully.",
-          );
-        }
-      })
-      .catch((err) => {
-        logger.error(
-          "Failed to connect Redis subClient for Socket.io adapter",
-          err,
-        );
-      });
+    void this.configureRedisAdapter();
 
     /**
      * Middleware to parse cookies from incoming socket requests.
@@ -115,7 +91,7 @@ export class WebSocketServer {
         }
 
         // Handle authentication using the bearer token strategy
-        AuthFactory.bearerToken().handle()(req, {} as any, (error?: any) => {
+        socketAuthHandler(req, {} as any, (error?: any) => {
           if (error) {
             logger.error("Auth error:", error);
             return next(Errors.authentication(error.message));
@@ -241,6 +217,34 @@ export class WebSocketServer {
     });
 
     logger.info("WebSocket server initialized.");
+  }
+
+  private async configureRedisAdapter(): Promise<void> {
+    const ready = await this.redisService.waitForConnection(1500);
+    if (!ready) {
+      logger.warn(
+        "[Websocket][Config] Redis unavailable; running Socket.io without Redis adapter.",
+      );
+      return;
+    }
+
+    const pubClient = this.redisService.clientInstance;
+    const subClient = pubClient.duplicate();
+
+    try {
+      await subClient.connect();
+      if (this.io) {
+        this.io.adapter(createAdapter(pubClient, subClient));
+        logger.info(
+          "[Websocket][Config] Redis adapter for Socket.io configured successfully.",
+        );
+      }
+    } catch (error) {
+      logger.warn(
+        "[Websocket][Config] Redis adapter unavailable; continuing without it.",
+        { error },
+      );
+    }
   }
 
   /**

@@ -80,14 +80,12 @@ export const fetchImages = async (
 
 // Get image by public ID
 export const fetchImageByPublicId = async (publicId: string) => {
-  console.log(`Fetching image by public ID: ${publicId}`);
   const { data } = await axiosClient.get(`/api/images/public/${publicId}`);
   return data;
 };
 
 // Get image by slug (SEO-friendly)
 export const fetchImageBySlug = async (slug: string) => {
-  console.log("Fetching image by slug:", slug);
   const { data } = await axiosClient.get(`/api/images/image/${slug}`);
   return data;
 };
@@ -105,7 +103,6 @@ export const fetchImagesByTag = async ({
   const { data } = await axiosClient.get(
     `/api/images/search/tags?tags=${tagString}&page=${page}&limit=${limit}`,
   );
-  console.log(data);
   return data;
 };
 
@@ -118,7 +115,6 @@ export const uploadImage = async (image: FormData): Promise<IImage> => {
 
 export const fetchTags = async (): Promise<ITag[]> => {
   const { data } = await axiosClient.get("/api/images/tags");
-  console.log("TAGS:", data);
   return data;
 };
 
@@ -126,6 +122,5 @@ export const fetchTags = async (): Promise<ITag[]> => {
 export const deleteImageByPublicId = async (
   publicId: string,
 ): Promise<void> => {
-  console.log("Deleting image with public ID:", publicId);
   await axiosClient.delete(`/api/images/image/${publicId}`);
 };

@@ -7,7 +7,7 @@ import { UnitOfWork } from "@/database/UnitOfWork";
 import { DTOService } from "@/services/dto.service";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { MessageStatusUpdatedEvent } from "@/application/events/message/message.event";
-import { Errors, wrapError } from "@/utils/errors";
+import { wrapError } from "@/utils/errors";
 import { PaginatedMessageResult } from "@/types";
 import {
   ensureConversationAccess,

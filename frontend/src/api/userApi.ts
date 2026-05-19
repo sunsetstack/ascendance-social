@@ -6,12 +6,22 @@ import {
   AdminUserDTO,
   AccountInfoDTO,
   WhoToFollowResponse,
-  IComment,
   HandleSuggestionResponse,
   HandleSuggestionContext,
+  CommentsPaginationResponse,
 } from "../types";
 import axios, { AxiosError } from "axios";
 import { devError } from "@/lib/devLogger";
+
+/** Wraps an async API call, logging any error in development before re-throwing. */
+async function withDevError<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    devError(label, error);
+    throw error;
+  }
+}
 
 export type LoginResponse = { user: AuthenticatedUserDTO | AdminUserDTO };
 export type RegisterResponse = { user: AuthenticatedUserDTO };
@@ -96,65 +106,44 @@ export const fetchUserByHandle = async ({
   return response.data;
 };
 
-export const fetchUserPosts = async (
+export const fetchUserPosts = (
   page: number,
   userPublicId: string,
   limit: number = 10,
   sortBy: string = "createdAt",
   sortOrder: string = "desc",
-): Promise<ImagePageData> => {
-  try {
-    const { data } = await axiosClient.get(
-      `/api/posts/user/${userPublicId}?page=${page}&limit=${limit}&sortBy=${sortBy}&sortOrder=${sortOrder}`,
-    );
-    return data;
-  } catch (error) {
-    devError("Error fetching user posts:", error);
-    throw error;
-  }
-};
+): Promise<ImagePageData> =>
+  withDevError("Error fetching user posts:", () =>
+    axiosClient
+      .get<ImagePageData>(`/api/posts/user/${userPublicId}?page=${page}&limit=${limit}&sortBy=${sortBy}&sortOrder=${sortOrder}`)
+      .then((r) => r.data),
+  );
 
-export const fetchUserLikedPosts = async (
+export const fetchUserLikedPosts = (
   page: number,
   userPublicId: string,
   limit: number = 10,
   sortBy: string = "createdAt",
   sortOrder: string = "desc",
-): Promise<ImagePageData> => {
-  try {
-    const { data } = await axiosClient.get(
-      `/api/posts/user/${userPublicId}/likes?page=${page}&limit=${limit}&sortBy=${sortBy}&sortOrder=${sortOrder}`,
-    );
-    return data;
-  } catch (error) {
-    devError("Error fetching user liked posts:", error);
-    throw error;
-  }
-};
+): Promise<ImagePageData> =>
+  withDevError("Error fetching user liked posts:", () =>
+    axiosClient
+      .get<ImagePageData>(`/api/posts/user/${userPublicId}/likes?page=${page}&limit=${limit}&sortBy=${sortBy}&sortOrder=${sortOrder}`)
+      .then((r) => r.data),
+  );
 
-export const fetchUserComments = async (
+export const fetchUserComments = (
   page: number,
   userPublicId: string,
   limit: number = 10,
   sortBy: string = "createdAt",
   sortOrder: string = "desc",
-): Promise<{
-  comments: IComment[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}> => {
-  try {
-    const { data } = await axiosClient.get(
-      `/api/users/${userPublicId}/comments?page=${page}&limit=${limit}&sortBy=${sortBy}&sortOrder=${sortOrder}`,
-    );
-    return data;
-  } catch (error) {
-    devError("Error fetching user comments:", error);
-    throw error;
-  }
-};
+): Promise<CommentsPaginationResponse> =>
+  withDevError("Error fetching user comments:", () =>
+    axiosClient
+      .get<CommentsPaginationResponse>(`/api/users/${userPublicId}/comments?page=${page}&limit=${limit}&sortBy=${sortBy}&sortOrder=${sortOrder}`)
+      .then((r) => r.data),
+  );
 
 export const updateUserAvatar = async (
   avatar: Blob,

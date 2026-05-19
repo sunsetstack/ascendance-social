@@ -47,7 +47,7 @@ export class ImageRoutes {
 
     // Public: get image by publicId (optional auth to check if user liked)
     this.router.get(
-      "/image/:publicId",
+      "/public/:publicId",
       this.optionalAuth,
       new ValidationMiddleware({ params: publicIdSchema }).validate(),
       asyncHandler(this.controller.getPostByPublicId),

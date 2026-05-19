@@ -8,7 +8,8 @@ import Gallery from "../components/Gallery";
 import CreatePost from "../components/CreatePost";
 import EditCommunityModal from "../components/EditCommunityModal";
 import { useAuth } from "../hooks/context/useAuth";
-import { PageSeo, buildCommunityMetadata } from "../lib/seo";
+import { PageSeo } from "../lib/PageSeo";
+import { buildCommunityMetadata } from "../lib/seo";
 
 const CommunityDetails: React.FC = () => {
 	const { slug } = useParams<{ slug: string }>();

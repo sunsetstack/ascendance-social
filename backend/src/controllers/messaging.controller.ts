@@ -10,7 +10,12 @@ import { MarkConversationReadCommand } from "@/application/commands/messaging/ma
 import { EditMessageCommand } from "@/application/commands/messaging/editMessage/editMessage.command";
 import { DeleteMessageCommand } from "@/application/commands/messaging/deleteMessage/deleteMessage.command";
 import { Errors } from "@/utils/errors";
-import { SendMessagePayload, TypedRequest } from "@/types";
+import {
+  PaginatedConversationSummaryResult,
+  PaginatedMessageResult,
+  SendMessagePayload,
+  TypedRequest,
+} from "@/types";
 import { streamPaginatedResponse } from "@/utils/streamResponse";
 import { TOKENS } from "@/types/tokens";
 import type {
@@ -51,9 +56,10 @@ export class MessagingController {
 
     const { page, limit } = req.query;
 
-    const result = await this.queryBus.execute<any>(
-      new ListConversationsQuery(asUserPublicId(userPublicId), page, limit)
-    );
+    const result =
+      await this.queryBus.execute<PaginatedConversationSummaryResult>(
+        new ListConversationsQuery(asUserPublicId(userPublicId), page, limit),
+      );
     res.status(200).json(result);
   };
 
@@ -69,13 +75,13 @@ export class MessagingController {
     const { conversationId } = req.params;
     const { page, limit } = req.query;
 
-    const result = await this.queryBus.execute<any>(
+    const result = await this.queryBus.execute<PaginatedMessageResult>(
       new GetConversationMessagesQuery(
         asUserPublicId(userPublicId),
         asConversationPublicId(conversationId),
         page,
         limit,
-      )
+      ),
     );
 
     if (result.messages.length >= STREAM_THRESHOLD) {
@@ -111,7 +117,7 @@ export class MessagingController {
       new MarkConversationReadCommand(
         asUserPublicId(userPublicId),
         asConversationPublicId(conversationId),
-      )
+      ),
     );
     res.status(204).send();
   };
@@ -133,7 +139,7 @@ export class MessagingController {
       new InitiateConversationCommand(
         asUserPublicId(senderPublicId),
         asUserPublicId(recipientPublicId),
-      )
+      ),
     );
     res.status(201).json({ conversation });
   };
@@ -158,7 +164,7 @@ export class MessagingController {
     };
 
     const message = await this.commandBus.dispatch(
-      new SendMessageCommand(asUserPublicId(senderPublicId), payload, req.file)
+      new SendMessageCommand(asUserPublicId(senderPublicId), payload, req.file),
     );
     res.status(201).json({ message });
   };
@@ -180,7 +186,7 @@ export class MessagingController {
         asUserPublicId(userPublicId),
         asMessagePublicId(messageId),
         body,
-      )
+      ),
     );
     res.status(200).json({ message });
   };
@@ -200,7 +206,7 @@ export class MessagingController {
       new DeleteMessageCommand(
         asUserPublicId(userPublicId),
         asMessagePublicId(messageId),
-      )
+      ),
     );
     res.status(204).send();
   };

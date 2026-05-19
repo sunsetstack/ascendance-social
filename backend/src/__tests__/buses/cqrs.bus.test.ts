@@ -7,15 +7,35 @@ import { ICommand } from "@/application/common/interfaces/command.interface";
 import { IQuery } from "@/application/common/interfaces/query.interface";
 
 class ClassNameDoesNotMatterCommand implements ICommand {
+  static readonly type = "StableCommandType";
   readonly type = "StableCommandType";
 
   constructor(public readonly payload: string) {}
 }
 
 class ClassNameDoesNotMatterQuery implements IQuery {
+  static readonly type = "StableQueryType";
   readonly type = "StableQueryType";
 
   constructor(public readonly page: number) {}
+}
+
+class StaticTypeOnlyCommand implements ICommand {
+  static readonly type = "StaticTypeOnlyCommand";
+  readonly type = StaticTypeOnlyCommand.type;
+
+  constructor(_payload: string) {
+    throw new Error("Command constructor should not be invoked during register()");
+  }
+}
+
+class StaticTypeOnlyQuery implements IQuery {
+  static readonly type = "StaticTypeOnlyQuery";
+  readonly type = StaticTypeOnlyQuery.type;
+
+  constructor(_page: number) {
+    throw new Error("Query constructor should not be invoked during register()");
+  }
 }
 
 describe("CQRS buses", () => {
@@ -61,5 +81,23 @@ describe("CQRS buses", () => {
         "No handler found for command StableCommandType",
       );
     }
+  });
+
+  it("registers commands without constructing them when a static type is present", () => {
+    const bus = new CommandBus();
+    const handler = {
+      execute: sinon.stub().resolves("ok"),
+    };
+
+    expect(() => bus.register(StaticTypeOnlyCommand, handler as any)).to.not.throw();
+  });
+
+  it("registers queries without constructing them when a static type is present", () => {
+    const bus = new QueryBus();
+    const handler = {
+      execute: sinon.stub().resolves({ data: [] }),
+    };
+
+    expect(() => bus.register(StaticTypeOnlyQuery, handler as any)).to.not.throw();
   });
 });

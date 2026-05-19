@@ -8,10 +8,10 @@
  */
 export interface IWorker {
   /** One-time setup (resolve DI, open connections, etc.) */
-  init(): Promise<void>;
+  init?(): Promise<void>;
 
   /** Begin the worker's main loop / subscription. */
-  start(): void;
+  start(): void | Promise<void>;
 
   /** Graceful shutdown — await in-flight work before returning. */
   stop(): Promise<void>;

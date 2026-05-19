@@ -4,7 +4,7 @@ import { ConversationRepository } from "@/repositories/conversation.repository";
 import { UserRepository } from "@/repositories/user.repository";
 import { DTOService } from "@/services/dto.service";
 import { PaginatedConversationSummaryResult } from "@/types";
-import { Errors, wrapError } from "@/utils/errors";
+import { wrapError } from "@/utils/errors";
 import {
   mapConversationSummary,
   requireUserInternalId,

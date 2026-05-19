@@ -66,7 +66,7 @@ export class ImageDeleteHandler implements IEventHandler<ImageDeletedEvent> {
 
       logger.info(`Feed invalidation complete for image deletion`);
     } catch (error) {
-      console.error("Error handling image deletion:", error);
+      logger.error("Error handling image deletion", { error });
       const fallbackPatterns = CacheKeyBuilder.getGlobalFeedPatterns();
       await this.redis.deletePatterns(fallbackPatterns);
     }
@@ -80,7 +80,9 @@ export class ImageDeleteHandler implements IEventHandler<ImageDeletedEvent> {
         await this.userRepository.findUsersFollowing(userPublicId);
       return followers.map((user) => user.publicId);
     } catch (error) {
-      console.error(`Error getting followers for user ${userPublicId}:`, error);
+      logger.error(`Error getting followers for user ${userPublicId}`, {
+        error,
+      });
       return [];
     }
   }

@@ -1,9 +1,7 @@
 import "reflect-metadata";
-import dns from "node:dns";
-import { errorLogger, logger } from "./utils/winston";
+import "./runtime/bootstrap-env";
+import { logger } from "./utils/winston";
 import mongoose from "mongoose";
-import dotenv from "dotenv";
-dotenv.config({ path: "../.env" });
 // Register global mongoose plugin before individual models
 mongoose.plugin((schema) => {
   schema.set("toJSON", {
@@ -20,9 +18,7 @@ mongoose.plugin((schema) => {
 
 import { createServer } from "http";
 import { container } from "tsyringe";
-import { DatabaseConfig } from "./config/dbConfig";
 import { Server } from "./server/server";
-import { setupContainerCore, registerCQRS, initCQRS } from "./di/container";
 import { WebSocketServer } from "./server/socketServer";
 import { RealTimeFeedService } from "./services/feed/real-time-feed.service";
 import { MetricsService } from "./metrics/metrics.service";
@@ -31,48 +27,36 @@ import { ProfileSyncWorker } from "./workers/_impl/profile-sync.worker.impl";
 import { NewFeedWarmCacheWorker } from "./workers/_impl/newFeedWarmCache.worker.impl";
 import { IpMonitorWorker } from "./workers/_impl/ip-monitor.worker.impl";
 import { OutboxWorker } from "./workers/outbox.worker";
+import { initializeBackendRuntime } from "./runtime/backend-runtime";
+import { registerGlobalProcessHandlers } from "./runtime/process-handlers";
 
-dns.setServers(["8.8.8.8", "1.1.1.1"]);
-// Global error handlers
-process.on("uncaughtException", (error: Error) => {
-  errorLogger.error({
-    type: "UncaughtException",
-    message: error.message,
-    stack: error.stack,
-    timestamp: new Date().toISOString(),
-  });
-  console.error("Uncaught Exception:", error);
-  process.exit(1);
-});
+registerGlobalProcessHandlers();
 
-process.on("unhandledRejection", (reason: any, promise: Promise<any>) => {
-  errorLogger.error({
-    type: "UnhandledRejection",
-    reason: reason?.message || reason,
-    stack: reason?.stack,
-    promise: String(promise),
-    timestamp: new Date().toISOString(),
-  });
-  console.error("Unhandled Rejection:", reason);
-});
+type WorkerStartup = {
+  metricName: string;
+  displayName: string;
+  critical?: boolean;
+  start: () => Promise<void>;
+};
+
+function resolvePort(): number {
+  const rawPort = process.env.PORT;
+  if (!rawPort) {
+    return 3000;
+  }
+
+  const port = Number.parseInt(rawPort, 10);
+  if (Number.isNaN(port) || port <= 0) {
+    throw new Error(`Invalid PORT value: ${rawPort}`);
+  }
+
+  return port;
+}
 
 async function bootstrap(): Promise<void> {
   try {
-    // make sure core registrations are in place
-    setupContainerCore();
-
+    await initializeBackendRuntime();
     const metricsService = container.resolve<MetricsService>("MetricsService");
-
-    // Register CQRS tokens
-
-    registerCQRS();
-
-    // Connect to database
-    const dbConfig = container.resolve(DatabaseConfig);
-    await dbConfig.connect();
-
-    // Now that DB connection is established, resolve & wire CQRS handlers (buses, handlers, subscriptions).
-    initCQRS();
 
     // Start workers in-process (same event loop - I/O bound, no need for threads)
     await startInProcessWorkers(metricsService);
@@ -93,14 +77,39 @@ async function bootstrap(): Promise<void> {
       logger.info("Real-time feed service initialized");
 
       // Start the HTTP server last
-      const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+      const port = resolvePort();
       expressServer.start(server, port);
     } else {
       logger.info("API server disabled via ENABLE_API=false");
     }
   } catch (error) {
-    console.error("Startup failed", error);
+    logger.error("Startup failed", { error });
     process.exit(1);
+  }
+}
+
+async function startWorker(
+  metricsService: MetricsService,
+  { metricName, displayName, critical = false, start }: WorkerStartup,
+): Promise<void> {
+  try {
+    await start();
+    metricsService.markWorkerRunning(metricName);
+    logger.info(`Started in-process worker: ${displayName}`);
+  } catch (error) {
+    metricsService.markWorkerStopped(metricName);
+    logger.error(`Failed to start ${critical ? "critical" : "optional"} worker`, {
+      worker: metricName,
+      error,
+    });
+
+    if (critical) {
+      throw error;
+    }
+
+    logger.warn("Continuing startup without optional worker", {
+      worker: metricName,
+    });
   }
 }
 
@@ -113,44 +122,67 @@ async function startInProcessWorkers(
   }
 
   try {
-    // trending worker
-    const trendingWorker = container.resolve(TrendingWorker);
-    await trendingWorker.init();
-    trendingWorker.start();
-    metricsService.markWorkerRunning("trending.worker");
-    logger.info("Started in-process worker: trending");
+    const scheduledWorkersEnabled =
+      process.env.ENABLE_SCHEDULED_WORKERS !== "false";
 
-    // profile-sync worker
-    const profileSyncWorker = new ProfileSyncWorker();
-    await profileSyncWorker.init();
-    await profileSyncWorker.start();
-    metricsService.markWorkerRunning("profile-sync.worker");
-    logger.info("Started in-process worker: profile-sync");
+    if (scheduledWorkersEnabled) {
+      await startWorker(metricsService, {
+        metricName: "trending.worker",
+        displayName: "trending",
+        start: async () => {
+          const trendingWorker = container.resolve(TrendingWorker);
+          await trendingWorker.init();
+          await trendingWorker.start();
+        },
+      });
 
-    // new feed warm cache worker
-    const newFeedWarmCacheWorker = new NewFeedWarmCacheWorker();
-    await newFeedWarmCacheWorker.init();
-    newFeedWarmCacheWorker.start();
-    metricsService.markWorkerRunning("newFeedWarmCache.worker");
-    logger.info("Started in-process worker: newFeedWarmCache");
+      await startWorker(metricsService, {
+        metricName: "profile-sync.worker",
+        displayName: "profile-sync",
+        start: async () => {
+          const profileSyncWorker = container.resolve(ProfileSyncWorker);
+          await profileSyncWorker.start();
+        },
+      });
 
-    // ip monitor worker
-    const ipMonitorWorker = new IpMonitorWorker();
-    await ipMonitorWorker.init();
-    ipMonitorWorker.start();
-    metricsService.markWorkerRunning("ip-monitor.worker");
-    logger.info("Started in-process worker: ip-monitor");
+      await startWorker(metricsService, {
+        metricName: "newFeedWarmCache.worker",
+        displayName: "newFeedWarmCache",
+        start: async () => {
+          const newFeedWarmCacheWorker = container.resolve(NewFeedWarmCacheWorker);
+          await newFeedWarmCacheWorker.init();
+          await newFeedWarmCacheWorker.start();
+        },
+      });
+    } else {
+      logger.info(
+        "Scheduled in-process workers disabled via ENABLE_SCHEDULED_WORKERS=false",
+      );
+    }
 
-    // outbox worker
-    const outboxWorker = container.resolve(OutboxWorker);
-    outboxWorker.start();
-    metricsService.markWorkerRunning("outbox.worker");
-    logger.info("Started in-process worker: outbox");
+    await startWorker(metricsService, {
+      metricName: "outbox.worker",
+      displayName: "outbox",
+      critical: true,
+      start: async () => {
+        const outboxWorker = container.resolve(OutboxWorker);
+        await outboxWorker.start();
+      },
+    });
+
+    await startWorker(metricsService, {
+      metricName: "ip-monitor.worker",
+      displayName: "ip-monitor",
+      start: async () => {
+        const ipMonitorWorker = container.resolve(IpMonitorWorker);
+        await ipMonitorWorker.start();
+      },
+    });
 
     logger.info("All in-process workers started successfully");
   } catch (error) {
     logger.error("Failed to start in-process workers", { error });
-    // don't crash the server if workers fail - they're non-critical
+    throw error;
   }
 }
 

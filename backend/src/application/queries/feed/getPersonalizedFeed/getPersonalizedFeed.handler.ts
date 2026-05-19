@@ -73,7 +73,7 @@ export class GetPersonalizedFeedQueryHandler implements IQueryHandler<
         prevCursor: coreFeed.prevCursor,
       };
     } catch (error) {
-      console.error("Failed to generate personalized feed:", error);
+      logger.error("Failed to generate personalized feed", { error });
       throw Errors.internal(
         `Could not generate personalized feed for user ${userId}: ${(error as Error).message}`,
       );

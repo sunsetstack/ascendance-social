@@ -44,7 +44,7 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
       // Publish real-time interaction event for WebSocket notifications
       await this.publishInteractionEvent(event);
     } catch (error) {
-      console.error("Feed update failed:", error);
+      logger.error("Feed update failed", { error });
       throw error;
     }
   }
@@ -74,9 +74,11 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
           );
         }
       } catch (e) {
-        console.warn(
+        logger.warn(
           "Failed to update post like meta during like/unlike event",
-          e,
+          {
+            error: e,
+          },
         );
       }
       // Invalidate only actor's structural feed using tags
@@ -135,7 +137,7 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
       // Remove duplicates and the acting user because it's already handled above
       return [...new Set(affectedUsers)].filter((id) => id !== event.userId);
     } catch (error) {
-      console.error("Error determining affected users:", error);
+      logger.error("Error determining affected users", { error });
       // Fallback: invalidate global feeds using tags (except new_feed - lazy refresh)
       await this.redis.invalidateByTags([CacheKeyBuilder.getTrendingFeedTag()]);
       return [];
@@ -150,7 +152,9 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
         await this.userRepository.findUsersFollowing(userPublicId);
       return followers.map((user) => user.publicId);
     } catch (error) {
-      console.error(`Error getting followers for user ${userPublicId}:`, error);
+      logger.error(`Error getting followers for user ${userPublicId}`, {
+        error,
+      });
       return [];
     }
   }
@@ -161,9 +165,11 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
         await this.userPreferenceRepository.getUsersWithTagPreferences(tags);
       return interestedUsers.map((user) => user.publicId);
     } catch (error) {
-      console.error(
-        `Error getting users interested in tags ${tags.join(", ")}:`,
-        error,
+      logger.error(
+        `Error getting users interested in tags ${tags.join(", ")}`,
+        {
+          error,
+        },
       );
       return [];
     }
@@ -193,7 +199,7 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
         `Published real-time interaction event: ${event.interactionType} on post ${event.postId} by user ${event.userId}`,
       );
     } catch (error) {
-      console.error("Failed to publish interaction event:", error);
+      logger.error("Failed to publish interaction event", { error });
     }
   }
 }

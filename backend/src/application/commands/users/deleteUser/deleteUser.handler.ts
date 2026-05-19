@@ -27,6 +27,7 @@ import { UserDeletedEvent } from "@/application/events/user/user-interaction.eve
 import { RedisService } from "@/services/redis.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
+import { logger } from "@/utils/winston";
 
 @injectable()
 export class DeleteUserCommandHandler implements ICommandHandler<
@@ -228,10 +229,16 @@ export class DeleteUserCommandHandler implements ICommandHandler<
         const cloudResult =
           await this.imageStorageService.deleteMany(userPublicId);
         if (cloudResult.result !== "ok") {
-          console.warn("Failed to delete cloud assets:", cloudResult.message);
+          logger.warn("Failed to delete cloud assets", {
+            userPublicId,
+            message: cloudResult.message,
+          });
         }
       } catch (cloudError) {
-        console.warn("Error during cloud assets deletion:", cloudError);
+        logger.warn("Error during cloud assets deletion", {
+          userPublicId,
+          cloudError,
+        });
       }
 
       // emit event after successful deletion to trigger cache cleanup

@@ -5,7 +5,7 @@ import { UserRepository } from "@/repositories/user.repository";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { MessageAttachmentsDeletedEvent } from "@/application/events/message/message.event";
-import { Errors, wrapError } from "@/utils/errors";
+import { wrapError } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";

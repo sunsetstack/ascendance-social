@@ -2,27 +2,27 @@ import { IQueryHandler } from "../interfaces/query-handler.interface";
 import { IQuery } from "../interfaces/query.interface";
 import { Errors } from "@/utils/errors";
 
+type QueryClass<TQuery extends IQuery> = {
+	new (...args: any[]): TQuery;
+	readonly type?: TQuery["type"];
+};
+
 export class QueryBus {
 	// Stores query handlers, mapping query names to their respective handlers
 	private handlers = new Map<string, unknown>();
 
 	private resolveQueryType<TQuery extends IQuery>(
-		queryType: { new (...args: any[]): TQuery },
+		queryType: QueryClass<TQuery>,
 	): TQuery["type"] {
-		try {
-			const probe = new queryType(...new Array(queryType.length).fill(undefined));
-			if (typeof probe.type === "string" && probe.type.length > 0) {
-				return probe.type;
-			}
-		} catch (error) {
-			throw Errors.internal(
-				`Could not resolve query type for ${queryType.name}: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
+		if (typeof queryType.type === "string" && queryType.type.length > 0) {
+			return queryType.type;
 		}
 
-		throw Errors.internal(`Could not resolve query type for ${queryType.name}`);
+		if (typeof queryType.name === "string" && queryType.name.length > 0) {
+			return queryType.name as TQuery["type"];
+		}
+
+		throw Errors.internal("Could not resolve query type for constructor");
 	}
 
 	/**
@@ -31,7 +31,7 @@ export class QueryBus {
 	 * @param handler - The handler responsible for processing the query.
 	 */
 	register<TQuery extends IQuery, TResult>(
-		queryType: { new (...args: any[]): TQuery },
+		queryType: QueryClass<TQuery>,
 		handler: IQueryHandler<TQuery, TResult>
 	): void {
 		this.handlers.set(this.resolveQueryType(queryType), handler);

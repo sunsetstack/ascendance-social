@@ -1,56 +1,15 @@
 import "reflect-metadata";
-import path from "path";
-import dotenv from "dotenv";
-import { logger } from "@/utils/winston";
-import dns from "node:dns";
-dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
+import "@/runtime/bootstrap-env";
 
 import { container } from "tsyringe";
-import { setupContainerCore, registerCQRS, initCQRS } from "@/di/container";
-import { DatabaseConfig } from "@/config/dbConfig";
 import { NewFeedWarmCacheWorker } from "../workers/_impl/newFeedWarmCache.worker.impl";
+import { runWorkerEntrypoint } from "@/runtime/backend-runtime";
 
-const worker = new NewFeedWarmCacheWorker();
-dns.setServers(["8.8.8.8", "1.1.1.1"]);
-
-async function start() {
-  try {
-    // register core DI entries (models, repos, services, controllers, routes)
-    setupContainerCore();
-
-    // register CQRS tokens (handler classes) but do not resolve instances yet
-    registerCQRS();
-
-    // connect to DB
-    const dbConfig = container.resolve(DatabaseConfig);
-    await dbConfig.connect();
-
-    // resolve and wire up CQRS handlers
-    initCQRS();
-
-    // init and start the worker
+void runWorkerEntrypoint({
+  workerName: "New feed warm cache",
+  resolveWorker: () => container.resolve(NewFeedWarmCacheWorker),
+  startWorker: async (worker) => {
     await worker.init();
-    worker.start();
-
-    logger.info("New feed warm cache worker started");
-  } catch (err) {
-    logger.error("Worker failed to start", { error: err });
-    process.exit(1);
-  }
-}
-
-start();
-
-// graceful shutdown
-async function shutdown() {
-  logger.info("Shutting down new feed warm cache worker...");
-  try {
-    await worker.stop?.();
-    process.exit(0);
-  } catch (err) {
-    logger.error("Error during shutdown", { error: err });
-    process.exit(1);
-  }
-}
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+    await worker.start();
+  },
+});

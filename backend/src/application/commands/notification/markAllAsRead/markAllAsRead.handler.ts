@@ -3,7 +3,7 @@ import { MarkAllAsReadCommand } from "./markAllAsRead.command";
 import { NotificationRepository } from "@/repositories/notification.repository";
 import { RedisService } from "@/services/redis.service";
 import { WebSocketServer } from "@/server/socketServer";
-import { Errors, wrapError } from "@/utils/errors";
+import { wrapError } from "@/utils/errors";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 

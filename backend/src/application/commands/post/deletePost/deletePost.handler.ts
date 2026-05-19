@@ -31,6 +31,7 @@ import {
 } from "../../../errors/post.errors";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
+import { logger } from "@/utils/winston";
 
 export interface DeletePostResult {
   message: string;
@@ -227,7 +228,7 @@ export class DeletePostCommandHandler implements ICommandHandler<
         : imageRef._id.toString();
 
     if (!imageId) {
-      console.warn(
+      logger.warn(
         `[DeletePostHandler] Post ${post.publicId} has image reference but no valid imageId`,
       );
       return null;
@@ -245,7 +246,7 @@ export class DeletePostCommandHandler implements ICommandHandler<
         };
       }
     } catch (error) {
-      console.error(
+      logger.error(
         `[DeletePostHandler] Failed to delete image ${imageId} for post ${post.publicId}:`,
         error,
       );
@@ -277,7 +278,7 @@ export class DeletePostCommandHandler implements ICommandHandler<
         RetryPresets.externalApi(),
       );
     } catch (error) {
-      console.error(
+      logger.error(
         `[DeletePostHandler] Failed to delete image asset ${assetInfo.url}:`,
         error,
       );

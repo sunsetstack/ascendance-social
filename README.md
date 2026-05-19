@@ -11,7 +11,7 @@
 
 ## 🚀 Overview
 
-**Image App** is a production-grade, full-stack social platform architected for scalability and performance. Unlike typical CRUD applications, this system implements advanced distributed patterns including **CQRS** (Command Query Responsibility Segregation), **Event Sourcing**, and **Multi-Layered Caching**.
+**Image App** is a full-stack social platform that explores scalability and performance patterns beyond a typical CRUD app. The backend currently uses **CQRS** (Command Query Responsibility Segregation), a **transactional outbox** for async side effects, and **multi-layered caching**.
 
 The architecture is designed to handle high-concurrency scenarios (e.g., viral posts) by decoupling write-heavy operations from read-critical views using background workers and Redis streams.
 
@@ -28,9 +28,13 @@ The application transitions from a monolithic structure to a microservices-ready
     * `Profile Sync Worker`: Handles eventual consistency updates across denormalized data (e.g., updating user avatars across thousands of historical posts).
 * **Persistence Layer:** MongoDB Replica Set (supporting multi-document transactions) and Redis (Caching, Pub/Sub, Streams).
 
+## 📚 Project Review
+
+The long-form architecture and project review is documented in [docs/project-review.md](docs/project-review.md). It covers the backend/runtime bootstrap, CQRS wiring, Unit of Work and outbox patterns, Redis cache and pub/sub usage, worker topology, frontend data flow, deployment shape, and the major tradeoffs in the current design.
+
 ## 📈⚡Performance & Scalability 
 
-The application has been stress-tested to handle production-level traffic:
+The repository includes targeted stress testing, but the figures below should be treated as directional until more scenario-specific load suites are checked in:
 * **Concurrency:** Successfully handles 200+ concurrent users performing complex write workflows (Register → Post → Like → Follow) simultaneously.
 * **Throughput:** Sustains hundreds of requests per second (RPS) with sub-second P99 latency.
 * **Background Processing:** The worker nodes independently scale to process thousands of viral interactions without blocking the main API.
@@ -66,6 +70,19 @@ The `RedisService` goes beyond basic key-value storage:
 * The system is instrumented for real-time production monitoring:
 * **Prometheus:** Scrapes application metrics (HTTP latency, database connection pool status, worker queue depth).
 * **Grafana:** Provides visual dashboards for tracking system health and identifying bottlenecks during load spikes.
+* **Async workflow visibility:** Outbox events now carry event-level trace IDs and worker outcome metrics, so failed background dispatches can be tied back to a concrete outbox record and log entry.
+---
+
+## ⚖️ Architecture Trade-offs & Lessons Learned
+
+Some of the backend patterns here are intentionally more ambitious than the current product size strictly requires. That has been useful for learning and for preparing hot paths, but it also adds real maintenance cost.
+
+* **CQRS is helping, but not every flow needed it yet.** The split has made controllers thinner and write paths easier to reason about, but some handlers still own too much orchestration. In a few places, a simpler application service would still be easier to maintain until the read/write paths diverge more.
+* **The outbox is intentional, not full event sourcing.** The backend persists side effects after a successful transaction commit, which protects consistency for async work. It does **not** rebuild aggregates from an event store, so calling the current design "event sourcing" would be overstating it.
+* **Redis-heavy optimization only pays off when it is measured.** Feed caching, dynamic TTLs, and Bloom-filter-style protections reduce hot-path load, but they only justify their complexity when backed by repeatable load tests rather than intuition.
+* **Current tracing is targeted, not distributed tracing.** The repo now records outbox event trace IDs and Prometheus metrics for async dispatch outcomes, which helps debug worker failures. That is still lighter-weight than a full OpenTelemetry-style end-to-end trace pipeline.
+* **Operational simplicity still matters.** Several patterns in this codebase exist because the goal is to practice taming complexity, not because every deployment would need them on day one. The long-term bar is not "more patterns"; it is proving which ones are worth their ongoing cost.
+
 ---
 
 ## 🛠 Tech Stack

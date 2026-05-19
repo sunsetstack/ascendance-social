@@ -1,11 +1,12 @@
 import { UserPublicId, asUserPublicId } from "@/types/branded";
 import "reflect-metadata";
-import { container } from "tsyringe";
+import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { RedisService } from "@/services/redis.service";
 import { PostRepository } from "@/repositories/post.repository";
 import { UserRepository } from "@/repositories/user.repository";
 import { logger } from "@/utils/winston";
+import { TOKENS } from "@/types/tokens";
 
 interface ProfileSnapshotMessage {
   type: "avatar_changed" | "username_changed";
@@ -27,10 +28,8 @@ interface ProfileSnapshotMessage {
  * @solution This worker listens for change events and performs bulk updates in the background.
  * It effectively decouples the "User Write" from the "System Consistency" overhead.
  */
+@injectable()
 export class ProfileSyncWorker {
-  private redisService!: RedisService;
-  private postRepo!: PostRepository;
-  private userRepo!: UserRepository;
   private running = false;
 
   // debounce multiple rapid changes from same user
@@ -41,29 +40,40 @@ export class ProfileSyncWorker {
   private flushTimer?: NodeJS.Timeout;
   private FLUSH_INTERVAL_MS = 2000; // batch updates every 2 seconds
 
-  constructor() {}
-
-  async init(): Promise<void> {
-    this.redisService = container.resolve(RedisService);
-    this.postRepo = container.resolve(PostRepository);
-    this.userRepo = container.resolve(UserRepository);
-
-    logger.info("[profile-sync] dependencies resolved");
-  }
+  constructor(
+    @inject(TOKENS.Services.Redis)
+    private readonly redisService: RedisService,
+    @inject(TOKENS.Repositories.Post)
+    private readonly postRepo: PostRepository,
+    @inject(TOKENS.Repositories.User)
+    private readonly userRepo: UserRepository,
+  ) {}
 
   async start(): Promise<void> {
     if (this.running) return;
-    this.running = true;
 
     // subscribe to profile_snapshot_updates channel
-    await this.redisService.subscribe<ProfileSnapshotMessage>(
-      ["profile_snapshot_updates"],
-      (channel, message) => {
-        this.handleMessage(message).catch((err) => {
-          logger.error("[profile-sync] error handling message", { error: err });
-        });
-      },
-    );
+    const subscribed =
+      await this.redisService.subscribe<ProfileSnapshotMessage>(
+        ["profile_snapshot_updates"],
+        (channel, message) => {
+          this.handleMessage(message).catch((err) => {
+            logger.error("[profile-sync] error handling message", {
+              error: err,
+            });
+          });
+        },
+        { timeoutMs: 1500 },
+      );
+
+    if (!subscribed) {
+      logger.warn(
+        "[profile-sync] worker not started because Redis is unavailable",
+      );
+      return;
+    }
+
+    this.running = true;
 
     // start flush timer
     this.flushTimer = setInterval(() => {

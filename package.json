@@ -13,17 +13,19 @@
     "update:all": "npm run update:backend && npm run update:frontend",
     "build": "tsc -b backend frontend",
     "build:backend": "tsc -b backend",
-    "build:frontend": "tsc --build frontend && vite build --config frontend/vite.config.ts --root frontend",
+    "build:frontend": "npm run build --workspace=frontend",
     "install-all": "npm install",
     "test-backend": "npm run test --workspace=backend",
+    "lint:backend": "eslint \"backend/src/**/*.ts\"",
+    "test-integration": "npm run test:integration:unit --workspace=backend",
     "build-all": "npm run build --workspace=backend && npm run build --workspace=frontend",
     "clean": "rimraf node_modules frontend/node_modules backend/node_modules package-lock.json",
-    "start-backend": "npm run start:dev --workspace=backend",
+    "start-backend": "npm run start:api-only:dev --workspace=backend",
     "start-frontend": "npm run dev --workspace=frontend",
     "start-trending-worker": "npm run start:trending-worker:dev --workspace=backend",
     "start-profile-sync-worker": "npm run start:profile-sync-worker:dev --workspace=backend",
     "start-newFeed-worker": "npm run start:newFeedWarmCache-worker:dev --workspace=backend",
-    "dev": "concurrently -n \"Backend,TrendingWorker,ProfileWorker,NewFeedWorker,Frontend\" \"npm run start-backend\" \"npm run start-trending-worker\" \"npm run start-profile-sync-worker\" \"npm run start-newFeed-worker\" \"npm run start-frontend\""
+    "dev": "node scripts/pick-port.mjs && concurrently -n \"Backend,TrendingWorker,ProfileWorker,NewFeedWorker,Frontend\" \"npm run start-backend\" \"npm run start-trending-worker\" \"npm run start-profile-sync-worker\" \"npm run start-newFeed-worker\" \"npm run start-frontend\""
   },
   "author": "",
   "license": "MIT",
@@ -32,14 +34,19 @@
     "concurrently": "^9.1.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/node": "^22.10.2",
     "cypress-file-upload": "^5.0.8",
+    "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
     "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^15.15.0",
     "nodemon": "^3.1.9",
     "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
+    "typescript-eslint": "^8.58.2",
     "typescript": "^6.0.3"
   }
 }

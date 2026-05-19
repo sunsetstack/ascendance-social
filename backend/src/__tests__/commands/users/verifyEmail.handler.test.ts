@@ -20,6 +20,9 @@ describe("VerifyEmailHandler", () => {
 		toAuthenticatedUserDTO: SinonStub;
 		toAdminDTO: SinonStub;
 	};
+	let mockAuthSessionService: {
+		markUserEmailVerified: SinonStub;
+	};
 
 	beforeEach(() => {
 		mockUserReadRepository = {
@@ -32,11 +35,15 @@ describe("VerifyEmailHandler", () => {
 			toAuthenticatedUserDTO: sinon.stub(),
 			toAdminDTO: sinon.stub(),
 		};
+		mockAuthSessionService = {
+			markUserEmailVerified: sinon.stub().resolves(),
+		};
 
 		handler = new VerifyEmailHandler(
 			mockUserReadRepository as any,
 			mockUserWriteRepository as any,
 			mockDtoService as any,
+			mockAuthSessionService as any,
 		);
 	});
 
@@ -63,6 +70,7 @@ describe("VerifyEmailHandler", () => {
 
 		expect(result).to.equal(dto);
 		expect(mockUserWriteRepository.update.called).to.equal(false);
+		expect(mockAuthSessionService.markUserEmailVerified.called).to.equal(false);
 	});
 
 	it("should verify and return updated user", async () => {
@@ -76,6 +84,7 @@ describe("VerifyEmailHandler", () => {
 		const updatedUser = {
 			_id: { toString: () => "1" },
 			id: "1",
+			publicId: "p1",
 			isAdmin: false,
 			isEmailVerified: true,
 		};
@@ -89,5 +98,6 @@ describe("VerifyEmailHandler", () => {
 
 		expect(result).to.equal(dto);
 		expect(mockUserWriteRepository.update.calledOnce).to.equal(true);
+		expect(mockAuthSessionService.markUserEmailVerified.calledOnceWith("p1")).to.equal(true);
 	});
 });

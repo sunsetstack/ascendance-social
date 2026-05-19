@@ -119,10 +119,9 @@ export class ImageUploadHandler implements IEventHandler<ImageUploadedEvent> {
         `[IMAGE_UPLOAD_HANDLER] Cache invalidation complete for new image upload`,
       );
     } catch (error) {
-      console.error(
-        "[IMAGE_UPLOAD_HANDLER] Error handling image upload:",
+      logger.error("[IMAGE_UPLOAD_HANDLER] Error handling image upload", {
         error,
-      );
+      });
       const fallbackPatterns = CacheKeyBuilder.getGlobalFeedPatterns();
       await this.redis.deletePatterns(fallbackPatterns);
     }
@@ -136,9 +135,9 @@ export class ImageUploadHandler implements IEventHandler<ImageUploadedEvent> {
         await this.userRepository.findUsersFollowing(userPublicId);
       return followers.map((user) => user.publicId);
     } catch (error) {
-      console.error(
-        `[IMAGE_UPLOAD_HANDLER] Error getting followers for user ${userPublicId}:`,
-        error,
+      logger.error(
+        `[IMAGE_UPLOAD_HANDLER] Error getting followers for user ${userPublicId}`,
+        { error },
       );
       return [];
     }
@@ -151,9 +150,9 @@ export class ImageUploadHandler implements IEventHandler<ImageUploadedEvent> {
         await this.userPreferenceRepository.getUsersWithTagPreferences(tags);
       return interestedUsers.map((user) => user.publicId);
     } catch (error) {
-      console.error(
-        `[IMAGE_UPLOAD_HANDLER] Error getting users interested in tags ${tags.join(", ")}:`,
-        error,
+      logger.error(
+        `[IMAGE_UPLOAD_HANDLER] Error getting users interested in tags ${tags.join(", ")}`,
+        { error },
       );
       return [];
     }

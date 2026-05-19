@@ -1,6 +1,6 @@
-import { MongoId, UserPublicId, asMongoId } from "@/types/branded";
+import { UserPublicId, asMongoId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
-import { FollowUserCommand } from "./followUser.command";
+import { SetFollowStateCommand } from "./setFollowState.command";
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { FollowRepository } from "@/repositories/follow.repository";
@@ -15,14 +15,14 @@ import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 
-export interface FollowUserResult {
+export interface SetFollowStateResult {
   action: "followed" | "unfollowed";
 }
 
 @injectable()
-export class FollowUserCommandHandler implements ICommandHandler<
-  FollowUserCommand,
-  FollowUserResult
+export class SetFollowStateCommandHandler implements ICommandHandler<
+  SetFollowStateCommand,
+  SetFollowStateResult
 > {
   constructor(
     @inject(TOKENS.Repositories.UnitOfWork)
@@ -39,8 +39,9 @@ export class FollowUserCommandHandler implements ICommandHandler<
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
   ) {}
 
-  async execute(command: FollowUserCommand): Promise<FollowUserResult> {
-    const { followerPublicId, followeePublicId } = command;
+  async execute(command: SetFollowStateCommand): Promise<SetFollowStateResult> {
+    const { followerPublicId, followeePublicId, shouldFollow } = command;
+    const action = shouldFollow ? "followed" : "unfollowed";
 
     const [follower, followee] = await Promise.all([
       this.userReadRepository.findByPublicId(followerPublicId),
@@ -62,29 +63,13 @@ export class FollowUserCommandHandler implements ICommandHandler<
       followerId,
       followeeId,
     );
+    if (wasFollowing === shouldFollow) {
+      return { action };
+    }
 
     try {
       await this.unitOfWork.executeInTransaction(async () => {
-        if (wasFollowing) {
-          // unfollow logic
-          await this.followRepository.removeFollow(followerId, followeeId);
-          await this.userWriteRepository.update(followerId, {
-            $pull: { following: followeeId },
-          });
-          await this.userWriteRepository.update(followeeId, {
-            $pull: { followers: followerId },
-          });
-          // decrement denormalized counts
-          await this.userWriteRepository.updateFollowingCount(followerId, -1);
-          await this.userWriteRepository.updateFollowerCount(followeeId, -1);
-
-          await this.userActionRepository.logAction(
-            followerId,
-            "unfollow",
-            followeeId,
-          );
-        } else {
-          // follow logic
+        if (shouldFollow) {
           await this.followRepository.addFollow(followerId, followeeId);
           await this.userWriteRepository.update(followerId, {
             $addToSet: { following: followeeId },
@@ -92,7 +77,6 @@ export class FollowUserCommandHandler implements ICommandHandler<
           await this.userWriteRepository.update(followeeId, {
             $addToSet: { followers: followerId },
           });
-          // increment denormalized counts
           await this.userWriteRepository.updateFollowingCount(followerId, 1);
           await this.userWriteRepository.updateFollowerCount(followeeId, 1);
 
@@ -112,25 +96,50 @@ export class FollowUserCommandHandler implements ICommandHandler<
               actorAvatar: follower.avatar,
             }),
           );
+          return;
+        }
+
+        if (!shouldFollow) {
+          // unfollow logic
+          await this.followRepository.removeFollow(followerId, followeeId);
+          await this.userWriteRepository.update(followerId, {
+            $pull: { following: followeeId },
+          });
+          await this.userWriteRepository.update(followeeId, {
+            $pull: { followers: followerId },
+          });
+          // decrement denormalized counts
+          await this.userWriteRepository.updateFollowingCount(followerId, -1);
+          await this.userWriteRepository.updateFollowerCount(followeeId, -1);
+
+          await this.userActionRepository.logAction(
+            followerId,
+            "unfollow",
+            followeeId,
+          );
         }
       });
 
       // invalidate feed caches after transaction commits
       await this.invalidateFeedCaches(follower.publicId);
     } catch (error) {
+      if (this.isConcurrentNoOp(error, shouldFollow)) {
+        return { action };
+      }
+
       if (error instanceof AppError) throw error;
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       throw Errors.database(errorMessage, {
         context: {
-          function: "followUser",
+          function: "setFollowState",
           additionalInfo: "Transaction failed",
         },
         cause: error,
       });
     }
 
-    return { action: wasFollowing ? "unfollowed" : "followed" };
+    return { action };
   }
 
   private async invalidateFeedCaches(
@@ -149,5 +158,13 @@ export class FollowUserCommandHandler implements ICommandHandler<
         error,
       });
     }
+  }
+
+  private isConcurrentNoOp(error: unknown, shouldFollow: boolean): boolean {
+    return (
+      error instanceof AppError &&
+      ((shouldFollow && error.name === "DuplicateError") ||
+        (!shouldFollow && error.name === "NotFoundError"))
+    );
   }
 }

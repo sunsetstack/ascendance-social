@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { injectable, inject } from "tsyringe";
 import { IEventHandler } from "../interfaces/event-handler.interface";
 import { IEvent } from "../interfaces/event.interface";
@@ -49,6 +50,8 @@ export class EventBus {
    * Persists an event to the outbox within the current UnitOfWork transaction.
    * The OutboxWorker will pick it up and dispatch it to the appropriate subscribed handler.
    * Must be called inside a UnitOfWork.executeInTransaction callback.
+   * The generated traceId is an outbox-event correlation ID for async debugging,
+   * not a full end-to-end distributed request trace.
    */
   async queueTransactional<TEvent extends IEvent>(
     event: TEvent,
@@ -62,6 +65,7 @@ export class EventBus {
     await this.outboxRepository.saveEvent(
       event.constructor.name,
       event,
+      randomUUID(),
     );
   }
 }

@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { container, inject, injectable } from "tsyringe";
+import { inject, injectable } from "tsyringe";
 import { performance } from "perf_hooks";
 import type { RedisClientType } from "redis";
 import { RedisService } from "@/services/redis.service";
@@ -57,9 +57,7 @@ export class TrendingWorker {
 
   private WEIGHTS = { recency: 0.4, popularity: 0.5, comments: 0.1 };
 
-  private redisService!: RedisService;
-  private redisClient!: RedisClientType; // only for xReadGroup use
-  private postRepo!: PostRepository;
+  private redisClient: RedisClientType | null = null; // dedicated client for blocking xReadGroup use
 
   private pending = new Map<string, PendingDeltas>();
   private flushing = false;
@@ -71,21 +69,20 @@ export class TrendingWorker {
   constructor(
     @inject(TOKENS.Repositories.FeedReadDao)
     private readonly feedReadDao: IFeedReadDao,
+    @inject(TOKENS.Services.Redis)
+    private readonly redisService: RedisService,
+    @inject(TOKENS.Repositories.Post)
+    private readonly postRepo: PostRepository,
   ) {}
 
   /** initialize dependencies and create consumer group if necessary */
   async init(): Promise<void> {
-    this.redisService = container.resolve(RedisService);
-    this.postRepo = container.resolve(PostRepository);
-
-    // expose typed client instance for read operations (xReadGroup)
-    this.redisClient = this.redisService.clientInstance;
-
     // ensure redis is connected before creating group or starting read loop
     await this.redisService.waitForConnection();
 
     // create group via helper (MKSTREAM)
     await this.redisService.createStreamConsumerGroup(this.STREAM, this.GROUP);
+    this.redisClient = await this.redisService.createDedicatedClient();
     logger.info(
       `[trending] ensured consumer group ${this.GROUP} on ${this.STREAM}`,
     );
@@ -135,12 +132,16 @@ export class TrendingWorker {
     if (this.fullRefreshTimer) clearInterval(this.fullRefreshTimer);
 
     await this.flushPending();
+    if (this.redisClient?.isOpen) {
+      await this.redisClient.quit();
+    }
+    this.redisClient = null;
     logger.info("[trending] worker stopped");
   }
 
   /** main read loop that consumes stream messages using XREADGROUP via clientInstance */
   private async readLoop(): Promise<void> {
-    while (this.running) {
+    while (this.running && this.redisClient) {
       try {
         const responses = await this.redisClient.xReadGroup(
           this.GROUP,
@@ -277,7 +278,7 @@ export class TrendingWorker {
               this.WEIGHTS.popularity * popularityScore +
               this.WEIGHTS.comments * commentsScore;
 
-            logger.info(
+            logger.debug(
               `[trending] ${postId}: likes=${likes}, comments=${comments}, age=${ageDays.toFixed(1)}d, ` +
                 `recency=${recencyScore.toFixed(3)}, popularity=${popularityScore.toFixed(3)}, score=${score.toFixed(3)}`,
             );

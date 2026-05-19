@@ -3,7 +3,6 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-  InfiniteData,
 } from "@tanstack/react-query";
 import {
   fetchPostByPublicId,
@@ -23,6 +22,11 @@ import { IPost, ITag, PaginatedResponse } from "../../types";
 import { useAuth } from "../context/useAuth";
 import { mapPost } from "../../lib/mappers";
 import { devError } from "@/lib/devLogger";
+import {
+	removePostFromFeedCaches,
+	updatePostDetailCaches,
+	updatePostInInfiniteFeeds,
+} from "./postCache";
 
 export const usePosts = () => {
   const { user } = useAuth();
@@ -194,50 +198,7 @@ export const useDeletePost = () => {
   return useMutation<void, Error, string>({
     mutationFn: deletePostByPublicId,
     onSuccess: (_data, publicId) => {
-      // Surgically remove the deleted post from every feed/list cache so nothing
-      // tries to background-refetch a post that no longer exists (which would cause
-      // the CommentSection to fire a 404 request before navigate(-1) unmounts the page).
-      const filterOut = (oldData: unknown): unknown => {
-        if (!oldData || typeof oldData !== "object") return oldData;
-        if ("pages" in oldData) {
-          const inf = oldData as {
-            pages: { data: { publicId: string }[] }[];
-            pageParams: unknown[];
-          };
-          return {
-            ...inf,
-            pages: inf.pages.map((page) => ({
-              ...page,
-              data: Array.isArray(page.data)
-                ? page.data.filter((item) => item.publicId !== publicId)
-                : page.data,
-            })),
-          };
-        }
-        if ("data" in oldData) {
-          const reg = oldData as { data: { publicId: string }[] };
-          if (Array.isArray(reg.data)) {
-            return {
-              ...reg,
-              data: reg.data.filter((item) => item.publicId !== publicId),
-            };
-          }
-        }
-        return oldData;
-      };
-
-      for (const key of [
-        "posts",
-        "personalizedFeed",
-        "userPosts",
-        "forYouFeed",
-        "trendingFeed",
-        "newFeed",
-        "images",
-        "userImages",
-      ]) {
-        queryClient.setQueriesData({ queryKey: [key] }, filterOut);
-      }
+      removePostFromFeedCaches(queryClient, publicId);
 
       // Remove the post detail and comments from cache immediately so they cannot
       // be background-refetched while PostView is still mounted.
@@ -268,64 +229,14 @@ export const useRepostPost = () => {
   return useMutation<IPost, Error, { postPublicId: string; body?: string }>({
     mutationFn: ({ postPublicId, body }) => repostPost(postPublicId, body),
     onSuccess: (_newPost, { postPublicId }) => {
-      const bumpRepostCountInInfinite = (key: unknown[]) => {
-        queryClient.setQueriesData<
-          InfiniteData<{
-            data: IPost[];
-            total: number;
-            page: number;
-            limit: number;
-            totalPages: number;
-          }>
-        >({ queryKey: key }, (existing) => {
-          if (!existing) return existing;
-          return {
-            ...existing,
-            pages: existing.pages.map((page) => ({
-              ...page,
-              data: page.data.map((post) =>
-                post.publicId === postPublicId
-                  ? {
-                      ...post,
-                      repostCount: (post.repostCount || 0) + 1,
-                      isRepostedByViewer: true,
-                    }
-                  : post,
-              ),
-            })),
-          };
-        });
-      };
+      const applyRepostState = (post: IPost): IPost => ({
+        ...post,
+        repostCount: (post.repostCount || 0) + 1,
+        isRepostedByViewer: true,
+      });
 
-      queryClient.setQueriesData<IPost>(
-        { queryKey: ["post", "publicId", postPublicId] },
-        (existing) =>
-          existing
-            ? {
-                ...existing,
-                repostCount: (existing.repostCount || 0) + 1,
-                isRepostedByViewer: true,
-              }
-            : existing,
-      );
-      queryClient.setQueriesData<IPost>(
-        { queryKey: ["post", postPublicId] },
-        (existing) =>
-          existing
-            ? {
-                ...existing,
-                repostCount: (existing.repostCount || 0) + 1,
-                isRepostedByViewer: true,
-              }
-            : existing,
-      );
-
-      bumpRepostCountInInfinite(["posts"]);
-      bumpRepostCountInInfinite(["personalizedFeed"]);
-      bumpRepostCountInInfinite(["trendingFeed"]);
-      bumpRepostCountInInfinite(["newFeed"]);
-      bumpRepostCountInInfinite(["forYouFeed"]);
-      bumpRepostCountInInfinite(["postsByTag"]);
+      updatePostDetailCaches(queryClient, postPublicId, applyRepostState);
+      updatePostInInfiniteFeeds(queryClient, postPublicId, applyRepostState);
 
       queryClient.invalidateQueries({
         queryKey: ["post", "publicId", postPublicId],
@@ -351,64 +262,14 @@ export const useUnrepostPost = () => {
   return useMutation<void, Error, { postPublicId: string }>({
     mutationFn: ({ postPublicId }) => unrepostPost(postPublicId),
     onSuccess: (_result, { postPublicId }) => {
-      const decrementRepostCountInInfinite = (key: unknown[]) => {
-        queryClient.setQueriesData<
-          InfiniteData<{
-            data: IPost[];
-            total: number;
-            page: number;
-            limit: number;
-            totalPages: number;
-          }>
-        >({ queryKey: key }, (existing) => {
-          if (!existing) return existing;
-          return {
-            ...existing,
-            pages: existing.pages.map((page) => ({
-              ...page,
-              data: page.data.map((post) =>
-                post.publicId === postPublicId
-                  ? {
-                      ...post,
-                      repostCount: Math.max((post.repostCount || 0) - 1, 0),
-                      isRepostedByViewer: false,
-                    }
-                  : post,
-              ),
-            })),
-          };
-        });
-      };
+      const clearRepostState = (post: IPost): IPost => ({
+        ...post,
+        repostCount: Math.max((post.repostCount || 0) - 1, 0),
+        isRepostedByViewer: false,
+      });
 
-      queryClient.setQueriesData<IPost>(
-        { queryKey: ["post", "publicId", postPublicId] },
-        (existing) =>
-          existing
-            ? {
-                ...existing,
-                repostCount: Math.max((existing.repostCount || 0) - 1, 0),
-                isRepostedByViewer: false,
-              }
-            : existing,
-      );
-      queryClient.setQueriesData<IPost>(
-        { queryKey: ["post", postPublicId] },
-        (existing) =>
-          existing
-            ? {
-                ...existing,
-                repostCount: Math.max((existing.repostCount || 0) - 1, 0),
-                isRepostedByViewer: false,
-              }
-            : existing,
-      );
-
-      decrementRepostCountInInfinite(["posts"]);
-      decrementRepostCountInInfinite(["personalizedFeed"]);
-      decrementRepostCountInInfinite(["trendingFeed"]);
-      decrementRepostCountInInfinite(["newFeed"]);
-      decrementRepostCountInInfinite(["forYouFeed"]);
-      decrementRepostCountInInfinite(["postsByTag"]);
+      updatePostDetailCaches(queryClient, postPublicId, clearRepostState);
+      updatePostInInfiniteFeeds(queryClient, postPublicId, clearRepostState);
 
       queryClient.invalidateQueries({
         queryKey: ["post", "publicId", postPublicId],

@@ -3,6 +3,10 @@ import { ICommandHandler } from "../interfaces/command-handler.interface";
 import { ICommand } from "../interfaces/command.interface";
 import { Errors } from "@/utils/errors";
 
+type CommandClass<TCommand extends ICommand> = {
+  new (...args: any[]): TCommand;
+  readonly type?: TCommand["type"];
+};
 
 @injectable()
 export class CommandBus {
@@ -10,26 +14,17 @@ export class CommandBus {
   private handlers = new Map<string, unknown>(); 
 
   private resolveCommandType<TCommand extends ICommand>(
-    commandType: { new(...args: any[]): TCommand },
+    commandType: CommandClass<TCommand>,
   ): TCommand["type"] {
-    try {
-      const probe = new commandType(
-        ...new Array(commandType.length).fill(undefined),
-      );
-      if (typeof probe.type === "string" && probe.type.length > 0) {
-        return probe.type;
-      }
-    } catch (error) {
-      throw Errors.internal(
-        `Could not resolve command type for ${commandType.name}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+    if (typeof commandType.type === "string" && commandType.type.length > 0) {
+      return commandType.type;
     }
 
-    throw Errors.internal(
-      `Could not resolve command type for ${commandType.name}`,
-    );
+    if (typeof commandType.name === "string" && commandType.name.length > 0) {
+      return commandType.name as TCommand["type"];
+    }
+
+    throw Errors.internal(`Could not resolve command type for constructor`);
   }
 
   /**
@@ -44,7 +39,7 @@ export class CommandBus {
     // commandType should be a class constructor that can create instances of TCommand
     // new(...args: any[]) is a constructor signature that takes an array of arguments. 
     // any[] is explicitly required here due to TypeScript constructor variance (unknown[] fails).
-    commandType: { new(...args: any[]): TCommand}, 
+    commandType: CommandClass<TCommand>, 
 
     // An instance of a command handler. 
     // Returns a Promise<TResult> as specified in the ICommandHandler interface.

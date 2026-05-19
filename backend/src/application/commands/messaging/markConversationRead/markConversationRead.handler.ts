@@ -6,7 +6,7 @@ import { UserRepository } from "@/repositories/user.repository";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { MessageStatusUpdatedEvent } from "@/application/events/message/message.event";
-import { Errors, wrapError } from "@/utils/errors";
+import { wrapError } from "@/utils/errors";
 import {
   ensureConversationAccess,
   resolveParticipantPublicIds,

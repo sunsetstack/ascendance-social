@@ -9,13 +9,14 @@ interface SocketProviderProps {
 }
 export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
   const { user, isLoggedIn } = useAuth();
+  const userId = user?.publicId;
 
   // Avoid re-render every time the socket is set
   const socketRef = useRef<Socket | null>(null);
   const [, setReady] = useState(false);
 
   useEffect(() => {
-    if (!isLoggedIn || !user) return;
+    if (!isLoggedIn || !userId) return;
     // in production (nginx), use same origin; in dev, use explicit socket URL or API URL
     const base =
       import.meta.env.VITE_SOCKET_URL ||
@@ -64,7 +65,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       socket.off("disconnect", handleDisconnect);
       socket.disconnect();
     };
-  }, [isLoggedIn, user, user?.publicId]);
+  }, [isLoggedIn, userId]);
 
   return (
     <SocketContext.Provider value={socketRef.current}>

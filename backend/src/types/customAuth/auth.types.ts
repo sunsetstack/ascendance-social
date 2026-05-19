@@ -10,6 +10,7 @@ export interface DecodedUser {
   handle: string;
   username: string;
   isAdmin: boolean;
+  isEmailVerified?: boolean;
   sid?: SessionId;
   jti?: string;
   ver?: number;
@@ -23,11 +24,13 @@ export interface SessionUserClaims {
   handle: string;
   username: string;
   isAdmin: boolean;
+  isEmailVerified: boolean;
 }
 
 export interface AuthSessionRecord {
   sid: SessionId;
   publicId: UserPublicId;
+  isEmailVerified: boolean;
   refreshTokenHash: RefreshTokenHash;
   previousRefreshTokenHash?: RefreshTokenHash;
   previousRefreshTokenGraceUntil?: number;

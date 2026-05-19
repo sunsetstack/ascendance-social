@@ -1,5 +1,4 @@
 import { inject, injectable } from "tsyringe";
-import mongoose from "mongoose";
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { GetPostByPublicIdQuery } from "./getPostByPublicId.query";
 import type {
@@ -13,6 +12,8 @@ import { DTOService } from "@/services/dto.service";
 import { Errors } from "@/utils/errors";
 import { IPost, PostDTO } from "@/types";
 import { TOKENS } from "@/types/tokens";
+import { getPostAuthorCommunityRole } from "./getPostAuthorCommunityRole";
+import { buildPostViewerContext } from "./getPostViewerContext";
 
 @injectable()
 export class GetPostByPublicIdQueryHandler implements IQueryHandler<
@@ -43,94 +44,32 @@ export class GetPostByPublicIdQueryHandler implements IQueryHandler<
 
     const dto = this.dtoService.toPostDTO(post);
 
-    // Check author community role
-    if (post.communityId) {
-      const communityInternalId =
-        post.communityId instanceof mongoose.Types.ObjectId
-          ? post.communityId
-          : (post.communityId as { _id: mongoose.Types.ObjectId })._id; // Handle populated field if necessary
-
-      const authorInternalId = post.author?._id || post.user;
-
-      if (communityInternalId && authorInternalId) {
-        const authorMember =
-          await this.communityMemberRepository.findByCommunityAndUser(
-            communityInternalId.toString(),
-            authorInternalId.toString(),
-          );
-
-        if (
-          authorMember &&
-          (authorMember.role === "admin" || authorMember.role === "moderator")
-        ) {
-          dto.authorCommunityRole = authorMember.role;
-        }
-      }
+    const authorCommunityRole = await getPostAuthorCommunityRole(
+      post,
+      this.communityMemberRepository,
+    );
+    if (authorCommunityRole) {
+      dto.authorCommunityRole = authorCommunityRole;
     }
 
-    // add viewer-specific fields if viewer is logged in
     if (query.viewerPublicId) {
-      const postInternalId = post._id?.toString();
-      const viewerInternalId =
-        await this.userReadRepository.findInternalIdByPublicId(
-          query.viewerPublicId,
-        );
+      const viewerContext = await buildPostViewerContext(
+        post,
+        query.viewerPublicId,
+        {
+          postReadRepository: this.postReadRepository,
+          userReadRepository: this.userReadRepository,
+          favoriteRepository: this.favoriteRepository,
+          postLikeRepository: this.postLikeRepository,
+          communityMemberRepository: this.communityMemberRepository,
+        },
+      );
 
-      if (postInternalId && viewerInternalId) {
-        dto.isLikedByViewer = await this.postLikeRepository.hasUserLiked(
-          postInternalId,
-          viewerInternalId,
-        );
-
-        const favoriteRecord = await this.favoriteRepository.findByUserAndPost(
-          viewerInternalId,
-          postInternalId,
-        );
-        dto.isFavoritedByViewer = !!favoriteRecord;
-
-        // Check if viewer has reposted this post (or the original if viewing a repost)
-        const repostOfDoc = post.repostOf as unknown as
-          | mongoose.Types.ObjectId
-          | { _id: mongoose.Types.ObjectId }
-          | null;
-        const repostCheckTargetId =
-          repostOfDoc instanceof mongoose.Types.ObjectId
-            ? repostOfDoc.toString()
-            : repostOfDoc && "_id" in repostOfDoc
-              ? (repostOfDoc as { _id: mongoose.Types.ObjectId })._id.toString()
-              : postInternalId;
-        const repostCount = await this.postReadRepository.countDocuments({
-          user: new mongoose.Types.ObjectId(viewerInternalId),
-          repostOf: new mongoose.Types.ObjectId(repostCheckTargetId),
-          type: "repost",
-        });
-        dto.isRepostedByViewer = repostCount > 0;
-
-        // Check delete permission
-        const isOwner = post.author.publicId === query.viewerPublicId;
-        let canDelete = isOwner;
-
-        if (!canDelete && post.communityId) {
-          const communityInternalId =
-            post.communityId instanceof mongoose.Types.ObjectId
-              ? post.communityId
-              : (post.communityId as { _id: mongoose.Types.ObjectId })._id; // Handle populated field
-
-          if (communityInternalId) {
-            const member =
-              await this.communityMemberRepository.findByCommunityAndUser(
-                communityInternalId.toString(),
-                viewerInternalId.toString(),
-              );
-            if (
-              member &&
-              (member.role === "admin" || member.role === "moderator")
-            ) {
-              canDelete = true;
-            }
-          }
-        }
-        dto.canDelete = canDelete;
+      if (viewerContext) {
+        dto.isLikedByViewer = viewerContext.isLikedByViewer;
+        dto.isFavoritedByViewer = viewerContext.isFavoritedByViewer;
+        dto.isRepostedByViewer = viewerContext.isRepostedByViewer;
+        dto.canDelete = viewerContext.canDelete;
       }
     }
 
