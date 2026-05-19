@@ -3,7 +3,7 @@ import "reflect-metadata";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { RedisService } from "@/services/redis.service";
-import { PostRepository } from "@/repositories/post.repository";
+import type { IPostWriteRepository } from "@/repositories/interfaces";
 import { UserRepository } from "@/repositories/user.repository";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
@@ -43,8 +43,8 @@ export class ProfileSyncWorker {
   constructor(
     @inject(TOKENS.Services.Redis)
     private readonly redisService: RedisService,
-    @inject(TOKENS.Repositories.Post)
-    private readonly postRepo: PostRepository,
+    @inject(TOKENS.Repositories.PostWrite)
+    private readonly postWriteRepository: IPostWriteRepository,
     @inject(TOKENS.Repositories.User)
     private readonly userRepo: UserRepository,
   ) {}
@@ -184,10 +184,11 @@ export class ProfileSyncWorker {
           continue;
         }
 
-        const modifiedCount = await this.postRepo.updateAuthorSnapshot(
-          userObjectId,
-          snapshotUpdates,
-        );
+        const modifiedCount =
+          await this.postWriteRepository.updateAuthorSnapshot(
+            userObjectId,
+            snapshotUpdates,
+          );
 
         logger.info(
           `[profile-sync] updated ${modifiedCount} posts for user ${userPublicId}:`,

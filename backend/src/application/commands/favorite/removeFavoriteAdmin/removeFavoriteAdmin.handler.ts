@@ -3,15 +3,16 @@ import { RemoveFavoriteAdminCommand } from "./removeFavoriteAdmin.command";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
 import { UserRepository } from "@/repositories/user.repository";
-import { PostRepository } from "@/repositories/post.repository";
+import type { IPostReadRepository } from "@/repositories/interfaces";
 import { Errors, wrapError } from "@/utils/errors";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
-export class RemoveFavoriteAdminCommandHandler
-  implements ICommandHandler<RemoveFavoriteAdminCommand, void>
-{
+export class RemoveFavoriteAdminCommandHandler implements ICommandHandler<
+  RemoveFavoriteAdminCommand,
+  void
+> {
   constructor(
     @inject(TOKENS.Repositories.Favorite)
     private readonly favoriteRepository: FavoriteRepository,
@@ -19,20 +20,22 @@ export class RemoveFavoriteAdminCommandHandler
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.Repositories.User)
     private readonly userRepository: UserRepository,
-    @inject(TOKENS.Repositories.Post)
-    private readonly postRepository: PostRepository,
+    @inject(TOKENS.Repositories.PostRead)
+    private readonly postRepository: IPostReadRepository,
   ) {}
 
   async execute(command: RemoveFavoriteAdminCommand): Promise<void> {
     try {
       const { userPublicId, postPublicId } = command;
 
-      const userId = await this.userRepository.findInternalIdByPublicId(userPublicId);
+      const userId =
+        await this.userRepository.findInternalIdByPublicId(userPublicId);
       if (!userId) {
         throw Errors.notFound("User", userPublicId);
       }
 
-      const postId = await this.postRepository.findInternalIdByPublicId(postPublicId);
+      const postId =
+        await this.postRepository.findInternalIdByPublicId(postPublicId);
       if (!postId) {
         throw Errors.notFound("Post", postPublicId);
       }
@@ -42,7 +45,11 @@ export class RemoveFavoriteAdminCommandHandler
       });
     } catch (error) {
       throw wrapError(error, "InternalServerError", {
-        context: { operation: "removeFavoriteAdmin", userPublicId: command.userPublicId, postPublicId: command.postPublicId },
+        context: {
+          operation: "removeFavoriteAdmin",
+          userPublicId: command.userPublicId,
+          postPublicId: command.postPublicId,
+        },
       });
     }
   }

@@ -1,6 +1,6 @@
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { SearchAllQuery } from "./searchAll.query";
-import { PostRepository } from "@/repositories/post.repository";
+import type { IPostReadRepository } from "@/repositories/interfaces";
 import { TagRepository } from "@/repositories/tag.repository";
 import { UserRepository } from "@/repositories/user.repository";
 import { CommunityRepository } from "@/repositories/community.repository";
@@ -21,12 +21,13 @@ export interface SearchAllResult {
 }
 
 @injectable()
-export class SearchAllQueryHandler
-  implements IQueryHandler<SearchAllQuery, SearchAllResult>
-{
+export class SearchAllQueryHandler implements IQueryHandler<
+  SearchAllQuery,
+  SearchAllResult
+> {
   constructor(
-    @inject(TOKENS.Repositories.Post)
-    private readonly postRepository: PostRepository,
+    @inject(TOKENS.Repositories.PostRead)
+    private readonly postRepository: IPostReadRepository,
     @inject(TOKENS.Repositories.User)
     private readonly userRepository: UserRepository,
     @inject(TOKENS.Repositories.Tag)

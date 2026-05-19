@@ -1,5 +1,4 @@
 import { inject, injectable } from "tsyringe";
-import type { PostRepository } from "@/repositories/post.repository";
 import type { RedisService } from "../redis.service";
 import type { DTOService } from "../dto.service";
 import type { FeedEnrichmentService } from "./feed-enrichment.service";
@@ -18,7 +17,6 @@ export class FeedReadService {
   constructor(
     @inject(TOKENS.Repositories.FeedReadDao)
     private readonly feedReadDao: IFeedReadDao,
-    @inject(TOKENS.Repositories.Post) private postRepository: PostRepository,
     @inject(TOKENS.Services.Redis) private redisService: RedisService,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
     @inject(TOKENS.Services.FeedEnrichment)

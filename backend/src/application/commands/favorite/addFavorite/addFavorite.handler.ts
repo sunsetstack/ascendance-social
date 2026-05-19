@@ -3,7 +3,7 @@ import { AddFavoriteCommand } from "./addFavorite.command";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
 import { UserRepository } from "@/repositories/user.repository";
-import { PostRepository } from "@/repositories/post.repository";
+import type { IPostReadRepository } from "@/repositories/interfaces";
 import { IFavorite } from "@/types";
 import { Errors, wrapError } from "@/utils/errors";
 import { inject, injectable } from "tsyringe";
@@ -11,9 +11,10 @@ import mongoose from "mongoose";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
-export class AddFavoriteCommandHandler
-  implements ICommandHandler<AddFavoriteCommand, void>
-{
+export class AddFavoriteCommandHandler implements ICommandHandler<
+  AddFavoriteCommand,
+  void
+> {
   constructor(
     @inject(TOKENS.Repositories.Favorite)
     private readonly favoriteRepository: FavoriteRepository,
@@ -21,8 +22,8 @@ export class AddFavoriteCommandHandler
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.Repositories.User)
     private readonly userRepository: UserRepository,
-    @inject(TOKENS.Repositories.Post)
-    private readonly postRepository: PostRepository,
+    @inject(TOKENS.Repositories.PostRead)
+    private readonly postRepository: IPostReadRepository,
   ) {}
 
   async execute(command: AddFavoriteCommand): Promise<void> {
@@ -58,7 +59,11 @@ export class AddFavoriteCommandHandler
       });
     } catch (error) {
       throw wrapError(error, "InternalServerError", {
-        context: { operation: "addFavorite", actorPublicId: command.actorPublicId, postPublicId: command.postPublicId },
+        context: {
+          operation: "addFavorite",
+          actorPublicId: command.actorPublicId,
+          postPublicId: command.postPublicId,
+        },
       });
     }
   }

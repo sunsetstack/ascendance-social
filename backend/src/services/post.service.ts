@@ -1,6 +1,6 @@
 import { UserPublicId, asUserPublicId, asPostPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
-import { PostRepository } from "@/repositories/post.repository";
+import type { IPostReadRepository } from "@/repositories/interfaces";
 import { PostLikeRepository } from "@/repositories/postLike.repository";
 import { UserRepository } from "@/repositories/user.repository";
 import { TagRepository } from "@/repositories/tag.repository";
@@ -14,8 +14,8 @@ import { TOKENS } from "@/types/tokens";
 @injectable()
 export class PostService {
   constructor(
-    @inject(TOKENS.Repositories.Post)
-    private readonly postRepository: PostRepository,
+    @inject(TOKENS.Repositories.PostRead)
+    private readonly postRepository: IPostReadRepository,
     @inject(TOKENS.Repositories.PostLike)
     private readonly postLikeRepository: PostLikeRepository,
     @inject(TOKENS.Repositories.User)

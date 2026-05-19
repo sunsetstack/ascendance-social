@@ -32,6 +32,29 @@ export class PostReadRepository
     super(model);
   }
 
+  async searchByText(terms: string[], limit: number = 20): Promise<FeedPost[]> {
+    try {
+      if (!terms.length) return [];
+
+      const searchString = terms.join(" ");
+
+      const pipeline: PipelineStage[] = [
+        { $match: { $text: { $search: searchString } } },
+        { $addFields: { score: { $meta: "textScore" } } },
+        { $sort: { score: { $meta: "textScore" } } },
+        { $limit: limit },
+        ...getStandardLookups(),
+        getStandardProjection(),
+      ];
+
+      return await this.model.aggregate<FeedPost>(pipeline).exec();
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
   async findInternalIdByPublicId(
     publicId: PostPublicId,
   ): Promise<MongoId | null> {

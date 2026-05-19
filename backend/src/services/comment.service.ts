@@ -1,6 +1,9 @@
 import { UserPublicId, PostPublicId, asMongoId } from "@/types/branded";
 import { CommentRepository } from "@/repositories/comment.repository";
-import { PostRepository } from "@/repositories/post.repository";
+import type {
+  IPostReadRepository,
+  IPostWriteRepository,
+} from "@/repositories/interfaces";
 import { UserRepository } from "@/repositories/user.repository";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { Errors } from "@/utils/errors";
@@ -19,8 +22,10 @@ export class CommentService {
   constructor(
     @inject(TOKENS.Repositories.Comment)
     private readonly commentRepository: CommentRepository,
-    @inject(TOKENS.Repositories.Post)
-    private readonly postRepository: PostRepository,
+    @inject(TOKENS.Repositories.PostRead)
+    private readonly postReadRepository: IPostReadRepository,
+    @inject(TOKENS.Repositories.PostWrite)
+    private readonly postWriteRepository: IPostWriteRepository,
     @inject(TOKENS.Repositories.User)
     private readonly userRepository: UserRepository,
     @inject(TOKENS.Repositories.UnitOfWork)
@@ -41,7 +46,7 @@ export class CommentService {
       throw Errors.validation("Comment cannot exceed 500 characters");
     }
 
-    const post = await this.postRepository.findByPublicId(postPublicId);
+    const post = await this.postReadRepository.findByPublicId(postPublicId);
     if (!post) {
       throw Errors.notFound("Post");
     }
@@ -59,7 +64,7 @@ export class CommentService {
       createdCommentId = comment._id.toString();
 
       // increment comment count on post
-      await this.postRepository.updateCommentCount(
+      await this.postWriteRepository.updateCommentCount(
         asMongoId((post._id as mongoose.Types.ObjectId).toString()),
         1,
       );
@@ -92,7 +97,7 @@ export class CommentService {
     parentId: string | null = null,
   ) {
     // Validate post exists
-    const post = await this.postRepository.findByPublicId(postPublicId);
+    const post = await this.postReadRepository.findByPublicId(postPublicId);
     if (!post) {
       throw Errors.notFound("Post");
     }
@@ -161,13 +166,13 @@ export class CommentService {
       throw Errors.notFound("Comment");
     }
 
-    const post = await this.postRepository.findById(
+    const post = await this.postReadRepository.findById(
       asMongoId(comment.postId.toString()),
     );
     if (!post) {
       throw Errors.notFound("Post");
     }
-    const hydratedPost = await this.postRepository.findByPublicId(
+    const hydratedPost = await this.postReadRepository.findByPublicId(
       post.publicId,
     );
     const effectivePost = hydratedPost ?? post;
@@ -187,7 +192,7 @@ export class CommentService {
       await this.commentRepository.deleteComment(commentId);
 
       // decrement comment count on post
-      await this.postRepository.updateCommentCount(
+      await this.postWriteRepository.updateCommentCount(
         asMongoId(comment.postId.toString()),
         -1,
       );
