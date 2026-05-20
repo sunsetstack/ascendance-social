@@ -64,6 +64,11 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
     { ids: mongoose.Types.ObjectId[]; expiresAt: number }
   >();
 
+  private readonly tagIdCachePromises = new Map<
+    string,
+    Promise<mongoose.Types.ObjectId[]>
+  >();
+
   private readonly TAG_ID_CACHE_TTL_MS = 5 * 60 * 1000;
 
   async getFeedForUserCoreWithCursor(
@@ -226,7 +231,8 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       const data = results.map(({ _id, ...rest }) => rest);
       return { data, hasMore, nextCursor };
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
           "failed to generate cursor feed",
       );
     }
@@ -329,7 +335,8 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       const currentPage = Math.floor(skip / limit) + 1;
       return { data: results, total, page: currentPage, limit, totalPages };
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
           "failed to build ranked feed",
       );
     }
@@ -449,7 +456,8 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       return { data: results, total, page: currentPage, limit, totalPages };
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
           "failed to build trending feed",
       );
     }
@@ -496,7 +504,8 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       console.info(`New feed generated with ${results.length} results`);
       return { data: results, total, page: currentPage, limit, totalPages };
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
           "failed to build new feed",
       );
     }
@@ -580,7 +589,8 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       return await this.model.aggregate<TrendingTag>(pipeline).exec();
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
           "failed to compute trending tags",
       );
     }
@@ -704,7 +714,8 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       return { data, hasMore, nextCursor, prevCursor };
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
           "failed to build cursor-paginated feed",
       );
     }
@@ -885,7 +896,8 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       const data = results.map(({ _id, ...rest }) => rest);
       return { data, hasMore, nextCursor, prevCursor };
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
           "failed to build cursor-paginated trending feed",
       );
     }
@@ -1060,7 +1072,8 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       const data = results.map(({ _id, ...rest }) => rest);
       return { data, hasMore, nextCursor, prevCursor };
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
           "failed to build cursor-paginated ranked feed",
       );
     }
@@ -1124,7 +1137,8 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       return { data, total, page, limit, totalPages };
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
           "failed to fetch feed with facet",
       );
     }
@@ -1253,7 +1267,8 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       return { data, total, page, limit, totalPages };
     } catch (error: unknown) {
-      throw Errors.database((error instanceof Error ? error.message : String(error)) ??
+      throw Errors.database(
+        (error instanceof Error ? error.message : String(error)) ??
           "failed to fetch trending feed with facet",
       );
     }
@@ -1440,14 +1455,28 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       return cached.ids;
     }
 
-    const tagDocs = await this.tagRepository.findByTags(tagNames);
-    const ids = tagDocs.map((doc) =>
-      this.normalizeObjectId(doc._id, "tag._id"),
-    );
-    this.tagIdCacheStore.set(cacheKey, {
-      ids,
-      expiresAt: Date.now() + this.TAG_ID_CACHE_TTL_MS,
-    });
-    return ids;
+    const inFlight = this.tagIdCachePromises.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const fetchPromise = this.tagRepository
+      .findByTags(tagNames)
+      .then((tagDocs) =>
+        tagDocs.map((doc) => this.normalizeObjectId(doc._id, "tag._id")),
+      )
+      .then((ids) => {
+        this.tagIdCacheStore.set(cacheKey, {
+          ids,
+          expiresAt: Date.now() + this.TAG_ID_CACHE_TTL_MS,
+        });
+        return ids;
+      })
+      .finally(() => {
+        this.tagIdCachePromises.delete(cacheKey);
+      });
+
+    this.tagIdCachePromises.set(cacheKey, fetchPromise);
+    return fetchPromise;
   }
 }

@@ -35,6 +35,7 @@ import { FeedReadService } from "@/services/feed/feed-read.service";
 import { FeedInteractionService } from "@/services/feed/feed-interaction.service";
 import { FeedMetaService } from "@/services/feed/feed-meta.service";
 import { FeedFanoutService } from "@/services/feed/feed-fanout.service";
+import { AuthMiddlewareService } from "@/middleware/authentication.middleware";
 import { TOKENS } from "@/types/tokens";
 
 export function registerServices(): void {
@@ -55,6 +56,10 @@ export function registerServices(): void {
   container.registerSingleton(TOKENS.Services.Metrics, MetricsService);
   container.registerSingleton(TOKENS.Services.Telemetry, TelemetryService);
   container.registerSingleton(TOKENS.Services.Auth, AuthService);
+  container.registerSingleton(
+    TOKENS.Services.AuthMiddleware,
+    AuthMiddlewareService,
+  );
   container.registerSingleton(TOKENS.Services.AuthSession, AuthSessionService);
   container.registerSingleton(TOKENS.Services.BloomFilter, BloomFilterService);
   container.registerSingleton(TOKENS.Services.Image, ImageService);

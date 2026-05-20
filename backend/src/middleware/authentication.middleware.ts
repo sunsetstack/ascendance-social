@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction, RequestHandler } from "express";
 import jwt from "jsonwebtoken";
-import { container } from "tsyringe";
+import { inject, injectable } from "tsyringe";
 import {
   Errors,
   ErrorCode,
@@ -289,106 +289,117 @@ export const forgotPasswordEmailRateLimit = rateLimit({
   },
 });
 
-let userReadRepository: IUserReadRepository | null = null;
+@injectable()
+export class AuthMiddlewareService {
+  private readonly authenticationMiddleware: AuthenticationMiddleware;
 
-function getUserReadRepository(): IUserReadRepository {
-  if (!userReadRepository) {
-    userReadRepository = container.resolve<IUserReadRepository>(
-      TOKENS.Repositories.UserRead,
+  constructor(
+    @inject(TOKENS.Services.AuthSession)
+    private readonly authSessionService: AuthSessionService,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
+    @inject(TOKENS.Services.Metrics)
+    private readonly metricsService: MetricsService,
+  ) {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) throw Errors.config("JWT_SECRET not configured");
+
+    this.authenticationMiddleware = new AuthenticationMiddleware(
+      new BearerTokenStrategy(secret, this.authSessionService),
+      this.userReadRepository,
+      this.metricsService,
     );
   }
 
-  return userReadRepository;
-}
+  required(): RequestHandler {
+    return this.authenticationMiddleware.handle();
+  }
 
-// Enhanced admin-only middleware (requires authentication first)
-export const enhancedAdminOnly = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) => {
-  try {
-    const decodedUser = req.decodedUser;
+  optional(): RequestHandler {
+    return this.authenticationMiddleware.handleOptional();
+  }
 
-    // Check authentication (should already be done by auth middleware)
-    if (!decodedUser) {
-      logger.warn(
-        `[SECURITY] Unauthenticated admin access attempt from IP: ${req.ip}`,
-      );
-      return res.status(401).json({ error: "Authentication required" });
-    }
+  adminOnly(): RequestHandler {
+    return async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const decodedUser = req.decodedUser;
 
-    // Check admin privileges from JWT
-    if (!decodedUser.isAdmin) {
-      logger.warn(
-        `[SECURITY] Unauthorized admin access attempt by user ${decodedUser.username} (${decodedUser.publicId}) from IP ${req.ip}`,
-      );
-      return res.status(403).json({ error: "Admin privileges required" });
-    }
+        if (!decodedUser) {
+          logger.warn(
+            `[SECURITY] Unauthenticated admin access attempt from IP: ${req.ip}`,
+          );
+          return res.status(401).json({ error: "Authentication required" });
+        }
 
-    // Fetch fresh user data from DB to check current ban status
-    // JWT may have been issued before user was banned
-    const user = await getUserReadRepository().findByPublicId(
-      decodedUser.publicId,
-    );
+        if (!decodedUser.isAdmin) {
+          logger.warn(
+            `[SECURITY] Unauthorized admin access attempt by user ${decodedUser.username} (${decodedUser.publicId}) from IP ${req.ip}`,
+          );
+          return res.status(403).json({ error: "Admin privileges required" });
+        }
 
-    if (!user) {
-      logger.warn(
-        `[SECURITY] Admin user ${decodedUser.publicId} not found in database`,
-      );
-      return res.status(401).json({ error: "User not found" });
-    }
-
-    // Check if user is banned (from fresh DB data)
-    if (user.isBanned) {
-      logger.warn(
-        `[SECURITY] Banned admin ${decodedUser.username} attempted access from IP ${req.ip}`,
-      );
-      return res.status(403).json({ error: "Account banned" });
-    }
-
-    // Verify admin status from DB as well (in case JWT was issued before admin revocation)
-    if (!user.isAdmin) {
-      logger.warn(
-        `[SECURITY] User ${decodedUser.username} has admin JWT but is no longer admin in DB`,
-      );
-      return res.status(403).json({ error: "Admin privileges required" });
-    }
-
-    const adminEmailsEnv = process.env.ADMIN_EMAILS;
-    if (adminEmailsEnv) {
-      const allowedEmails = adminEmailsEnv
-        .split(",")
-        .map((e) => e.trim().toLowerCase())
-        .filter((e) => e.length > 0);
-
-      if (user.email && !allowedEmails.includes(user.email.toLowerCase())) {
-        logger.warn(
-          `[SECURITY] Admin access denied for ${user.email} (not in ADMIN_EMAILS allowlist) from IP ${req.ip}`,
+        const user = await this.userReadRepository.findByPublicId(
+          decodedUser.publicId,
         );
-        return res.status(403).json({ error: "Admin privileges restricted" });
+
+        if (!user) {
+          logger.warn(
+            `[SECURITY] Admin user ${decodedUser.publicId} not found in database`,
+          );
+          return res.status(401).json({ error: "User not found" });
+        }
+
+        if (user.isBanned) {
+          logger.warn(
+            `[SECURITY] Banned admin ${decodedUser.username} attempted access from IP ${req.ip}`,
+          );
+          return res.status(403).json({ error: "Account banned" });
+        }
+
+        if (!user.isAdmin) {
+          logger.warn(
+            `[SECURITY] User ${decodedUser.username} has admin JWT but is no longer admin in DB`,
+          );
+          return res.status(403).json({ error: "Admin privileges required" });
+        }
+
+        const adminEmailsEnv = process.env.ADMIN_EMAILS;
+        if (adminEmailsEnv) {
+          const allowedEmails = adminEmailsEnv
+            .split(",")
+            .map((e) => e.trim().toLowerCase())
+            .filter((e) => e.length > 0);
+
+          if (user.email && !allowedEmails.includes(user.email.toLowerCase())) {
+            logger.warn(
+              `[SECURITY] Admin access denied for ${user.email} (not in ADMIN_EMAILS allowlist) from IP ${req.ip}`,
+            );
+            return res
+              .status(403)
+              .json({ error: "Admin privileges restricted" });
+          }
+        }
+
+        logger.info(
+          `[ADMIN_AUDIT] ${decodedUser.username} (${decodedUser.publicId}) performing ${req.method} ${req.path} from IP ${req.ip}`,
+        );
+
+        req.adminContext = {
+          adminId: decodedUser.publicId,
+          adminUsername: decodedUser.username,
+          timestamp: new Date(),
+          ip: req.ip,
+          userAgent: req.get("User-Agent"),
+        };
+
+        next();
+      } catch (error) {
+        logger.error("[ADMIN_SECURITY] Admin middleware error:", error);
+        return res.status(500).json({ error: "Internal server error" });
       }
-    }
-
-    logger.info(
-      `[ADMIN_AUDIT] ${decodedUser.username} (${decodedUser.publicId}) performing ${req.method} ${req.path} from IP ${req.ip}`,
-    );
-
-    // Add admin context to request
-    req.adminContext = {
-      adminId: decodedUser.publicId,
-      adminUsername: decodedUser.username,
-      timestamp: new Date(),
-      ip: req.ip,
-      userAgent: req.get("User-Agent"),
     };
-
-    next();
-  } catch (error) {
-    logger.error("[ADMIN_SECURITY] Admin middleware error:", error);
-    return res.status(500).json({ error: "Internal server error" });
   }
-};
+}
 
 // Admin action validation middleware
 export const adminActionValidation = (requiredFields: string[] = []) => {
@@ -416,60 +427,3 @@ export const adminActionValidation = (requiredFields: string[] = []) => {
     next();
   };
 };
-
-// Factory for common authentication types
-export class AuthFactory {
-  private static resolveDependencies(): {
-    authSessionService: AuthSessionService;
-    userReadRepository: IUserReadRepository;
-    metricsService: MetricsService | null;
-  } {
-    let metricsService: MetricsService | null = null;
-
-    try {
-      metricsService = container.resolve<MetricsService>(
-        TOKENS.Services.Metrics,
-      );
-    } catch {
-      metricsService = null;
-    }
-
-    return {
-      authSessionService: container.resolve<AuthSessionService>(
-        TOKENS.Services.AuthSession,
-      ),
-      userReadRepository: container.resolve<IUserReadRepository>(
-        TOKENS.Repositories.UserRead,
-      ),
-      metricsService,
-    };
-  }
-
-  static bearerToken(): AuthenticationMiddleware {
-    const secret = process.env.JWT_SECRET;
-    if (!secret) throw Errors.config("JWT_SECRET not configured");
-
-    const { authSessionService, userReadRepository, metricsService } =
-      this.resolveDependencies();
-
-    return new AuthenticationMiddleware(
-      new BearerTokenStrategy(secret, authSessionService),
-      userReadRepository,
-      metricsService,
-    );
-  }
-
-  static optionalBearerToken(): AuthenticationMiddleware {
-    const secret = process.env.JWT_SECRET;
-    if (!secret) throw Errors.config("JWT_SECRET not configured");
-
-    const { authSessionService, userReadRepository, metricsService } =
-      this.resolveDependencies();
-
-    return new AuthenticationMiddleware(
-      new BearerTokenStrategy(secret, authSessionService),
-      userReadRepository,
-      metricsService,
-    );
-  }
-}

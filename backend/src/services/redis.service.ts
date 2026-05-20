@@ -1149,6 +1149,34 @@ export class RedisService {
     return this.feedModule.zremRangeByScore(key, min, max);
   }
 
+  async markConversationPresence(
+    userId: string,
+    conversationId: string,
+    socketId: string,
+    ttlSeconds: number,
+  ): Promise<void> {
+    const key = `active_conversation:${userId}:${conversationId}`;
+    await this.client.sAdd(key, socketId);
+    await this.client.expire(key, ttlSeconds);
+  }
+
+  async clearConversationPresence(
+    userId: string,
+    conversationId: string,
+    socketId: string,
+  ): Promise<void> {
+    const key = `active_conversation:${userId}:${conversationId}`;
+    await this.client.sRem(key, socketId);
+  }
+
+  async isConversationActive(
+    userId: string,
+    conversationId: string,
+  ): Promise<boolean> {
+    const key = `active_conversation:${userId}:${conversationId}`;
+    return (await this.client.sCard(key)) > 0;
+  }
+
   async expire(key: string, seconds: number): Promise<boolean> {
     return this.feedModule.expire(key, seconds);
   }

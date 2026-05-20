@@ -1,7 +1,9 @@
 import { UserPublicId, asPostPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
-import { PostRepository } from "@/repositories/post.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type {
+  IPostReadRepository,
+  IUserReadRepository,
+} from "@/repositories/interfaces";
 import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
 import { UserActionRepository } from "@/repositories/userAction.repository";
 import { RedisService } from "../redis.service";
@@ -13,8 +15,10 @@ import { TOKENS } from "@/types/tokens";
 @injectable()
 export class FeedInteractionService {
   constructor(
-    @inject(TOKENS.Repositories.Post) private postRepository: PostRepository,
-    @inject(TOKENS.Repositories.User) private userRepository: UserRepository,
+    @inject(TOKENS.Repositories.PostRead)
+    private postReadRepository: IPostReadRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UserPreference)
     private userPreferenceRepository: UserPreferenceRepository,
     @inject(TOKENS.Repositories.UserAction)
@@ -32,7 +36,7 @@ export class FeedInteractionService {
       `Running recordInteraction... for ${userPublicId}, actionType: ${actionType}, targetId: ${targetIdentifier}, tags: ${tags}`,
     );
 
-    const user = await this.userRepository.findByPublicId(userPublicId);
+    const user = await this.userReadRepository.findByPublicId(userPublicId);
     if (!user) throw Errors.notFound("User not found");
 
     let internalTargetId = targetIdentifier;
@@ -43,7 +47,7 @@ export class FeedInteractionService {
       actionType === "comment_deleted"
     ) {
       const sanitized = targetIdentifier.replace(/\.[a-z0-9]{2,5}$/i, "");
-      const post = await this.postRepository.findByPublicId(
+      const post = await this.postReadRepository.findByPublicId(
         asPostPublicId(sanitized),
       );
       if (post) internalTargetId = String(post._id);

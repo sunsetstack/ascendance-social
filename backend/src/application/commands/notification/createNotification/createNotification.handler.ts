@@ -1,7 +1,7 @@
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { CreateNotificationCommand } from "./createNotification.command";
 import { NotificationRepository } from "@/repositories/notification.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import { RedisService } from "@/services/redis.service";
 import { WebSocketServer } from "@/server/socketServer";
 import { INotification, NotificationPlain } from "@/types";
@@ -30,8 +30,8 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
     private readonly webSocketServer: WebSocketServer,
     @inject(TOKENS.Repositories.Notification)
     private readonly notificationRepository: NotificationRepository,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Services.Redis)
     private readonly redisService: RedisService,
   ) {}
@@ -71,7 +71,7 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
         actorPublicId !== SystemActor.id
       ) {
         try {
-          const actor = await this.userRepository.findByPublicId(
+          const actor = await this.userReadRepository.findByPublicId(
             asUserPublicId(actorPublicId),
           );
           if (actor) {

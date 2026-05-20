@@ -1,6 +1,7 @@
 export const TOKENS = {
   Controllers: {
     AdminUser: "AdminUserController",
+    Auth: "AuthController",
     Comment: "CommentController",
     Community: "CommunityController",
     Favorite: "FavoriteController",
@@ -9,8 +10,11 @@ export const TOKENS = {
     Messaging: "MessagingController",
     Notification: "NotificationController",
     Post: "PostController",
+    Profile: "ProfileController",
     Search: "SearchController",
+    Social: "SocialController",
     User: "UserController",
+    UserQuery: "UserQueryController",
   },
   Models: {
     CommentLike: "CommentLikeModel",
@@ -157,7 +161,6 @@ export const TOKENS = {
     Outbox: "OutboxRepository",
     PostLike: "PostLikeRepository",
     PostRead: "PostReadRepository",
-    Post: "PostRepository",
     PostView: "PostViewRepository",
     PostWrite: "PostWriteRepository",
     RequestLog: "RequestLogRepository",
@@ -166,7 +169,6 @@ export const TOKENS = {
     UserAction: "UserActionRepository",
     UserPreference: "UserPreferenceRepository",
     UserRead: "UserReadRepository",
-    User: "UserRepository",
     UserWrite: "UserWriteRepository",
   },
   Routes: {
@@ -186,6 +188,7 @@ export const TOKENS = {
   },
   Services: {
     Auth: "AuthService",
+    AuthMiddleware: "AuthMiddlewareService",
     AuthSession: "AuthSessionService",
     BloomFilter: "BloomFilterService",
     Comment: "CommentService",

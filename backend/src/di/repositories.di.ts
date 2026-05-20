@@ -1,9 +1,7 @@
 import { container } from "tsyringe";
 
 import { UnitOfWork } from "@/database/UnitOfWork";
-import { UserRepository } from "@/repositories/user.repository";
 import { ImageRepository } from "@/repositories/image.repository";
-import { PostRepository } from "@/repositories/post.repository";
 import { PostLikeRepository } from "@/repositories/postLike.repository";
 import { PostViewRepository } from "@/repositories/postView.repository";
 import { CommentRepository } from "@/repositories/comment.repository";
@@ -30,9 +28,7 @@ import { TOKENS } from "@/types/tokens";
 
 export function registerRepositories(): void {
   container.registerSingleton(TOKENS.Repositories.UnitOfWork, UnitOfWork);
-  container.registerSingleton(TOKENS.Repositories.User, UserRepository);
   container.registerSingleton(TOKENS.Repositories.Image, ImageRepository);
-  container.registerSingleton(TOKENS.Repositories.Post, PostRepository);
   container.registerSingleton(TOKENS.Repositories.PostLike, PostLikeRepository);
   container.registerSingleton(TOKENS.Repositories.PostView, PostViewRepository);
   container.registerSingleton(TOKENS.Repositories.Comment, CommentRepository);

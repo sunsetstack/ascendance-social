@@ -2,7 +2,7 @@ import { ICommandHandler } from "@/application/common/interfaces/command-handler
 import { MarkConversationReadCommand } from "./markConversationRead.command";
 import { ConversationRepository } from "@/repositories/conversation.repository";
 import { MessageRepository } from "@/repositories/message.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { MessageStatusUpdatedEvent } from "@/application/events/message/message.event";
@@ -24,8 +24,8 @@ export class MarkConversationReadCommandHandler implements ICommandHandler<
     private readonly conversationRepository: ConversationRepository,
     @inject(TOKENS.Repositories.Message)
     private readonly messageRepository: MessageRepository,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
@@ -38,7 +38,7 @@ export class MarkConversationReadCommandHandler implements ICommandHandler<
       const { conversation, userInternalId, participantIds } =
         await ensureConversationAccess(
           this.conversationRepository,
-          this.userRepository,
+          this.userReadRepository,
           userPublicId,
           conversationPublicId,
         );
@@ -55,7 +55,7 @@ export class MarkConversationReadCommandHandler implements ICommandHandler<
         );
 
         const participantPublicIds = await resolveParticipantPublicIds(
-          this.userRepository,
+          this.userReadRepository,
           participantIds,
         );
 

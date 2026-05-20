@@ -4,7 +4,10 @@ import { ICommandHandler } from "@/application/common/interfaces/command-handler
 import { CreateCommunityCommand } from "./createCommunity.command";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type {
+  IUserReadRepository,
+  IUserWriteRepository,
+} from "@/repositories/interfaces";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { Errors } from "@/utils/errors";
 import { generateSlug } from "@/utils/helpers";
@@ -24,7 +27,10 @@ export class CreateCommunityCommandHandler implements ICommandHandler<
     private communityRepository: CommunityRepository,
     @inject(CommunityMemberRepository)
     private communityMemberRepository: CommunityMemberRepository,
-    @inject(UserRepository) private userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
+    @inject(TOKENS.Repositories.UserWrite)
+    private readonly userWriteRepository: IUserWriteRepository,
     @inject(UnitOfWork) private uow: UnitOfWork,
     @inject(TOKENS.Services.ImageStorage)
     private readonly imageStorageService: IImageStorageService,
@@ -33,7 +39,7 @@ export class CreateCommunityCommandHandler implements ICommandHandler<
   async execute(command: CreateCommunityCommand): Promise<ICommunity> {
     const { name, description, creatorId, avatarBuffer } = command;
 
-    const user = await this.userRepository.findByPublicId(
+    const user = await this.userReadRepository.findByPublicId(
       asUserPublicId(creatorId),
     );
     if (!user) {
@@ -94,7 +100,7 @@ export class CreateCommunityCommandHandler implements ICommandHandler<
         });
 
         // 3. Update User Cache
-        await this.userRepository.update(asMongoId(userId.toString()), {
+        await this.userWriteRepository.update(asMongoId(userId.toString()), {
           $push: {
             joinedCommunities: {
               $each: [

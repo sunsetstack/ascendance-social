@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import express, { Application } from "express";
+import compression from "compression";
 import cookieParser from "cookie-parser";
 import http from "http";
 import cors from "cors";
@@ -18,6 +19,7 @@ import {
   detailedRequestLogging,
   logBehaviour,
 } from "../middleware/logMiddleware";
+import { correlationIdMiddleware } from "../middleware/correlationId.middleware";
 import { requestLogger } from "../middleware/requestLogger";
 import { NotificationRoutes } from "../routes/notification.routes";
 import { FeedRoutes } from "../routes/feed.routes";
@@ -63,8 +65,10 @@ export class Server {
     @inject(FeedRoutes) private readonly feedRoutes: FeedRoutes,
     @inject(FavoriteRoutes) private readonly favoriteRoutes: FavoriteRoutes,
     @inject(MessagingRoutes) private readonly messagingRoutes: MessagingRoutes,
-    @inject(TOKENS.Routes.Metrics) private readonly metricsRoutes: MetricsRoutes,
-    @inject(TOKENS.Services.Metrics) private readonly metricsService: MetricsService,
+    @inject(TOKENS.Routes.Metrics)
+    private readonly metricsRoutes: MetricsRoutes,
+    @inject(TOKENS.Services.Metrics)
+    private readonly metricsService: MetricsService,
     @inject(CommunityRoutes) private readonly communityRoutes: CommunityRoutes,
     @inject(TOKENS.Routes.Telemetry)
     private readonly telemetryRoutes: TelemetryRoutes,
@@ -80,11 +84,14 @@ export class Server {
    */
   private initializeMiddlewares(): void {
     this.app.set("trust proxy", this.resolveTrustProxySetting());
+    this.app.use(correlationIdMiddleware);
     this.app.use(helmet());
 
     const corsOptions = buildCorsOptions();
     this.app.use(cors(corsOptions));
     this.app.options("*", cors(corsOptions));
+
+    this.app.use(compression());
 
     // Rate Limiting setup
     const limiter = rateLimit({

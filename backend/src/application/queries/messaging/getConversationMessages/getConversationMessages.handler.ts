@@ -2,7 +2,7 @@ import { IQueryHandler } from "@/application/common/interfaces/query-handler.int
 import { GetConversationMessagesQuery } from "./getConversationMessages.query";
 import { ConversationRepository } from "@/repositories/conversation.repository";
 import { MessageRepository } from "@/repositories/message.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { DTOService } from "@/services/dto.service";
 import { EventBus } from "@/application/common/buses/event.bus";
@@ -26,15 +26,17 @@ export class GetConversationMessagesQueryHandler implements IQueryHandler<
     private readonly conversationRepository: ConversationRepository,
     @inject(TOKENS.Repositories.Message)
     private readonly messageRepository: MessageRepository,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
   ) {}
 
-  async execute(query: GetConversationMessagesQuery): Promise<PaginatedMessageResult> {
+  async execute(
+    query: GetConversationMessagesQuery,
+  ): Promise<PaginatedMessageResult> {
     try {
       const {
         userPublicId,
@@ -46,7 +48,7 @@ export class GetConversationMessagesQueryHandler implements IQueryHandler<
       const { conversation, userInternalId, participantIds } =
         await ensureConversationAccess(
           this.conversationRepository,
-          this.userRepository,
+          this.userReadRepository,
           userPublicId,
           conversationPublicId,
         );
@@ -64,7 +66,7 @@ export class GetConversationMessagesQueryHandler implements IQueryHandler<
           }
 
           const participantPublicIds = await resolveParticipantPublicIds(
-            this.userRepository,
+            this.userReadRepository,
             participantIds,
           );
 

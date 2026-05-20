@@ -4,7 +4,7 @@ import { performance } from "perf_hooks";
 import type { RedisClientType } from "redis";
 import { RedisService } from "@/services/redis.service";
 import { asPostPublicId } from "@/types/branded";
-import { PostRepository } from "@/repositories/post.repository";
+import type { IPostReadRepository } from "@/repositories/interfaces";
 import { FeedPost } from "@/types";
 import { logger } from "@/utils/winston";
 import type { IFeedReadDao } from "@/repositories/interfaces";
@@ -71,8 +71,8 @@ export class TrendingWorker {
     private readonly feedReadDao: IFeedReadDao,
     @inject(TOKENS.Services.Redis)
     private readonly redisService: RedisService,
-    @inject(TOKENS.Repositories.Post)
-    private readonly postRepo: PostRepository,
+    @inject(TOKENS.Repositories.PostRead)
+    private readonly postReadRepository: IPostReadRepository,
   ) {}
 
   /** initialize dependencies and create consumer group if necessary */
@@ -240,9 +240,10 @@ export class TrendingWorker {
         try {
           const postIds = chunk.map(([postId]) => postId);
 
-          const posts: FeedPost[] = await this.postRepo.findPostsByPublicIds(
-            postIds.map(asPostPublicId),
-          );
+          const posts: FeedPost[] =
+            await this.postReadRepository.findPostsByPublicIds(
+              postIds.map(asPostPublicId),
+            );
           const postMap = new Map<string, FeedPost>();
           for (const p of posts) {
             postMap.set(p.publicId, p);

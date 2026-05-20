@@ -1,7 +1,7 @@
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { DeleteMessageCommand } from "./deleteMessage.command";
 import { MessageRepository } from "@/repositories/message.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { MessageAttachmentsDeletedEvent } from "@/application/events/message/message.event";
@@ -16,14 +16,15 @@ import {
 } from "@/application/messaging/messaging-support";
 
 @injectable()
-export class DeleteMessageCommandHandler
-  implements ICommandHandler<DeleteMessageCommand, void>
-{
+export class DeleteMessageCommandHandler implements ICommandHandler<
+  DeleteMessageCommand,
+  void
+> {
   constructor(
     @inject(TOKENS.Repositories.Message)
     private readonly messageRepository: MessageRepository,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
@@ -34,7 +35,7 @@ export class DeleteMessageCommandHandler
       const { userPublicId, messageId } = command;
 
       const userInternalId = await requireUserInternalId(
-        this.userRepository,
+        this.userReadRepository,
         userPublicId,
       );
       const message = await requireMessage(this.messageRepository, messageId);
@@ -66,13 +67,10 @@ export class DeleteMessageCommandHandler
             })
             .filter((id): id is string => !!id) || [];
 
-        await this.messageRepository.updateMessage(
-          messageId,
-          {
-            body: "message deleted by user",
-            attachments: [],
-          },
-        );
+        await this.messageRepository.updateMessage(messageId, {
+          body: "message deleted by user",
+          attachments: [],
+        });
 
         if (attachmentPublicIds.length > 0) {
           await this.eventBus.queueTransactional(
@@ -81,7 +79,7 @@ export class DeleteMessageCommandHandler
         }
       });
     } catch (error) {
-      if (error instanceof Error && error.name === 'AppError') throw error;
+      if (error instanceof Error && error.name === "AppError") throw error;
       throw wrapError(error, "InternalServerError", {
         context: { operation: "deleteMessage" },
       });
