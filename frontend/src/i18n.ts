@@ -219,7 +219,7 @@ i18n
 		},
 
 		interpolation: {
-			escapeValue: true,
+			escapeValue: false,
 		},
 	});
 
