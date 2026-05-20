@@ -1,35 +1,40 @@
-import { Router, Request, Response, text } from "express";
+import { Router, Request, Response, RequestHandler, text } from "express";
 import { injectable, inject } from "tsyringe";
 import { TelemetryService } from "@/services/telemetry.service";
 import { TOKENS } from "@/types/tokens";
 import { logger } from "@/utils/winston";
 import { telemetryBatchSchema } from "@/utils/schemas/telemetry.schemas";
 import {
-  AuthFactory,
+  AuthMiddlewareService,
   adminRateLimit,
-  enhancedAdminOnly,
 } from "../middleware/authentication.middleware";
 
 @injectable()
 export class TelemetryRoutes {
   private readonly router: Router;
+  private readonly auth: RequestHandler;
+  private readonly optionalAuth: RequestHandler;
+  private readonly adminOnly: RequestHandler;
 
   constructor(
     @inject(TOKENS.Services.Telemetry)
     private readonly telemetryService: TelemetryService,
+    @inject(TOKENS.Services.AuthMiddleware)
+    authMiddlewareService: AuthMiddlewareService,
   ) {
     this.router = Router();
+    this.auth = authMiddlewareService.required();
+    this.optionalAuth = authMiddlewareService.optional();
+    this.adminOnly = authMiddlewareService.adminOnly();
     this.initializeRoutes();
   }
 
   private initializeRoutes(): void {
-    const optionalAuth = AuthFactory.optionalBearerToken().handleOptional();
-
     // receive telemetry events from frontend
     // use text() middleware to handle sendBeacon which sends as text/plain
     this.router.post(
       "/",
-      optionalAuth,
+      this.optionalAuth,
       text({ type: "*/*", limit: "100kb" }),
       async (req: Request, res: Response) => {
         try {
@@ -70,12 +75,11 @@ export class TelemetryRoutes {
     );
 
     // get aggregated metrics
-    const auth = AuthFactory.bearerToken().handle();
     this.router.get(
       "/summary",
-      auth,
+      this.auth,
       adminRateLimit,
-      enhancedAdminOnly,
+      this.adminOnly,
       async (_req: Request, res: Response) => {
         try {
           const summary = await this.telemetryService.getSummary();

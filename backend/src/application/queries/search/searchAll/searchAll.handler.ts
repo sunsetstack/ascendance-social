@@ -1,8 +1,10 @@
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { SearchAllQuery } from "./searchAll.query";
-import { PostRepository } from "@/repositories/post.repository";
+import type {
+  IPostReadRepository,
+  IUserReadRepository,
+} from "@/repositories/interfaces";
 import { TagRepository } from "@/repositories/tag.repository";
-import { UserRepository } from "@/repositories/user.repository";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { PostDTO } from "@/types";
 import { wrapError } from "@/utils/errors";
@@ -21,14 +23,15 @@ export interface SearchAllResult {
 }
 
 @injectable()
-export class SearchAllQueryHandler
-  implements IQueryHandler<SearchAllQuery, SearchAllResult>
-{
+export class SearchAllQueryHandler implements IQueryHandler<
+  SearchAllQuery,
+  SearchAllResult
+> {
   constructor(
-    @inject(TOKENS.Repositories.Post)
-    private readonly postRepository: PostRepository,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.PostRead)
+    private readonly postRepository: IPostReadRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.Tag)
     private readonly tagRepository: TagRepository,
     @inject(TOKENS.Repositories.Community)
@@ -41,7 +44,7 @@ export class SearchAllQueryHandler
       const searchTerms = query.query;
       // Execute independent search queries in parallel
       const [users, communities, tags, textPosts] = await Promise.all([
-        this.userRepository.getAll({ search: searchTerms }),
+        this.userReadRepository.getAll({ search: searchTerms }),
         this.communityRepository.search(searchTerms),
         this.tagRepository.searchTags(searchTerms),
         this.postRepository.searchByText(searchTerms),

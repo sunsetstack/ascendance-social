@@ -1,72 +1,310 @@
+import mongoose, { Model, PipelineStage } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { FeedPost, IPost, PaginationOptions, PaginationResult } from "@/types";
 import type { IPostReadRepository } from "../interfaces/IPostReadRepository";
-import { PostRepository } from "../post.repository";
+import { BaseRepository } from "../base.repository";
 import { TOKENS } from "@/types/tokens";
-import { MongoId, PostPublicId, UserPublicId } from "@/types/branded";
+import {
+  MongoId,
+  PostPublicId,
+  UserPublicId,
+  asMongoId,
+} from "@/types/branded";
+import { Errors } from "@/utils/errors";
+import {
+  buildFacetPipeline,
+  buildSort,
+  getStandardLookups,
+  getStandardProjection,
+  getStandardProjectionFields,
+  normalizeObjectId,
+} from "@/repositories/post-pipeline.helpers";
 
-/**
- * Read-only repository for post queries
- * delegates to the existing PostRepository for now
- * can be pointed to a read replica connection in the future
- */
+type CountFacetResult = { count: number };
+type PaginationFacetResult<T> = { data: T[]; totalCount: CountFacetResult[] };
+
 @injectable()
-export class PostReadRepository implements IPostReadRepository {
-  constructor(
-    @inject(TOKENS.Repositories.Post)
-    private readonly postRepository: PostRepository,
-  ) {}
+export class PostReadRepository
+  extends BaseRepository<IPost>
+  implements IPostReadRepository
+{
+  constructor(@inject(TOKENS.Models.Post) model: Model<IPost>) {
+    super(model);
+  }
 
-  async findById(id: MongoId): Promise<IPost | null> {
-    return this.postRepository.findById(id);
+  async searchByText(terms: string[], limit: number = 20): Promise<FeedPost[]> {
+    try {
+      if (!terms.length) return [];
+
+      const searchString = terms.join(" ");
+
+      const pipeline: PipelineStage[] = [
+        { $match: { $text: { $search: searchString } } },
+        { $addFields: { score: { $meta: "textScore" } } },
+        { $sort: { score: { $meta: "textScore" } } },
+        { $limit: limit },
+        ...getStandardLookups(),
+        getStandardProjection(),
+      ];
+
+      return await this.model.aggregate<FeedPost>(pipeline).exec();
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   async findInternalIdByPublicId(
     publicId: PostPublicId,
   ): Promise<MongoId | null> {
-    return this.postRepository.findInternalIdByPublicId(publicId);
+    const doc = await this.model
+      .findOne({ publicId })
+      .select("_id")
+      .lean()
+      .exec();
+    return doc ? asMongoId(String(doc._id)) : null;
   }
 
   async findOneByPublicId(publicId: PostPublicId): Promise<IPost | null> {
-    return this.postRepository.findOneByPublicId(publicId);
+    try {
+      const session = this.getSession();
+      const query = this.model.findOne({ publicId });
+      if (session) query.session(session);
+      return await query.exec();
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  async findOneByFilter(
+    filter: Record<string, unknown>,
+  ): Promise<IPost | null> {
+    try {
+      return await this.model.findOne(filter).exec();
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   async findByIdWithPopulates(id: MongoId): Promise<IPost | null> {
-    return this.postRepository.findByIdWithPopulates(id);
+    try {
+      const session = this.getSession();
+      const query = this.model
+        .findById(id)
+        .populate("tags", "tag")
+        .populate({ path: "image", select: "_id url publicId slug createdAt" });
+      if (session) query.session(session);
+      return await query.exec();
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   async findByPublicId(publicId: PostPublicId): Promise<IPost | null> {
-    return this.postRepository.findByPublicId(publicId);
+    try {
+      const session = this.getSession();
+      const query = this.model
+        .findOne({ publicId })
+        .select(
+          "publicId user author body slug type repostOf repostCount image tags likesCount commentsCount viewsCount createdAt updatedAt communityId",
+        )
+        .populate("tags", "tag")
+        .populate({ path: "image", select: "_id url publicId slug createdAt" })
+        .populate({ path: "communityId", select: "publicId name slug avatar" })
+        .populate({
+          path: "repostOf",
+          select: "publicId body image user author tags",
+          populate: [
+            { path: "image", select: "_id url publicId slug createdAt" },
+            { path: "tags", select: "tag" },
+            {
+              path: "user",
+              select: "publicId handle username avatar profile displayName",
+            },
+          ],
+        });
+      if (session) query.session(session);
+      return await query.exec();
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   async findBySlug(slug: string): Promise<IPost | null> {
-    return this.postRepository.findBySlug(slug);
+    try {
+      const session = this.getSession();
+      const query = this.model
+        .findOne({ slug })
+        .populate("tags", "tag")
+        .populate({
+          path: "image",
+          select: "url publicId slug createdAt -_id",
+        });
+      if (session) query.session(session);
+      return await query.exec();
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  async findByCommunityId(
+    communityId: string,
+    page: number = 1,
+    limit: number = 20,
+  ): Promise<IPost[]> {
+    const skip = (page - 1) * limit;
+    return this.model
+      .find({ communityId })
+      .sort({ createdAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("image")
+      .exec();
   }
 
   async findPostsByIds(
     ids: MongoId[],
-    viewerPublicId?: UserPublicId,
+    _viewerPublicId?: UserPublicId,
   ): Promise<FeedPost[]> {
-    return this.postRepository.findPostsByIds(ids, viewerPublicId);
+    try {
+      const objectIds = ids.map((id) => normalizeObjectId(id, "id"));
+      const pipeline: PipelineStage[] = [
+        { $match: { _id: { $in: objectIds } } },
+        ...getStandardLookups(),
+        getStandardProjection(),
+      ];
+      return await this.model.aggregate<FeedPost>(pipeline).exec();
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   async findPostsByPublicIds(publicIds: PostPublicId[]): Promise<FeedPost[]> {
-    return this.postRepository.findPostsByPublicIds(publicIds);
+    try {
+      const uniqueIds = Array.from(
+        new Set(
+          publicIds.filter((id) => typeof id === "string" && id.length > 0),
+        ),
+      );
+      if (uniqueIds.length === 0) return [];
+      const pipeline: PipelineStage[] = [
+        { $match: { publicId: { $in: uniqueIds } } },
+        ...getStandardLookups(),
+        getStandardProjection(),
+      ];
+      return await this.model.aggregate<FeedPost>(pipeline).exec();
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   async findByUserPublicId(
     userPublicId: UserPublicId,
     options: PaginationOptions,
   ): Promise<PaginationResult<FeedPost>> {
-    return this.postRepository.findByUserPublicId(userPublicId, options);
+    try {
+      const {
+        page = 1,
+        limit = 20,
+        sortBy = "createdAt",
+        sortOrder = "desc",
+      } = options;
+      const skip = (page - 1) * limit;
+      const sort = buildSort(sortBy, sortOrder);
+
+      const userDoc = await this.model.db
+        .collection("users")
+        .findOne({ publicId: userPublicId }, { projection: { _id: 1 } });
+      if (!userDoc) throw Errors.notFound("User");
+
+      const userId = normalizeObjectId(userDoc._id, "user._id");
+
+      const pipeline: PipelineStage[] = [
+        { $match: { user: userId } },
+        { $sort: sort },
+        {
+          $facet: {
+            data: buildFacetPipeline(
+              { $skip: skip },
+              { $limit: limit },
+              ...getStandardLookups(),
+              { $project: getStandardProjectionFields() },
+            ),
+            totalCount: buildFacetPipeline({ $count: "count" }),
+          },
+        },
+      ];
+
+      const [result] = await this.model
+        .aggregate<PaginationFacetResult<FeedPost>>(pipeline)
+        .exec();
+      const data = result?.data ?? [];
+      const total = result?.totalCount[0]?.count ?? 0;
+      return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
-  async findByCommunityId(
-    communityId: string,
-    page: number,
-    limit: number,
-  ): Promise<IPost[]> {
-    return this.postRepository.findByCommunityId(communityId, page, limit);
+  async findWithPagination(
+    options: PaginationOptions,
+  ): Promise<PaginationResult<FeedPost>> {
+    try {
+      const session = this.getSession();
+      const {
+        page = 1,
+        limit = 20,
+        sortBy = "createdAt",
+        sortOrder = "desc",
+      } = options;
+      const skip = (page - 1) * limit;
+      const sort = buildSort(sortBy, sortOrder);
+
+      const pipeline: PipelineStage[] = [
+        { $sort: sort },
+        {
+          $facet: {
+            data: buildFacetPipeline(
+              { $skip: skip },
+              { $limit: limit },
+              ...getStandardLookups(),
+              getStandardProjection(),
+            ),
+            totalCount: buildFacetPipeline({ $count: "count" }),
+          },
+        },
+      ];
+
+      const aggregate =
+        this.model.aggregate<PaginationFacetResult<FeedPost>>(pipeline);
+      if (session) aggregate.session(session);
+
+      const [result] = await aggregate.exec();
+      const data = result?.data ?? [];
+      const total = result?.totalCount[0]?.count ?? 0;
+      return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   async findByTags(
@@ -78,26 +316,39 @@ export class PostReadRepository implements IPostReadRepository {
       sortOrder?: string;
     },
   ): Promise<PaginationResult<IPost>> {
-    return this.postRepository.findByTags(tagIds, options);
-  }
+    try {
+      const page = options?.page ?? 1;
+      const limit = options?.limit ?? 20;
+      const sortOrder = options?.sortOrder ?? "desc";
+      const sortBy = options?.sortBy ?? "createdAt";
+      const skip = (page - 1) * limit;
+      const sort = buildSort(sortBy, sortOrder);
 
-  async findWithPagination(
-    options: PaginationOptions,
-  ): Promise<PaginationResult<FeedPost>> {
-    return this.postRepository.findWithPagination(options);
+      const [data, total] = await Promise.all([
+        this.model
+          .find({ tags: { $in: tagIds } })
+          .populate("tags", "tag")
+          .populate({ path: "image", select: "url publicId slug -_id" })
+          .sort(sort)
+          .skip(skip)
+          .limit(limit)
+          .exec(),
+        this.model.countDocuments({ tags: { $in: tagIds } }),
+      ]);
+
+      return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
   }
 
   async countDocuments(filter: Record<string, unknown>): Promise<number> {
-    return this.postRepository.countDocuments(filter);
-  }
-
-  async findOneByFilter(
-    filter: Record<string, unknown>,
-  ): Promise<IPost | null> {
-    return this.postRepository.findOneByFilter(filter);
+    return this.model.countDocuments(filter).exec();
   }
 
   async countByCommunityId(communityId: string): Promise<number> {
-    return this.postRepository.countByCommunityId(communityId);
+    return this.model.countDocuments({ communityId }).exec();
   }
 }

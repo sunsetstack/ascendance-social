@@ -3,8 +3,10 @@ import "reflect-metadata";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { RedisService } from "@/services/redis.service";
-import { PostRepository } from "@/repositories/post.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type {
+  IPostWriteRepository,
+  IUserReadRepository,
+} from "@/repositories/interfaces";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 
@@ -43,10 +45,10 @@ export class ProfileSyncWorker {
   constructor(
     @inject(TOKENS.Services.Redis)
     private readonly redisService: RedisService,
-    @inject(TOKENS.Repositories.Post)
-    private readonly postRepo: PostRepository,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepo: UserRepository,
+    @inject(TOKENS.Repositories.PostWrite)
+    private readonly postWriteRepository: IPostWriteRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
   ) {}
 
   async start(): Promise<void> {
@@ -154,7 +156,7 @@ export class ProfileSyncWorker {
     for (const [userPublicId, updates] of entries) {
       try {
         // find user's ObjectId from publicId
-        const user = await this.userRepo.findByPublicId(
+        const user = await this.userReadRepository.findByPublicId(
           asUserPublicId(userPublicId),
         );
         if (!user) {
@@ -184,10 +186,11 @@ export class ProfileSyncWorker {
           continue;
         }
 
-        const modifiedCount = await this.postRepo.updateAuthorSnapshot(
-          userObjectId,
-          snapshotUpdates,
-        );
+        const modifiedCount =
+          await this.postWriteRepository.updateAuthorSnapshot(
+            userObjectId,
+            snapshotUpdates,
+          );
 
         logger.info(
           `[profile-sync] updated ${modifiedCount} posts for user ${userPublicId}:`,

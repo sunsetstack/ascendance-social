@@ -1,7 +1,8 @@
 import { FeedController } from "../controllers/feed.controller";
 import { asyncHandler } from "@/middleware/async-handler.middleware";
 import express from "express";
-import { AuthFactory } from "../middleware/authentication.middleware";
+import { RequestHandler } from "express";
+import { AuthMiddlewareService } from "../middleware/authentication.middleware";
 import { ValidationMiddleware } from "../middleware/validation.middleware";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
@@ -14,13 +15,17 @@ import {
 @injectable()
 export class FeedRoutes {
   public router: express.Router;
-  private auth = AuthFactory.bearerToken().handle();
-  private optionalAuth = AuthFactory.optionalBearerToken().handleOptional();
+  private auth: RequestHandler;
+  private optionalAuth: RequestHandler;
 
   constructor(
     @inject(TOKENS.Controllers.Feed) private controller: FeedController,
+    @inject(TOKENS.Services.AuthMiddleware)
+    authMiddlewareService: AuthMiddlewareService,
   ) {
     this.router = express.Router();
+    this.auth = authMiddlewareService.required();
+    this.optionalAuth = authMiddlewareService.optional();
     this.initializeRoutes();
   }
 

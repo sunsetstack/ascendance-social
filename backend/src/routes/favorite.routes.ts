@@ -1,7 +1,8 @@
 import express from "express";
+import { RequestHandler } from "express";
 import { asyncHandler } from "@/middleware/async-handler.middleware";
 import { FavoriteController } from "../controllers/favorite.controller";
-import { AuthFactory } from "../middleware/authentication.middleware";
+import { AuthMiddlewareService } from "../middleware/authentication.middleware";
 import { ValidationMiddleware } from "../middleware/validation.middleware";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
@@ -11,12 +12,15 @@ import { publicUserListQuerySchema } from "@/utils/schemas/user.schemas";
 @injectable()
 export class FavoriteRoutes {
   private router = express.Router();
-  private auth = AuthFactory.bearerToken().handle();
+  private auth: RequestHandler;
 
   constructor(
     @inject(TOKENS.Controllers.Favorite)
     private readonly favoriteController: FavoriteController,
+    @inject(TOKENS.Services.AuthMiddleware)
+    authMiddlewareService: AuthMiddlewareService,
   ) {
+    this.auth = authMiddlewareService.required();
     this.initializeRoutes();
   }
 

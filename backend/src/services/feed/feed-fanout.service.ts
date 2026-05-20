@@ -2,7 +2,6 @@ import { asUserPublicId } from "@/types/branded";
 import { injectable, inject } from "tsyringe";
 
 import { FollowRepository } from "@/repositories/follow.repository";
-import { PostRepository } from "@/repositories/post.repository";
 import { RedisService } from "../redis.service";
 import { logger } from "@/utils/winston";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
@@ -17,7 +16,6 @@ export class FeedFanoutService {
     private readonly feedReadDao: IFeedReadDao,
     @inject(TOKENS.Repositories.Follow)
     private readonly followRepository: FollowRepository,
-    @inject(TOKENS.Repositories.Post) private postRepository: PostRepository,
     @inject(TOKENS.Services.Redis) private redisService: RedisService,
   ) {}
 

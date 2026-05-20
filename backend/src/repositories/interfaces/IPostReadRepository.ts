@@ -6,6 +6,7 @@ import { MongoId, PostPublicId, UserPublicId } from "@/types/branded";
  * used by query handlers in CQRS pattern
  */
 export interface IPostReadRepository {
+  searchByText(terms: string[], limit?: number): Promise<FeedPost[]>;
   // single post lookups
   findById(id: MongoId): Promise<IPost | null>;
   findInternalIdByPublicId(publicId: PostPublicId): Promise<MongoId | null>;

@@ -2,7 +2,7 @@ import { ICommandHandler } from "@/application/common/interfaces/command-handler
 import { SendMessageCommand } from "./sendMessage.command";
 import { ConversationRepository } from "@/repositories/conversation.repository";
 import { MessageRepository } from "@/repositories/message.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { DTOService } from "@/services/dto.service";
 import { EventBus } from "@/application/common/buses/event.bus";
@@ -17,11 +17,7 @@ import {
 } from "@/utils/messaging-helpers";
 import { sanitizeTextInput } from "@/utils/sanitizers";
 import { isUserViewingConversation } from "@/server/socketServer";
-import {
-  IImageStorageService,
-  MessageDTO,
-  toObjectId,
-} from "@/types";
+import { IImageStorageService, MessageDTO, toObjectId } from "@/types";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { TOKENS } from "@/types/tokens";
@@ -40,8 +36,8 @@ export class SendMessageCommandHandler implements ICommandHandler<
     private readonly conversationRepository: ConversationRepository,
     @inject(TOKENS.Repositories.Message)
     private readonly messageRepository: MessageRepository,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
@@ -101,7 +97,7 @@ export class SendMessageCommandHandler implements ICommandHandler<
       }
 
       const senderInternalId = await requireUserInternalId(
-        this.userRepository,
+        this.userReadRepository,
         senderPublicId,
       );
 
@@ -158,11 +154,10 @@ export class SendMessageCommandHandler implements ICommandHandler<
           }
 
           if (!conversationDoc) {
-            const recipientInternalId =
-              await requireUserInternalId(
-                this.userRepository,
-                payload.recipientPublicId!,
-              );
+            const recipientInternalId = await requireUserInternalId(
+              this.userReadRepository,
+              payload.recipientPublicId!,
+            );
 
             const participantIds = [senderInternalId, recipientInternalId];
             const participantHash = buildParticipantHash(participantIds);
@@ -244,7 +239,7 @@ export class SendMessageCommandHandler implements ICommandHandler<
           const populatedMessage = asPopulatedMessage(message);
 
           const participantPublicIds = await resolveParticipantPublicIds(
-            this.userRepository,
+            this.userReadRepository,
             participantIds,
           );
 

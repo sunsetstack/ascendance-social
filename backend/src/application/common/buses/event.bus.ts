@@ -5,10 +5,16 @@ import { IEvent } from "../interfaces/event.interface";
 import { OutboxRepository } from "@/repositories/outbox.repository";
 import { sessionALS } from "@/database/UnitOfWork";
 import { TOKENS } from "@/types/tokens";
+import { getCorrelationId } from "@/runtime/request-context";
+
+type RegisteredEventHandler<TEvent = unknown> = {
+  key: string;
+  handle: (event: TEvent) => Promise<void>;
+};
 
 @injectable()
 export class EventBus {
-  private subscriptions: Map<string, unknown[]> = new Map();
+  private subscriptions = new Map<string, RegisteredEventHandler[]>();
 
   constructor(
     @inject(TOKENS.Repositories.Outbox)
@@ -26,7 +32,10 @@ export class EventBus {
   ): void {
     const eventName = eventType.name;
     const handlers = this.subscriptions.get(eventName) || [];
-    handlers.push(handler);
+    handlers.push({
+      key: this.resolveHandlerKey(handler),
+      handle: (event: unknown) => handler.handle(event as TEvent),
+    });
     this.subscriptions.set(eventName, handlers);
   }
 
@@ -35,15 +44,19 @@ export class EventBus {
    * @param event - The event instance to be published.
    */
   async publish<TEvent extends IEvent>(event: TEvent): Promise<void> {
-    const handlers = (this.subscriptions.get(event.constructor.name) || []) as IEventHandler<TEvent>[];
+    const handlers = (this.subscriptions.get(event.constructor.name) ||
+      []) as RegisteredEventHandler<TEvent>[];
 
     await Promise.all(handlers.map((handler) => handler.handle(event)));
   }
 
   async publishByType(eventType: string, eventPayload: unknown): Promise<void> {
-    // Cast to structural handler to pass the unknown payload to its handle method safely
-    const handlers = (this.subscriptions.get(eventType) || []) as { handle: (event: unknown) => Promise<void> }[];
+    const handlers = this.getRegisteredHandlers(eventType);
     await Promise.all(handlers.map((handler) => handler.handle(eventPayload)));
+  }
+
+  getRegisteredHandlers(eventType: string): RegisteredEventHandler[] {
+    return [...(this.subscriptions.get(eventType) || [])];
   }
 
   /**
@@ -66,6 +79,20 @@ export class EventBus {
       event.constructor.name,
       event,
       randomUUID(),
+      getCorrelationId(),
     );
+  }
+
+  private resolveHandlerKey(handler: unknown): string {
+    if (
+      typeof handler === "object" &&
+      handler !== null &&
+      typeof handler.constructor?.name === "string" &&
+      handler.constructor.name !== "Object"
+    ) {
+      return handler.constructor.name;
+    }
+
+    return "anonymous-handler";
   }
 }

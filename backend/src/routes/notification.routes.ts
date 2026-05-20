@@ -1,7 +1,8 @@
 import { NotificationController } from "../controllers/notification.controller";
 import { asyncHandler } from "@/middleware/async-handler.middleware";
 import express from "express";
-import { AuthFactory } from "../middleware/authentication.middleware";
+import { RequestHandler } from "express";
+import { AuthMiddlewareService } from "../middleware/authentication.middleware";
 import { ValidationMiddleware } from "../middleware/validation.middleware";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
@@ -13,13 +14,16 @@ import {
 @injectable()
 export class NotificationRoutes {
   public router: express.Router;
-  private auth = AuthFactory.bearerToken().handle();
+  private auth: RequestHandler;
 
   constructor(
     @inject(TOKENS.Controllers.Notification)
     private controller: NotificationController,
+    @inject(TOKENS.Services.AuthMiddleware)
+    authMiddlewareService: AuthMiddlewareService,
   ) {
     this.router = express.Router();
+    this.auth = authMiddlewareService.required();
     this.initializeRoutes();
   }
 

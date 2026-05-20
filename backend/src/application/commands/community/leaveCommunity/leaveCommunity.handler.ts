@@ -4,7 +4,10 @@ import { ICommandHandler } from "@/application/common/interfaces/command-handler
 import { LeaveCommunityCommand } from "./leaveCommunity.command";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
-import { UserRepository } from "@/repositories/user.repository";
+import type {
+  IUserReadRepository,
+  IUserWriteRepository,
+} from "@/repositories/interfaces";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { Errors } from "@/utils/errors";
 import {
@@ -12,6 +15,7 @@ import {
   asUserPublicId,
   asCommunityPublicId,
 } from "@/types/branded";
+import { TOKENS } from "@/types/tokens";
 
 @injectable()
 export class LeaveCommunityCommandHandler implements ICommandHandler<
@@ -23,14 +27,17 @@ export class LeaveCommunityCommandHandler implements ICommandHandler<
     private communityRepository: CommunityRepository,
     @inject(CommunityMemberRepository)
     private communityMemberRepository: CommunityMemberRepository,
-    @inject(UserRepository) private userRepository: UserRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
+    @inject(TOKENS.Repositories.UserWrite)
+    private readonly userWriteRepository: IUserWriteRepository,
     @inject(UnitOfWork) private uow: UnitOfWork,
   ) {}
 
   async execute(command: LeaveCommunityCommand): Promise<void> {
     const { communityId: communityPublicId, userId: userPublicId } = command;
 
-    const user = await this.userRepository.findByPublicId(
+    const user = await this.userReadRepository.findByPublicId(
       asUserPublicId(userPublicId),
     );
     if (!user) {
@@ -62,7 +69,7 @@ export class LeaveCommunityCommandHandler implements ICommandHandler<
       );
 
       // 2. Update User Cache (Remove from array)
-      await this.userRepository.update(asMongoId(userId.toString()), {
+      await this.userWriteRepository.update(asMongoId(userId.toString()), {
         $pull: {
           joinedCommunities: { _id: communityId },
         },

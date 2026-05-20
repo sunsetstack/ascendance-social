@@ -1,11 +1,11 @@
 import express from "express";
+import { RequestHandler } from "express";
 import { asyncHandler } from "@/middleware/async-handler.middleware";
 import { AdminUserController } from "../controllers/admin.controller";
 import { ValidationMiddleware } from "../middleware/validation.middleware";
 import {
   adminRateLimit,
-  AuthFactory,
-  enhancedAdminOnly,
+  AuthMiddlewareService,
 } from "../middleware/authentication.middleware";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
@@ -25,20 +25,25 @@ import { publicIdSchema as userPublicIdSchema } from "@/utils/schemas/user.schem
 @injectable()
 export class AdminUserRoutes {
   private router: express.Router;
-  private auth = AuthFactory.bearerToken().handle();
+  private auth: RequestHandler;
+  private adminOnly: RequestHandler;
 
   constructor(
     @inject(TOKENS.Controllers.AdminUser)
     private readonly adminUserController: AdminUserController,
+    @inject(TOKENS.Services.AuthMiddleware)
+    authMiddlewareService: AuthMiddlewareService,
   ) {
     this.router = express.Router();
+    this.auth = authMiddlewareService.required();
+    this.adminOnly = authMiddlewareService.adminOnly();
     this.initializeRoutes();
   }
 
   private initializeRoutes(): void {
     this.router.use(this.auth);
     this.router.use(adminRateLimit);
-    this.router.use(enhancedAdminOnly);
+    this.router.use(this.adminOnly);
 
     // ===Admin endpoints===
 

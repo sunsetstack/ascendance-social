@@ -1,4 +1,5 @@
 import express from "express";
+import { RequestHandler } from "express";
 import { asyncHandler } from "@/middleware/async-handler.middleware";
 import { ImageController } from "../controllers/image.controller";
 import { ValidationMiddleware } from "../middleware/validation.middleware";
@@ -13,20 +14,24 @@ import {
 } from "@/utils/schemas/post.schemas";
 import { handleSchema } from "@/utils/schemas/user.schemas";
 import upload from "@/config/multer";
-import { AuthFactory } from "../middleware/authentication.middleware";
+import { AuthMiddlewareService } from "../middleware/authentication.middleware";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
 export class ImageRoutes {
   public router: express.Router;
-  private auth = AuthFactory.bearerToken().handle();
-  private optionalAuth = AuthFactory.optionalBearerToken().handleOptional();
+  private auth: RequestHandler;
+  private optionalAuth: RequestHandler;
 
   constructor(
     @inject(TOKENS.Controllers.Image) private controller: ImageController,
+    @inject(TOKENS.Services.AuthMiddleware)
+    authMiddlewareService: AuthMiddlewareService,
   ) {
     this.router = express.Router();
+    this.auth = authMiddlewareService.required();
+    this.optionalAuth = authMiddlewareService.optional();
     this.initializeRoutes();
   }
 

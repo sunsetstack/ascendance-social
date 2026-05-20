@@ -2,25 +2,28 @@ import { ICommandHandler } from "@/application/common/interfaces/command-handler
 import { RemoveFavoriteCommand } from "./removeFavorite.command";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
-import { UserRepository } from "@/repositories/user.repository";
-import { PostRepository } from "@/repositories/post.repository";
+import type {
+  IPostReadRepository,
+  IUserReadRepository,
+} from "@/repositories/interfaces";
 import { Errors, wrapError } from "@/utils/errors";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
-export class RemoveFavoriteCommandHandler
-  implements ICommandHandler<RemoveFavoriteCommand, void>
-{
+export class RemoveFavoriteCommandHandler implements ICommandHandler<
+  RemoveFavoriteCommand,
+  void
+> {
   constructor(
     @inject(TOKENS.Repositories.Favorite)
     private readonly favoriteRepository: FavoriteRepository,
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
-    @inject(TOKENS.Repositories.User)
-    private readonly userRepository: UserRepository,
-    @inject(TOKENS.Repositories.Post)
-    private readonly postRepository: PostRepository,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
+    @inject(TOKENS.Repositories.PostRead)
+    private readonly postRepository: IPostReadRepository,
   ) {}
 
   async execute(command: RemoveFavoriteCommand): Promise<void> {
@@ -28,7 +31,7 @@ export class RemoveFavoriteCommandHandler
       const { actorPublicId, postPublicId } = command;
 
       const [actorId, postId] = await Promise.all([
-        this.userRepository.findInternalIdByPublicId(actorPublicId),
+        this.userReadRepository.findInternalIdByPublicId(actorPublicId),
         this.postRepository.findInternalIdByPublicId(postPublicId),
       ]);
 
@@ -40,14 +43,21 @@ export class RemoveFavoriteCommandHandler
       }
 
       await this.unitOfWork.executeInTransaction(async () => {
-        const wasRemoved = await this.favoriteRepository.remove(actorId, postId);
+        const wasRemoved = await this.favoriteRepository.remove(
+          actorId,
+          postId,
+        );
         if (!wasRemoved) {
           throw Errors.notFound("Favorite", `${actorId}-${postId}`);
         }
       });
     } catch (error) {
       throw wrapError(error, "InternalServerError", {
-        context: { operation: "removeFavorite", actorPublicId: command.actorPublicId, postPublicId: command.postPublicId },
+        context: {
+          operation: "removeFavorite",
+          actorPublicId: command.actorPublicId,
+          postPublicId: command.postPublicId,
+        },
       });
     }
   }

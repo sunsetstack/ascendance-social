@@ -16,13 +16,18 @@ export const logBehaviour = (
   const start = Date.now();
   const { method, url } = req;
 
-  behaviourLogger.info(`Request started: ${method} ${url}`);
+  behaviourLogger.info(`Request started: ${method} ${url}`, {
+    correlationId: req.correlationId,
+  });
 
   res.on("finish", () => {
     const duration = Date.now() - start;
     const { statusCode } = res;
     behaviourLogger.info(
       `Request completed: ${method} ${url} - Status: ${statusCode} - Duration: ${duration}ms`,
+      {
+        correlationId: req.correlationId,
+      },
     );
   });
 
@@ -40,6 +45,7 @@ export const detailedRequestLogging = (
   const logObject = {
     method: req.method,
     url: req.url.split("?")[0],
+    correlationId: req.correlationId,
     params: Object.keys(req.params || {}).length > 0 ? req.params : undefined,
     query: Object.keys(req.query || {}).length > 0 ? req.query : undefined,
     ip: getClientIp(req),
@@ -52,6 +58,7 @@ export const detailedRequestLogging = (
     detailedRequestLogger.info("Request completed", {
       method: req.method,
       url: req.url,
+      correlationId: req.correlationId,
       status: res.statusCode,
       responseTime: Date.now() - startTime,
     });

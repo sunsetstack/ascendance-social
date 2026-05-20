@@ -1,8 +1,9 @@
 import express from "express";
+import { RequestHandler } from "express";
 import { asyncHandler } from "@/middleware/async-handler.middleware";
 import { inject, injectable } from "tsyringe";
 import { CommunityController } from "../controllers/community.controller";
-import { AuthFactory } from "../middleware/authentication.middleware";
+import { AuthMiddlewareService } from "../middleware/authentication.middleware";
 import { ValidationMiddleware } from "../middleware/validation.middleware";
 import {
   createCommunitySchema,
@@ -19,14 +20,17 @@ import { TOKENS } from "@/types/tokens";
 @injectable()
 export class CommunityRoutes {
   private readonly router = express.Router();
-  private readonly auth = AuthFactory.bearerToken().handle();
-  private readonly optionalAuth =
-    AuthFactory.optionalBearerToken().handleOptional();
+  private readonly auth: RequestHandler;
+  private readonly optionalAuth: RequestHandler;
 
   constructor(
     @inject(TOKENS.Controllers.Community)
     private readonly communityController: CommunityController,
+    @inject(TOKENS.Services.AuthMiddleware)
+    authMiddlewareService: AuthMiddlewareService,
   ) {
+    this.auth = authMiddlewareService.required();
+    this.optionalAuth = authMiddlewareService.optional();
     this.initializeRoutes();
   }
 
