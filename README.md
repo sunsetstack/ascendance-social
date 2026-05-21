@@ -220,12 +220,3 @@ npm run build:frontend
 ├── docker-compose.yml
 └── docker-compose-prod.yml
 ```
-
-## Why A Recruiter Or Engineer Might Care
-
-Ascendance shows the kind of work that usually gets hidden behind the phrase "full-stack app":
-
-- product thinking on the frontend,
-- operational thinking in deployment and monitoring,
-- systems thinking in caching, async processing, and runtime isolation,
-- and architecture decisions that are opinionated enough to be discussable.
