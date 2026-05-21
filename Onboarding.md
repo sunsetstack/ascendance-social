@@ -1,4 +1,4 @@
-# Peek Social - Developer Onboarding and Architecture Reference
+# Ascendance Social - Developer Onboarding and Architecture Reference
 
 ## Welcome
 

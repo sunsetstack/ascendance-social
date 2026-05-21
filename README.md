@@ -1,170 +1,231 @@
-# 📸 Image App (Distributed Social Platform)
+# Ascendance
 
-[![TypeScript](https://img.shields.io/badge/typescript-%23007ACC.svg?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Node.js](https://img.shields.io/badge/node.js-6DA55F?style=flat&logo=node.js&logoColor=white)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/react-%2320232a.svg?style=flat&logo=react&logoColor=%2361DAFB)](https://reactjs.org/)
-[![Redis](https://img.shields.io/badge/redis-%23DD0031.svg?style=flat&logo=redis&logoColor=white)](https://redis.io/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-%234ea94b.svg?style=flat&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
-[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
-[![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat&logo=Prometheus&logoColor=white)](https://prometheus.io/)
-[![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat&logo=Grafana&logoColor=white)](https://grafana.com/)
+> A full-stack social platform built to explore the problems that show up beyond CRUD.
 
-## 🚀 Overview
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-13AA52?style=for-the-badge&logo=mongodb&logoColor=white)](https://www.mongodb.com/)
+[![Redis](https://img.shields.io/badge/Redis-D92C20?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)](https://prometheus.io/)
+[![Grafana](https://img.shields.io/badge/Grafana-F46800?style=for-the-badge&logo=grafana&logoColor=white)](https://grafana.com/)
 
-**Image App** is a full-stack social platform that explores scalability and performance patterns beyond a typical CRUD app. The backend currently uses **CQRS** (Command Query Responsibility Segregation), a **transactional outbox** for async side effects, and **multi-layered caching**.
+Ascendance is the product name in the UI. `image-app` is the repository name.
 
-The architecture is designed to handle high-concurrency scenarios (e.g., viral posts) by decoupling write-heavy operations from read-critical views using background workers and Redis streams.
+## About The Project
 
----
+This is not a landing page portfolio project and it's not a wrapper around a database. Ascendance is a social product with real-time messaging, notifications, communities, favorites, profile management, admin tooling, multilingual UI, background processing, and production-style monitoring.
 
-## 🏗 System Architecture
+The repo is intentionally opinionated where it matters:
 
-The application transitions from a monolithic structure to a microservices-ready architecture, featuring:
+- CQRS on the backend for clearer read/write flows.
+- Transaction-aware side effects through an outbox worker.
+- Redis used for more than caching: sessions, fan-out support, notification state, and hot-path protection.
+- Frontend instrumentation, lazy route loading, and i18n built into the app shell.
+- Dockerized local and production-oriented deployment flows.
 
-* **API Gateway:** A dedicated entry point handling rate-limiting, CORS, and request routing.
-* **Backend Core:** Node.js/Express service implementing **CQRS** via `tsyringe` for dependency injection.
-* **Worker Nodes:**
-    * `Trending Worker`: Calculates viral content scores in the background.
-    * `Profile Sync Worker`: Handles eventual consistency updates across denormalized data (e.g., updating user avatars across thousands of historical posts).
-* **Persistence Layer:** MongoDB Replica Set (supporting multi-document transactions) and Redis (Caching, Pub/Sub, Streams).
+## What Changed Recently
 
-## 📚 Project Review
+The README was falling behind the codebase. The current project shape is:
 
-The long-form architecture and project review is documented in [docs/project-review.md](docs/project-review.md). It covers the backend/runtime bootstrap, CQRS wiring, Unit of Work and outbox patterns, Redis cache and pub/sub usage, worker topology, frontend data flow, deployment shape, and the major tradeoffs in the current design.
+- No dedicated API gateway anymore. The frontend container serves the built React app and proxies API, upload, WebSocket, and telemetry traffic directly to the backend.
+- The monorepo now centers on two workspaces: `backend` and `frontend`.
+- Workers can run in-process during app startup, or as a dedicated `backend-worker` container in Docker deployments.
+- Backend internals have been moving toward specialized read/write repositories instead of broader generic repository abstractions.
+- Request correlation IDs, telemetry ingestion, and stronger async workflow observability were added to improve debugging and operations.
+- The frontend has expanded with communities, messaging, notifications, admin views, richer profile UX, and browser-language-aware internationalization.
 
-## 📈⚡Performance & Scalability 
+## Architecture At A Glance
 
-The repository includes targeted stress testing, but the figures below should be treated as directional until more scenario-specific load suites are checked in:
-* **Concurrency:** Successfully handles 200+ concurrent users performing complex write workflows (Register → Post → Like → Follow) simultaneously.
-* **Throughput:** Sustains hundreds of requests per second (RPS) with sub-second P99 latency.
-* **Background Processing:** The worker nodes independently scale to process thousands of viral interactions without blocking the main API.
+```mermaid
+flowchart LR
+  U[User Browser] --> F[Frontend\nReact + Vite]
+  F -->|/api, /socket.io, /telemetry| N[Nginx Reverse Proxy]
+  N --> B[Backend API\nExpress + TypeScript]
+  B --> M[(MongoDB Replica Set)]
+  B --> R[(Redis)]
+  W[Worker Runtime\nOutbox + Trending + Profile Sync + Feed Warm Cache + IP Monitor] --> M
+  W --> R
+  B --> P[Prometheus Metrics]
+  P --> G[Grafana]
+```
 
-### 📐 Key Engineering Decisions
+### Current Deployment Shape
 
-#### 1. Partitioned Feed Architecture & Caching
-Instead of simple database queries, the Feed Service implements a **"Push-Pull" hybrid model**:
-* **Fan-out on Write:** When a post is created, post IDs are pushed to followers' feeds (Redis Sorted Sets) asynchronously.
-* **Two-Layer Caching:**
-    * **Core Feed:** Caches the *structure* (IDs and order) with long TTLs.
-    * **Enrichment Layer:** Caches mutable data (User profiles, Like counts) separately.
-    * *Result:* Changing an avatar doesn't invalidate the entire feed cache, significantly reducing database load.
+| Layer      | What runs now                                | Why it matters                                                              |
+| ---------- | -------------------------------------------- | --------------------------------------------------------------------------- |
+| Frontend   | React app served by Nginx                    | Static hosting plus reverse proxying without a separate gateway service     |
+| API        | Express backend                              | HTTP API, auth, uploads, read/write flows, Socket.IO, telemetry ingestion   |
+| Workers    | Same backend codebase, separate runtime mode | Isolates async processing and lets the API stay focused on request handling |
+| Data       | MongoDB replica set + Redis                  | Transactions, caching, session state, queue-like coordination               |
+| Monitoring | Prometheus + Grafana                         | Visibility into HTTP, worker, and runtime health                            |
 
-#### 2. Advanced Redis Patterns
-The `RedisService` goes beyond basic key-value storage:
-* **Tag-Based Invalidation:** Uses Sets to map logical tags to cache keys, allowing precise O(1) invalidation of complex dependency trees.
-* **Write-Behind Caching:** High-velocity counters (likes/views) are buffered in Redis and flushed to MongoDB in batches.
-* **Pub/Sub & Streams:** Handles real-time notifications (Socket.io) and decoupling of background jobs.
-* **Probabilistic Data Structures:** Implements Bloom Filters to preemptively screen high-velocity existence checks (e.g., 'Has User X viewed Post Y?'), eliminating expensive database lookups for negative results and preserving I/O bandwidth.
-* **Redis-backed session management:** Implements a hybrid auth architecture that combines short-lived stateless JWTs for low-latency API checks with persistent Redis sessions to enable immediate revocation, rotating refresh tokens, and replay attack detection.
+## Product Surface
 
-#### 3. CQRS & Event-Driven Design
-* **Command Bus:** Handles writes (e.g., `CreatePostCommand`) ensuring data integrity via Unit of Work transactions.
-* **Event Bus:** Triggers side effects (Notifications, Analytics) *after* successful transaction commits to prevent ghost data.
-* **Separation of Concerns:** Read models (DTOs) are optimized for specific UI views, distinct from Domain Models.
-  
-#### 4. Resilient Transaction Orchestration
-* In order to preserve data integrity under high concurrency, the system implements a custom Resiliency Layer on top of MongoDB transactions:
-  * **Transaction Queueing:** TransactionQueueService serializes conflicting write operations to prevent race conditions during "thundering herd" scenarios.
-  * **Smart Retries:** A RetryService with exponential backoff handles transient database failures (like WriteConflict exceptions), ensuring user requests succeed even when the database is under stress.
-  * **ACID Compliance:** All side effects (notifications, feed updates) are strictly coupled to transaction commits via the UnitOfWork pattern.
+Ascendance currently includes:
 
-#### 5. Observability & Monitoring
-* The system is instrumented for real-time production monitoring:
-* **Prometheus:** Scrapes application metrics (HTTP latency, database connection pool status, worker queue depth).
-* **Grafana:** Provides visual dashboards for tracking system health and identifying bottlenecks during load spikes.
-* **Async workflow visibility:** Outbox events now carry event-level trace IDs and worker outcome metrics, so failed background dispatches can be tied back to a concrete outbox record and log entry.
----
+- Personalized home feed and discovery flows.
+- Communities and community membership views.
+- Post creation, favorites, comments, and post detail pages.
+- Real-time messaging and notifications.
+- Rich profile editing, follow graphs, avatar and cover updates.
+- Admin dashboard and per-user admin detail screens.
+- English and Bulgarian UI localization.
 
-## ⚖️ Architecture Trade-offs & Lessons Learned
-
-Some of the backend patterns here are intentionally more ambitious than the current product size strictly requires. That has been useful for learning and for preparing hot paths, but it also adds real maintenance cost.
-
-* **CQRS is helping, but not every flow needed it yet.** The split has made controllers thinner and write paths easier to reason about, but some handlers still own too much orchestration. In a few places, a simpler application service would still be easier to maintain until the read/write paths diverge more.
-* **The outbox is intentional, not full event sourcing.** The backend persists side effects after a successful transaction commit, which protects consistency for async work. It does **not** rebuild aggregates from an event store, so calling the current design "event sourcing" would be overstating it.
-* **Redis-heavy optimization only pays off when it is measured.** Feed caching, dynamic TTLs, and Bloom-filter-style protections reduce hot-path load, but they only justify their complexity when backed by repeatable load tests rather than intuition.
-* **Current tracing is targeted, not distributed tracing.** The repo now records outbox event trace IDs and Prometheus metrics for async dispatch outcomes, which helps debug worker failures. That is still lighter-weight than a full OpenTelemetry-style end-to-end trace pipeline.
-* **Operational simplicity still matters.** Several patterns in this codebase exist because the goal is to practice taming complexity, not because every deployment would need them on day one. The long-term bar is not "more patterns"; it is proving which ones are worth their ongoing cost.
-
----
-
-## 🛠 Tech Stack
+## Engineering Highlights
 
 ### Backend
-* **Runtime:** Node.js (v20+), TypeScript
-* **Framework:** Express.js
-* **Database:** MongoDB (Mongoose with schema validation & sanitization)
-* **Caching/Message Broker:** Redis (node-redis)
-* **Architecture:** DI (TSyringe), Repository Pattern, CQRS
-* **Testing:** Mocha, Chai, Sinon
+
+- TypeScript + Express with `tsyringe`-based dependency injection.
+- CQRS-style application layer with commands, queries, handlers, and bus wiring.
+- Transaction-aware Unit of Work patterns on MongoDB.
+- Outbox processing with correlation IDs and resumable handler progress.
+- Redis-backed session management, cache coordination, and real-time support.
+- Health, metrics, telemetry, and request logging surfaces for debugging and operations.
 
 ### Frontend
-* **Framework:** React (Vite)
-* **Styling:** TailwindCSS, Material UI (MUI)
-* **State Management:** React Query (TanStack Query)
-* **Real-time:** Socket.io Client
-* **Testing:** Cypress (E2E)
 
-### Infrastructure
-* **Containerization:** Docker & Docker Compose
-* **Proxy:** Nginx
-* **Storage:** Cloudinary (Production) / Local Filesystem (Dev)
-* **Monitoring:** Prometheus & Grafana
----
+- React 18 + Vite + TypeScript.
+- Route-level lazy loading and error boundaries in the app shell.
+- TanStack Query for server-state orchestration.
+- Material UI plus TailwindCSS for UI composition.
+- Socket.IO client integration for live features.
+- i18next-based language detection and translation resources.
 
-## ⚡ Getting Started
+### Infra And Operations
+
+- Docker Compose for local full-stack startup.
+- Separate production-oriented Compose file.
+- Prometheus and Grafana included in-repo.
+- Nginx proxying API, uploads, telemetry, and WebSocket traffic directly to the backend.
+
+## Trade-Offs, On Purpose
+
+This codebase deliberately explores patterns that are more advanced than the smallest version of the product would need. That is part of the point.
+
+- CQRS improves clarity in several hot paths, but it also raises the maintenance bar.
+- The outbox protects consistency for async work, but it adds operational surface area.
+- Redis-heavy optimizations only justify themselves when measured.
+- Dedicated workers simplify scaling and isolation, but they make deployment shape more explicit.
+
+The value here is not "more architecture." The value is demonstrating where that architecture helps, where it costs, and how to keep the tradeoffs visible.
+
+## Tech Stack
+
+| Area     | Stack                                                                                        |
+| -------- | -------------------------------------------------------------------------------------------- |
+| Frontend | React, Vite, TypeScript, TanStack Query, Material UI, TailwindCSS, Socket.IO client, i18next |
+| Backend  | Node.js, Express, TypeScript, TSyringe, Mongoose, Redis, Socket.IO, Zod, Winston             |
+| Testing  | Mocha, Chai, Sinon, Supertest, Cypress                                                       |
+| Infra    | Docker, Docker Compose, Nginx, Prometheus, Grafana                                           |
+| Storage  | MongoDB, Redis, Cloudinary in production, local uploads in development                       |
+
+## Running The Project
 
 ### Prerequisites
-* Docker & Docker Compose installed
-* Node.js v18+ (for local dev)
 
-  
-### Quick Start (Docker)
-The easiest way to run the full stack (Database, Redis, API, Workers, Frontend):
+- Node.js 20+ recommended.
+- Docker and Docker Compose for containerized startup.
+- MongoDB and Redis access if you are running locally without Docker.
+
+### Quick Start With Docker
 
 ```bash
-# 1. Clone the repository
-git clone [https://github.com/danzin/image-app.git](https://github.com/danzin/image-app.git)
+git clone https://github.com/danzin/image-app.git
 cd image-app
-
-# 2. Start the services
-docker-compose up --build
+docker compose up --build
 ```
 
-### Access the application:
+After startup:
 
-* Frontend: http://localhost:80
-* API Gateway: http://localhost:8000
-* Direct Backend: http://localhost:3000
-* Grafana Dashboards: http://localhost:3001 
-* Prometheus: http://localhost:9090
-  
-## Local Development (Monorepo)
-The project uses `concurrently` to run the Backend, API Gateway, Frontend, and Workers simultaneously from the root.
-1. Setup Environment
-* Create a .env file in the root directory:
-```
-MONGODB_URI=your://local@or@remote:mongodb.connectionString
-JWT_SECRET=your_jwt_secret_here
-# CLOUDINARY_... (Optional)
-PORT=3000
+- App: `http://localhost`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3001`
+
+The backend health endpoint is available internally to the stack at `/health` and is exposed directly during local non-Docker development.
+
+### Local Development
+
+Create a root `.env` with the values your backend needs.
+
+```env
+MONGODB_URI=mongodb://...
+REDIS_URL=redis://localhost:6379
+JWT_SECRET=replace-me
+PORT=8000
 FRONTEND_URL=http://localhost:5173
-VITE_API_URL=http://localhost:8000
-```
-2. Install & Run
-```
-# Install dependencies for all workspaces (backend, frontend, gateway)
-npm install
+MONGO_INITDB_ROOT_USERNAME=replace-me
+MONGO_INITDB_ROOT_PASSWORD=replace-me
 
-# Start the development environment
-# This launches Backend, Gateway, Frontend, Trending Worker, and Profile Worker
+GF_SECURITY_ADMIN_PASSWORD=replace-me
+GF_SECURITY_ADMIN_USER=replace-me
+REDIS_PASSWORD=replace-me
+ADMIN_EMAILS=replace-me
+VITE_API_URL=http://localhost:8000
+VITE_SOCKET_URL=http://localhost:8000
+DNS_SERVERS=1.1.1.1,8.8.8.8
+
+```
+
+Then install dependencies and start the workspace:
+
+```bash
+npm install
 npm run dev
 ```
 
-## 🛡 Security Features
+What `npm run dev` does now:
 
-* **Hybrid Redis+JWT Auth:** Secure, HTTP-only cookie strategy using short-lived access tokens and rotating refresh tokens to prevent replay attacks.
-* **Rate Limiting:** IP-based throttling at the API Gateway level.
-* **Secure Recovery:** Token-based Password Reset flow with short-lived expiry (via Resend). 
-* **Input Sanitization:** Custom sanitizers for NoSQL injection and XSS prevention.
-* **Role-Based Access Control (RBAC):** Middleware-enforced Admin and User roles.
+- Picks the first available backend port from a small candidate list.
+- Writes that port to root `.env.local` and `frontend/.env.local`.
+- Starts the backend API.
+- Starts the trending, profile sync, and feed warm-cache workers.
+- Starts the Vite frontend.
 
+That means local dev no longer depends on a dedicated gateway process. The frontend proxies to whichever backend port was selected.
+
+### Useful Scripts
+
+```bash
+# build everything
+npm run build
+
+# backend tests
+npm run test-backend
+
+# backend integration suite
+npm run test-integration
+
+# frontend production build
+npm run build:frontend
+```
+
+## Security And Reliability Notes
+
+- Hybrid JWT + Redis session model with refresh-token rotation.
+- Rate limiting, secure cookies, and hardened proxy headers.
+- Input sanitization and validation layers on the backend.
+- Health endpoints and metrics endpoints for runtime checks.
+- Correlation ID propagation through requests, logs, and async outbox work.
+
+## Repository Structure
+
+```text
+.
+├── backend/      # API, CQRS application layer, workers, data access, tests
+├── frontend/     # React client, screens, shared UI, i18n, telemetry
+├── monitoring/   # Prometheus configuration
+├── scripts/      # local-dev helpers such as dynamic port selection
+├── docker-compose.yml
+└── docker-compose-prod.yml
+```
+
+## Why A Recruiter Or Engineer Might Care
+
+Ascendance shows the kind of work that usually gets hidden behind the phrase "full-stack app":
+
+- product thinking on the frontend,
+- operational thinking in deployment and monitoring,
+- systems thinking in caching, async processing, and runtime isolation,
+- and architecture decisions that are opinionated enough to be discussable.

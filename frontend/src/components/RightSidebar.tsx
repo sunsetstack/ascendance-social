@@ -73,7 +73,7 @@ const RightSidebar: React.FC = () => {
           }}
         >
           <Typography variant="h6" sx={{ mb: 1, fontWeight: 700 }}>
-            {t("marketing.new_to_peek")}
+            {t("marketing.new_to_Ascendance")}
           </Typography>
           <Typography variant="body2" color="text.secondary">
             {t("marketing.sign_up_timeline")}
