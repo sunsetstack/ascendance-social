@@ -40,26 +40,43 @@ The README was falling behind the codebase. The current project shape is:
 
 ```mermaid
 flowchart LR
-  U[User Browser] --> F[Frontend\nReact + Vite]
-  F -->|/api, /socket.io, /telemetry| N[Nginx Reverse Proxy]
-  N --> B[Backend API\nExpress + TypeScript]
+  U[User Browser] --> F[Frontend Container\nNginx serving the built React app]
+  F -->|proxies /api, /api/uploads, /socket.io, /telemetry| B[Backend API\nExpress + TypeScript + Socket.IO]
   B --> M[(MongoDB Replica Set)]
   B --> R[(Redis)]
   W[Worker Runtime\nOutbox + Trending + Profile Sync + Feed Warm Cache + IP Monitor] --> M
   W --> R
-  B --> P[Prometheus Metrics]
-  P --> G[Grafana]
+  P[Prometheus] -. scrapes /metrics .-> B
+  G[Grafana] -. queries .-> P
 ```
 
-### Current Deployment Shape
+This is the containerized runtime view. In local development, the Vite dev server replaces the frontend container and proxies to the dynamically selected backend port. In production compose, an outer edge/TLS layer can sit in front of the frontend container, but it is omitted here so the primary application runtime stays readable.
 
-| Layer      | What runs now                                | Why it matters                                                              |
-| ---------- | -------------------------------------------- | --------------------------------------------------------------------------- |
-| Frontend   | React app served by Nginx                    | Static hosting plus reverse proxying without a separate gateway service     |
-| API        | Express backend                              | HTTP API, auth, uploads, read/write flows, Socket.IO, telemetry ingestion   |
-| Workers    | Same backend codebase, separate runtime mode | Isolates async processing and lets the API stay focused on request handling |
-| Data       | MongoDB replica set + Redis                  | Transactions, caching, session state, queue-like coordination               |
-| Monitoring | Prometheus + Grafana                         | Visibility into HTTP, worker, and runtime health                            |
+### Production Edge View
+
+```mermaid
+flowchart LR
+  U[User Browser] --> CF[Cloudflare]
+  CF --> C[Caddy Edge\nTLS termination + trusted proxy handling]
+  C -->|main app domain| F[Frontend Container\nNginx]
+  F -->|/api, /api/uploads, /socket.io, /telemetry| B[Backend API]
+  C -->|prometheus subdomain| P[Prometheus]
+  C -->|grafana subdomain| G[Grafana]
+  P -. scrapes /metrics .-> B
+```
+
+The production edge is more specific than the runtime view above: Caddy terminates TLS, trusts Cloudflare proxy headers, forwards the real client IP downstream, sends app traffic to the frontend container, and exposes Prometheus and Grafana on separate subdomains.
+
+### Current Runtime Shape
+
+| Layer       | What runs now                                | Why it matters                                                                        |
+| ----------- | -------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Edge (prod) | Cloudflare-aware Caddy ingress               | TLS termination, trusted proxy handling, and subdomain routing for app and monitoring |
+| Frontend    | Nginx serving the built React app            | Handles static delivery and same-origin proxying without a separate gateway           |
+| API         | Express + Socket.IO backend                  | HTTP API, auth, uploads, read/write flows, real-time events, telemetry                |
+| Workers     | Same backend codebase, separate runtime mode | Isolates async processing and lets the API stay focused on request handling           |
+| Data        | MongoDB replica set + Redis                  | Transactions, caching, session state, queue-like coordination                         |
+| Monitoring  | Prometheus + Grafana                         | Prometheus scrapes backend metrics and Grafana queries them for dashboards            |
 
 ## Product Surface
 
@@ -97,8 +114,9 @@ Ascendance currently includes:
 
 - Docker Compose for local full-stack startup.
 - Separate production-oriented Compose file.
+- Production ingress uses Caddy for TLS termination, trusted proxy handling, and routing to the app plus monitoring subdomains.
 - Prometheus and Grafana included in-repo.
-- Nginx proxying API, uploads, telemetry, and WebSocket traffic directly to the backend.
+- Nginx serving the built frontend and proxying API, uploads, telemetry, and WebSocket traffic directly to the backend.
 
 ## Trade-Offs, On Purpose
 
