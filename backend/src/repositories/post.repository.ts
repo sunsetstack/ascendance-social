@@ -11,6 +11,10 @@ import {
   UserPublicId,
   asMongoId,
 } from "@/types/branded";
+import {
+  ACTIVE_POST_FILTER,
+  withActivePostFilter,
+} from "@/repositories/post-pipeline.helpers";
 
 type CountFacetResult = {
   count: number;
@@ -39,7 +43,7 @@ export class PostRepository extends BaseRepository<IPost> {
       const searchString = terms.join(" ");
 
       const pipeline: PipelineStage[] = [
-        { $match: { $text: { $search: searchString } } },
+        { $match: withActivePostFilter({ $text: { $search: searchString } }) },
         { $addFields: { score: { $meta: "textScore" } } },
         // Sort by text relevance score before trimming the result window
         { $sort: { score: { $meta: "textScore" } } },
@@ -63,7 +67,7 @@ export class PostRepository extends BaseRepository<IPost> {
     publicId: PostPublicId,
   ): Promise<MongoId | null> {
     const doc = await this.model
-      .findOne({ publicId })
+      .findOne(withActivePostFilter({ publicId }))
       .select("_id")
       .lean()
       .exec();
@@ -73,7 +77,7 @@ export class PostRepository extends BaseRepository<IPost> {
   async findOneByPublicId(publicId: PostPublicId): Promise<IPost | null> {
     try {
       const session = this.getSession();
-      const query = this.model.findOne({ publicId });
+      const query = this.model.findOne(withActivePostFilter({ publicId }));
       if (session) query.session(session);
       return await query.exec();
     } catch (error: unknown) {
@@ -102,7 +106,7 @@ export class PostRepository extends BaseRepository<IPost> {
   ): Promise<IPost[]> {
     const skip = (page - 1) * limit;
     return this.model
-      .find({ communityId })
+      .find(withActivePostFilter({ communityId }))
       .sort({ createdAt: -1, _id: -1 })
       .skip(skip)
       .limit(limit)
@@ -111,7 +115,7 @@ export class PostRepository extends BaseRepository<IPost> {
   }
 
   async countByCommunityId(communityId: string): Promise<number> {
-    return this.model.countDocuments({ communityId }).exec();
+    return this.model.countDocuments(withActivePostFilter({ communityId })).exec();
   }
 
   async incrementViewCount(postId: mongoose.Types.ObjectId): Promise<void> {
@@ -157,7 +161,7 @@ export class PostRepository extends BaseRepository<IPost> {
     try {
       const session = this.getSession();
       const query = this.model
-        .findById(id)
+        .findOne(withActivePostFilter({ _id: id }))
         .populate("tags", "tag")
         .populate({ path: "image", select: "_id url publicId slug createdAt" });
 
@@ -176,7 +180,7 @@ export class PostRepository extends BaseRepository<IPost> {
       const objectIds = ids.map((id) => this.normalizeObjectId(id, "id"));
 
       const pipeline: PipelineStage[] = [
-        { $match: { _id: { $in: objectIds } } },
+        { $match: withActivePostFilter({ _id: { $in: objectIds } }) },
         ...this.getStandardLookups(),
         this.getStandardProjection(),
       ];
@@ -206,7 +210,7 @@ export class PostRepository extends BaseRepository<IPost> {
       }
 
       const pipeline: PipelineStage[] = [
-        { $match: { publicId: { $in: uniqueIds } } },
+        { $match: withActivePostFilter({ publicId: { $in: uniqueIds } }) },
         ...this.getStandardLookups(),
         this.getStandardProjection(),
       ];
@@ -224,7 +228,7 @@ export class PostRepository extends BaseRepository<IPost> {
     try {
       const session = this.getSession();
       const query = this.model
-        .findOne({ publicId })
+        .findOne(withActivePostFilter({ publicId }))
         .populate("tags", "tag")
         .populate({ path: "image", select: "_id url publicId slug createdAt" })
         .populate({ path: "communityId", select: "publicId name slug avatar" })
@@ -254,7 +258,7 @@ export class PostRepository extends BaseRepository<IPost> {
     try {
       const session = this.getSession();
       const query = this.model
-        .findOne({ slug })
+        .findOne(withActivePostFilter({ slug }))
         .populate("tags", "tag")
         .populate({
           path: "image",
@@ -294,7 +298,7 @@ export class PostRepository extends BaseRepository<IPost> {
       const userId = this.normalizeObjectId(userDoc._id, "user._id");
 
       const pipeline: PipelineStage[] = [
-        { $match: { user: userId } },
+        { $match: withActivePostFilter({ user: userId }) },
         { $sort: sort },
         {
           $facet: {
@@ -344,6 +348,7 @@ export class PostRepository extends BaseRepository<IPost> {
       const sort = this.buildSort(sortBy, sortOrder);
 
       const pipeline: PipelineStage[] = [
+        { $match: ACTIVE_POST_FILTER },
         { $sort: sort },
         {
           $facet: {
@@ -399,14 +404,14 @@ export class PostRepository extends BaseRepository<IPost> {
 
       const [data, total] = await Promise.all([
         this.model
-          .find({ tags: { $in: tagIds } })
+          .find(withActivePostFilter({ tags: { $in: tagIds } }))
           .populate("tags", "tag")
           .populate({ path: "image", select: "url publicId slug -_id" })
           .sort(sort)
           .skip(skip)
           .limit(limit)
           .exec(),
-        this.model.countDocuments({ tags: { $in: tagIds } }),
+        this.model.countDocuments(withActivePostFilter({ tags: { $in: tagIds } })),
       ]);
 
       return {
@@ -585,7 +590,12 @@ export class PostRepository extends BaseRepository<IPost> {
           from: "posts",
           let: { repostId: "$repostOf" },
           pipeline: [
-            { $match: { $expr: { $eq: ["$_id", "$$repostId"] } } },
+            {
+              $match: {
+                $expr: { $eq: ["$_id", "$$repostId"] },
+                ...ACTIVE_POST_FILTER,
+              },
+            },
 
             {
               $lookup: {

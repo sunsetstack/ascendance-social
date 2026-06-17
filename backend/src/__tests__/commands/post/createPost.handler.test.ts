@@ -25,6 +25,8 @@ describe("CreatePostCommandHandler", () => {
 	};
 	let mockPostWriteRepository: {
 		create: SinonStub;
+		activatePendingPost: SinonStub;
+		updatePostStatus: SinonStub;
 	};
 	let mockUserReadRepository: {
 		findByPublicId: SinonStub;
@@ -57,6 +59,7 @@ describe("CreatePostCommandHandler", () => {
 	};
 	let mockEventBus: {
 		queueTransactional: SinonStub;
+		queueDurable: SinonStub;
 		publish: SinonStub;
 	};
 	let mockSession: ClientSession;
@@ -75,6 +78,8 @@ describe("CreatePostCommandHandler", () => {
 
 		mockPostWriteRepository = {
 			create: sinon.stub(),
+			activatePendingPost: sinon.stub(),
+			updatePostStatus: sinon.stub(),
 		};
 
 		mockUserReadRepository = {
@@ -105,6 +110,7 @@ describe("CreatePostCommandHandler", () => {
 			deleteImage: sinon.stub(),
 			rollbackUpload: sinon.stub(),
 			uploadImage: sinon.stub(),
+			uploadImageStream: sinon.stub(),
 			createImageRecord: sinon.stub(),
 		};
 
@@ -115,6 +121,7 @@ describe("CreatePostCommandHandler", () => {
 
 		mockEventBus = {
 			queueTransactional: sinon.stub(),
+			queueDurable: sinon.stub(),
 			publish: sinon.stub(),
 		};
 
@@ -227,6 +234,7 @@ describe("CreatePostCommandHandler", () => {
 			mockImageService.createImageRecord.resolves(mockImageResponse);
 
 			mockPostWriteRepository.create.resolves(mockCreatedPost);
+			mockPostWriteRepository.activatePendingPost.resolves(mockCreatedPost);
 			mockPostReadRepository.findByPublicId.resolves(mockHydratedPost);
 
 			const mockPostDTO = {
@@ -257,6 +265,7 @@ describe("CreatePostCommandHandler", () => {
 			expect(mockImageService.createImageRecord.called).to.be.true;
 
 			expect(mockPostWriteRepository.create.called).to.be.true;
+			expect(mockPostWriteRepository.activatePendingPost.called).to.be.true;
 			expect(mockUnitOfWork.executeInTransaction.called).to.be.true;
 			expect(mockDTOService.toPostDTO.calledWith(mockHydratedPost)).to.be.true;
 			expect(result).to.equal(mockPostDTO);
@@ -311,6 +320,7 @@ describe("CreatePostCommandHandler", () => {
 			mockImageService.createImageRecord.resolves(mockImageSummary);
 
 			mockPostWriteRepository.create.resolves(mockCreatedPost);
+			mockPostWriteRepository.activatePendingPost.resolves(mockCreatedPost);
 			mockPostReadRepository.findByPublicId.resolves(mockHydratedPost);
 
 			mockUnitOfWork.executeInTransaction.callsFake(async (callback) => {

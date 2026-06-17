@@ -28,3 +28,20 @@ export class ImageDeletedEvent implements IEvent {
     public readonly uploaderPublicId: UserPublicId,
   ) {}
 }
+
+/**
+ * Durable compensation request for storage assets that cannot be covered by
+ * the MongoDB transaction boundary.
+ */
+export class ImageAssetCleanupRequestedEvent implements IEvent {
+  readonly type = "ImageAssetCleanupRequestedEvent";
+  readonly timestamp: Date = new Date();
+
+  constructor(
+    public readonly reason: string,
+    public readonly storagePublicId?: string,
+    public readonly url?: string,
+    public readonly requesterPublicId?: UserPublicId,
+    public readonly ownerPublicId?: UserPublicId,
+  ) {}
+}

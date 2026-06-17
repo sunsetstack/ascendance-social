@@ -3,8 +3,21 @@
  * Used by PostReadRepository and FeedReadDao to avoid duplication.
  */
 
-import mongoose, { PipelineStage } from "mongoose";
+import mongoose, { FilterQuery, PipelineStage } from "mongoose";
 import { Errors } from "@/utils/errors";
+
+export const ACTIVE_POST_FILTER: FilterQuery<any> = {
+  $or: [{ status: "active" }, { status: { $exists: false } }],
+};
+
+export function withActivePostFilter<T extends Record<string, unknown>>(
+  filter: T = {} as T,
+): FilterQuery<any> {
+  if (Object.keys(filter).length === 0) {
+    return ACTIVE_POST_FILTER;
+  }
+  return { $and: [ACTIVE_POST_FILTER, filter] };
+}
 
 export function getStandardLookups(): PipelineStage.FacetPipelineStage[] {
   return [
@@ -39,7 +52,12 @@ export function getStandardLookups(): PipelineStage.FacetPipelineStage[] {
         from: "posts",
         let: { repostId: "$repostOf" },
         pipeline: [
-          { $match: { $expr: { $eq: ["$_id", "$$repostId"] } } },
+          {
+            $match: {
+              $expr: { $eq: ["$_id", "$$repostId"] },
+              ...ACTIVE_POST_FILTER,
+            },
+          },
           {
             $lookup: {
               from: "images",

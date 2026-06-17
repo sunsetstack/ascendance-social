@@ -72,6 +72,17 @@ const postSchema = new Schema<IPost>(
 			default: "original",
 			required: true,
 		},
+		status: {
+			type: String,
+			enum: ["pending", "active", "failed"],
+			default: "active",
+			required: true,
+			index: true,
+		},
+		failureReason: {
+			type: String,
+			trim: true,
+		},
 		repostOf: {
 			type: Schema.Types.ObjectId,
 			ref: "Post",
@@ -127,6 +138,7 @@ postSchema.index({ body: "text" }); // text search on body
 postSchema.index({ slug: 1 }, { unique: true, sparse: true }); // fast lookup by slug
 postSchema.index({ commentsCount: -1, likesCount: -1 }); // engagement ranking
 postSchema.index({ type: 1, createdAt: -1 }); // filter by post type (original vs repost)
+postSchema.index({ status: 1, createdAt: -1 }); // hide pending/failed uploads from feeds
 postSchema.index({ createdAt: -1 }, { background: true }); // recent posts
 postSchema.index({ createdAt: -1, _id: -1 }, { background: true }); // cursor-based feed sort
 postSchema.index({ createdAt: -1, tags: 1 }, { background: true }); // trending tags window with tag filter

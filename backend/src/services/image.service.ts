@@ -111,10 +111,14 @@ export class ImageService {
   async rollbackUpload(publicId: string | null | undefined): Promise<void> {
     if (!publicId) return;
     try {
-      await this.imageStorageService.deleteImage(publicId);
+      await this.deleteUploadedAsset(publicId);
     } catch (error) {
       logger.error("Failed to rollback image upload", { error });
     }
+  }
+
+  async deleteUploadedAsset(publicId: string): Promise<void> {
+    await this.imageStorageService.deleteImage(publicId);
   }
 
   async removePostAttachment(

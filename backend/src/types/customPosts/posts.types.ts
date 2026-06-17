@@ -22,6 +22,8 @@ export interface IPost extends Document {
   body?: string;
   slug?: string;
   type: "original" | "repost";
+  status: PostStatus;
+  failureReason?: string;
   repostOf?: mongoose.Types.ObjectId | null;
   repostCount: number;
   image?: mongoose.Types.ObjectId | null;
@@ -37,6 +39,8 @@ export interface IPost extends Document {
     user?: Pick<IUser, "isAdmin" | "isBanned" | "publicId"> | null,
   ): boolean;
 }
+
+export type PostStatus = "pending" | "active" | "failed";
 
 export interface CreatePostAttachmentInput {
   filePath: string;

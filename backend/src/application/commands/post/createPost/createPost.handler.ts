@@ -1,6 +1,7 @@
 import { inject, injectable } from "tsyringe";
 import {
   CommunityPublicId,
+  asMongoId,
   asPostPublicId,
   asCommunityPublicId,
   asUserPublicId,
@@ -23,6 +24,7 @@ import { DTOService } from "@/services/dto.service";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { PostUploadedEvent } from "@/application/events/post/post.event";
+import { ImageAssetCleanupRequestedEvent } from "@/application/events/image/image.event";
 import { NotificationRequestedEvent } from "@/application/events/notification/notification.event";
 import {
   PostNotFoundError,
@@ -84,11 +86,13 @@ export class CreatePostCommandHandler implements ICommandHandler<
     }
 
     let uploadResult: { url: string; publicId: string } | null = null;
-    let transactionCommitted = false;
+    let pendingPostId: mongoose.Types.ObjectId | null = null;
+    let activated = false;
 
     try {
       // ── Phase 1: pre-commit work ──────────────────────────────────────────
       const user = await this.validateUser(command.userPublicId);
+      const normalizedBody = this.normalizeBody(command.body);
 
       let communityInternalId: Types.ObjectId | null = null;
       if (command.communityPublicId) {
@@ -109,6 +113,11 @@ export class CreatePostCommandHandler implements ICommandHandler<
         communityInternalId = communityId;
       }
 
+      const pendingPost = await this.unitOfWork.executeInTransaction(() =>
+        this.createPendingPost(user, normalizedBody, communityInternalId),
+      );
+      pendingPostId = pendingPost._id as mongoose.Types.ObjectId;
+
       const strategy = ImageUploadStrategySelector.from(
         command,
         this.imageService,
@@ -126,25 +135,30 @@ export class CreatePostCommandHandler implements ICommandHandler<
       }
 
       const txResult = await this.unitOfWork.executeInTransaction(async () =>
-        this.runTransaction(command, user, communityInternalId, uploadResult),
+        this.activatePendingPost(
+          command,
+          user,
+          communityInternalId,
+          uploadResult,
+          pendingPost,
+          normalizedBody,
+        ),
       );
 
       // Commit boundary - errors after this line must NOT trigger compensation
-      transactionCommitted = true;
+      activated = true;
 
       // ── Phase 2: post-commit (non-compensable) ────────────────────────────
       return await this.finalizePost(txResult);
     } catch (error) {
-      // Only compensate if the transaction never committed
-      if (!transactionCommitted && uploadResult) {
-        await this.imageService
-          .rollbackUpload(uploadResult.publicId)
-          .catch((e) => {
-            logger.error(
-              "[CreatePostCommandHandler] Image rollback failed after transaction error",
-              { error: e },
-            );
-          });
+      // Only compensate if the post never became active.
+      if (!activated) {
+        if (uploadResult) {
+          await this.requestUploadedAssetCleanup(uploadResult.publicId);
+        }
+        if (pendingPostId) {
+          await this.markPendingPostFailed(pendingPostId, error);
+        }
       }
       throw mapPostError(error, {
         action: "create-post",
@@ -184,14 +198,47 @@ export class CreatePostCommandHandler implements ICommandHandler<
     return { communityId };
   }
 
-  private async runTransaction(
+  private async createPendingPost(
+    user: IUser,
+    normalizedBody: string,
+    communityId: Types.ObjectId | null,
+  ): Promise<IPost> {
+    const internalUserId = user._id as mongoose.Types.ObjectId;
+
+    const payload: Partial<IPost> = {
+      publicId: asPostPublicId(uuidv4()),
+      user: internalUserId,
+      author: {
+        _id: internalUserId,
+        publicId: user.publicId,
+        handle: user.handle,
+        username: user.username,
+        avatarUrl: user.avatar ?? "",
+        displayName: user.username,
+      },
+      body: normalizedBody,
+      image: null,
+      tags: [],
+      likesCount: 0,
+      commentsCount: 0,
+      status: "pending",
+      ...(communityId ? { communityId } : {}),
+    };
+
+    return this.postWriteRepository.create(
+      sanitizeForMongo(payload) as unknown as IPost,
+    );
+  }
+
+  private async activatePendingPost(
     command: CreatePostCommand,
     user: IUser,
     communityInternalId: Types.ObjectId | null,
     uploadResult: { url: string; publicId: string } | null,
+    pendingPost: IPost,
+    normalizedBody: string,
   ): Promise<TransactionResult> {
     const internalUserId = user._id as mongoose.Types.ObjectId;
-    const normalizedBody = this.normalizeBody(command.body);
 
     const tagNames = this.tagService.collectTagNames(
       normalizedBody,
@@ -211,13 +258,20 @@ export class CreatePostCommandHandler implements ICommandHandler<
     );
 
     const post = await this.buildPost(
-      user,
-      internalUserId,
+      pendingPost,
       normalizedBody,
       tagIds,
       imageSummary,
-      communityInternalId,
     );
+
+    if (!post) {
+      throw Errors.conflict("Pending post could not be activated", {
+        context: {
+          operation: "activatePendingPost",
+          postId: pendingPost._id?.toString(),
+        },
+      });
+    }
 
     if (!communityInternalId) {
       await this.userWriteRepository.update(user.id, {
@@ -262,39 +316,22 @@ export class CreatePostCommandHandler implements ICommandHandler<
   }
 
   private async buildPost(
-    user: IUser,
-    internalUserId: mongoose.Types.ObjectId,
+    pendingPost: IPost,
     normalizedBody: string,
     tagIds: mongoose.Types.ObjectId[],
     imageSummary: AttachmentSummary,
-    communityId: Types.ObjectId | null,
-  ): Promise<IPost> {
+  ): Promise<IPost | null> {
     const postSlug =
       imageSummary.slug ??
       `${generateSlug(normalizedBody, 60) || "post"}-${Date.now()}`;
 
-    const payload: Partial<IPost> = {
-      publicId: asPostPublicId(uuidv4()),
-      user: internalUserId,
-      author: {
-        _id: internalUserId,
-        publicId: user.publicId,
-        handle: user.handle,
-        username: user.username,
-        avatarUrl: user.avatar ?? "",
-        displayName: user.username,
+    return this.postWriteRepository.activatePendingPost(
+      asMongoId(pendingPost._id!.toString()),
+      {
+        image: imageSummary.docId,
+        tags: tagIds,
+        slug: postSlug,
       },
-      body: normalizedBody,
-      slug: postSlug,
-      image: imageSummary.docId,
-      tags: tagIds,
-      likesCount: 0,
-      commentsCount: 0,
-      ...(communityId ? { communityId } : {}),
-    };
-
-    return this.postWriteRepository.create(
-      sanitizeForMongo(payload) as unknown as IPost,
     );
   }
 
@@ -347,6 +384,45 @@ export class CreatePostCommandHandler implements ICommandHandler<
     ]);
 
     return this.dtoService.toPostDTO(hydratedPost);
+  }
+
+  private async requestUploadedAssetCleanup(storagePublicId: string): Promise<void> {
+    await this.eventBus
+      .queueDurable(
+        new ImageAssetCleanupRequestedEvent(
+          "create-post-activation-failed",
+          storagePublicId,
+        ),
+      )
+      .catch((error) => {
+        logger.error(
+          "[CreatePostCommandHandler] Failed to queue durable image cleanup",
+          { error, storagePublicId },
+        );
+      });
+
+    await this.imageService.rollbackUpload(storagePublicId);
+  }
+
+  private async markPendingPostFailed(
+    postId: mongoose.Types.ObjectId,
+    error: unknown,
+  ): Promise<void> {
+    const failureReason = error instanceof Error ? error.message : String(error);
+    await this.unitOfWork
+      .executeInTransaction(() =>
+        this.postWriteRepository.updatePostStatus(
+          asMongoId(postId.toString()),
+          "failed",
+          failureReason.substring(0, 500),
+        ),
+      )
+      .catch((markError) => {
+        logger.error("[CreatePostCommandHandler] Failed to mark post failed", {
+          postId: postId.toString(),
+          error: markError,
+        });
+      });
   }
 
   private normalizeBody(body?: string): string {
