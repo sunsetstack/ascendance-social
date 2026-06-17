@@ -18,7 +18,7 @@ services:
 
   # --- APP LAYER ---
   backend:
-    image: ghcr.io/danzin/photoapp-backend:latest
+    image: ghcr.io/sunsetstack/ascendance-backend:latest
     container_name: backend
     restart: always
     environment: &backend-environment
@@ -46,7 +46,7 @@ services:
       retries: 5
 
   frontend:
-    image: ghcr.io/danzin/photoapp-frontend:latest
+    image: ghcr.io/sunsetstack/ascendance-frontend:latest
     container_name: frontend
     restart: always
     depends_on:
@@ -96,7 +96,7 @@ services:
 
   # Dedicated worker container
   backend-worker:
-    image: ghcr.io/danzin/photoapp-backend:latest
+    image: ghcr.io/sunsetstack/ascendance-backend:latest
     container_name: backend-worker
     restart: always
     environment:

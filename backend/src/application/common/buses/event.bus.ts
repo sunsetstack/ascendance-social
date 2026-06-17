@@ -83,6 +83,15 @@ export class EventBus {
     );
   }
 
+  async queueDurable<TEvent extends IEvent>(event: TEvent): Promise<void> {
+    await this.outboxRepository.saveEvent(
+      event.constructor.name,
+      event,
+      randomUUID(),
+      getCorrelationId(),
+    );
+  }
+
   private resolveHandlerKey(handler: unknown): string {
     if (
       typeof handler === "object" &&

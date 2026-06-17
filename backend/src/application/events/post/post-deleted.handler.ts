@@ -32,6 +32,8 @@ export class PostDeleteHandler implements IEventHandler<PostDeletedEvent> {
         CacheKeyBuilder.getUserForYouFeedTag(event.authorPublicId),
       );
       tagsToInvalidate.push(`user_post_count:${event.authorPublicId}`);
+      tagsToInvalidate.push(CacheKeyBuilder.getNewFeedTag());
+      tagsToInvalidate.push(CacheKeyBuilder.getPostMetaKey(event.postId));
 
       const followers = await this.getFollowersOfUser(event.authorPublicId);
       if (followers.length > 0) {
@@ -56,6 +58,7 @@ export class PostDeleteHandler implements IEventHandler<PostDeletedEvent> {
       });
 
       await this.redis.deletePatterns(patterns);
+      await this.redis.zrem("trending:posts", event.postId);
 
       await this.redis.publish(
         "feed_updates",

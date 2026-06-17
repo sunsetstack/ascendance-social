@@ -17,11 +17,10 @@ import { CommentRepository } from "@/repositories/comment.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
 import { TagService } from "@/services/tag.service";
 import { ImageService } from "@/services/image.service";
-import { RedisService } from "@/services/redis.service";
-import { RetryPresets, RetryService } from "@/services/retry.service";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { PostDeletedEvent } from "@/application/events/post/post.event";
+import { ImageAssetCleanupRequestedEvent } from "@/application/events/image/image.event";
 import { IPost, IUser } from "@/types";
 import {
   PostAuthorizationError,
@@ -29,7 +28,6 @@ import {
   UserNotFoundError,
   mapPostError,
 } from "../../../errors/post.errors";
-import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
 import { logger } from "@/utils/winston";
 
@@ -59,19 +57,11 @@ export class DeletePostCommandHandler implements ICommandHandler<
     private readonly communityMemberRepository: CommunityMemberRepository,
     @inject(TOKENS.Services.Tag) private readonly tagService: TagService,
     @inject(TOKENS.Services.Image) private readonly imageService: ImageService,
-    @inject(TOKENS.Services.Redis) private readonly redisService: RedisService,
-    @inject(TOKENS.Services.Retry) private readonly retryService: RetryService,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
   ) {}
 
   async execute(command: DeletePostCommand): Promise<DeletePostResult> {
     let postAuthorPublicId: string | undefined;
-    let imageAssetToDelete: {
-      url: string;
-      ownerPublicId: UserPublicId;
-      requesterPublicId: UserPublicId;
-    } | null = null;
-
     try {
       await this.unitOfWork.executeInTransaction(async () => {
         const post = await this.validatePostExists(command.postPublicId);
@@ -103,11 +93,15 @@ export class DeletePostCommandHandler implements ICommandHandler<
         );
 
         if (imageRemoval?.removedUrl) {
-          imageAssetToDelete = {
-            url: imageRemoval.removedUrl,
-            ownerPublicId: imageRemoval.ownerPublicId,
-            requesterPublicId: asUserPublicId(command.requesterPublicId),
-          };
+          await this.eventBus.queueTransactional(
+            new ImageAssetCleanupRequestedEvent(
+              "post-deleted",
+              undefined,
+              imageRemoval.removedUrl,
+              asUserPublicId(command.requesterPublicId),
+              imageRemoval.ownerPublicId,
+            ),
+          );
         }
 
         await this.deletePostAndComments(post);
@@ -121,17 +115,11 @@ export class DeletePostCommandHandler implements ICommandHandler<
         }
 
         await this.decrementTagUsage(post);
+        await this.queueDeleteEvent(
+          command.postPublicId,
+          postAuthorPublicId ?? command.requesterPublicId,
+        );
       });
-
-      await this.deleteImageAssetAfterCommit(imageAssetToDelete);
-      await this.invalidateCache(
-        command.requesterPublicId,
-        command.postPublicId,
-      );
-      await this.publishDeleteEvent(
-        command.postPublicId,
-        postAuthorPublicId ?? command.requesterPublicId,
-      );
 
       return { message: "Post deleted successfully" };
     } catch (error) {
@@ -250,39 +238,10 @@ export class DeletePostCommandHandler implements ICommandHandler<
         `[DeletePostHandler] Failed to delete image ${imageId} for post ${post.publicId}:`,
         error,
       );
-      return null;
+      throw error;
     }
 
     return null;
-  }
-
-  private async deleteImageAssetAfterCommit(
-    assetInfo: {
-      url: string;
-      ownerPublicId: UserPublicId;
-      requesterPublicId: UserPublicId;
-    } | null,
-  ): Promise<void> {
-    if (!assetInfo?.url) {
-      return;
-    }
-
-    try {
-      await this.retryService.execute(
-        () =>
-          this.imageService.deleteAttachmentAsset({
-            requesterPublicId: assetInfo.requesterPublicId,
-            ownerPublicId: assetInfo.ownerPublicId,
-            url: assetInfo.url,
-          }),
-        RetryPresets.externalApi(),
-      );
-    } catch (error) {
-      logger.error(
-        `[DeletePostHandler] Failed to delete image asset ${assetInfo.url}:`,
-        error,
-      );
-    }
   }
 
   private async deletePostAndComments(post: IPost): Promise<void> {
@@ -312,35 +271,11 @@ export class DeletePostCommandHandler implements ICommandHandler<
     await this.tagService.decrementUsage(tagIds);
   }
 
-  private async invalidateCache(
-    userPublicId: UserPublicId,
-    postPublicId: PostPublicId,
-  ): Promise<void> {
-    // 1. Remove from user's own feed cache
-    await this.redisService.invalidateByTags([
-      CacheKeyBuilder.getUserFeedTag(userPublicId),
-    ]);
-
-    // 2. Remove from global feed caches
-    await this.redisService.invalidateByTags([
-      CacheKeyBuilder.getTrendingFeedTag(),
-      CacheKeyBuilder.getNewFeedTag(),
-    ]);
-
-    // 3. Remove from trending ZSET (leaderboard)
-    await this.redisService.zrem("trending:posts", postPublicId);
-
-    // 4. Remove from post metadata cache
-    await this.redisService.invalidateByTags([
-      CacheKeyBuilder.getPostMetaKey(postPublicId),
-    ]);
-  }
-
-  private async publishDeleteEvent(
+  private async queueDeleteEvent(
     postPublicId: PostPublicId,
     authorPublicId: string,
   ): Promise<void> {
-    await this.eventBus.publish(
+    await this.eventBus.queueTransactional(
       new PostDeletedEvent(postPublicId, asUserPublicId(authorPublicId)),
     );
   }

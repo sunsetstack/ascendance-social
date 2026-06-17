@@ -27,12 +27,14 @@ import {
   PostDeletedEvent,
   PostUploadedEvent,
 } from "@/application/events/post/post.event";
+import { ImageAssetCleanupRequestedEvent } from "@/application/events/image/image.event";
 import { LikeActionCommand } from "@/application/commands/users/likeAction/likeAction.command";
 import { LikeActionCommandHandler } from "@/application/commands/users/likeAction/likeAction.handler";
 import { LikeActionByPublicIdCommand } from "@/application/commands/users/likeActionByPublicId/likeActionByPublicId.command";
 import { LikeActionByPublicIdCommandHandler } from "@/application/commands/users/likeActionByPublicId/likeActionByPublicId.handler";
 import { PostUploadHandler } from "@/application/events/post/post-uploaded.handler";
 import { PostDeleteHandler } from "@/application/events/post/post-deleted.handler";
+import { ImageAssetCleanupRequestedHandler } from "@/application/events/image/image-asset-cleanup-requested.handler";
 import {
   UserAvatarChangedEvent,
   UserUsernameChangedEvent,
@@ -350,6 +352,9 @@ export function registerCQRS(): void {
   });
   container.register(TOKENS.CQRS.Handlers.PostDelete, {
     useClass: PostDeleteHandler,
+  });
+  container.register(TOKENS.CQRS.Handlers.ImageAssetCleanupRequested, {
+    useClass: ImageAssetCleanupRequestedHandler,
   });
   container.register(TOKENS.CQRS.Handlers.UserAvatarChanged, {
     useClass: UserAvatarChangedHandler,
@@ -772,6 +777,12 @@ export function initCQRS(): void {
   eventBus.subscribe(
     PostDeletedEvent,
     container.resolve<PostDeleteHandler>(TOKENS.CQRS.Handlers.PostDelete),
+  );
+  eventBus.subscribe(
+    ImageAssetCleanupRequestedEvent,
+    container.resolve<ImageAssetCleanupRequestedHandler>(
+      TOKENS.CQRS.Handlers.ImageAssetCleanupRequested,
+    ),
   );
   eventBus.subscribe(
     UserAvatarChangedEvent,

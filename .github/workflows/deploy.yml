@@ -4,9 +4,14 @@ on:
   push:
     branches: ["master"]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -24,7 +29,7 @@ jobs:
           context: .
           file: ./frontend/frontend.Dockerfile
           push: true
-          tags: ghcr.io/danzin/photoapp-frontend:latest
+          tags: ghcr.io/sunsetstack/ascendance-frontend:latest
           build-args: |
             VITE_API_URL=/
             VITE_SOCKET_URL=/
@@ -35,12 +40,14 @@ jobs:
           context: .
           file: ./backend/backend.Dockerfile
           push: true
-          tags: ghcr.io/danzin/photoapp-backend:latest
+          tags: ghcr.io/sunsetstack/ascendance-backend:latest
+
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+
     steps:
-      - name: Deploy to Digital Ocean via SSH
+      - name: Deploy to DigitalOcean via SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
@@ -51,7 +58,7 @@ jobs:
           port: 22
           envs: REDIS_PASSWORD
           script: |
-            cd /opt/image-app
+            cd /opt/ascendance-social
 
             touch .env
             if grep -q '^REDIS_PASSWORD=' .env; then
@@ -60,9 +67,8 @@ jobs:
               echo "REDIS_PASSWORD=${REDIS_PASSWORD}" >> .env
             fi
 
-            git fetch --all
+            git fetch origin master
             git reset --hard origin/master
-            git pull origin master
 
             docker-compose -f docker-compose-prod.yml pull
             docker-compose -f docker-compose-prod.yml up -d

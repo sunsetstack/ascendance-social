@@ -83,6 +83,7 @@ export const TOKENS = {
     Handlers: {
       EventBus: "EventBus",
       FeedInteraction: "FeedInteractionHandler",
+      ImageAssetCleanupRequested: "ImageAssetCleanupRequestedHandler",
       MessageAttachmentsDeleted: "MessageAttachmentsDeletedHandler",
       MessageSent: "MessageSentHandler",
       MessageStatusUpdatedEvent: "MessageStatusUpdatedEventHandler",

@@ -46,9 +46,6 @@ describe("DeletePostCommandHandler", () => {
 		removePostAttachmentRecord: SinonStub;
 		deleteAttachmentAsset: SinonStub;
 	};
-	let mockRetryService: {
-		execute: SinonStub;
-	};
 	let mockRedisService: {
 		invalidateFeed: SinonStub;
 		invalidateByTags: SinonStub;
@@ -100,10 +97,6 @@ describe("DeletePostCommandHandler", () => {
 			deleteAttachmentAsset: sinon.stub().resolves(),
 		};
 
-		mockRetryService = {
-			execute: sinon.stub().callsFake(async (op: () => Promise<unknown>) => op()),
-		};
-
 		mockRedisService = {
 			invalidateFeed: sinon.stub(),
 			invalidateByTags: sinon.stub().resolves(),
@@ -127,8 +120,6 @@ describe("DeletePostCommandHandler", () => {
 			mockCommunityMemberRepository as any,
 			mockTagService as any,
 			mockImageService as any,
-			mockRedisService as any,
-			mockRetryService as any,
 			mockEventBus as any,
 		);
 
@@ -216,8 +207,7 @@ describe("DeletePostCommandHandler", () => {
 			expect(mockPostReadRepository.findByPublicId.calledWith(VALID_POST_PUBLIC_ID)).to.be.true;
 			expect(mockUserReadRepository.findByPublicId.calledWith(VALID_USER_PUBLIC_ID)).to.be.true;
 			expect(mockImageService.removePostAttachmentRecord.called).to.be.true;
-			expect(mockRetryService.execute.called).to.be.true;
-			expect(mockImageService.deleteAttachmentAsset.called).to.be.true;
+			expect(mockImageService.deleteAttachmentAsset.called).to.be.false;
 			expect(mockTagService.decrementUsage.calledOnce).to.be.true;
 			expect(mockTagService.decrementUsage.firstCall.args[0]).to.deep.equal(mockTagIds);
 			expect(mockPostWriteRepository.delete.called).to.be.true;
@@ -258,7 +248,6 @@ describe("DeletePostCommandHandler", () => {
 			await handler.execute(command);
 
 			expect(mockImageService.removePostAttachmentRecord.called).to.be.false;
-			expect(mockRetryService.execute.called).to.be.false;
 			expect(mockTagService.decrementUsage.calledOnce).to.be.true;
 			expect(mockTagService.decrementUsage.firstCall.args[0]).to.deep.equal(mockTagIds);
 			expect(mockPostWriteRepository.delete.called).to.be.true;
@@ -298,7 +287,7 @@ describe("DeletePostCommandHandler", () => {
 			expect(mockPostWriteRepository.delete.called).to.be.true;
 		});
 
-		it("should continue post deletion even if image deletion fails", async () => {
+		it("should abort post deletion if image record deletion fails", async () => {
 			const mockUserId = new Types.ObjectId();
 			const mockTagIds = [new Types.ObjectId()];
 
@@ -328,11 +317,12 @@ describe("DeletePostCommandHandler", () => {
 				return await callback(mockSession);
 			});
 
-			const result = await handler.execute(command);
+			await expect(handler.execute(command)).to.be.rejectedWith(
+				"Image service unavailable",
+			);
 
-			expect(mockPostWriteRepository.delete.called).to.be.true;
-			expect(mockTagService.decrementUsage.called).to.be.true;
-			expect(result).to.have.property("message", "Post deleted successfully");
+			expect(mockPostWriteRepository.delete.called).to.be.false;
+			expect(mockTagService.decrementUsage.called).to.be.false;
 		});
 
 		it("should queue PostDeletedEvent after successful deletion", async () => {
@@ -366,10 +356,10 @@ describe("DeletePostCommandHandler", () => {
 
 			await handler.execute(command);
 
-			expect(mockEventBus.publish.calledOnce).to.be.true;
+			expect(mockEventBus.queueTransactional.called).to.be.true;
 		});
 
-		it("should invalidate user feed cache after deletion", async () => {
+		it("should not invalidate user feed cache inline after deletion", async () => {
 			const mockUserId = new Types.ObjectId();
 
 			const mockUser = {
@@ -398,8 +388,8 @@ describe("DeletePostCommandHandler", () => {
 
 			await handler.execute(command);
 
-			expect(mockRedisService.invalidateByTags.calledWith([`user_feed:${VALID_USER_PUBLIC_ID}`])).to.be.true;
-			expect(mockRedisService.zrem.calledOnceWith("trending:posts", VALID_POST_PUBLIC_ID)).to.be.true;
+			expect(mockRedisService.invalidateByTags.called).to.be.false;
+			expect(mockRedisService.zrem.called).to.be.false;
 		});
 	});
 });

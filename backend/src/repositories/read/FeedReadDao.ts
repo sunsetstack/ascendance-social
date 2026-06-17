@@ -14,6 +14,10 @@ import {
 import { decodeCursor, encodeCursor } from "@/utils/cursorCodec";
 import { TOKENS } from "@/types/tokens";
 import { Errors } from "@/utils/errors";
+import {
+  ACTIVE_POST_FILTER,
+  withActivePostFilter,
+} from "@/repositories/post-pipeline.helpers";
 
 type ProjectedFeedPost = FeedPost & {
   _id?: mongoose.Types.ObjectId;
@@ -124,7 +128,9 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       };
 
       if (phase === "personalized" && orConditions.length > 0) {
-        const pipeline: PipelineStage[] = [{ $match: { $or: orConditions } }];
+        const pipeline: PipelineStage[] = [
+          { $match: withActivePostFilter({ $or: orConditions }) },
+        ];
 
         if (Object.keys(cursorFilter).length > 0) {
           pipeline.push({ $match: cursorFilter });
@@ -163,6 +169,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         // There is a slight risk of overlap if a personalized post IS ALSO a recent backfill post,
         // but $nin is too expensive. We can just distinct in memory or accept slight overlap.
         const backfillPipeline: PipelineStage[] = [
+          { $match: ACTIVE_POST_FILTER },
           { $sort: { createdAt: -1, _id: -1 } },
           // If we ALREADY fetched some personalized posts on this CURRENT page, we should theoretically offset the backfill.
           // However, to keep it simple, we just start backfill from scratch and cursor tracking will remember where we are based on the Last Backfill Post.
@@ -191,7 +198,9 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
           }
         }
       } else if (phase === "backfill") {
-        const backfillPipeline: PipelineStage[] = [];
+        const backfillPipeline: PipelineStage[] = [
+          { $match: ACTIVE_POST_FILTER },
+        ];
         if (Object.keys(cursorFilter).length > 0) {
           backfillPipeline.push({ $match: cursorFilter });
         }
@@ -270,7 +279,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       );
 
       const pipeline: PipelineStage[] = [
-        { $match: { createdAt: { $gte: sinceDate } } },
+        { $match: withActivePostFilter({ createdAt: { $gte: sinceDate } }) },
         // compute ranking scores before $lookup to sort/paginate early
         {
           $addFields: {
@@ -326,7 +335,9 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       ];
       const [results, total] = await Promise.all([
         this.model.aggregate(pipeline).exec(),
-        this.model.countDocuments({ createdAt: { $gte: sinceDate } }),
+        this.model.countDocuments(
+          withActivePostFilter({ createdAt: { $gte: sinceDate } }),
+        ),
       ]);
 
       console.info(`Ranked feed generated with ${results.length} results`);
@@ -381,10 +392,10 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       const pipeline: PipelineStage[] = [
         {
-          $match: {
+          $match: withActivePostFilter({
             createdAt: { $gte: sinceDate },
             likesCount: { $gte: minLikes },
-          },
+          }),
         },
         // compute trend scores before $lookup to sort/paginate early
         {
@@ -445,8 +456,10 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       const [results, total] = await Promise.all([
         this.model.aggregate(pipeline).exec(),
         this.model.countDocuments({
-          createdAt: { $gte: sinceDate },
-          likesCount: { $gte: minLikes },
+          ...withActivePostFilter({
+            createdAt: { $gte: sinceDate },
+            likesCount: { $gte: minLikes },
+          }),
         }),
       ]);
 
@@ -483,6 +496,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
   ): Promise<PaginationResult<FeedPost>> {
     try {
       const pipeline: PipelineStage[] = [
+        { $match: ACTIVE_POST_FILTER },
         { $sort: { createdAt: -1, _id: -1 } },
         { $skip: skip },
         { $limit: limit },
@@ -497,7 +511,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       const [results, total] = await Promise.all([
         this.model.aggregate(pipeline).exec(),
-        this.model.countDocuments({}),
+        this.model.countDocuments(ACTIVE_POST_FILTER),
       ]);
       const totalPages = Math.ceil(total / limit);
       const currentPage = Math.floor(skip / limit) + 1;
@@ -523,10 +537,10 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       const pipeline: PipelineStage[] = [
         {
-          $match: {
+          $match: withActivePostFilter({
             createdAt: { $gte: timeThreshold },
             tags: { $exists: true, $not: { $size: 0 } },
-          },
+          }),
         },
         {
           $project: {
@@ -661,6 +675,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       // fetch one extra to determine if there are more results
       const pipeline: PipelineStage[] = [
+        { $match: ACTIVE_POST_FILTER },
         ...(Object.keys(cursorFilter).length > 0
           ? [{ $match: cursorFilter }]
           : []),
@@ -795,10 +810,10 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       const pipeline: PipelineStage[] = [
         {
-          $match: {
+          $match: withActivePostFilter({
             createdAt: { $gte: sinceDate },
             likesCount: { $gte: minLikes },
-          },
+          }),
         },
         // compute trend scores before cursor filtering
         {
@@ -977,7 +992,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       const feedProjection = this.getStandardProjectionFields();
 
       const pipeline: PipelineStage[] = [
-        { $match: { createdAt: { $gte: sinceDate } } },
+        { $match: withActivePostFilter({ createdAt: { $gte: sinceDate } }) },
         // compute ranking scores before cursor filtering
         {
           $addFields: {
@@ -1105,6 +1120,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
     try {
       const lookups = this.getStandardLookups();
       const pipeline: PipelineStage[] = [
+        { $match: ACTIVE_POST_FILTER },
         { $sort: { createdAt: -1, _id: -1 } },
         {
           $facet: {
@@ -1187,10 +1203,10 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       const pipeline: PipelineStage[] = [
         {
-          $match: {
+          $match: withActivePostFilter({
             createdAt: { $gte: sinceDate },
             likesCount: { $gte: minLikes },
-          },
+          }),
         },
         // compute trend scores early
         {
@@ -1314,7 +1330,12 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
           from: "posts",
           let: { repostId: "$repostOf" },
           pipeline: [
-            { $match: { $expr: { $eq: ["$_id", "$$repostId"] } } },
+            {
+              $match: {
+                $expr: { $eq: ["$_id", "$$repostId"] },
+                ...ACTIVE_POST_FILTER,
+              },
+            },
 
             {
               $lookup: {

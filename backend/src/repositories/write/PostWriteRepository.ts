@@ -1,6 +1,6 @@
 import mongoose, { Model } from "mongoose";
 import { inject, injectable } from "tsyringe";
-import { IPost } from "@/types";
+import { IPost, PostStatus } from "@/types";
 import type { IPostWriteRepository } from "../interfaces/IPostWriteRepository";
 import { BaseRepository } from "../base.repository";
 import { TOKENS } from "@/types/tokens";
@@ -40,6 +40,57 @@ export class PostWriteRepository
         { _id: postId },
         { $inc: { repostCount: increment } },
       );
+      if (session) query.session(session);
+      await query.exec();
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  async activatePendingPost(
+    postId: MongoId,
+    updates: {
+      image: mongoose.Types.ObjectId | null;
+      tags: mongoose.Types.ObjectId[];
+      slug: string;
+    },
+  ): Promise<IPost | null> {
+    try {
+      const session = this.getSession();
+      const query = this.model.findOneAndUpdate(
+        { _id: postId, status: "pending" },
+        {
+          $set: {
+            ...updates,
+            status: "active",
+          },
+          $unset: { failureReason: 1 },
+        },
+        { new: true },
+      );
+      if (session) query.session(session);
+      return await query.exec();
+    } catch (error: unknown) {
+      throw Errors.database(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  async updatePostStatus(
+    postId: MongoId,
+    status: PostStatus,
+    failureReason?: string,
+  ): Promise<void> {
+    try {
+      const session = this.getSession();
+      const update =
+        failureReason === undefined
+          ? { $set: { status }, $unset: { failureReason: 1 } }
+          : { $set: { status, failureReason } };
+      const query = this.model.updateOne({ _id: postId }, update);
       if (session) query.session(session);
       await query.exec();
     } catch (error: unknown) {

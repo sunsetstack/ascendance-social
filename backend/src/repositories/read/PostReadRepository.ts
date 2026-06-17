@@ -14,10 +14,12 @@ import { Errors } from "@/utils/errors";
 import {
   buildFacetPipeline,
   buildSort,
+  ACTIVE_POST_FILTER,
   getStandardLookups,
   getStandardProjection,
   getStandardProjectionFields,
   normalizeObjectId,
+  withActivePostFilter,
 } from "@/repositories/post-pipeline.helpers";
 
 type CountFacetResult = { count: number };
@@ -39,7 +41,7 @@ export class PostReadRepository
       const searchString = terms.join(" ");
 
       const pipeline: PipelineStage[] = [
-        { $match: { $text: { $search: searchString } } },
+        { $match: withActivePostFilter({ $text: { $search: searchString } }) },
         { $addFields: { score: { $meta: "textScore" } } },
         { $sort: { score: { $meta: "textScore" } } },
         { $limit: limit },
@@ -59,7 +61,7 @@ export class PostReadRepository
     publicId: PostPublicId,
   ): Promise<MongoId | null> {
     const doc = await this.model
-      .findOne({ publicId })
+      .findOne(withActivePostFilter({ publicId }))
       .select("_id")
       .lean()
       .exec();
@@ -69,7 +71,7 @@ export class PostReadRepository
   async findOneByPublicId(publicId: PostPublicId): Promise<IPost | null> {
     try {
       const session = this.getSession();
-      const query = this.model.findOne({ publicId });
+      const query = this.model.findOne(withActivePostFilter({ publicId }));
       if (session) query.session(session);
       return await query.exec();
     } catch (error: unknown) {
@@ -111,7 +113,7 @@ export class PostReadRepository
     try {
       const session = this.getSession();
       const query = this.model
-        .findOne({ publicId })
+        .findOne(withActivePostFilter({ publicId }))
         .select(
           "publicId user author body slug type repostOf repostCount image tags likesCount commentsCount viewsCount createdAt updatedAt communityId",
         )
@@ -143,7 +145,7 @@ export class PostReadRepository
     try {
       const session = this.getSession();
       const query = this.model
-        .findOne({ slug })
+        .findOne(withActivePostFilter({ slug }))
         .populate("tags", "tag")
         .populate({
           path: "image",
@@ -165,7 +167,7 @@ export class PostReadRepository
   ): Promise<IPost[]> {
     const skip = (page - 1) * limit;
     return this.model
-      .find({ communityId })
+      .find(withActivePostFilter({ communityId }))
       .sort({ createdAt: -1, _id: -1 })
       .skip(skip)
       .limit(limit)
@@ -180,7 +182,7 @@ export class PostReadRepository
     try {
       const objectIds = ids.map((id) => normalizeObjectId(id, "id"));
       const pipeline: PipelineStage[] = [
-        { $match: { _id: { $in: objectIds } } },
+        { $match: withActivePostFilter({ _id: { $in: objectIds } }) },
         ...getStandardLookups(),
         getStandardProjection(),
       ];
@@ -201,7 +203,7 @@ export class PostReadRepository
       );
       if (uniqueIds.length === 0) return [];
       const pipeline: PipelineStage[] = [
-        { $match: { publicId: { $in: uniqueIds } } },
+        { $match: withActivePostFilter({ publicId: { $in: uniqueIds } }) },
         ...getStandardLookups(),
         getStandardProjection(),
       ];
@@ -235,7 +237,7 @@ export class PostReadRepository
       const userId = normalizeObjectId(userDoc._id, "user._id");
 
       const pipeline: PipelineStage[] = [
-        { $match: { user: userId } },
+        { $match: withActivePostFilter({ user: userId }) },
         { $sort: sort },
         {
           $facet: {
@@ -278,6 +280,7 @@ export class PostReadRepository
       const sort = buildSort(sortBy, sortOrder);
 
       const pipeline: PipelineStage[] = [
+        { $match: ACTIVE_POST_FILTER },
         { $sort: sort },
         {
           $facet: {
@@ -326,14 +329,14 @@ export class PostReadRepository
 
       const [data, total] = await Promise.all([
         this.model
-          .find({ tags: { $in: tagIds } })
+          .find(withActivePostFilter({ tags: { $in: tagIds } }))
           .populate("tags", "tag")
           .populate({ path: "image", select: "url publicId slug -_id" })
           .sort(sort)
           .skip(skip)
           .limit(limit)
           .exec(),
-        this.model.countDocuments({ tags: { $in: tagIds } }),
+        this.model.countDocuments(withActivePostFilter({ tags: { $in: tagIds } })),
       ]);
 
       return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
