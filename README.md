@@ -150,8 +150,8 @@ The value here is not "more architecture." The value is demonstrating where that
 ### Quick Start With Docker
 
 ```bash
-git clone https://github.com/danzin/image-app.git
-cd image-app
+git clone https://github.com/sunsetstack/ascendance-social.git
+cd ascendance-social
 docker compose up --build
 ```
 
