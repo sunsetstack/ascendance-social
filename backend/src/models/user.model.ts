@@ -1,8 +1,12 @@
 import { Schema, model, CallbackError } from "mongoose";
 import validator from "validator";
-import bcryptjs from "bcryptjs";
-import { IPost, IUser } from "@/types";
+import { IUser } from "@/types";
 import { v4 as uuidv4 } from "uuid";
+import { hashPassword } from "@/application/common/policies/password.policy";
+import {
+	isReservedHandle,
+	normalizeHandle,
+} from "@/application/common/policies/user-handle.policy";
 
 const userSchema = new Schema<IUser>(
 	{
@@ -144,31 +148,12 @@ const userSchema = new Schema<IUser>(
 
 userSchema.index({ createdAt: 1 });
 
-const RESERVED_HANDLES = [
-	"admin",
-	"login",
-	"register",
-	"api",
-	"dashboard",
-	"settings",
-	"help",
-	"moderator",
-	"user",
-	"support",
-	"about",
-	"contact",
-	"privacy",
-	"terms",
-	"profile",
-];
-
 // Hash pasword when a new user is registered
 userSchema.pre("save", async function (next) {
 	if (!this.isModified("password")) return next();
 
 	try {
-		const salt = await bcryptjs.genSalt(10);
-		this.password = await bcryptjs.hash(this.password, salt);
+		this.password = await hashPassword(this.password);
 		next();
 	} catch (error) {
 		next(error as CallbackError);
@@ -179,10 +164,11 @@ userSchema.pre("validate", function (next) {
 	if (this.isModified("handle") || this.isNew) {
 		const rawHandle = typeof this.handle === "string" ? this.handle.trim() : "";
 		if (rawHandle) {
-			this.handle = rawHandle;
-			this.handleNormalized = rawHandle.toLowerCase();
+			const normalized = normalizeHandle(rawHandle);
+			this.handle = normalized.handle;
+			this.handleNormalized = normalized.handleNormalized;
 		}
-		if (RESERVED_HANDLES.includes(this.handleNormalized)) {
+		if (isReservedHandle(this.handleNormalized)) {
 			this.invalidate("handle", "Can't use that handle.");
 		}
 	}
@@ -200,8 +186,7 @@ userSchema.pre("findOneAndUpdate", async function (next) {
 		const password = update.password || update.$set?.password;
 		if (password) {
 			try {
-				const salt = await bcryptjs.genSalt(10);
-				const hashedPassword = await bcryptjs.hash(password, salt);
+				const hashedPassword = await hashPassword(password);
 
 				if (update.password) {
 					update.password = hashedPassword;
@@ -226,26 +211,6 @@ userSchema.pre("findOneAndUpdate", async function (next) {
 		next();
 	}
 });
-
-userSchema.methods.comparePassword = async function (candidatePassword: string): Promise<boolean> {
-	return bcryptjs.compare(candidatePassword, this.password);
-};
-
-userSchema.methods.canViewPost = function (post: IPost | { canBeViewedBy?: (user: IUser) => boolean }): boolean {
-	if (!post) {
-		return false;
-	}
-
-	if (this.isBanned) {
-		return false;
-	}
-
-	if (typeof (post as any).canBeViewedBy === "function") {
-		return (post as any).canBeViewedBy(this);
-	}
-
-	return true;
-};
 
 // Transform the user object when serialized to JSON
 userSchema.set("toJSON", {

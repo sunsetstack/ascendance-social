@@ -5,14 +5,13 @@
  * sinon-stubbed I/O dependencies.
  *
  * The handler uses `userModel.findOne(...).select('+password').session(null).exec()`
- * inside the UnitOfWork transaction.  We simulate this with a stub chain and a
- * stub for the Mongoose document's `comparePassword` method.
+ * inside the UnitOfWork transaction. We simulate this with a stub chain and a
+ * stored password hash.
  *
  * Proves:
  *   - Short new password (< 3 chars): ValidationError (400) — no I/O at all
  *   - New password same as current: ValidationError (400) — no I/O at all
  *   - User not found (model returns null): NotFoundError (404)
- *   - comparePassword is not a function: InternalServerError (500)
  *   - Wrong current password: AuthenticationError (401)
  *   - Happy path: update called with new password, action logged
  *
@@ -30,6 +29,7 @@ import { ChangePasswordCommand } from "@/application/commands/users/changePasswo
 import { ChangePasswordCommandHandler } from "@/application/commands/users/changePassword/changePassword.handler";
 import { AppError } from "@/utils/errors";
 import { asUserPublicId, asMongoId } from "@/types/branded";
+import { hashPassword } from "@/application/common/policies/password.policy";
 
 chai.use(chaiAsPromised);
 
@@ -47,10 +47,10 @@ const NEW_PASSWORD = "new_pass_xyz";
 // Fake document factories
 // ---------------------------------------------------------------------------
 
-const makeUserDoc = (overrides: Record<string, unknown> = {}) => ({
+const makeUserDoc = async (overrides: Record<string, unknown> = {}) => ({
   _id: { toString: () => USER_MID },
   publicId: USER_PID,
-  comparePassword: sinon.stub().resolves(true),
+  password: await hashPassword(CURRENT_PASSWORD),
   ...overrides,
 });
 
@@ -73,7 +73,7 @@ const makeModelStub = (resolvedDoc: unknown) => {
   return { findOne: findOneStub, _exec: execStub };
 };
 
-const makeStubs = (resolvedDoc: unknown = makeUserDoc()) => ({
+const makeStubs = (resolvedDoc: unknown) => ({
   userWriteRepo: {
     update: sinon.stub().resolves(),
   },
@@ -102,8 +102,8 @@ describe("ChangePasswordCommandHandler integration (via CommandBus)", () => {
   let bus: CommandBus;
   let stubs: ReturnType<typeof makeStubs>;
 
-  beforeEach(() => {
-    stubs = makeStubs();
+  beforeEach(async () => {
+    stubs = makeStubs(await makeUserDoc());
     bus = new CommandBus();
     bus.register(ChangePasswordCommand, buildHandler(stubs));
   });
@@ -154,25 +154,8 @@ describe("ChangePasswordCommandHandler integration (via CommandBus)", () => {
     expect(stubs.userWriteRepo.update.called).to.be.false;
   });
 
-  it("throws InternalServerError (500) when comparePassword is not a function", async () => {
-    const docWithoutCompare = { _id: { toString: () => USER_MID }, publicId: USER_PID };
-    stubs = makeStubs(docWithoutCompare);
-    bus = new CommandBus();
-    bus.register(ChangePasswordCommand, buildHandler(stubs));
-
-    const err = await bus
-      .dispatch(new ChangePasswordCommand(USER_PID, CURRENT_PASSWORD, NEW_PASSWORD))
-      .catch((e) => e);
-
-    expect(err).to.be.instanceOf(AppError);
-    expect((err as AppError).statusCode).to.equal(500);
-    expect(stubs.userWriteRepo.update.called).to.be.false;
-  });
-
   it("throws AuthenticationError (401) when the current password is wrong", async () => {
-    const doc = makeUserDoc({
-      comparePassword: sinon.stub().resolves(false),
-    });
+    const doc = await makeUserDoc();
     stubs = makeStubs(doc);
     bus = new CommandBus();
     bus.register(ChangePasswordCommand, buildHandler(stubs));

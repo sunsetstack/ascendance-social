@@ -28,6 +28,7 @@ import { RedisService } from "@/services/redis.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
 import { logger } from "@/utils/winston";
+import { verifyPassword } from "@/application/common/policies/password.policy";
 
 @injectable()
 export class DeleteUserCommandHandler implements ICommandHandler<
@@ -92,8 +93,9 @@ export class DeleteUserCommandHandler implements ICommandHandler<
         throw Errors.notFound("User");
       }
 
-      const isPasswordValid = await userWithPassword.comparePassword(
+      const isPasswordValid = await verifyPassword(
         command.password,
+        userWithPassword.password,
       );
       if (!isPasswordValid) {
         throw Errors.authentication("Invalid password");

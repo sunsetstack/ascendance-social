@@ -9,6 +9,7 @@ import { IUser } from "@/types";
 import { Errors } from "@/utils/errors";
 import { asMongoId } from "@/types/branded";
 import { TOKENS } from "@/types/tokens";
+import { verifyPassword } from "@/application/common/policies/password.policy";
 
 @injectable()
 export class ChangePasswordCommandHandler implements ICommandHandler<
@@ -37,7 +38,7 @@ export class ChangePasswordCommandHandler implements ICommandHandler<
     }
 
     await this.unitOfWork.executeInTransaction(async () => {
-      // need to use model directly to access password field and comparePassword method
+      // Need the model directly because the password is excluded by default.
       const user = await this.userModel
         .findOne({ publicId: command.userPublicId })
         .select("+password")
@@ -48,12 +49,9 @@ export class ChangePasswordCommandHandler implements ICommandHandler<
         throw Errors.notFound("User");
       }
 
-      if (typeof user.comparePassword !== "function") {
-        throw Errors.internal("Password comparison not available for user");
-      }
-
-      const passwordMatches = await user.comparePassword(
+      const passwordMatches = await verifyPassword(
         command.currentPassword,
+        user.password,
       );
       if (!passwordMatches) {
         throw Errors.authentication("Current password is incorrect");

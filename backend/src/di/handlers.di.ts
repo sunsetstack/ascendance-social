@@ -7,6 +7,10 @@ import { SetFollowStateCommand } from "@/application/commands/users/setFollowSta
 import { SetFollowStateCommandHandler } from "@/application/commands/users/setFollowState/setFollowState.handler";
 import { RegisterUserCommandHandler } from "@/application/commands/users/register/register.handler";
 import { RegisterUserCommand } from "@/application/commands/users/register/register.command";
+import { LoginCommand } from "@/application/commands/auth/login/login.command";
+import { LoginCommandHandler } from "@/application/commands/auth/login/login.handler";
+import { RefreshSessionCommand } from "@/application/commands/auth/refreshSession/refreshSession.command";
+import { RefreshSessionCommandHandler } from "@/application/commands/auth/refreshSession/refreshSession.handler";
 import { ClearCacheCommand } from "@/application/commands/admin/clearCache/clearCache.command";
 import { ClearCacheCommandHandler } from "@/application/commands/admin/clearCache/clearCache.handler";
 import { GetDashboardStatsQuery } from "@/application/queries/admin/getDashboardStats/getDashboardStats.query";
@@ -221,6 +225,12 @@ export function registerCQRS(): void {
 
   container.register(TOKENS.CQRS.Commands.RegisterUser, {
     useClass: RegisterUserCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Commands.Login, {
+    useClass: LoginCommandHandler,
+  });
+  container.register(TOKENS.CQRS.Commands.RefreshSession, {
+    useClass: RefreshSessionCommandHandler,
   });
   container.register(TOKENS.CQRS.Commands.SetFollowState, {
     useClass: SetFollowStateCommandHandler,
@@ -544,6 +554,16 @@ export function initCQRS(): void {
     RegisterUserCommand,
     container.resolve<RegisterUserCommandHandler>(
       TOKENS.CQRS.Commands.RegisterUser,
+    ),
+  );
+  commandBus.register(
+    LoginCommand,
+    container.resolve<LoginCommandHandler>(TOKENS.CQRS.Commands.Login),
+  );
+  commandBus.register(
+    RefreshSessionCommand,
+    container.resolve<RefreshSessionCommandHandler>(
+      TOKENS.CQRS.Commands.RefreshSession,
     ),
   );
   commandBus.register(

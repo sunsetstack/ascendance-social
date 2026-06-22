@@ -1,6 +1,5 @@
 import mongoose, { Document } from "mongoose";
 import { IImage } from "@/types/customImages/images.types";
-import { IUser } from "../customUsers/user.types";
 import {
   MongoId,
   UserPublicId,
@@ -34,10 +33,6 @@ export interface IPost extends Document {
   createdAt: Date;
   updatedAt: Date;
   communityId?: mongoose.Types.ObjectId; // if null -> personal post otherwise it' a community post
-  isOwnedBy(userId: mongoose.Types.ObjectId | string): boolean;
-  canBeViewedBy(
-    user?: Pick<IUser, "isAdmin" | "isBanned" | "publicId"> | null,
-  ): boolean;
 }
 
 export type PostStatus = "pending" | "active" | "failed";

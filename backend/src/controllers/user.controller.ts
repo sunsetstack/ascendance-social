@@ -5,6 +5,8 @@ import { injectable, inject } from "tsyringe";
 import { authCookieNames } from "@/config/cookieConfig";
 import { CommandBus } from "@/application/common/buses/command.bus";
 import { QueryBus } from "@/application/common/buses/query.bus";
+import { LoginCommand } from "@/application/commands/auth/login/login.command";
+import { RefreshSessionCommand } from "@/application/commands/auth/refreshSession/refreshSession.command";
 import { RegisterUserCommand } from "@/application/commands/users/register/register.command";
 import { RegisterUserResult } from "@/application/commands/users/register/register.handler";
 import { GetMeQuery } from "@/application/queries/users/getMe/getMe.query";
@@ -68,6 +70,7 @@ import {
 
 /** Threshold for enabling streaming responses (items) */
 import { STREAM_THRESHOLD } from "@/utils/post-helpers";
+import { AuthenticatedSessionResult } from "@/services/auth.service";
 
 type EmptyParams = Record<string, never>;
 type EmptyBody = Record<string, never>;
@@ -178,11 +181,10 @@ export class UserController {
 
   login = async (req: TypedRequest<EmptyParams, LoginBody>, res: Response) => {
     const { email, password } = req.body;
-    const { user, accessToken, refreshToken } = await this.authService.login(
-      email,
-      password,
-      buildAuthRequestContext(req),
-    );
+    const { user, accessToken, refreshToken } =
+      await this.commandBus.dispatch<AuthenticatedSessionResult>(
+        new LoginCommand(email, password, buildAuthRequestContext(req)),
+      );
     setAuthCookies(res, accessToken, refreshToken);
     res.status(200).json({ user });
   };
@@ -193,9 +195,8 @@ export class UserController {
       user,
       accessToken,
       refreshToken: nextRefreshToken,
-    } = await this.authService.refreshSession(
-      refreshToken,
-      buildAuthRequestContext(req),
+    } = await this.commandBus.dispatch<AuthenticatedSessionResult>(
+      new RefreshSessionCommand(refreshToken, buildAuthRequestContext(req)),
     );
     setAuthCookies(res, accessToken, nextRefreshToken);
     res.status(200).json({ user });

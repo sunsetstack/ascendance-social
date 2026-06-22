@@ -6,6 +6,10 @@ import { OutboxRepository } from "@/repositories/outbox.repository";
 import { sessionALS } from "@/database/UnitOfWork";
 import { TOKENS } from "@/types/tokens";
 import { getCorrelationId } from "@/runtime/request-context";
+import {
+  EventRegistry,
+  RegisteredEventType,
+} from "@/application/common/events/event-registry";
 
 type RegisteredEventHandler<TEvent = unknown> = {
   key: string;
@@ -50,7 +54,12 @@ export class EventBus {
     await Promise.all(handlers.map((handler) => handler.handle(event)));
   }
 
-  async publishByType(eventType: string, eventPayload: unknown): Promise<void> {
+  async publishByType<TEventType extends string>(
+    eventType: TEventType,
+    eventPayload: TEventType extends RegisteredEventType
+      ? EventRegistry[TEventType]
+      : unknown,
+  ): Promise<void> {
     const handlers = this.getRegisteredHandlers(eventType);
     await Promise.all(handlers.map((handler) => handler.handle(eventPayload)));
   }
