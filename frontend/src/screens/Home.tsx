@@ -1,5 +1,4 @@
 import React, { useMemo } from "react";
-import { motion } from "framer-motion";
 import { usePosts } from "../hooks/posts/usePosts";
 import Gallery from "../components/Gallery";
 import CreatePost from "../components/CreatePost";
@@ -60,11 +59,11 @@ const Home: React.FC = () => {
 					}}
 				>
 					{error ? (
-						<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+						<Box>
 							<Typography color="error" sx={{ textAlign: "center", py: 4, fontSize: "1.1rem" }}>
 								Error fetching images: {error.message}
 							</Typography>
-						</motion.div>
+						</Box>
 					) : (
 						<Gallery
 							key={`posts-feed`}

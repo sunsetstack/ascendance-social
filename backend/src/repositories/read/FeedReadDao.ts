@@ -24,15 +24,6 @@ type ProjectedFeedPost = FeedPost & {
   isPersonalized?: boolean;
 };
 
-type TotalFacetResult = {
-  total: number;
-};
-
-type MetadataFacetResult<T> = {
-  data: T[];
-  metadata: TotalFacetResult[];
-};
-
 @injectable()
 export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
   constructor(
@@ -355,8 +346,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
   /**
    * Generates a trending feed using multi-factor trend scoring
-   * @deprecated Use getTrendingFeedWithCursor or getTrendingFeedWithFacet for better performance
-   * Cursor variant for deep pagination; facet variant for single-query combined count
+   * @deprecated Use getTrendingFeedWithCursor for deep pagination
    * @pattern Multi-Factor Trending Algorithm
    * @strategy Recency + Log(Popularity) + Log(Comments) with configurable weights
    * @complexity O(N log N) aggregation + O(skip) scan cost on skip-based pagination
@@ -478,8 +468,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
   /**
    * Generates a chronological feed of newest posts
-   * @deprecated Use getNewFeedWithCursor or getNewFeedWithFacet for better performance
-   * Cursor variant for efficient infinite scroll; facet variant for single query
+   * @deprecated Use getNewFeedWithCursor for deep pagination
    * @pattern Chronological Feed
    * @strategy Simple reverse-chronological sorting by creation date
    * @complexity O(N log N) sort + O(skip) scan cost on skip-based pagination
@@ -1095,89 +1084,22 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
   }
 
   /**
-   * Fetch posts with single aggregation query combining count and data
-   * @description uses $facet to get both paginated results and total count in one query
-   * @note $facet has 16MB memory limit, suitable for most feeds but avoid for very large result sets
-   * @pattern Facet Optimization - reduces two DB round-trips to one
+   * Backward-compatible entry point for callers that still ask for the old
+   * facet variant. The new-feed path intentionally uses the two-query
+   * implementation to avoid MongoDB's 16MB $facet result document limit.
    */
-  /**
-   * Fetches new feed with combined count and data in single aggregation query
-   * @recommended Use for first page or when total count is needed (replaces countDocuments + aggregate)
-   * @pattern Facet Aggregation Optimization
-   * @complexity O(N log N) single query vs two separate queries (countDocuments + aggregate)
-   * @performance ~2x faster than skip-based pagination for first/early pages due to single roundtrip
-   * @limitation $facet has 16MB memory limit; use cursor pagination for very large result sets
-   * @param limit - Number of posts per page
-   * @param skip - Number of posts to skip
-   * @returns {Promise<PaginationResult<FeedPost>>} Posts with total count computed in same query
-   * @throws {DatabaseError} if facet aggregation fails
-   */
-
   async getNewFeedWithFacet(
     limit: number,
     skip: number,
   ): Promise<PaginationResult<FeedPost>> {
-    try {
-      const lookups = this.getStandardLookups();
-      const pipeline: PipelineStage[] = [
-        { $match: ACTIVE_POST_FILTER },
-        { $sort: { createdAt: -1, _id: -1 } },
-        {
-          $facet: {
-            // metadata facet for count
-            metadata: this.buildFacetPipeline({ $count: "total" }),
-            // data facet for paginated results
-            data: this.buildFacetPipeline(
-              { $skip: skip },
-              { $limit: limit },
-              ...lookups,
-              {
-                $project: {
-                  ...this.getStandardProjectionFields(),
-                  viewsCount: { $ifNull: ["$viewsCount", 0] },
-                },
-              },
-            ),
-          },
-        },
-      ];
-
-      const [result] = await this.model
-        .aggregate<MetadataFacetResult<FeedPost>>(pipeline)
-        .exec();
-
-      const total = result?.metadata[0]?.total ?? 0;
-      const data = result?.data ?? [];
-      const page = Math.floor(skip / limit) + 1;
-      const totalPages = Math.ceil(total / limit);
-
-      return { data, total, page, limit, totalPages };
-    } catch (error: unknown) {
-      throw Errors.database(
-        (error instanceof Error ? error.message : String(error)) ??
-          "failed to fetch feed with facet",
-      );
-    }
+    return this.getNewFeed(limit, skip);
   }
 
   /**
-   * Trending feed with facet optimization
-   * @description combines count + data in single aggregation pipeline for better performance
+   * Backward-compatible entry point for callers that still ask for the old
+   * facet variant. This delegates to the two-query implementation to avoid
+   * MongoDB's 16MB $facet result document limit.
    */
-  /**
-   * Trending feed with combined count and data in single aggregation query
-   * @recommended Use for first page or when you need both data and total count
-   * @pattern Facet Aggregation for Multi-Output Pipelines
-   * @complexity Single aggregation computing both metadata and data in parallel facets
-   * @performance ~2x faster than getTrendingFeed for pages where count is needed
-   * @limitation $facet has 16MB memory limit; suitable for most use cases but avoid very large windows
-   * @param limit - Number of posts per page
-   * @param skip - Number of posts to skip
-   * @param options - Time window, minimum likes, and score weights configuration
-   * @returns {Promise<PaginationResult<FeedPost>>} Trending posts with total count and pagination metadata
-   * @throws {DatabaseError} if facet aggregation fails
-   */
-
   async getTrendingFeedWithFacet(
     limit: number,
     skip: number,
@@ -1187,107 +1109,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       weights?: { recency?: number; popularity?: number; comments?: number };
     },
   ): Promise<PaginationResult<FeedPost>> {
-    try {
-      const timeWindowDays = options?.timeWindowDays ?? 14;
-      const minLikes = options?.minLikes ?? 0;
-      const weights = {
-        recency: options?.weights?.recency ?? 0.4,
-        popularity: options?.weights?.popularity ?? 0.5,
-        comments: options?.weights?.comments ?? 0.1,
-      };
-
-      const sinceDate = new Date(
-        Date.now() - timeWindowDays * 24 * 60 * 60 * 1000,
-      );
-      const lookups = this.getStandardLookups();
-
-      const pipeline: PipelineStage[] = [
-        {
-          $match: withActivePostFilter({
-            createdAt: { $gte: sinceDate },
-            likesCount: { $gte: minLikes },
-          }),
-        },
-        // compute trend scores early
-        {
-          $addFields: {
-            recencyScore: {
-              $divide: [
-                1,
-                {
-                  $add: [
-                    1,
-                    {
-                      $divide: [
-                        { $subtract: [new Date(), "$createdAt"] },
-                        1000 * 60 * 60 * 24,
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
-            popularityScore: {
-              $ln: {
-                $add: [{ $max: [0, { $ifNull: ["$likesCount", 0] }] }, 1],
-              },
-            },
-            commentsScore: {
-              $ln: {
-                $add: [{ $max: [0, { $ifNull: ["$commentsCount", 0] }] }, 1],
-              },
-            },
-          },
-        },
-        {
-          $addFields: {
-            trendScore: {
-              $add: [
-                { $multiply: [weights.recency, "$recencyScore"] },
-                { $multiply: [weights.popularity, "$popularityScore"] },
-                { $multiply: [weights.comments, "$commentsScore"] },
-              ],
-            },
-          },
-        },
-        {
-          $facet: {
-            // metadata facet
-            metadata: this.buildFacetPipeline({ $count: "total" }),
-            // data facet
-            data: this.buildFacetPipeline(
-              { $sort: { trendScore: -1, _id: -1 } },
-              { $skip: skip },
-              { $limit: limit },
-              ...lookups,
-              {
-                $project: {
-                  ...this.getStandardProjectionFields(),
-                  viewsCount: { $ifNull: ["$viewsCount", 0] },
-                  trendScore: 1,
-                },
-              },
-            ),
-          },
-        },
-      ];
-
-      const [result] = await this.model
-        .aggregate<MetadataFacetResult<FeedPost>>(pipeline)
-        .exec();
-
-      const total = result?.metadata[0]?.total ?? 0;
-      const data = result?.data ?? [];
-      const page = Math.floor(skip / limit) + 1;
-      const totalPages = Math.ceil(total / limit);
-
-      return { data, total, page, limit, totalPages };
-    } catch (error: unknown) {
-      throw Errors.database(
-        (error instanceof Error ? error.message : String(error)) ??
-          "failed to fetch trending feed with facet",
-      );
-    }
+    return this.getTrendingFeed(limit, skip, options);
   }
 
   /**
@@ -1455,12 +1277,6 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         },
       },
     };
-  }
-
-  private buildFacetPipeline(
-    ...stages: PipelineStage.FacetPipelineStage[]
-  ): PipelineStage.FacetPipelineStage[] {
-    return stages;
   }
 
   private async loadFavoriteTagIds(

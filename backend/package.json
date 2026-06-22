@@ -26,6 +26,7 @@
     "start:ip-monitor-worker:prod": "node -r tsconfig-paths/register ./dist/workers/ip-monitor.worker.js",
     "seed:dev": "ts-node -r tsconfig-paths/register ./src/scripts/seed.ts --dev",
     "seed:docker": "ts-node -r tsconfig-paths/register ./src/scripts/seed.ts --docker",
+    "explain:feed": "ts-node -r tsconfig-paths/register ./src/scripts/explain-feed-pipelines.ts",
     "migrate:atlas": "ts-node -r tsconfig-paths/register ./src/scripts/migrate-atlas-to-local.ts",
     "stress-test": "ts-node -r tsconfig-paths/register ./src/scripts/stress-test.ts",
     "build": "tsc && tsc-alias"

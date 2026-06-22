@@ -1,24 +1,27 @@
 import React from "react";
+import { Box } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 
 interface RichTextProps {
   text: string;
-  className?: string;
-  hashtagClassName?: string;
-  mentionClassName?: string;
 }
+
+const clickableTokenSx = {
+  color: "primary.main",
+  cursor: "pointer",
+  fontWeight: 700,
+  "&:hover": {
+    color: "primary.light",
+    textDecoration: "underline",
+  },
+};
 
 /**
  * This component detects hashtags and mentions in text and makes them clickable
  * Hashtags - #word - /search/tags?tags=word
  * Mentions - @handle - /profile/handle
  */
-const RichText: React.FC<RichTextProps> = ({
-  text,
-  className = "",
-  hashtagClassName = "text-accent hover:text-accent-hover cursor-pointer font-bold hover:underline",
-  mentionClassName = "text-accent cursor-pointer font-bold hover:underline",
-}) => {
+const RichText: React.FC<RichTextProps> = ({ text }) => {
   const navigate = useNavigate();
 
   // Regex to match hashtags for words and mentions with '#' or '@'
@@ -66,23 +69,25 @@ const RichText: React.FC<RichTextProps> = ({
 
       if (token.startsWith("#")) {
         parts.push(
-          <span
+          <Box
+            component="span"
             key={`hashtag-${matchIndex}`}
-            className={hashtagClassName}
+            sx={clickableTokenSx}
             onClick={(e) => handleHashtagClick(token, e)}
           >
             {token}
-          </span>,
+          </Box>,
         );
       } else if (token.startsWith("@")) {
         parts.push(
-          <span
+          <Box
+            component="span"
             key={`mention-${matchIndex}`}
-            className={mentionClassName}
+            sx={clickableTokenSx}
             onClick={(e) => handleMentionClick(token, e)}
           >
             {token}
-          </span>,
+          </Box>,
         );
       }
 
@@ -98,9 +103,16 @@ const RichText: React.FC<RichTextProps> = ({
   };
 
   return (
-    <span className={`whitespace-pre-wrap break-words ${className}`}>
+    <Box
+      component="span"
+      sx={{
+        whiteSpace: "pre-wrap",
+        overflowWrap: "anywhere",
+        wordBreak: "break-word",
+      }}
+    >
       {renderContent()}
-    </span>
+    </Box>
   );
 };
 

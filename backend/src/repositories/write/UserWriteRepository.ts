@@ -1,12 +1,14 @@
-import { UpdateQuery } from "mongoose";
+import { Model, UpdateQuery } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { IUser } from "@/types";
-import type { IUserWriteRepository } from "../interfaces/IUserWriteRepository";
+import type {
+  IUserWriteRepository,
+  JoinedCommunitySnapshotUpdate,
+} from "../interfaces/IUserWriteRepository";
 import { BaseRepository } from "../base.repository";
 import { TOKENS } from "@/types/tokens";
 import { MongoId, UserPublicId } from "@/types/branded";
 import { Errors, isMongoDBDuplicateKeyError } from "@/utils/errors";
-import { Model } from "mongoose";
 
 @injectable()
 export class UserWriteRepository
@@ -131,6 +133,35 @@ export class UserWriteRepository
       });
     } catch (error) {
       this.throwDatabaseError("updateFollowingCount", error);
+    }
+  }
+
+  async updateJoinedCommunitySnapshot(
+    communityId: MongoId,
+    snapshot: JoinedCommunitySnapshotUpdate,
+  ): Promise<void> {
+    const setPatch = Object.fromEntries(
+      Object.entries(snapshot)
+        .filter(([, value]) => value !== undefined)
+        .map(([field, value]) => [
+          `joinedCommunities.$[community].${field}`,
+          value,
+        ]),
+    );
+
+    if (Object.keys(setPatch).length === 0) {
+      return;
+    }
+
+    try {
+      const query = this.model.updateMany(
+        { "joinedCommunities._id": communityId },
+        { $set: setPatch },
+        { arrayFilters: [{ "community._id": communityId }] },
+      );
+      await this.withSession(query).exec();
+    } catch (error) {
+      this.throwDatabaseError("updateJoinedCommunitySnapshot", error);
     }
   }
 }

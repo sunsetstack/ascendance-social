@@ -2,6 +2,10 @@ import { UpdateQuery } from "mongoose";
 import { IUser } from "@/types";
 import { MongoId, UserPublicId } from "@/types/branded";
 
+export type JoinedCommunitySnapshotUpdate = Partial<
+  Pick<IUser["joinedCommunities"][number], "name" | "slug" | "icon">
+>;
+
 /**
  * Write-only repository interface for user mutations
  * used by command handlers in CQRS pattern
@@ -23,4 +27,10 @@ export interface IUserWriteRepository {
   // counter updates
   updateFollowerCount(userId: MongoId, increment: number): Promise<void>;
   updateFollowingCount(userId: MongoId, increment: number): Promise<void>;
+
+  // denormalized community snapshots
+  updateJoinedCommunitySnapshot(
+    communityId: MongoId,
+    snapshot: JoinedCommunitySnapshotUpdate,
+  ): Promise<void>;
 }

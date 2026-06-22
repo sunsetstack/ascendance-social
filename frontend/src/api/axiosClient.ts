@@ -1,5 +1,10 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { devWarn } from "@/lib/devLogger";
+import {
+  getApiErrorPayload,
+  resolveApiErrorMessage,
+  type ApiErrorResponse,
+} from "./errorMessages";
 
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
@@ -42,24 +47,16 @@ export default axiosClient;
 // Global response interceptor to catch auth expiry
 axiosClient.interceptors.response.use(
   (response) => response,
-  async (error: AxiosError<{ message?: string }>) => {
+  async (error: AxiosError<ApiErrorResponse>) => {
     const status = error.response?.status;
-    const rawMessage = error.response?.data?.message;
+    const payload = getApiErrorPayload(error.response?.data);
 
-    // Extract the backend error message if available
-    if (rawMessage) {
-      error.message = rawMessage;
-    }
-
-    if (typeof error.message === "string") {
-      const sanitized = error.message
-        .replace(/\bUoW\b/gi, "transaction")
-        .replace(/\btransaction\b/gi, "request")
-        .replace(/internal server error/gi, "something went wrong")
-        .replace(/error\s*\d+/gi, "error")
-        .replace(/\bDatabase\b/gi, "service")
-        .replace(/\bMongoDB\b/gi, "service");
-      error.message = sanitized;
+    if (payload) {
+      error.message = resolveApiErrorMessage(payload, error.message);
+      if (payload.errorCode) {
+        (error as AxiosError<ApiErrorResponse> & { errorCode: string }).errorCode =
+          payload.errorCode;
+      }
     }
 
     const originalRequest = error.config as RetryableRequestConfig | undefined;

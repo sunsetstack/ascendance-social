@@ -3,6 +3,7 @@ import { useRegister } from "../hooks/user/useUserRegister";
 import { useVerifyEmail } from "../hooks/user/useVerifyEmail";
 import AuthForm from "../components/AuthForm";
 import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import { Alert, Box, Button, Container, TextField, Typography } from "@mui/material";
 import { RegisterForm } from "../types";
 

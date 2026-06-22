@@ -44,6 +44,12 @@ export class PostDeleteHandler implements IEventHandler<PostDeletedEvent> {
         });
       }
 
+      await this.redis.removeFromFeedsBatch(
+        [event.authorPublicId, ...followers],
+        event.postId,
+        "for_you",
+      );
+
       logger.info(`Invalidating cache with ${tagsToInvalidate.length} tags`);
       await this.redis.invalidateByTags(tagsToInvalidate);
 

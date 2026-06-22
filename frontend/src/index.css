@@ -1,7 +1,3 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 :root {
 	color-scheme: dark;
 	/* safe area fallbacks for older browsers */
@@ -28,7 +24,11 @@ html {
 }
 
 body {
-	@apply bg-background text-primary antialiased selection:bg-accent selection:text-white;
+	margin: 0;
+	background: #000000;
+	color: #e7e9ea;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
 	overflow-y: scroll;
 	min-height: 100%;
 	min-height: -webkit-fill-available;
@@ -44,6 +44,11 @@ body {
 	}
 }
 
+::selection {
+	background: #0ea5e9;
+	color: #ffffff;
+}
+
 /* ensure viewport-fit=cover is respected */
 @viewport {
 	viewport-fit: cover;
@@ -54,11 +59,12 @@ body {
 	width: 10px;
 }
 ::-webkit-scrollbar-track {
-	@apply bg-background;
+	background: #000000;
 }
 ::-webkit-scrollbar-thumb {
-	@apply bg-divider rounded-full;
+	background: #2f3336;
+	border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-	@apply bg-secondary;
+	background: #71767b;
 }

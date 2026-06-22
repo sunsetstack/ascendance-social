@@ -5,6 +5,7 @@ import { redisLogger } from "@/utils/winston";
 
 /** How long per-user feed ZSETs live in Redis (1 hour). */
 const FEED_TTL_SECONDS = 3600;
+const FEED_WRITE_BATCH_SIZE = 500;
 
 /**
  * Cursor payload written by this module. Decode-side accepts the full
@@ -44,13 +45,17 @@ export class RedisFeedModule {
   ): Promise<void> {
     if (userIds.length === 0) return;
 
-    const pipeline = this.client.multi();
-    for (const userId of userIds) {
-      const feedKey = CacheKeyBuilder.getRedisFeedKey(feedType, userId);
-      pipeline.zAdd(feedKey, { score: timestamp, value: postId });
-      pipeline.expire(feedKey, FEED_TTL_SECONDS);
+    const uniqueUserIds = [...new Set(userIds)];
+    for (let i = 0; i < uniqueUserIds.length; i += FEED_WRITE_BATCH_SIZE) {
+      const batch = uniqueUserIds.slice(i, i + FEED_WRITE_BATCH_SIZE);
+      const pipeline = this.client.multi();
+      for (const userId of batch) {
+        const feedKey = CacheKeyBuilder.getRedisFeedKey(feedType, userId);
+        pipeline.zAdd(feedKey, { score: timestamp, value: postId });
+        pipeline.expire(feedKey, FEED_TTL_SECONDS);
+      }
+      await pipeline.exec();
     }
-    await pipeline.exec();
   }
 
   async getFeedPage(
@@ -137,11 +142,15 @@ export class RedisFeedModule {
   ): Promise<void> {
     if (userIds.length === 0) return;
 
-    const pipeline = this.client.multi();
-    for (const userId of userIds) {
-      pipeline.zRem(CacheKeyBuilder.getRedisFeedKey(feedType, userId), postId);
+    const uniqueUserIds = [...new Set(userIds)];
+    for (let i = 0; i < uniqueUserIds.length; i += FEED_WRITE_BATCH_SIZE) {
+      const batch = uniqueUserIds.slice(i, i + FEED_WRITE_BATCH_SIZE);
+      const pipeline = this.client.multi();
+      for (const userId of batch) {
+        pipeline.zRem(CacheKeyBuilder.getRedisFeedKey(feedType, userId), postId);
+      }
+      await pipeline.exec();
     }
-    await pipeline.exec();
   }
 
   async invalidateFeed(userId: string, feedType: RedisFeedType = "for_you"): Promise<void> {

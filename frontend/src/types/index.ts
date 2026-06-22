@@ -5,7 +5,7 @@ import {
   useQuery,
   UseQueryResult,
 } from "@tanstack/react-query";
-import { Id } from "react-toastify";
+import type { Id } from "react-toastify";
 
 // Base user interface matching backend DTOs
 export interface PublicUserDTO {

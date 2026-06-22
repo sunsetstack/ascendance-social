@@ -1,4 +1,5 @@
 import React from "react";
+import { Box } from "@mui/material";
 import { useTranslation } from "react-i18next";
 
 const LanguageSwitcher: React.FC = () => {
@@ -10,16 +11,34 @@ const LanguageSwitcher: React.FC = () => {
 	};
 
 	return (
-		<div
+		<Box
+			component="button"
+			type="button"
 			onClick={toggleLanguage}
-			className="fixed bottom-4 left-4 z-50 cursor-pointer 
-                 bg-black/20 hover:bg-black/80 text-white 
-                 px-3 py-1 rounded-full text-xs font-mono 
-                 transition-all duration-300 backdrop-blur-sm"
 			title="Switch Language / Смени език"
+			sx={{
+				position: "fixed",
+				bottom: 16,
+				left: 16,
+				zIndex: 1300,
+				cursor: "pointer",
+				bgcolor: "rgba(0, 0, 0, 0.2)",
+				color: "common.white",
+				px: 1.5,
+				py: 0.5,
+				border: 0,
+				borderRadius: 9999,
+				fontSize: "0.75rem",
+				fontFamily: "monospace",
+				backdropFilter: "blur(4px)",
+				transition: "background-color 0.3s ease",
+				"&:hover": {
+					bgcolor: "rgba(0, 0, 0, 0.8)",
+				},
+			}}
 		>
 			{i18n.resolvedLanguage?.startsWith("bg") ? "🇧🇬 BG" : "🇺🇸 EN"}
-		</div>
+		</Box>
 	);
 };
 

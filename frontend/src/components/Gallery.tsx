@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
 import { useParams, useLocation } from "react-router-dom";
 import { GalleryProps } from "../types";
 import PostCard from "./PostCard";
@@ -178,22 +177,18 @@ const Gallery: React.FC<GalleryProps> = ({
               width: "100%",
             }}
           >
-            {uniquePosts.map((img, index) => (
-              <motion.div
+            {uniquePosts.map((img) => (
+              <div
                 key={img.publicId}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.3, delay: index * 0.05 }}
               >
                 <MediaCard post={img} />
-              </motion.div>
+              </div>
             ))}
           </Box>
         ) : (
           uniquePosts.map((img, index) => (
             <TrackedPost
               key={img.publicId}
-              index={index}
               onVisible={() =>
                 setVisibleIndex((prev) => Math.max(prev, index + 1))
               }
@@ -208,12 +203,7 @@ const Gallery: React.FC<GalleryProps> = ({
 
       {/* Empty State - only show when NOT loading/fetching AND truly no posts */}
       {!isLoading && !isFetchingAll && !hasPostsToShow && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-          style={{ width: "100%" }}
-        >
+        <Box sx={{ width: "100%" }}>
           <Box
             sx={{
               textAlign: "center",
@@ -244,7 +234,7 @@ const Gallery: React.FC<GalleryProps> = ({
               {resolvedEmptyMessage}
             </Typography>
           </Box>
-        </motion.div>
+        </Box>
       )}
 
       {/* Infinite Scroll Trigger */}
@@ -260,11 +250,7 @@ const Gallery: React.FC<GalleryProps> = ({
         }}
       >
         {isFetchingNext && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3 }}
-          >
+          <Box>
             <CircularProgress
               size={32}
               sx={{
@@ -274,7 +260,7 @@ const Gallery: React.FC<GalleryProps> = ({
                 },
               }}
             />
-          </motion.div>
+          </Box>
         )}
       </Box>
     </Box>
@@ -283,13 +269,11 @@ const Gallery: React.FC<GalleryProps> = ({
 
 // wrapper component to track when posts become visible
 interface TrackedPostProps {
-  index: number;
   onVisible: () => void;
   children: React.ReactNode;
 }
 
 const TrackedPost: React.FC<TrackedPostProps> = ({
-  index,
   onVisible,
   children,
 }) => {
@@ -312,15 +296,12 @@ const TrackedPost: React.FC<TrackedPostProps> = ({
   }, [onVisible]);
 
   return (
-    <motion.div
+    <div
       ref={ref}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: index * 0.05 }}
       style={{ width: "100%" }}
     >
       {children}
-    </motion.div>
+    </div>
   );
 };
 

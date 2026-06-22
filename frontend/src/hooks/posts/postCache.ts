@@ -32,6 +32,8 @@ const FEED_CACHE_KEYS: readonly FeedKey[] = [
 	"userImages",
 ];
 
+const LIKE_CACHE_KEYS: readonly FeedKey[] = FEED_CACHE_KEYS;
+
 const REPOST_CACHE_KEYS: readonly FeedKey[] = [
 	"posts",
 	"personalizedFeed",
@@ -79,6 +81,83 @@ export const removePostFromFeedCaches = (
 
 	for (const key of keys) {
 		queryClient.setQueriesData({ queryKey: [key] }, filterOutDeletedPost);
+	}
+};
+
+const updateLikeCountInCache = (
+	oldData: unknown,
+	postPublicId: string,
+	likes: number,
+): unknown => {
+	if (!oldData || typeof oldData !== "object") {
+		return oldData;
+	}
+
+	if ("pages" in oldData) {
+		const infiniteData = oldData as {
+			pages: Array<{ data: IPost[] }>;
+			pageParams: unknown[];
+		};
+		return {
+			...infiniteData,
+			pages: infiniteData.pages.map((page) => ({
+				...page,
+				data: Array.isArray(page.data)
+					? page.data.map((post) =>
+							post.publicId === postPublicId ? { ...post, likes } : post,
+						)
+					: page.data,
+			})),
+		};
+	}
+
+	if ("data" in oldData) {
+		const regularData = oldData as { data: IPost[] };
+		if (Array.isArray(regularData.data)) {
+			return {
+				...regularData,
+				data: regularData.data.map((post) =>
+					post.publicId === postPublicId ? { ...post, likes } : post,
+				),
+			};
+		}
+	}
+
+	if ("publicId" in oldData) {
+		const post = oldData as IPost;
+		if (post.publicId === postPublicId) {
+			return { ...post, likes };
+		}
+	}
+
+	return oldData;
+};
+
+export const removePostDetailAndCommentCaches = (
+	queryClient: QueryClient,
+	postPublicId: string,
+): void => {
+	queryClient.removeQueries({
+		predicate: ({ queryKey }) => {
+			const key = queryKey as readonly unknown[];
+			return (
+				(key[0] === "post" && key.includes(postPublicId)) ||
+				(key[0] === "comments" && key[1] === "post" && key[2] === postPublicId)
+			);
+		},
+	});
+};
+
+export const updatePostLikesInFeedCaches = (
+	queryClient: QueryClient,
+	postPublicId: string,
+	likes: number,
+	keys: readonly FeedKey[] = LIKE_CACHE_KEYS,
+): void => {
+	for (const key of keys) {
+		queryClient.setQueriesData({ queryKey: [key] }, (oldData: unknown) =>
+			updateLikeCountInCache(oldData, postPublicId, likes),
+		);
 	}
 };
 

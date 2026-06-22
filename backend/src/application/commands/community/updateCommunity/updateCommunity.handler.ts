@@ -4,7 +4,11 @@ import { ICommandHandler } from "@/application/common/interfaces/command-handler
 import { UpdateCommunityCommand } from "./updateCommunity.command";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
-import type { IUserReadRepository } from "@/repositories/interfaces";
+import type {
+  IUserReadRepository,
+  IUserWriteRepository,
+} from "@/repositories/interfaces";
+import { UnitOfWork } from "@/database/UnitOfWork";
 import { ICommunity } from "@/types";
 import type { IImageStorageService } from "@/types";
 import { Errors } from "@/utils/errors";
@@ -29,6 +33,9 @@ export class UpdateCommunityCommandHandler implements ICommandHandler<
     private communityMemberRepository: CommunityMemberRepository,
     @inject(TOKENS.Repositories.UserRead)
     private readonly userReadRepository: IUserReadRepository,
+    @inject(TOKENS.Repositories.UserWrite)
+    private readonly userWriteRepository: IUserWriteRepository,
+    @inject(UnitOfWork) private readonly uow: UnitOfWork,
     @inject(TOKENS.Services.ImageStorage)
     private readonly imageStorageService: IImageStorageService,
   ) {}
@@ -119,14 +126,33 @@ export class UpdateCommunityCommandHandler implements ICommandHandler<
       }
     }
 
-    // Update
-    const updatedCommunity = await this.communityRepository.update(
-      asMongoId(communityId.toString()),
-      updateData,
-    );
-    if (!updatedCommunity) {
-      throw Errors.notFound("Community");
-    }
+    const shouldSyncJoinedCommunitySnapshot =
+      updateData.name !== undefined ||
+      updateData.slug !== undefined ||
+      updateData.avatar !== undefined;
+
+    const updatedCommunity = await this.uow.executeInTransaction(async () => {
+      const updated = await this.communityRepository.update(
+        asMongoId(communityId.toString()),
+        updateData,
+      );
+      if (!updated) {
+        throw Errors.notFound("Community");
+      }
+
+      if (shouldSyncJoinedCommunitySnapshot) {
+        await this.userWriteRepository.updateJoinedCommunitySnapshot(
+          asMongoId(communityId.toString()),
+          {
+            name: updated.name,
+            slug: updated.slug,
+            icon: updated.avatar,
+          },
+        );
+      }
+
+      return updated;
+    });
 
     return updatedCommunity;
   }

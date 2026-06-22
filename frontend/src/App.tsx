@@ -39,7 +39,16 @@ const CommentThreadView = lazy(() =>
 	import("./components/comments").then((module) => ({ default: module.CommentThreadView })),
 );
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+	defaultOptions: {
+		queries: {
+			staleTime: 30_000,
+			gcTime: 5 * 60_000,
+			retry: 1,
+			refetchOnWindowFocus: false,
+		},
+	},
+});
 
 function App() {
 

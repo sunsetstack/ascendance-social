@@ -82,6 +82,21 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
         `[POST_UPLOAD_HANDLER] Total affected users: ${affectedUsers.length}`,
       );
 
+      const feedRecipients = [
+        ...new Set([event.authorPublicId, ...affectedUsers]),
+      ];
+      if (feedRecipients.length > 0) {
+        await this.redis.addToFeedsBatch(
+          feedRecipients,
+          event.postId,
+          event.timestamp.getTime(),
+          "for_you",
+        );
+        logger.info(
+          `[POST_UPLOAD_HANDLER] Materialized for_you feed for ${feedRecipients.length} users`,
+        );
+      }
+
       if (affectedUsers.length > 0) {
         // invalidate affected users' feeds using tags
         affectedUsers.forEach((userId) => {
