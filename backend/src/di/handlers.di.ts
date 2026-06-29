@@ -3,6 +3,12 @@ import { container } from "tsyringe";
 import { CommandBus } from "@/application/common/buses/command.bus";
 import { QueryBus } from "@/application/common/buses/query.bus";
 import { EventBus } from "@/application/common/buses/event.bus";
+import type { ICommand } from "@/application/common/interfaces/command.interface";
+import type { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
+import type { IEvent } from "@/application/common/interfaces/event.interface";
+import type { IEventHandler } from "@/application/common/interfaces/event-handler.interface";
+import type { IQuery } from "@/application/common/interfaces/query.interface";
+import type { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { SetFollowStateCommand } from "@/application/commands/users/setFollowState/setFollowState.command";
 import { SetFollowStateCommandHandler } from "@/application/commands/users/setFollowState/setFollowState.handler";
 import { RegisterUserCommandHandler } from "@/application/commands/users/register/register.handler";
@@ -218,329 +224,302 @@ import { GetRequestLogsQueryHandler } from "@/application/queries/admin/getReque
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 
+type Constructor<T = unknown> = new (...args: any[]) => T;
+type HandlerToken = string;
+type ContainerRegistration = readonly [HandlerToken, Constructor];
+type CommandBusRegistration = readonly [Constructor<ICommand>, HandlerToken];
+type QueryBusRegistration = readonly [Constructor<IQuery>, HandlerToken];
+type EventSubscription = readonly [Constructor<IEvent>, HandlerToken];
+
+const commandHandlerRegistrations: readonly ContainerRegistration[] = [
+  [TOKENS.CQRS.Commands.RegisterUser, RegisterUserCommandHandler],
+  [TOKENS.CQRS.Commands.Login, LoginCommandHandler],
+  [TOKENS.CQRS.Commands.RefreshSession, RefreshSessionCommandHandler],
+  [TOKENS.CQRS.Commands.SetFollowState, SetFollowStateCommandHandler],
+  [TOKENS.CQRS.Commands.DeleteUser, DeleteUserCommandHandler],
+  [TOKENS.CQRS.Commands.UpdateAvatar, UpdateAvatarCommandHandler],
+  [TOKENS.CQRS.Commands.UpdateCover, UpdateCoverCommandHandler],
+  [TOKENS.CQRS.Commands.UpdateProfile, UpdateProfileCommandHandler],
+  [TOKENS.CQRS.Commands.ChangePassword, ChangePasswordCommandHandler],
+  [TOKENS.CQRS.Commands.ClearCache, ClearCacheCommandHandler],
+  [TOKENS.CQRS.Commands.LikeAction, LikeActionCommandHandler],
+  [TOKENS.CQRS.Commands.LikeActionByPublicId, LikeActionByPublicIdCommandHandler],
+  [TOKENS.CQRS.Commands.CreateComment, CreateCommentCommandHandler],
+  [TOKENS.CQRS.Commands.UpdateComment, UpdateCommentCommandHandler],
+  [TOKENS.CQRS.Commands.DeleteComment, DeleteCommentCommandHandler],
+  [TOKENS.CQRS.Commands.LikeComment, LikeCommentCommandHandler],
+  [TOKENS.CQRS.Commands.CreatePost, CreatePostCommandHandler],
+  [TOKENS.CQRS.Commands.DeletePost, DeletePostCommandHandler],
+  [TOKENS.CQRS.Commands.RepostPost, RepostPostCommandHandler],
+  [TOKENS.CQRS.Commands.UnrepostPost, UnrepostPostCommandHandler],
+  [TOKENS.CQRS.Commands.RecordPostView, RecordPostViewCommandHandler],
+  [TOKENS.CQRS.Commands.AddFavorite, AddFavoriteCommandHandler],
+  [TOKENS.CQRS.Commands.RemoveFavorite, RemoveFavoriteCommandHandler],
+  [TOKENS.CQRS.Commands.RemoveFavoriteAdmin, RemoveFavoriteAdminCommandHandler],
+  [TOKENS.CQRS.Commands.CreateNotification, CreateNotificationCommandHandler],
+  [TOKENS.CQRS.Commands.MarkAsRead, MarkAsReadCommandHandler],
+  [TOKENS.CQRS.Commands.MarkAllAsRead, MarkAllAsReadCommandHandler],
+  [TOKENS.CQRS.Commands.SendMessage, SendMessageCommandHandler],
+  [TOKENS.CQRS.Commands.EditMessage, EditMessageCommandHandler],
+  [TOKENS.CQRS.Commands.DeleteMessage, DeleteMessageCommandHandler],
+  [TOKENS.CQRS.Commands.InitiateConversation, InitiateConversationCommandHandler],
+  [TOKENS.CQRS.Commands.MarkConversationRead, MarkConversationReadCommandHandler],
+  [TOKENS.CQRS.Commands.BanUser, BanUserCommandHandler],
+  [TOKENS.CQRS.Commands.UnbanUser, UnbanUserCommandHandler],
+  [TOKENS.CQRS.Commands.PromoteToAdmin, PromoteToAdminCommandHandler],
+  [TOKENS.CQRS.Commands.DemoteFromAdmin, DemoteFromAdminCommandHandler],
+  [TOKENS.CQRS.Commands.LogRequest, LogRequestCommandHandler],
+  [TOKENS.CQRS.Commands.CreateCommunity, CreateCommunityCommandHandler],
+  [TOKENS.CQRS.Commands.JoinCommunity, JoinCommunityCommandHandler],
+  [TOKENS.CQRS.Commands.LeaveCommunity, LeaveCommunityCommandHandler],
+  [TOKENS.CQRS.Commands.UpdateCommunity, UpdateCommunityCommandHandler],
+  [TOKENS.CQRS.Commands.DeleteCommunity, DeleteCommunityCommandHandler],
+  [TOKENS.CQRS.Commands.KickMember, KickMemberCommandHandler],
+  [TOKENS.CQRS.Handlers.RequestPasswordReset, RequestPasswordResetHandler],
+  [TOKENS.CQRS.Handlers.ResetPassword, ResetPasswordHandler],
+  [TOKENS.CQRS.Handlers.VerifyEmail, VerifyEmailHandler],
+];
+
+const queryHandlerRegistrations: readonly ContainerRegistration[] = [
+  [TOKENS.CQRS.Queries.GetMe, GetMeQueryHandler],
+  [TOKENS.CQRS.Queries.GetAccountInfo, GetAccountInfoQueryHandler],
+  [TOKENS.CQRS.Queries.GetUserByPublicId, GetUserByPublicIdQueryHandler],
+  [TOKENS.CQRS.Queries.GetUserByHandle, GetUserByHandleQueryHandler],
+  [TOKENS.CQRS.Queries.GetUsers, GetUsersQueryHandler],
+  [TOKENS.CQRS.Queries.CheckFollowStatus, CheckFollowStatusQueryHandler],
+  [TOKENS.CQRS.Queries.GetFollowers, GetFollowersQueryHandler],
+  [TOKENS.CQRS.Queries.GetFollowing, GetFollowingQueryHandler],
+  [TOKENS.CQRS.Queries.GetDashboardStats, GetDashboardStatsQueryHandler],
+  [TOKENS.CQRS.Queries.GetAllUsersAdmin, GetAllUsersAdminQueryHandler],
+  [TOKENS.CQRS.Queries.GetAdminUserProfile, GetAdminUserProfileQueryHandler],
+  [TOKENS.CQRS.Queries.GetUserStats, GetUserStatsQueryHandler],
+  [TOKENS.CQRS.Queries.GetRecentActivity, GetRecentActivityQueryHandler],
+  [TOKENS.CQRS.Queries.GetRequestLogs, GetRequestLogsQueryHandler],
+  [TOKENS.CQRS.Queries.GetWhoToFollow, GetWhoToFollowQueryHandler],
+  [TOKENS.CQRS.Queries.GetHandleSuggestions, GetHandleSuggestionsQueryHandler],
+  [TOKENS.CQRS.Queries.GetTrendingTags, GetTrendingTagsQueryHandler],
+  [TOKENS.CQRS.Queries.GetAllTags, GetAllTagsQueryHandler],
+  [TOKENS.CQRS.Queries.GetPersonalizedFeed, GetPersonalizedFeedQueryHandler],
+  [TOKENS.CQRS.Queries.GetNewFeed, GetNewFeedQueryHandler],
+  [TOKENS.CQRS.Queries.GetForYouFeed, GetForYouFeedQueryHandler],
+  [TOKENS.CQRS.Queries.GetTrendingFeed, GetTrendingFeedQueryHandler],
+  [TOKENS.CQRS.Queries.GetCommentsByPost, GetCommentsByPostQueryHandler],
+  [TOKENS.CQRS.Queries.GetCommentsByUser, GetCommentsByUserQueryHandler],
+  [TOKENS.CQRS.Queries.GetCommentThread, GetCommentThreadQueryHandler],
+  [TOKENS.CQRS.Queries.GetCommentReplies, GetCommentRepliesQueryHandler],
+  [TOKENS.CQRS.Queries.GetPostByPublicId, GetPostByPublicIdQueryHandler],
+  [TOKENS.CQRS.Queries.GetPostBySlug, GetPostBySlugQueryHandler],
+  [TOKENS.CQRS.Queries.GetPosts, GetPostsQueryHandler],
+  [TOKENS.CQRS.Queries.GetAllPostsAdmin, GetAllPostsAdminQueryHandler],
+  [TOKENS.CQRS.Queries.GetPostsByUser, GetPostsByUserQueryHandler],
+  [TOKENS.CQRS.Queries.GetLikedPostsByUser, GetLikedPostsByUserHandler],
+  [TOKENS.CQRS.Queries.SearchPostsByTags, SearchPostsByTagsQueryHandler],
+  [TOKENS.CQRS.Queries.SearchAll, SearchAllQueryHandler],
+  [TOKENS.CQRS.Queries.GetFavorites, GetFavoritesQueryHandler],
+  [TOKENS.CQRS.Queries.GetNotifications, GetNotificationsQueryHandler],
+  [TOKENS.CQRS.Queries.GetUnreadCount, GetUnreadCountQueryHandler],
+  [TOKENS.CQRS.Queries.ListConversations, ListConversationsQueryHandler],
+  [TOKENS.CQRS.Queries.GetConversationMessages, GetConversationMessagesQueryHandler],
+  [TOKENS.CQRS.Queries.GetCommunityDetails, GetCommunityDetailsQueryHandler],
+  [TOKENS.CQRS.Queries.GetUserCommunities, GetUserCommunitiesQueryHandler],
+  [TOKENS.CQRS.Queries.GetCommunityFeed, GetCommunityFeedQueryHandler],
+  [TOKENS.CQRS.Queries.GetAllCommunities, GetAllCommunitiesQueryHandler],
+  [TOKENS.CQRS.Queries.GetCommunityMembers, GetCommunityMembersQueryHandler],
+];
+
+const eventHandlerRegistrations: readonly ContainerRegistration[] = [
+  [TOKENS.CQRS.Handlers.PostUpload, PostUploadHandler],
+  [TOKENS.CQRS.Handlers.PostDelete, PostDeleteHandler],
+  [
+    TOKENS.CQRS.Handlers.ImageAssetCleanupRequested,
+    ImageAssetCleanupRequestedHandler,
+  ],
+  [TOKENS.CQRS.Handlers.UserAvatarChanged, UserAvatarChangedHandler],
+  [TOKENS.CQRS.Handlers.UserUsernameChanged, UserUsernameChangedHandler],
+  [TOKENS.CQRS.Handlers.UserCoverChanged, UserCoverChangedHandler],
+  [TOKENS.CQRS.Handlers.UserDeleted, UserDeletedHandler],
+  [TOKENS.CQRS.Handlers.FeedInteraction, FeedInteractionHandler],
+  [TOKENS.CQRS.Handlers.MessageSent, MessageSentHandler],
+  [
+    TOKENS.CQRS.Handlers.MessageStatusUpdatedEvent,
+    MessageStatusUpdatedEventHandler,
+  ],
+  [
+    TOKENS.CQRS.Handlers.MessageAttachmentsDeleted,
+    MessageAttachmentsDeletedHandler,
+  ],
+  [TOKENS.CQRS.Handlers.NotificationRequested, NotificationRequestedHandler],
+];
+
+const commandBusRegistrations: readonly CommandBusRegistration[] = [
+  [RegisterUserCommand, TOKENS.CQRS.Commands.RegisterUser],
+  [LoginCommand, TOKENS.CQRS.Commands.Login],
+  [RefreshSessionCommand, TOKENS.CQRS.Commands.RefreshSession],
+  [SetFollowStateCommand, TOKENS.CQRS.Commands.SetFollowState],
+  [DeleteUserCommand, TOKENS.CQRS.Commands.DeleteUser],
+  [UpdateAvatarCommand, TOKENS.CQRS.Commands.UpdateAvatar],
+  [UpdateCoverCommand, TOKENS.CQRS.Commands.UpdateCover],
+  [UpdateProfileCommand, TOKENS.CQRS.Commands.UpdateProfile],
+  [ChangePasswordCommand, TOKENS.CQRS.Commands.ChangePassword],
+  [ClearCacheCommand, TOKENS.CQRS.Commands.ClearCache],
+  [LikeActionCommand, TOKENS.CQRS.Commands.LikeAction],
+  [LikeActionByPublicIdCommand, TOKENS.CQRS.Commands.LikeActionByPublicId],
+  [CreateCommentCommand, TOKENS.CQRS.Commands.CreateComment],
+  [UpdateCommentCommand, TOKENS.CQRS.Commands.UpdateComment],
+  [DeleteCommentCommand, TOKENS.CQRS.Commands.DeleteComment],
+  [LikeCommentCommand, TOKENS.CQRS.Commands.LikeComment],
+  [CreatePostCommand, TOKENS.CQRS.Commands.CreatePost],
+  [DeletePostCommand, TOKENS.CQRS.Commands.DeletePost],
+  [RepostPostCommand, TOKENS.CQRS.Commands.RepostPost],
+  [UnrepostPostCommand, TOKENS.CQRS.Commands.UnrepostPost],
+  [RecordPostViewCommand, TOKENS.CQRS.Commands.RecordPostView],
+  [AddFavoriteCommand, TOKENS.CQRS.Commands.AddFavorite],
+  [RemoveFavoriteCommand, TOKENS.CQRS.Commands.RemoveFavorite],
+  [RemoveFavoriteAdminCommand, TOKENS.CQRS.Commands.RemoveFavoriteAdmin],
+  [CreateNotificationCommand, TOKENS.CQRS.Commands.CreateNotification],
+  [MarkAsReadCommand, TOKENS.CQRS.Commands.MarkAsRead],
+  [MarkAllAsReadCommand, TOKENS.CQRS.Commands.MarkAllAsRead],
+  [SendMessageCommand, TOKENS.CQRS.Commands.SendMessage],
+  [EditMessageCommand, TOKENS.CQRS.Commands.EditMessage],
+  [DeleteMessageCommand, TOKENS.CQRS.Commands.DeleteMessage],
+  [InitiateConversationCommand, TOKENS.CQRS.Commands.InitiateConversation],
+  [MarkConversationReadCommand, TOKENS.CQRS.Commands.MarkConversationRead],
+  [RequestPasswordResetCommand, TOKENS.CQRS.Handlers.RequestPasswordReset],
+  [ResetPasswordCommand, TOKENS.CQRS.Handlers.ResetPassword],
+  [VerifyEmailCommand, TOKENS.CQRS.Handlers.VerifyEmail],
+  [BanUserCommand, TOKENS.CQRS.Commands.BanUser],
+  [UnbanUserCommand, TOKENS.CQRS.Commands.UnbanUser],
+  [PromoteToAdminCommand, TOKENS.CQRS.Commands.PromoteToAdmin],
+  [DemoteFromAdminCommand, TOKENS.CQRS.Commands.DemoteFromAdmin],
+  [LogRequestCommand, TOKENS.CQRS.Commands.LogRequest],
+  [CreateCommunityCommand, TOKENS.CQRS.Commands.CreateCommunity],
+  [JoinCommunityCommand, TOKENS.CQRS.Commands.JoinCommunity],
+  [LeaveCommunityCommand, TOKENS.CQRS.Commands.LeaveCommunity],
+  [UpdateCommunityCommand, TOKENS.CQRS.Commands.UpdateCommunity],
+  [DeleteCommunityCommand, TOKENS.CQRS.Commands.DeleteCommunity],
+  [KickMemberCommand, TOKENS.CQRS.Commands.KickMember],
+];
+
+const queryBusRegistrations: readonly QueryBusRegistration[] = [
+  [GetMeQuery, TOKENS.CQRS.Queries.GetMe],
+  [GetAccountInfoQuery, TOKENS.CQRS.Queries.GetAccountInfo],
+  [GetUserByPublicIdQuery, TOKENS.CQRS.Queries.GetUserByPublicId],
+  [GetUserByHandleQuery, TOKENS.CQRS.Queries.GetUserByHandle],
+  [GetUsersQuery, TOKENS.CQRS.Queries.GetUsers],
+  [CheckFollowStatusQuery, TOKENS.CQRS.Queries.CheckFollowStatus],
+  [GetFollowersQuery, TOKENS.CQRS.Queries.GetFollowers],
+  [GetFollowingQuery, TOKENS.CQRS.Queries.GetFollowing],
+  [GetDashboardStatsQuery, TOKENS.CQRS.Queries.GetDashboardStats],
+  [GetAllUsersAdminQuery, TOKENS.CQRS.Queries.GetAllUsersAdmin],
+  [GetAdminUserProfileQuery, TOKENS.CQRS.Queries.GetAdminUserProfile],
+  [GetUserStatsQuery, TOKENS.CQRS.Queries.GetUserStats],
+  [GetRecentActivityQuery, TOKENS.CQRS.Queries.GetRecentActivity],
+  [GetRequestLogsQuery, TOKENS.CQRS.Queries.GetRequestLogs],
+  [GetWhoToFollowQuery, TOKENS.CQRS.Queries.GetWhoToFollow],
+  [GetHandleSuggestionsQuery, TOKENS.CQRS.Queries.GetHandleSuggestions],
+  [GetTrendingTagsQuery, TOKENS.CQRS.Queries.GetTrendingTags],
+  [GetAllTagsQuery, TOKENS.CQRS.Queries.GetAllTags],
+  [GetPersonalizedFeedQuery, TOKENS.CQRS.Queries.GetPersonalizedFeed],
+  [GetNewFeedQuery, TOKENS.CQRS.Queries.GetNewFeed],
+  [GetForYouFeedQuery, TOKENS.CQRS.Queries.GetForYouFeed],
+  [GetTrendingFeedQuery, TOKENS.CQRS.Queries.GetTrendingFeed],
+  [GetCommentsByPostQuery, TOKENS.CQRS.Queries.GetCommentsByPost],
+  [GetCommentsByUserQuery, TOKENS.CQRS.Queries.GetCommentsByUser],
+  [GetCommentThreadQuery, TOKENS.CQRS.Queries.GetCommentThread],
+  [GetCommentRepliesQuery, TOKENS.CQRS.Queries.GetCommentReplies],
+  [GetPostByPublicIdQuery, TOKENS.CQRS.Queries.GetPostByPublicId],
+  [GetPostBySlugQuery, TOKENS.CQRS.Queries.GetPostBySlug],
+  [GetPostsQuery, TOKENS.CQRS.Queries.GetPosts],
+  [GetAllPostsAdminQuery, TOKENS.CQRS.Queries.GetAllPostsAdmin],
+  [GetPostsByUserQuery, TOKENS.CQRS.Queries.GetPostsByUser],
+  [GetLikedPostsByUserQuery, TOKENS.CQRS.Queries.GetLikedPostsByUser],
+  [SearchPostsByTagsQuery, TOKENS.CQRS.Queries.SearchPostsByTags],
+  [SearchAllQuery, TOKENS.CQRS.Queries.SearchAll],
+  [GetFavoritesQuery, TOKENS.CQRS.Queries.GetFavorites],
+  [GetNotificationsQuery, TOKENS.CQRS.Queries.GetNotifications],
+  [GetUnreadCountQuery, TOKENS.CQRS.Queries.GetUnreadCount],
+  [ListConversationsQuery, TOKENS.CQRS.Queries.ListConversations],
+  [GetConversationMessagesQuery, TOKENS.CQRS.Queries.GetConversationMessages],
+  [GetCommunityDetailsQuery, TOKENS.CQRS.Queries.GetCommunityDetails],
+  [GetUserCommunitiesQuery, TOKENS.CQRS.Queries.GetUserCommunities],
+  [GetCommunityFeedQuery, TOKENS.CQRS.Queries.GetCommunityFeed],
+  [GetAllCommunitiesQuery, TOKENS.CQRS.Queries.GetAllCommunities],
+  [GetCommunityMembersQuery, TOKENS.CQRS.Queries.GetCommunityMembers],
+];
+
+const eventSubscriptions: readonly EventSubscription[] = [
+  [UserInteractedWithPostEvent, TOKENS.CQRS.Handlers.FeedInteraction],
+  [PostUploadedEvent, TOKENS.CQRS.Handlers.PostUpload],
+  [PostDeletedEvent, TOKENS.CQRS.Handlers.PostDelete],
+  [
+    ImageAssetCleanupRequestedEvent,
+    TOKENS.CQRS.Handlers.ImageAssetCleanupRequested,
+  ],
+  [UserAvatarChangedEvent, TOKENS.CQRS.Handlers.UserAvatarChanged],
+  [UserUsernameChangedEvent, TOKENS.CQRS.Handlers.UserUsernameChanged],
+  [UserCoverChangedEvent, TOKENS.CQRS.Handlers.UserCoverChanged],
+  [UserDeletedEvent, TOKENS.CQRS.Handlers.UserDeleted],
+  [MessageSentEvent, TOKENS.CQRS.Handlers.MessageSent],
+  [MessageStatusUpdatedEvent, TOKENS.CQRS.Handlers.MessageStatusUpdatedEvent],
+  [
+    MessageAttachmentsDeletedEvent,
+    TOKENS.CQRS.Handlers.MessageAttachmentsDeleted,
+  ],
+  [NotificationRequestedEvent, TOKENS.CQRS.Handlers.NotificationRequested],
+];
+
+function registerContainerHandlers(
+  registrations: readonly ContainerRegistration[],
+): void {
+  for (const [token, handlerClass] of registrations) {
+    container.register(token, { useClass: handlerClass });
+  }
+}
+
+function registerCommandBusHandlers(
+  commandBus: CommandBus,
+  registrations: readonly CommandBusRegistration[],
+): void {
+  for (const [commandType, handlerToken] of registrations) {
+    commandBus.register(
+      commandType,
+      container.resolve(handlerToken) as ICommandHandler<ICommand, unknown>,
+    );
+  }
+}
+
+function registerQueryBusHandlers(
+  queryBus: QueryBus,
+  registrations: readonly QueryBusRegistration[],
+): void {
+  for (const [queryType, handlerToken] of registrations) {
+    queryBus.register(
+      queryType,
+      container.resolve(handlerToken) as IQueryHandler<IQuery, unknown>,
+    );
+  }
+}
+
+function subscribeEventHandlers(
+  eventBus: EventBus,
+  subscriptions: readonly EventSubscription[],
+): void {
+  for (const [eventType, handlerToken] of subscriptions) {
+    eventBus.subscribe(
+      eventType,
+      container.resolve(handlerToken) as IEventHandler<IEvent>,
+    );
+  }
+}
+
 export function registerCQRS(): void {
   container.registerSingleton(TOKENS.CQRS.Commands.Bus, CommandBus);
   container.registerSingleton(TOKENS.CQRS.Queries.Bus, QueryBus);
   container.registerSingleton(TOKENS.CQRS.Handlers.EventBus, EventBus);
 
-  container.register(TOKENS.CQRS.Commands.RegisterUser, {
-    useClass: RegisterUserCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.Login, {
-    useClass: LoginCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.RefreshSession, {
-    useClass: RefreshSessionCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.SetFollowState, {
-    useClass: SetFollowStateCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.DeleteUser, {
-    useClass: DeleteUserCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.UpdateAvatar, {
-    useClass: UpdateAvatarCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.UpdateCover, {
-    useClass: UpdateCoverCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.UpdateProfile, {
-    useClass: UpdateProfileCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.ChangePassword, {
-    useClass: ChangePasswordCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.ClearCache, {
-    useClass: ClearCacheCommandHandler,
-  });
-
-  container.register(TOKENS.CQRS.Commands.LikeAction, {
-    useClass: LikeActionCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.LikeActionByPublicId, {
-    useClass: LikeActionByPublicIdCommandHandler,
-  });
-
-  container.register(TOKENS.CQRS.Commands.CreateComment, {
-    useClass: CreateCommentCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.UpdateComment, {
-    useClass: UpdateCommentCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.DeleteComment, {
-    useClass: DeleteCommentCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.LikeComment, {
-    useClass: LikeCommentCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.CreatePost, {
-    useClass: CreatePostCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.DeletePost, {
-    useClass: DeletePostCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.RepostPost, {
-    useClass: RepostPostCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.UnrepostPost, {
-    useClass: UnrepostPostCommandHandler,
-  });
-
-  container.register(TOKENS.CQRS.Commands.RecordPostView, {
-    useClass: RecordPostViewCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.AddFavorite, {
-    useClass: AddFavoriteCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.RemoveFavorite, {
-    useClass: RemoveFavoriteCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.RemoveFavoriteAdmin, {
-    useClass: RemoveFavoriteAdminCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.CreateNotification, {
-    useClass: CreateNotificationCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.MarkAsRead, {
-    useClass: MarkAsReadCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.MarkAllAsRead, {
-    useClass: MarkAllAsReadCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.SendMessage, {
-    useClass: SendMessageCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.EditMessage, {
-    useClass: EditMessageCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.DeleteMessage, {
-    useClass: DeleteMessageCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.InitiateConversation, {
-    useClass: InitiateConversationCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.MarkConversationRead, {
-    useClass: MarkConversationReadCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.ListConversations, {
-    useClass: ListConversationsQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetConversationMessages, {
-    useClass: GetConversationMessagesQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetLikedPostsByUser, {
-    useClass: GetLikedPostsByUserHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetFavorites, {
-    useClass: GetFavoritesQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetNotifications, {
-    useClass: GetNotificationsQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetUnreadCount, {
-    useClass: GetUnreadCountQueryHandler,
-  });
-
-  container.register(TOKENS.CQRS.Commands.BanUser, {
-    useClass: BanUserCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.UnbanUser, {
-    useClass: UnbanUserCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.PromoteToAdmin, {
-    useClass: PromoteToAdminCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.DemoteFromAdmin, {
-    useClass: DemoteFromAdminCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.LogRequest, {
-    useClass: LogRequestCommandHandler,
-  });
-
-  container.register(TOKENS.CQRS.Handlers.PostUpload, {
-    useClass: PostUploadHandler,
-  });
-  container.register(TOKENS.CQRS.Handlers.PostDelete, {
-    useClass: PostDeleteHandler,
-  });
-  container.register(TOKENS.CQRS.Handlers.ImageAssetCleanupRequested, {
-    useClass: ImageAssetCleanupRequestedHandler,
-  });
-  container.register(TOKENS.CQRS.Handlers.UserAvatarChanged, {
-    useClass: UserAvatarChangedHandler,
-  });
-  container.register(TOKENS.CQRS.Handlers.UserUsernameChanged, {
-    useClass: UserUsernameChangedHandler,
-  });
-  container.register(TOKENS.CQRS.Handlers.UserCoverChanged, {
-    useClass: UserCoverChangedHandler,
-  });
-  container.register(TOKENS.CQRS.Handlers.UserDeleted, {
-    useClass: UserDeletedHandler,
-  });
-  container.register(TOKENS.CQRS.Handlers.RequestPasswordReset, {
-    useClass: RequestPasswordResetHandler,
-  });
-  container.register(TOKENS.CQRS.Handlers.ResetPassword, {
-    useClass: ResetPasswordHandler,
-  });
-  container.register(TOKENS.CQRS.Handlers.VerifyEmail, {
-    useClass: VerifyEmailHandler,
-  });
-
-  container.register(TOKENS.CQRS.Commands.CreateCommunity, {
-    useClass: CreateCommunityCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.JoinCommunity, {
-    useClass: JoinCommunityCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.LeaveCommunity, {
-    useClass: LeaveCommunityCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetCommunityDetails, {
-    useClass: GetCommunityDetailsQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetUserCommunities, {
-    useClass: GetUserCommunitiesQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetCommunityFeed, {
-    useClass: GetCommunityFeedQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.UpdateCommunity, {
-    useClass: UpdateCommunityCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.DeleteCommunity, {
-    useClass: DeleteCommunityCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Commands.KickMember, {
-    useClass: KickMemberCommandHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetAllCommunities, {
-    useClass: GetAllCommunitiesQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetCommunityMembers, {
-    useClass: GetCommunityMembersQueryHandler,
-  });
-
-  container.register(TOKENS.CQRS.Queries.GetMe, {
-    useClass: GetMeQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetAccountInfo, {
-    useClass: GetAccountInfoQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetUserByPublicId, {
-    useClass: GetUserByPublicIdQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetUserByHandle, {
-    useClass: GetUserByHandleQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetUsers, {
-    useClass: GetUsersQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.CheckFollowStatus, {
-    useClass: CheckFollowStatusQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetFollowers, {
-    useClass: GetFollowersQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetFollowing, {
-    useClass: GetFollowingQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetDashboardStats, {
-    useClass: GetDashboardStatsQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetWhoToFollow, {
-    useClass: GetWhoToFollowQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetHandleSuggestions, {
-    useClass: GetHandleSuggestionsQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetTrendingTags, {
-    useClass: GetTrendingTagsQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetPersonalizedFeed, {
-    useClass: GetPersonalizedFeedQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetNewFeed, {
-    useClass: GetNewFeedQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetCommentsByPost, {
-    useClass: GetCommentsByPostQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetCommentsByUser, {
-    useClass: GetCommentsByUserQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetCommentThread, {
-    useClass: GetCommentThreadQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetCommentReplies, {
-    useClass: GetCommentRepliesQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetForYouFeed, {
-    useClass: GetForYouFeedQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetTrendingFeed, {
-    useClass: GetTrendingFeedQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetPostByPublicId, {
-    useClass: GetPostByPublicIdQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetPostBySlug, {
-    useClass: GetPostBySlugQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetPosts, {
-    useClass: GetPostsQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetPostsByUser, {
-    useClass: GetPostsByUserQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.SearchPostsByTags, {
-    useClass: SearchPostsByTagsQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.SearchAll, {
-    useClass: SearchAllQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetAllTags, {
-    useClass: GetAllTagsQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetLikedPostsByUser, {
-    useClass: GetLikedPostsByUserHandler,
-  });
-
-  container.register(TOKENS.CQRS.Queries.GetAllPostsAdmin, {
-    useClass: GetAllPostsAdminQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetAllUsersAdmin, {
-    useClass: GetAllUsersAdminQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetAdminUserProfile, {
-    useClass: GetAdminUserProfileQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetUserStats, {
-    useClass: GetUserStatsQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetRecentActivity, {
-    useClass: GetRecentActivityQueryHandler,
-  });
-  container.register(TOKENS.CQRS.Queries.GetRequestLogs, {
-    useClass: GetRequestLogsQueryHandler,
-  });
-
-  container.register(TOKENS.CQRS.Handlers.FeedInteraction, {
-    useClass: FeedInteractionHandler,
-  });
-  container.register(TOKENS.CQRS.Handlers.MessageSent, {
-    useClass: MessageSentHandler,
-  });
-  container.register(TOKENS.CQRS.Handlers.MessageStatusUpdatedEvent, {
-    useClass: MessageStatusUpdatedEventHandler,
-  });
-  container.register(TOKENS.CQRS.Handlers.MessageAttachmentsDeleted, {
-    useClass: MessageAttachmentsDeletedHandler,
-  });
-  container.register(TOKENS.CQRS.Handlers.NotificationRequested, {
-    useClass: NotificationRequestedHandler,
-  });
+  registerContainerHandlers(commandHandlerRegistrations);
+  registerContainerHandlers(queryHandlerRegistrations);
+  registerContainerHandlers(eventHandlerRegistrations);
 
   logger.info("[di] CQRS registered");
 }
@@ -550,594 +529,9 @@ export function initCQRS(): void {
   const queryBus = container.resolve<QueryBus>(TOKENS.CQRS.Queries.Bus);
   const eventBus = container.resolve<EventBus>(TOKENS.CQRS.Handlers.EventBus);
 
-  commandBus.register(
-    RegisterUserCommand,
-    container.resolve<RegisterUserCommandHandler>(
-      TOKENS.CQRS.Commands.RegisterUser,
-    ),
-  );
-  commandBus.register(
-    LoginCommand,
-    container.resolve<LoginCommandHandler>(TOKENS.CQRS.Commands.Login),
-  );
-  commandBus.register(
-    RefreshSessionCommand,
-    container.resolve<RefreshSessionCommandHandler>(
-      TOKENS.CQRS.Commands.RefreshSession,
-    ),
-  );
-  commandBus.register(
-    SetFollowStateCommand,
-    container.resolve<SetFollowStateCommandHandler>(
-      TOKENS.CQRS.Commands.SetFollowState,
-    ),
-  );
-  commandBus.register(
-    DeleteUserCommand,
-    container.resolve<DeleteUserCommandHandler>(
-      TOKENS.CQRS.Commands.DeleteUser,
-    ),
-  );
-  commandBus.register(
-    UpdateAvatarCommand,
-    container.resolve<UpdateAvatarCommandHandler>(
-      TOKENS.CQRS.Commands.UpdateAvatar,
-    ),
-  );
-  commandBus.register(
-    UpdateCoverCommand,
-    container.resolve<UpdateCoverCommandHandler>(
-      TOKENS.CQRS.Commands.UpdateCover,
-    ),
-  );
-  commandBus.register(
-    ClearCacheCommand,
-    container.resolve<ClearCacheCommandHandler>(
-      TOKENS.CQRS.Commands.ClearCache,
-    ),
-  );
-  commandBus.register(
-    LikeActionCommand,
-    container.resolve<LikeActionCommandHandler>(
-      TOKENS.CQRS.Commands.LikeAction,
-    ),
-  );
-  commandBus.register(
-    LikeActionByPublicIdCommand,
-    container.resolve<LikeActionByPublicIdCommandHandler>(
-      TOKENS.CQRS.Commands.LikeActionByPublicId,
-    ),
-  );
-  commandBus.register(
-    CreateCommentCommand,
-    container.resolve<CreateCommentCommandHandler>(
-      TOKENS.CQRS.Commands.CreateComment,
-    ),
-  );
-  commandBus.register(
-    UpdateCommentCommand,
-    container.resolve<UpdateCommentCommandHandler>(
-      TOKENS.CQRS.Commands.UpdateComment,
-    ),
-  );
-  commandBus.register(
-    DeleteCommentCommand,
-    container.resolve<DeleteCommentCommandHandler>(
-      TOKENS.CQRS.Commands.DeleteComment,
-    ),
-  );
-  commandBus.register(
-    LikeCommentCommand,
-    container.resolve<LikeCommentCommandHandler>(
-      TOKENS.CQRS.Commands.LikeComment,
-    ),
-  );
-  commandBus.register(
-    CreatePostCommand,
-    container.resolve<CreatePostCommandHandler>(
-      TOKENS.CQRS.Commands.CreatePost,
-    ),
-  );
-  commandBus.register(
-    DeletePostCommand,
-    container.resolve<DeletePostCommandHandler>(
-      TOKENS.CQRS.Commands.DeletePost,
-    ),
-  );
-  commandBus.register(
-    RepostPostCommand,
-    container.resolve<RepostPostCommandHandler>(
-      TOKENS.CQRS.Commands.RepostPost,
-    ),
-  );
-  commandBus.register(
-    UnrepostPostCommand,
-    container.resolve<UnrepostPostCommandHandler>(
-      TOKENS.CQRS.Commands.UnrepostPost,
-    ),
-  );
-  commandBus.register(
-    RecordPostViewCommand,
-    container.resolve<RecordPostViewCommandHandler>(
-      TOKENS.CQRS.Commands.RecordPostView,
-    ),
-  );
-  commandBus.register(
-    AddFavoriteCommand,
-    container.resolve<AddFavoriteCommandHandler>(
-      TOKENS.CQRS.Commands.AddFavorite,
-    ),
-  );
-  commandBus.register(
-    RemoveFavoriteCommand,
-    container.resolve<RemoveFavoriteCommandHandler>(
-      TOKENS.CQRS.Commands.RemoveFavorite,
-    ),
-  );
-  commandBus.register(
-    RemoveFavoriteAdminCommand,
-    container.resolve<RemoveFavoriteAdminCommandHandler>(
-      TOKENS.CQRS.Commands.RemoveFavoriteAdmin,
-    ),
-  );
-  commandBus.register(
-    CreateNotificationCommand,
-    container.resolve<CreateNotificationCommandHandler>(
-      TOKENS.CQRS.Commands.CreateNotification,
-    ),
-  );
-  commandBus.register(
-    MarkAsReadCommand,
-    container.resolve<MarkAsReadCommandHandler>(
-      TOKENS.CQRS.Commands.MarkAsRead,
-    ),
-  );
-  commandBus.register(
-    MarkAllAsReadCommand,
-    container.resolve<MarkAllAsReadCommandHandler>(
-      TOKENS.CQRS.Commands.MarkAllAsRead,
-    ),
-  );
-  commandBus.register(
-    SendMessageCommand,
-    container.resolve<SendMessageCommandHandler>(
-      TOKENS.CQRS.Commands.SendMessage,
-    ),
-  );
-  commandBus.register(
-    EditMessageCommand,
-    container.resolve<EditMessageCommandHandler>(
-      TOKENS.CQRS.Commands.EditMessage,
-    ),
-  );
-  commandBus.register(
-    DeleteMessageCommand,
-    container.resolve<DeleteMessageCommandHandler>(
-      TOKENS.CQRS.Commands.DeleteMessage,
-    ),
-  );
-  commandBus.register(
-    InitiateConversationCommand,
-    container.resolve<InitiateConversationCommandHandler>(
-      TOKENS.CQRS.Commands.InitiateConversation,
-    ),
-  );
-  commandBus.register(
-    MarkConversationReadCommand,
-    container.resolve<MarkConversationReadCommandHandler>(
-      TOKENS.CQRS.Commands.MarkConversationRead,
-    ),
-  );
-  commandBus.register(
-    UpdateProfileCommand,
-    container.resolve<UpdateProfileCommandHandler>(
-      TOKENS.CQRS.Commands.UpdateProfile,
-    ),
-  );
-  commandBus.register(
-    ChangePasswordCommand,
-    container.resolve<ChangePasswordCommandHandler>(
-      TOKENS.CQRS.Commands.ChangePassword,
-    ),
-  );
-
-  commandBus.register(
-    RequestPasswordResetCommand,
-    container.resolve<RequestPasswordResetHandler>(
-      TOKENS.CQRS.Handlers.RequestPasswordReset,
-    ),
-  );
-
-  commandBus.register(
-    ResetPasswordCommand,
-    container.resolve<ResetPasswordHandler>(TOKENS.CQRS.Handlers.ResetPassword),
-  );
-  commandBus.register(
-    VerifyEmailCommand,
-    container.resolve<VerifyEmailHandler>(TOKENS.CQRS.Handlers.VerifyEmail),
-  );
-
-  commandBus.register(
-    BanUserCommand,
-    container.resolve<BanUserCommandHandler>(TOKENS.CQRS.Commands.BanUser),
-  );
-  commandBus.register(
-    UnbanUserCommand,
-    container.resolve<UnbanUserCommandHandler>(TOKENS.CQRS.Commands.UnbanUser),
-  );
-  commandBus.register(
-    PromoteToAdminCommand,
-    container.resolve<PromoteToAdminCommandHandler>(
-      TOKENS.CQRS.Commands.PromoteToAdmin,
-    ),
-  );
-  commandBus.register(
-    DemoteFromAdminCommand,
-    container.resolve<DemoteFromAdminCommandHandler>(
-      TOKENS.CQRS.Commands.DemoteFromAdmin,
-    ),
-  );
-  commandBus.register(
-    LogRequestCommand,
-    container.resolve<LogRequestCommandHandler>(
-      TOKENS.CQRS.Commands.LogRequest,
-    ),
-  );
-
-  eventBus.subscribe(
-    UserInteractedWithPostEvent,
-    container.resolve<FeedInteractionHandler>(
-      TOKENS.CQRS.Handlers.FeedInteraction,
-    ),
-  );
-  eventBus.subscribe(
-    PostUploadedEvent,
-    container.resolve<PostUploadHandler>(TOKENS.CQRS.Handlers.PostUpload),
-  );
-  eventBus.subscribe(
-    PostDeletedEvent,
-    container.resolve<PostDeleteHandler>(TOKENS.CQRS.Handlers.PostDelete),
-  );
-  eventBus.subscribe(
-    ImageAssetCleanupRequestedEvent,
-    container.resolve<ImageAssetCleanupRequestedHandler>(
-      TOKENS.CQRS.Handlers.ImageAssetCleanupRequested,
-    ),
-  );
-  eventBus.subscribe(
-    UserAvatarChangedEvent,
-    container.resolve<UserAvatarChangedHandler>(
-      TOKENS.CQRS.Handlers.UserAvatarChanged,
-    ),
-  );
-  eventBus.subscribe(
-    UserUsernameChangedEvent,
-    container.resolve<UserUsernameChangedHandler>(
-      TOKENS.CQRS.Handlers.UserUsernameChanged,
-    ),
-  );
-  eventBus.subscribe(
-    UserCoverChangedEvent,
-    container.resolve<UserCoverChangedHandler>(
-      TOKENS.CQRS.Handlers.UserCoverChanged,
-    ),
-  );
-  eventBus.subscribe(
-    UserDeletedEvent,
-    container.resolve<UserDeletedHandler>(TOKENS.CQRS.Handlers.UserDeleted),
-  );
-  eventBus.subscribe(
-    MessageSentEvent,
-    container.resolve<MessageSentHandler>(TOKENS.CQRS.Handlers.MessageSent),
-  );
-  eventBus.subscribe(
-    MessageStatusUpdatedEvent,
-    container.resolve<MessageStatusUpdatedEventHandler>(
-      TOKENS.CQRS.Handlers.MessageStatusUpdatedEvent,
-    ),
-  );
-  eventBus.subscribe(
-    MessageAttachmentsDeletedEvent,
-    container.resolve<MessageAttachmentsDeletedHandler>(
-      TOKENS.CQRS.Handlers.MessageAttachmentsDeleted,
-    ),
-  );
-  eventBus.subscribe(
-    NotificationRequestedEvent,
-    container.resolve<NotificationRequestedHandler>(
-      TOKENS.CQRS.Handlers.NotificationRequested,
-    ),
-  );
-
-  queryBus.register(
-    GetMeQuery,
-    container.resolve<GetMeQueryHandler>(TOKENS.CQRS.Queries.GetMe),
-  );
-  queryBus.register(
-    GetAccountInfoQuery,
-    container.resolve<GetAccountInfoQueryHandler>(
-      TOKENS.CQRS.Queries.GetAccountInfo,
-    ),
-  );
-  queryBus.register(
-    GetDashboardStatsQuery,
-    container.resolve<GetDashboardStatsQueryHandler>(
-      TOKENS.CQRS.Queries.GetDashboardStats,
-    ),
-  );
-  queryBus.register(
-    GetWhoToFollowQuery,
-    container.resolve<GetWhoToFollowQueryHandler>(
-      TOKENS.CQRS.Queries.GetWhoToFollow,
-    ),
-  );
-  queryBus.register(
-    GetHandleSuggestionsQuery,
-    container.resolve<GetHandleSuggestionsQueryHandler>(
-      TOKENS.CQRS.Queries.GetHandleSuggestions,
-    ),
-  );
-  queryBus.register(
-    GetTrendingTagsQuery,
-    container.resolve<GetTrendingTagsQueryHandler>(
-      TOKENS.CQRS.Queries.GetTrendingTags,
-    ),
-  );
-  queryBus.register(
-    GetPersonalizedFeedQuery,
-    container.resolve<GetPersonalizedFeedQueryHandler>(
-      TOKENS.CQRS.Queries.GetPersonalizedFeed,
-    ),
-  );
-  queryBus.register(
-    GetNewFeedQuery,
-    container.resolve<GetNewFeedQueryHandler>(TOKENS.CQRS.Queries.GetNewFeed),
-  );
-  queryBus.register(
-    GetCommentsByPostQuery,
-    container.resolve<GetCommentsByPostQueryHandler>(
-      TOKENS.CQRS.Queries.GetCommentsByPost,
-    ),
-  );
-  queryBus.register(
-    GetCommentsByUserQuery,
-    container.resolve<GetCommentsByUserQueryHandler>(
-      TOKENS.CQRS.Queries.GetCommentsByUser,
-    ),
-  );
-  queryBus.register(
-    GetCommentThreadQuery,
-    container.resolve<GetCommentThreadQueryHandler>(
-      TOKENS.CQRS.Queries.GetCommentThread,
-    ),
-  );
-  queryBus.register(
-    GetCommentRepliesQuery,
-    container.resolve<GetCommentRepliesQueryHandler>(
-      TOKENS.CQRS.Queries.GetCommentReplies,
-    ),
-  );
-  queryBus.register(
-    GetForYouFeedQuery,
-    container.resolve<GetForYouFeedQueryHandler>(
-      TOKENS.CQRS.Queries.GetForYouFeed,
-    ),
-  );
-  queryBus.register(
-    GetTrendingFeedQuery,
-    container.resolve<GetTrendingFeedQueryHandler>(
-      TOKENS.CQRS.Queries.GetTrendingFeed,
-    ),
-  );
-  queryBus.register(
-    GetPostByPublicIdQuery,
-    container.resolve<GetPostByPublicIdQueryHandler>(
-      TOKENS.CQRS.Queries.GetPostByPublicId,
-    ),
-  );
-  queryBus.register(
-    GetPostBySlugQuery,
-    container.resolve<GetPostBySlugQueryHandler>(
-      TOKENS.CQRS.Queries.GetPostBySlug,
-    ),
-  );
-  queryBus.register(
-    GetPostsQuery,
-    container.resolve<GetPostsQueryHandler>(TOKENS.CQRS.Queries.GetPosts),
-  );
-  queryBus.register(
-    GetPostsByUserQuery,
-    container.resolve<GetPostsByUserQueryHandler>(
-      TOKENS.CQRS.Queries.GetPostsByUser,
-    ),
-  );
-  queryBus.register(
-    SearchPostsByTagsQuery,
-    container.resolve<SearchPostsByTagsQueryHandler>(
-      TOKENS.CQRS.Queries.SearchPostsByTags,
-    ),
-  );
-  queryBus.register(
-    SearchAllQuery,
-    container.resolve<SearchAllQueryHandler>(TOKENS.CQRS.Queries.SearchAll),
-  );
-  queryBus.register(
-    GetAllTagsQuery,
-    container.resolve<GetAllTagsQueryHandler>(TOKENS.CQRS.Queries.GetAllTags),
-  );
-  queryBus.register(
-    GetLikedPostsByUserQuery,
-    container.resolve<GetLikedPostsByUserHandler>(
-      TOKENS.CQRS.Queries.GetLikedPostsByUser,
-    ),
-  );
-  queryBus.register(
-    GetFavoritesQuery,
-    container.resolve<GetFavoritesQueryHandler>(
-      TOKENS.CQRS.Queries.GetFavorites,
-    ),
-  );
-  queryBus.register(
-    GetNotificationsQuery,
-    container.resolve<GetNotificationsQueryHandler>(
-      TOKENS.CQRS.Queries.GetNotifications,
-    ),
-  );
-  queryBus.register(
-    GetUnreadCountQuery,
-    container.resolve<GetUnreadCountQueryHandler>(
-      TOKENS.CQRS.Queries.GetUnreadCount,
-    ),
-  );
-  queryBus.register(
-    ListConversationsQuery,
-    container.resolve<ListConversationsQueryHandler>(
-      TOKENS.CQRS.Queries.ListConversations,
-    ),
-  );
-  queryBus.register(
-    GetConversationMessagesQuery,
-    container.resolve<GetConversationMessagesQueryHandler>(
-      TOKENS.CQRS.Queries.GetConversationMessages,
-    ),
-  );
-  queryBus.register(
-    GetUserByPublicIdQuery,
-    container.resolve<GetUserByPublicIdQueryHandler>(
-      TOKENS.CQRS.Queries.GetUserByPublicId,
-    ),
-  );
-  queryBus.register(
-    GetUserByHandleQuery,
-    container.resolve<GetUserByHandleQueryHandler>(
-      TOKENS.CQRS.Queries.GetUserByHandle,
-    ),
-  );
-  queryBus.register(
-    GetUsersQuery,
-    container.resolve<GetUsersQueryHandler>(TOKENS.CQRS.Queries.GetUsers),
-  );
-  queryBus.register(
-    CheckFollowStatusQuery,
-    container.resolve<CheckFollowStatusQueryHandler>(
-      TOKENS.CQRS.Queries.CheckFollowStatus,
-    ),
-  );
-  queryBus.register(
-    GetFollowersQuery,
-    container.resolve<GetFollowersQueryHandler>(
-      TOKENS.CQRS.Queries.GetFollowers,
-    ),
-  );
-  queryBus.register(
-    GetFollowingQuery,
-    container.resolve<GetFollowingQueryHandler>(
-      TOKENS.CQRS.Queries.GetFollowing,
-    ),
-  );
-  queryBus.register(
-    GetAllPostsAdminQuery,
-    container.resolve<GetAllPostsAdminQueryHandler>(
-      TOKENS.CQRS.Queries.GetAllPostsAdmin,
-    ),
-  );
-  queryBus.register(
-    GetAllUsersAdminQuery,
-    container.resolve<GetAllUsersAdminQueryHandler>(
-      TOKENS.CQRS.Queries.GetAllUsersAdmin,
-    ),
-  );
-  queryBus.register(
-    GetAdminUserProfileQuery,
-    container.resolve<GetAdminUserProfileQueryHandler>(
-      TOKENS.CQRS.Queries.GetAdminUserProfile,
-    ),
-  );
-  queryBus.register(
-    GetUserStatsQuery,
-    container.resolve<GetUserStatsQueryHandler>(
-      TOKENS.CQRS.Queries.GetUserStats,
-    ),
-  );
-  queryBus.register(
-    GetRecentActivityQuery,
-    container.resolve<GetRecentActivityQueryHandler>(
-      TOKENS.CQRS.Queries.GetRecentActivity,
-    ),
-  );
-  queryBus.register(
-    GetRequestLogsQuery,
-    container.resolve<GetRequestLogsQueryHandler>(
-      TOKENS.CQRS.Queries.GetRequestLogs,
-    ),
-  );
-
-  commandBus.register(
-    CreateCommunityCommand,
-    container.resolve<CreateCommunityCommandHandler>(
-      TOKENS.CQRS.Commands.CreateCommunity,
-    ),
-  );
-  commandBus.register(
-    JoinCommunityCommand,
-    container.resolve<JoinCommunityCommandHandler>(
-      TOKENS.CQRS.Commands.JoinCommunity,
-    ),
-  );
-  commandBus.register(
-    LeaveCommunityCommand,
-    container.resolve<LeaveCommunityCommandHandler>(
-      TOKENS.CQRS.Commands.LeaveCommunity,
-    ),
-  );
-  queryBus.register(
-    GetCommunityDetailsQuery,
-    container.resolve<GetCommunityDetailsQueryHandler>(
-      TOKENS.CQRS.Queries.GetCommunityDetails,
-    ),
-  );
-  queryBus.register(
-    GetUserCommunitiesQuery,
-    container.resolve<GetUserCommunitiesQueryHandler>(
-      TOKENS.CQRS.Queries.GetUserCommunities,
-    ),
-  );
-  queryBus.register(
-    GetCommunityFeedQuery,
-    container.resolve<GetCommunityFeedQueryHandler>(
-      TOKENS.CQRS.Queries.GetCommunityFeed,
-    ),
-  );
-  commandBus.register(
-    UpdateCommunityCommand,
-    container.resolve<UpdateCommunityCommandHandler>(
-      TOKENS.CQRS.Commands.UpdateCommunity,
-    ),
-  );
-  commandBus.register(
-    DeleteCommunityCommand,
-    container.resolve<DeleteCommunityCommandHandler>(
-      TOKENS.CQRS.Commands.DeleteCommunity,
-    ),
-  );
-  commandBus.register(
-    KickMemberCommand,
-    container.resolve<KickMemberCommandHandler>(
-      TOKENS.CQRS.Commands.KickMember,
-    ),
-  );
-  queryBus.register(
-    GetAllCommunitiesQuery,
-    container.resolve<GetAllCommunitiesQueryHandler>(
-      TOKENS.CQRS.Queries.GetAllCommunities,
-    ),
-  );
-  queryBus.register(
-    GetCommunityMembersQuery,
-    container.resolve<GetCommunityMembersQueryHandler>(
-      TOKENS.CQRS.Queries.GetCommunityMembers,
-    ),
-  );
+  registerCommandBusHandlers(commandBus, commandBusRegistrations);
+  registerQueryBusHandlers(queryBus, queryBusRegistrations);
+  subscribeEventHandlers(eventBus, eventSubscriptions);
 
   logger.info("[di] CQRS initialized");
 }
