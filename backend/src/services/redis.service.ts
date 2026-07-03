@@ -55,6 +55,22 @@ const DEFAULT_RESILIENCE: Required<ResilienceConfigBase> = {
   baseDelayMs: 50,
   maxDelayMs: 1000,
 };
+const DEFAULT_CONNECTION_WAIT_MS = 5000;
+
+function redactRedisUrl(redisUrl: string): string {
+  try {
+    const parsed = new URL(redisUrl);
+    if (parsed.username) {
+      parsed.username = "***";
+    }
+    if (parsed.password) {
+      parsed.password = "***";
+    }
+    return parsed.toString();
+  } catch {
+    return redisUrl.includes("@") ? "redis://***" : redisUrl;
+  }
+}
 
 /**
  * Facade over Redis modules.
@@ -81,6 +97,7 @@ export class RedisService {
       (runningInDocker
         ? "redis://redis-service:6379"
         : "redis://127.0.0.1:6379");
+    const logSafeRedisUrl = redactRedisUrl(redisUrl);
 
     this.metricsService.setRedisConnectionState(false);
 
@@ -91,7 +108,7 @@ export class RedisService {
     this.sessionModule = new RedisSessionModule(this.client);
 
     this.client.on("connect", () => {
-      redisLogger.info(`Redis connected`, { url: redisUrl });
+      redisLogger.info(`Redis connected`, { url: logSafeRedisUrl });
       this.metricsService.setRedisConnectionState(true);
     });
     this.client.on("error", (err) => {
@@ -128,6 +145,18 @@ export class RedisService {
     return JSON.parse(payload) as T;
   }
 
+  private parseCachedValue<T>(key: string, payload: string): T | null {
+    try {
+      return this.parseJson<T>(payload);
+    } catch (error) {
+      redisLogger.error("Redis cache value is not valid JSON", {
+        key,
+        error: getErrorMessage(error) || String(error),
+      });
+      return null;
+    }
+  }
+
   /**
    * Type-safe cache read. Callers must supply a type guard that narrows
    * the parsed value to T before it's returned — prevents silent type lies
@@ -137,14 +166,9 @@ export class RedisService {
     key: string,
     guard: (v: unknown) => v is T,
   ): Promise<T | null> {
-    const raw = await this.get<string>(key);
-    if (raw === null) return null;
-    try {
-      const parsed: unknown = typeof raw === "string" ? JSON.parse(raw) : raw;
-      return guard(parsed) ? parsed : null;
-    } catch {
-      return null;
-    }
+    const parsed = await this.get<unknown>(key);
+    if (parsed === null) return null;
+    return guard(parsed) ? parsed : null;
   }
 
   private hasFallback<T>(
@@ -217,12 +241,7 @@ export class RedisService {
 
       const onConnect = () => settle(true);
       const onError = (error: unknown) => {
-        if (timeoutMs === undefined && !this.isRetryableRedisError(error)) {
-          settle(false);
-          return;
-        }
-
-        if (timeoutMs !== undefined) {
+        if (!this.isRetryableRedisError(error)) {
           settle(false);
         }
       };
@@ -230,9 +249,10 @@ export class RedisService {
       this.client.once("connect", onConnect);
       this.client.once("error", onError);
 
-      if (timeoutMs !== undefined) {
-        timeout = setTimeout(() => settle(this.client.isOpen), timeoutMs);
-      }
+      timeout = setTimeout(
+        () => settle(this.client.isOpen),
+        Math.max(timeoutMs ?? DEFAULT_CONNECTION_WAIT_MS, 0),
+      );
     });
   }
 
@@ -245,16 +265,17 @@ export class RedisService {
     config?: ResilienceConfig<T>,
   ): Promise<T> {
     const cfg = { ...DEFAULT_RESILIENCE, ...config };
+    const maxAttempts = Math.max(1, Math.floor(cfg.maxAttempts));
     let lastError: Error | undefined;
 
-    for (let attempt = 1; attempt <= cfg.maxAttempts; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         return await operation();
       } catch (error: unknown) {
         const message = getErrorMessage(error) || String(error);
         lastError = error instanceof Error ? error : new Error(message);
 
-        if (!this.isRetryableRedisError(error) || attempt >= cfg.maxAttempts) {
+        if (!this.isRetryableRedisError(error) || attempt >= maxAttempts) {
           if (this.hasFallback(config)) {
             redisLogger.warn(`Redis operation failed, using fallback`, {
               error: lastError.message,
@@ -268,7 +289,7 @@ export class RedisService {
         redisLogger.warn(`Redis operation failed, retrying`, {
           error: lastError.message,
           attempt,
-          maxAttempts: cfg.maxAttempts,
+          maxAttempts,
         });
 
         await this.backoffWithJitter(attempt, cfg.baseDelayMs, cfg.maxDelayMs);
@@ -328,7 +349,7 @@ export class RedisService {
    */
   async get<T>(key: string): Promise<T | null> {
     const data = await this.client.get(key);
-    return data ? this.parseJson<T>(data) : null;
+    return data !== null ? this.parseCachedValue<T>(key, data) : null;
   }
 
   /**
@@ -341,7 +362,9 @@ export class RedisService {
   async mGet<T>(keys: string[]): Promise<(T | null)[]> {
     if (keys.length === 0) return [];
     const values = await this.client.mGet(keys);
-    return values.map((value) => (value ? this.parseJson<T>(value) : null));
+    return values.map((value, index) =>
+      value !== null ? this.parseCachedValue<T>(keys[index], value) : null,
+    );
   }
 
   /**
@@ -356,7 +379,11 @@ export class RedisService {
    */
   async set<T>(key: string, value: T, ttl?: number): Promise<void> {
     const stringValue = JSON.stringify(value);
-    if (ttl) {
+    if (ttl !== undefined) {
+      if (ttl <= 0) {
+        await this.client.del(key);
+        return;
+      }
       await this.client.setEx(key, ttl, stringValue);
     } else {
       await this.client.set(key, stringValue);
@@ -499,7 +526,7 @@ export class RedisService {
 
     // Use a composite key so multiple subscribe() calls to different channel
     // sets each get their own tracked connection.
-    const subscriberKey = channels.sort().join(",");
+    const subscriberKey = [...channels].sort().join(",");
 
     // Tear down any previous subscriber for the same channel set (e.g. reconnect)
     const existing = this.subscribers.get(subscriberKey);
@@ -581,7 +608,7 @@ export class RedisService {
    * @param key - The main cache key (e.g., `user:profile:123`).
    * @param value - The data to store. Will be JSON stringified automatically.
    * @param tags - An array of string tags (e.g., `['user:123', 'feed:global']`) used for group invalidation.
-   * @param ttl - (Optional) Time-to-live in seconds. Defaults to 600s.
+   * @param ttl - (Optional) TTL in seconds.
    * @returns {Promise<void>} Resolves when the pipeline executes successfully.
    */
   async setWithTags<T>(
@@ -599,9 +626,20 @@ export class RedisService {
     return this.withResilience(
       async () => {
         const uniqueTags = [...new Set(tags)];
-        const tagTTL = ttl || 600;
         const stringValue = JSON.stringify(value);
         const start = performance.now();
+
+        if (ttl !== undefined && ttl <= 0) {
+          const pipeline = this.client.multi();
+          pipeline.del(key);
+          pipeline.del(`key_tags:${key}`);
+          for (const tag of uniqueTags) {
+            pipeline.sRem(`tag:${tag}`, key);
+          }
+          await pipeline.exec();
+          return;
+        }
+
         // Make sure tag keys hold the correct type (set) before pipeline use.
         // NOTE: These type-checks run OUTSIDE the pipeline, so there is a narrow
         // race window between the check and the pipeline execution. A Lua script
@@ -616,7 +654,7 @@ export class RedisService {
         // Pipeline: batch SET + SADD (tag association) + EXPIRE in one round-trip
         const pipeline = this.client.multi();
 
-        if (ttl) {
+        if (ttl !== undefined) {
           pipeline.setEx(key, ttl, stringValue);
         } else {
           pipeline.set(key, stringValue);
@@ -625,14 +663,23 @@ export class RedisService {
         for (const tag of uniqueTags) {
           const tagKey = `tag:${tag}`;
           pipeline.sAdd(tagKey, key);
-          pipeline.expire(tagKey, tagTTL);
+          if (ttl !== undefined) {
+            pipeline.expire(tagKey, ttl, "NX");
+            pipeline.expire(tagKey, ttl, "GT");
+          } else {
+            pipeline.persist(tagKey);
+          }
         }
 
         const keyTagKey = `key_tags:${key}`;
         for (const tag of uniqueTags) {
           pipeline.sAdd(keyTagKey, tag);
         }
-        pipeline.expire(keyTagKey, tagTTL);
+        if (ttl !== undefined) {
+          pipeline.expire(keyTagKey, ttl);
+        } else {
+          pipeline.persist(keyTagKey);
+        }
 
         await pipeline.exec();
         const durationMs = performance.now() - start;
@@ -656,8 +703,21 @@ export class RedisService {
           ...entry,
           tags: [...new Set(entry.tags)],
         }));
-        const tagTTL = ttl || 600;
         const setKeysToEnsure = new Set<string>();
+        // Non-psitive TTL means the entries are already expired.
+        // Remove the values and their tag indexes instead of writing cache data with invalid expiry.
+        if (ttl !== undefined && ttl <= 0) {
+          const pipeline = this.client.multi();
+          for (const entry of normalizedEntries) {
+            pipeline.del(entry.key);
+            pipeline.del(`key_tags:${entry.key}`);
+            for (const tag of entry.tags) {
+              pipeline.sRem(`tag:${tag}`, entry.key);
+            }
+          }
+          await pipeline.exec();
+          return;
+        }
 
         for (const entry of normalizedEntries) {
           if (entry.tags.length === 0) {
@@ -682,7 +742,7 @@ export class RedisService {
         for (const entry of normalizedEntries) {
           const stringValue = JSON.stringify(entry.value);
 
-          if (ttl) {
+          if (ttl !== undefined) {
             pipeline.setEx(entry.key, ttl, stringValue);
           } else {
             pipeline.set(entry.key, stringValue);
@@ -696,10 +756,19 @@ export class RedisService {
           for (const tag of entry.tags) {
             const tagKey = `tag:${tag}`;
             pipeline.sAdd(tagKey, entry.key);
-            pipeline.expire(tagKey, tagTTL);
+            if (ttl !== undefined) {
+              pipeline.expire(tagKey, ttl, "NX");
+              pipeline.expire(tagKey, ttl, "GT");
+            } else {
+              pipeline.persist(tagKey);
+            }
             pipeline.sAdd(keyTagKey, tag);
           }
-          pipeline.expire(keyTagKey, tagTTL);
+          if (ttl !== undefined) {
+            pipeline.expire(keyTagKey, ttl);
+          } else {
+            pipeline.persist(keyTagKey);
+          }
         }
 
         await pipeline.exec();
@@ -740,6 +809,7 @@ export class RedisService {
 
         const keysToDelete = new Set<string>();
         const tagKeysToDelete: string[] = [];
+        const requestedTags = new Set(uniqueTags);
 
         uniqueTags.forEach((tag, idx) => {
           const tagKey = `tag:${tag}`;
@@ -754,19 +824,45 @@ export class RedisService {
           }
         });
 
-        const deleteTargets: string[] = [];
-        for (const key of keysToDelete) {
-          deleteTargets.push(key, `key_tags:${key}`);
+        const keys = [...keysToDelete];
+        const keyTagsPipeline = this.client.multi();
+        for (const key of keys) {
+          keyTagsPipeline.sMembers(`key_tags:${key}`);
         }
-        deleteTargets.push(...tagKeysToDelete);
+        const keyTagResults =
+          keys.length > 0 ? await keyTagsPipeline.exec() : [];
 
-        if (deleteTargets.length > 0) {
-          await this.client.del(deleteTargets);
+        const deletePipeline = this.client.multi();
+        let commandCount = 0;
+
+        keys.forEach((key, idx) => {
+          const keyTags = keyTagResults?.[idx];
+          if (Array.isArray(keyTags)) {
+            for (const tag of keyTags) {
+              if (typeof tag === "string" && !requestedTags.has(tag)) {
+                deletePipeline.sRem(`tag:${tag}`, key);
+                commandCount++;
+              }
+            }
+          }
+
+          deletePipeline.del(key);
+          deletePipeline.del(`key_tags:${key}`);
+          commandCount += 2;
+        });
+
+        for (const tagKey of tagKeysToDelete) {
+          deletePipeline.del(tagKey);
+          commandCount++;
+        }
+
+        if (commandCount > 0) {
+          await deletePipeline.exec();
         }
 
         const durationMs = performance.now() - start;
         redisLogger.info(
-          `[Redis] invalidateByTags tags=${uniqueTags.length} keys=${keysToDelete.size} deletedKeys=${deleteTargets.length} duration=${durationMs.toFixed(2)}ms`,
+          `[Redis] invalidateByTags tags=${uniqueTags.length} keys=${keysToDelete.size} commands=${commandCount} duration=${durationMs.toFixed(2)}ms`,
         );
       },
       { maxAttempts: 3 },
