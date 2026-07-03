@@ -73,7 +73,8 @@ function redactRedisUrl(redisUrl: string): string {
 }
 
 /**
- * Facade over Redis modules.
+ * Facade over Redis moduls, but this class does more than just facading. A change is required
+ * but i'll keep any refactors to a miniumum because it gets injected everywhere across the app and splitting it would cause pain
  * - Core cache/tag operations remain here.
  * - Feed, notification, and stream responsibilities are delegated to focused modules.
  */
