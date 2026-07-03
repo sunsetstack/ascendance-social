@@ -42,8 +42,12 @@ export class OutboxWorker extends BasePollingWorker {
     if (events.length === 0) return;
 
     this.metricsService.recordOutboxBatchSize(events.length);
-    logger.debug(`[OutboxWorker] Found ${events.length} unprocessed events`, {
+    logger.info("Outbox events claimed", {
+      event: "outbox.batch.claimed",
+      worker: "OutboxWorker",
+      batchSize: events.length,
       pendingCount,
+      workerId: this.workerId,
     });
 
     for (const record of events) {
@@ -76,11 +80,15 @@ export class OutboxWorker extends BasePollingWorker {
           "processed",
           Date.now() - attemptStartedAt,
         );
-        logger.debug("[OutboxWorker] Successfully processed event", {
+        logger.info("Outbox event processed", {
+          event: "outbox.event.processed",
+          worker: "OutboxWorker",
           eventId,
           eventType: record.eventType,
           retries: record.retries,
           traceId,
+          correlationId,
+          durationMs: Date.now() - attemptStartedAt,
         });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -89,12 +97,17 @@ export class OutboxWorker extends BasePollingWorker {
           "failed",
           Date.now() - attemptStartedAt,
         );
-        logger.error("[OutboxWorker] Failed to process event", {
-          error: message,
+        logger.error("Outbox event failed", {
+          event: "outbox.event.failed",
+          worker: "OutboxWorker",
+          error,
+          message,
           eventId,
           eventType: record.eventType,
           retries: record.retries,
           traceId,
+          correlationId,
+          durationMs: Date.now() - attemptStartedAt,
         });
         await this.outboxRepository.markAsFailed(eventId, message);
       }

@@ -96,12 +96,17 @@ export class UserActivityService {
       // track this specific user as recently active
       await this.trackRecentlyActiveUser(userPublicId);
 
-      logger.debug(
-        `[UserActivityService] Tracked post created by ${userPublicId}`,
-      );
+      logger.debug("Tracked user post activity", {
+        event: "user_activity.post_created_tracked",
+        userId: userPublicId,
+      });
     } catch (error) {
       // just log
-      logger.warn("[UserActivityService] Error tracking user activity", error);
+      logger.warn("Error tracking user activity", {
+        event: "user_activity.track_failed",
+        userId: userPublicId,
+        error,
+      });
     }
   }
 
@@ -127,10 +132,11 @@ export class UserActivityService {
       // set TTL on the key
       await this.redisService.expire(key, AdaptiveTTL.METRICS_STORAGE);
     } catch (error) {
-      logger.warn(
-        "[UserActivityService] Error tracking recently active user",
+      logger.warn("Error tracking recently active user", {
+        event: "user_activity.recent_user_track_failed",
+        userId: userPublicId,
         error,
-      );
+      });
     }
   }
 
@@ -149,10 +155,11 @@ export class UserActivityService {
       );
       return results || [];
     } catch (error) {
-      logger.warn(
-        "[UserActivityService] Error getting recently active users",
+      logger.warn("Error getting recently active users", {
+        event: "user_activity.recent_users_fetch_failed",
+        days,
         error,
-      );
+      });
       return [];
     }
   }
@@ -166,10 +173,10 @@ export class UserActivityService {
         USER_ACTIVITY_METRICS_KEY,
       );
     } catch (error) {
-      logger.warn(
-        "[UserActivityService] Error getting activity metrics",
+      logger.warn("Error getting activity metrics", {
+        event: "user_activity.metrics_fetch_failed",
         error,
-      );
+      });
       return null;
     }
   }
@@ -209,10 +216,10 @@ export class UserActivityService {
 
       return "dormant";
     } catch (error) {
-      logger.warn(
-        "[UserActivityService] Error determining activity level",
+      logger.warn("Error determining activity level", {
+        event: "user_activity.level_resolve_failed",
         error,
-      );
+      });
       return "dormant";
     }
   }

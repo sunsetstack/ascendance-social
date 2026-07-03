@@ -14,6 +14,7 @@ import {
 import { decodeCursor, encodeCursor } from "@/utils/cursorCodec";
 import { TOKENS } from "@/types/tokens";
 import { Errors } from "@/utils/errors";
+import { logger } from "@/utils/winston";
 import {
   ACTIVE_POST_FILTER,
   withActivePostFilter,
@@ -331,7 +332,12 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         ),
       ]);
 
-      console.info(`Ranked feed generated with ${results.length} results`);
+      logger.debug("Ranked feed generated", {
+        event: "feed.ranked.generated",
+        resultCount: results.length,
+        limit,
+        skip,
+      });
 
       const totalPages = Math.ceil(total / limit);
       const currentPage = Math.floor(skip / limit) + 1;
@@ -453,7 +459,6 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         }),
       ]);
 
-      // console.info(`Trending feed generated with results: ${JSON.stringify(results)} `);
       const totalPages = Math.ceil(total / limit);
       const currentPage = Math.floor(skip / limit) + 1;
 
@@ -504,7 +509,12 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       ]);
       const totalPages = Math.ceil(total / limit);
       const currentPage = Math.floor(skip / limit) + 1;
-      console.info(`New feed generated with ${results.length} results`);
+      logger.debug("New feed generated", {
+        event: "feed.new.generated",
+        resultCount: results.length,
+        limit,
+        skip,
+      });
       return { data: results, total, page: currentPage, limit, totalPages };
     } catch (error: unknown) {
       throw Errors.database(

@@ -41,21 +41,42 @@ export async function runWorkerEntrypoint<TWorker extends IWorker>({
     await initializeBackendRuntime();
     worker = resolveWorker();
     await startWorker(worker);
-    logger.info(`${workerName} worker started`);
+    logger.info("Worker started", {
+      event: "worker.started",
+      worker: workerName,
+    });
   } catch (error) {
-    logger.error(`${workerName} worker failed to start`, { error });
+    logger.error("Worker failed to start", {
+      event: "worker.start_failed",
+      worker: workerName,
+      error,
+    });
     process.exit(1);
     return;
   }
 
   const shutdown = async (signal: string) => {
-    logger.info(`Shutting down ${workerName} worker...`, { signal });
+    logger.info("Worker shutdown started", {
+      event: "worker.shutdown.started",
+      worker: workerName,
+      signal,
+    });
 
     try {
       await worker.stop();
+      logger.info("Worker shutdown completed", {
+        event: "worker.shutdown.completed",
+        worker: workerName,
+        signal,
+      });
       process.exit(0);
     } catch (error) {
-      logger.error(`Error during ${workerName} worker shutdown`, { error });
+      logger.error("Worker shutdown failed", {
+        event: "worker.shutdown.failed",
+        worker: workerName,
+        signal,
+        error,
+      });
       process.exit(1);
     }
   };

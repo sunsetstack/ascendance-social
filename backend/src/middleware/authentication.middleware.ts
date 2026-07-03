@@ -19,6 +19,7 @@ import { MetricsService } from "@/metrics/metrics.service";
 import { getClientIp } from "@/utils/request-ip";
 import { getRateLimitStoreOptions } from "@/config/rateLimit";
 import { TOKENS } from "@/types/tokens";
+import { setRequestContextUserId } from "@/runtime/request-context";
 
 declare global {
   namespace Express {
@@ -61,7 +62,12 @@ export class BearerTokenStrategy extends AuthStrategy {
       }
     }
     if (!token) {
-      logger.warn(`[AUTH] Missing token for ${req.method} ${req.originalUrl}`);
+      logger.warn("Missing authentication token", {
+        event: "auth.missing_token",
+        method: req.method,
+        route: req.originalUrl.split("?")[0],
+        ip: getClientIp(req),
+      });
       throw Errors.authentication("Missing token", {
         errorCode: ErrorCode.TOKEN_INVALID,
       });
@@ -112,7 +118,12 @@ export class BearerTokenStrategy extends AuthStrategy {
         throw err;
       }
       const errorMessage = err instanceof Error ? err.message : String(err);
-      logger.error("[AUTH] Token verification failed", errorMessage);
+      logger.warn("Token verification failed", {
+        event: "auth.token_verification_failed",
+        method: req.method,
+        route: req.originalUrl.split("?")[0],
+        reason: errorMessage,
+      });
       const errorCode =
         err instanceof Error && err.name === "TokenExpiredError"
           ? ErrorCode.TOKEN_EXPIRED
@@ -192,7 +203,8 @@ export class AuthenticationMiddleware {
     const route = `${req.baseUrl || ""}${req.path || req.originalUrl || "/"}`;
 
     if (reason !== "missing_token") {
-      logger.warn("[AUTH][OPTIONAL] Authentication failed", {
+      logger.warn("Optional authentication failed", {
+        event: "auth.optional_failed",
         reason,
         route,
         method: req.method,
@@ -203,11 +215,9 @@ export class AuthenticationMiddleware {
     try {
       this.metricsService?.recordOptionalAuthFailure(reason, route);
     } catch (metricsError) {
-      logger.warn("[AUTH][OPTIONAL] Failed to record auth metric", {
-        error:
-          metricsError instanceof Error
-            ? metricsError.message
-            : String(metricsError),
+      logger.warn("Failed to record optional auth metric", {
+        event: "auth.optional_metric_failed",
+        error: metricsError,
       });
     }
   }
@@ -217,6 +227,7 @@ export class AuthenticationMiddleware {
       try {
         req.decodedUser = await this.strategy.authenticate(req);
         await this.enforceVerifiedEmail(req.decodedUser);
+        setRequestContextUserId(req.decodedUser.publicId);
         next();
       } catch (error) {
         // Preserve original AppError Wwith statusCode
@@ -241,6 +252,7 @@ export class AuthenticationMiddleware {
       try {
         req.decodedUser = await this.strategy.authenticate(req);
         await this.enforceVerifiedEmail(req.decodedUser);
+        setRequestContextUserId(req.decodedUser.publicId);
       } catch (error) {
         req.decodedUser = undefined;
         this.recordOptionalAuthFailure(req, error);
@@ -325,16 +337,24 @@ export class AuthMiddlewareService {
         const decodedUser = req.decodedUser;
 
         if (!decodedUser) {
-          logger.warn(
-            `[SECURITY] Unauthenticated admin access attempt from IP: ${req.ip}`,
-          );
+          logger.warn("Unauthenticated admin access attempt", {
+            event: "security.admin_access.unauthenticated",
+            method: req.method,
+            route: req.path,
+            ip: req.ip,
+          });
           return res.status(401).json({ error: "Authentication required" });
         }
 
         if (!decodedUser.isAdmin) {
-          logger.warn(
-            `[SECURITY] Unauthorized admin access attempt by user ${decodedUser.username} (${decodedUser.publicId}) from IP ${req.ip}`,
-          );
+          logger.warn("Unauthorized admin access attempt", {
+            event: "security.admin_access.unauthorized",
+            method: req.method,
+            route: req.path,
+            userId: decodedUser.publicId,
+            username: decodedUser.username,
+            ip: req.ip,
+          });
           return res.status(403).json({ error: "Admin privileges required" });
         }
 
@@ -343,23 +363,29 @@ export class AuthMiddlewareService {
         );
 
         if (!user) {
-          logger.warn(
-            `[SECURITY] Admin user ${decodedUser.publicId} not found in database`,
-          );
+          logger.warn("Admin user not found in database", {
+            event: "security.admin_access.user_not_found",
+            userId: decodedUser.publicId,
+          });
           return res.status(401).json({ error: "User not found" });
         }
 
         if (user.isBanned) {
-          logger.warn(
-            `[SECURITY] Banned admin ${decodedUser.username} attempted access from IP ${req.ip}`,
-          );
+          logger.warn("Banned admin attempted access", {
+            event: "security.admin_access.banned_user",
+            userId: decodedUser.publicId,
+            username: decodedUser.username,
+            ip: req.ip,
+          });
           return res.status(403).json({ error: "Account banned" });
         }
 
         if (!user.isAdmin) {
-          logger.warn(
-            `[SECURITY] User ${decodedUser.username} has admin JWT but is no longer admin in DB`,
-          );
+          logger.warn("Admin JWT no longer matches database role", {
+            event: "security.admin_access.role_mismatch",
+            userId: decodedUser.publicId,
+            username: decodedUser.username,
+          });
           return res.status(403).json({ error: "Admin privileges required" });
         }
 
@@ -371,18 +397,26 @@ export class AuthMiddlewareService {
             .filter((e) => e.length > 0);
 
           if (user.email && !allowedEmails.includes(user.email.toLowerCase())) {
-            logger.warn(
-              `[SECURITY] Admin access denied for ${user.email} (not in ADMIN_EMAILS allowlist) from IP ${req.ip}`,
-            );
+            logger.warn("Admin email not in allowlist", {
+              event: "security.admin_access.email_not_allowed",
+              userId: decodedUser.publicId,
+              username: decodedUser.username,
+              ip: req.ip,
+            });
             return res
               .status(403)
               .json({ error: "Admin privileges restricted" });
           }
         }
 
-        logger.info(
-          `[ADMIN_AUDIT] ${decodedUser.username} (${decodedUser.publicId}) performing ${req.method} ${req.path} from IP ${req.ip}`,
-        );
+        logger.info("Admin action authorized", {
+          event: "admin.action.authorized",
+          userId: decodedUser.publicId,
+          username: decodedUser.username,
+          method: req.method,
+          route: req.path,
+          ip: req.ip,
+        });
 
         req.adminContext = {
           adminId: decodedUser.publicId,
@@ -394,7 +428,10 @@ export class AuthMiddlewareService {
 
         next();
       } catch (error) {
-        logger.error("[ADMIN_SECURITY] Admin middleware error:", error);
+        logger.error("Admin middleware failed", {
+          event: "security.admin_access.middleware_failed",
+          error,
+        });
         return res.status(500).json({ error: "Internal server error" });
       }
     };

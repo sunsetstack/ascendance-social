@@ -123,7 +123,10 @@ export class Server {
    */
   private initializeRoutes() {
     const uploadsPath = path.join(process.cwd(), "uploads");
-    logger.info("Serving static uploads", { uploadsPath });
+    logger.info("Serving static uploads", {
+      event: "static_uploads.enabled",
+      uploadsPath,
+    });
     this.app.use("/uploads", express.static(uploadsPath));
 
     this.app.use("/metrics", this.metricsRoutes.getRouter());
@@ -199,10 +202,13 @@ export class Server {
   public start(server: http.Server, port: number): void {
     server.timeout = 30000;
     server.headersTimeout = 31000;
-    server.keepAliveTimeout = 65000;
+      server.keepAliveTimeout = 65000;
 
     server.listen(port, () => {
-      logger.info(`[Server] Server running on port ${port}`);
+      logger.info("HTTP server started", {
+        event: "http.server.started",
+        port,
+      });
     });
   }
 

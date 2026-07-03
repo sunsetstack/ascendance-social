@@ -411,7 +411,10 @@ export class ErrorHandler {
         });
       } catch (metricsError) {
         // Don't let metrics errors break error handling
-        errorLogger.error("Failed to track error metrics:", metricsError);
+        errorLogger.error("Failed to track error metrics", {
+          event: "metrics.error_tracking.failed",
+          error: metricsError,
+        });
       }
     }
 
@@ -435,6 +438,7 @@ export class ErrorHandler {
     }
 
     errorLogger.error({
+      event: "http.request.error",
       type: appError.name,
       message: appError.message,
       statusCode: appError.statusCode || 500,
@@ -442,10 +446,12 @@ export class ErrorHandler {
       context: appError.context,
       stack: appError.stack,
       cause: appError.cause,
+      correlationId: req.correlationId,
       method: req.method,
-      url: req.originalUrl,
+      route: req.originalUrl.split("?")[0],
       ip: req.ip,
       userAgent: req.get("user-agent"),
+      userId: req.decodedUser?.publicId,
     });
 
     res.status(appError.statusCode || 500).json({ error: response });

@@ -114,6 +114,12 @@ export class CloudinaryService implements IImageStorageService {
                   Errors.storage("Upload failed, no result returned"),
                 );
               }
+              logger.info("Cloudinary upload completed", {
+                event: "external.cloudinary.upload.completed",
+                operation: "uploadImageStream",
+                folder: folder || userId,
+                publicId: result.public_id,
+              });
               resolve({
                 url: result.secure_url,
                 publicId: result.public_id,
@@ -122,7 +128,12 @@ export class CloudinaryService implements IImageStorageService {
           );
 
           sourceStream.on("error", (err) => {
-            logger.error("Error streaming data for upload", { error: err });
+            logger.error("Error streaming data for upload", {
+              event: "external.cloudinary.upload.stream_failed",
+              operation: "uploadImageStream",
+              folder: folder || userId,
+              error: err,
+            });
             reject(Errors.storage(`Failed to stream data: ${err.message}`));
           });
 
@@ -159,6 +170,12 @@ export class CloudinaryService implements IImageStorageService {
                     Errors.storage("Upload failed, no result returned"),
                   );
                 }
+                logger.info("Cloudinary upload completed", {
+                  event: "external.cloudinary.upload.completed",
+                  operation: "uploadImage",
+                  folder: folder || userId,
+                  publicId: result.public_id,
+                });
                 resolve({
                   url: result.secure_url,
                   publicId: result.public_id,
@@ -169,7 +186,10 @@ export class CloudinaryService implements IImageStorageService {
             const fileStream = fs.createReadStream(filePath);
 
             fileStream.on("error", (err) => {
-              logger.error(`Error reading file for upload: ${filePath}`, {
+              logger.error("Error reading file for upload", {
+                event: "external.cloudinary.upload.file_read_failed",
+                operation: "uploadImage",
+                filePath,
                 error: err,
               });
               reject(Errors.storage(`Failed to read file: ${err.message}`));
@@ -185,7 +205,9 @@ export class CloudinaryService implements IImageStorageService {
     } finally {
       await fs.promises.unlink(filePath).catch((err) => {
         if (err.code !== "ENOENT") {
-          logger.error(`Failed to cleanup temp file: ${filePath}`, {
+          logger.error("Failed to cleanup temp file", {
+            event: "storage.temp_file.cleanup_failed",
+            filePath,
             error: err,
           });
         }
@@ -208,8 +230,18 @@ export class CloudinaryService implements IImageStorageService {
 
     return this.retryService.execute(
       async () => {
-        logger.info("Deleting Cloudinary asset:", { publicId });
+        logger.info("Deleting Cloudinary asset", {
+          event: "external.cloudinary.delete.started",
+          operation: "deleteAssetByUrl",
+          publicId,
+        });
         const result = await cloudinary.uploader.destroy(publicId);
+        logger.info("Cloudinary asset delete completed", {
+          event: "external.cloudinary.delete.completed",
+          operation: "deleteAssetByUrl",
+          publicId,
+          result: result.result,
+        });
         return { result: result.result };
       },
       {
@@ -224,6 +256,11 @@ export class CloudinaryService implements IImageStorageService {
     await this.retryService.execute(
       async () => {
         await cloudinary.uploader.destroy(publicId);
+        logger.info("Cloudinary image delete completed", {
+          event: "external.cloudinary.delete.completed",
+          operation: "deleteImage",
+          publicId,
+        });
       },
       {
         ...RetryPresets.externalApi(),

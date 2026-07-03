@@ -1,9 +1,16 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   # --- CACHE ---
   redis:
     image: redis:alpine
     container_name: redis
     restart: always
+    logging: *default-logging
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
@@ -21,6 +28,7 @@ services:
     image: ghcr.io/sunsetstack/ascendance-backend:latest
     container_name: backend
     restart: always
+    logging: *default-logging
     environment: &backend-environment
       ENABLE_WORKERS: "false"
       NODE_ENV: production
@@ -49,6 +57,7 @@ services:
     image: ghcr.io/sunsetstack/ascendance-frontend:latest
     container_name: frontend
     restart: always
+    logging: *default-logging
     depends_on:
       backend:
         condition: service_healthy
@@ -59,6 +68,7 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: always
+    logging: *default-logging
     ports:
       - "80:80"
       - "443:443"
@@ -76,6 +86,7 @@ services:
   prometheus:
     image: prom/prometheus:v3.0.0
     container_name: prometheus
+    logging: *default-logging
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     networks:
@@ -85,6 +96,7 @@ services:
   grafana:
     image: grafana/grafana:11.1.0
     container_name: grafana
+    logging: *default-logging
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
     networks:
@@ -99,6 +111,7 @@ services:
     image: ghcr.io/sunsetstack/ascendance-backend:latest
     container_name: backend-worker
     restart: always
+    logging: *default-logging
     environment:
       <<: *backend-environment
       ENABLE_API: "false"

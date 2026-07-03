@@ -53,7 +53,13 @@ export const requestLogger = (
     void getCommandBus()
       .dispatch(command)
       .catch((error) => {
-        logger.error("Failed to log request", { error });
+        logger.error("Failed to log request", {
+          event: "admin.request_log.persist_failed",
+          method: req.method,
+          route,
+          correlationId: req.correlationId ?? getCorrelationId(),
+          error,
+        });
       });
   });
 

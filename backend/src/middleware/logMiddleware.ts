@@ -14,21 +14,35 @@ export const logBehaviour = (
   next: NextFunction,
 ) => {
   const start = Date.now();
-  const { method, url } = req;
+  const { method } = req;
+  const route = (req.originalUrl || req.url).split("?")[0];
 
-  behaviourLogger.info(`Request started: ${method} ${url}`, {
+  behaviourLogger.debug("HTTP request started", {
+    event: "http.request.started",
     correlationId: req.correlationId,
+    method,
+    route,
+    userId: req.decodedUser?.publicId,
+    ip: getClientIp(req),
+    userAgent: req.get("user-agent"),
   });
 
   res.on("finish", () => {
-    const duration = Date.now() - start;
+    const durationMs = Date.now() - start;
     const { statusCode } = res;
-    behaviourLogger.info(
-      `Request completed: ${method} ${url} - Status: ${statusCode} - Duration: ${duration}ms`,
-      {
-        correlationId: req.correlationId,
-      },
-    );
+    const level = statusCode >= 500 ? "error" : statusCode >= 400 ? "warn" : "info";
+
+    behaviourLogger.log(level, "HTTP request completed", {
+      event: "http.request.completed",
+      correlationId: req.correlationId,
+      method,
+      route,
+      statusCode,
+      durationMs,
+      userId: req.decodedUser?.publicId,
+      ip: getClientIp(req),
+      userAgent: req.get("user-agent"),
+    });
   });
 
   next();
@@ -43,24 +57,30 @@ export const detailedRequestLogging = (
   const startTime = req._startTime;
 
   const logObject = {
+    event: "http.request.received",
     method: req.method,
-    url: req.url.split("?")[0],
+    route: req.url.split("?")[0],
     correlationId: req.correlationId,
     params: Object.keys(req.params || {}).length > 0 ? req.params : undefined,
-    query: Object.keys(req.query || {}).length > 0 ? req.query : undefined,
+    query:
+      process.env.NODE_ENV !== "production" &&
+      Object.keys(req.query || {}).length > 0
+        ? req.query
+        : undefined,
     ip: getClientIp(req),
     timestamp: new Date().toISOString(),
   };
 
-  detailedRequestLogger.info("Detailed Request Log", logObject);
+  detailedRequestLogger.debug("HTTP request received", logObject);
 
   res.on("finish", () => {
-    detailedRequestLogger.info("Request completed", {
+    detailedRequestLogger.debug("HTTP request completed", {
+      event: "http.request.completed.detail",
       method: req.method,
-      url: req.url,
+      route: req.url.split("?")[0],
       correlationId: req.correlationId,
-      status: res.statusCode,
-      responseTime: Date.now() - startTime,
+      statusCode: res.statusCode,
+      durationMs: Date.now() - startTime,
     });
   });
 

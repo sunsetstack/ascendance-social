@@ -102,7 +102,11 @@ export class TagService {
 
     // track activity for dynamic TTL (fire and forget, don't block post creation)
     this.trackTagActivity(tagIds.length).catch((err) => {
-      logger.warn("[TagService] Failed to track tag activity", err);
+      logger.warn("Failed to track tag activity", {
+        event: "tag_activity.track_failed",
+        tagCount: tagIds.length,
+        error: err,
+      });
     });
   }
 
@@ -163,10 +167,17 @@ export class TagService {
         );
       }
 
-      logger.debug(`[TagService] Tracked ${tagCount} tag usages`);
+      logger.debug("Tracked tag activity", {
+        event: "tag_activity.tracked",
+        tagCount,
+      });
     } catch (error) {
       // non-critical, just log
-      logger.warn("[TagService] Error tracking tag activity", error);
+      logger.warn("Error tracking tag activity", {
+        event: "tag_activity.track_failed",
+        tagCount,
+        error,
+      });
     }
   }
 

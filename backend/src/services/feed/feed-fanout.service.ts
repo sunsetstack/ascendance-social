@@ -24,9 +24,11 @@ export class FeedFanoutService {
     authorId: string,
     timestamp: number,
   ): Promise<void> {
-    logger.info(
-      `Fanning out post ${postId} from author ${authorId} to followers`,
-    );
+    logger.info("Feed fan-out started", {
+      event: "feed.fanout.started",
+      postId,
+      authorId,
+    });
 
     try {
       const followerIds =
@@ -34,9 +36,11 @@ export class FeedFanoutService {
           asUserPublicId(authorId),
         );
       if (followerIds.length === 0) {
-        logger.info(
-          `No followers found for author ${authorId}, skipping fan-out`,
-        );
+        logger.info("Feed fan-out skipped because author has no followers", {
+          event: "feed.fanout.skipped_no_followers",
+          postId,
+          authorId,
+        });
         return;
       }
 
@@ -46,11 +50,19 @@ export class FeedFanoutService {
         timestamp,
         "for_you",
       );
-      logger.info(
-        `Fanned out post ${postId} to ${followerIds.length} followers`,
-      );
+      logger.info("Feed fan-out completed", {
+        event: "feed.fanout.completed",
+        postId,
+        authorId,
+        followerCount: followerIds.length,
+      });
     } catch (error) {
-      logger.error(`Failed to fan out post ${postId}:`, error);
+      logger.error("Feed fan-out failed", {
+        event: "feed.fanout.failed",
+        postId,
+        authorId,
+        error,
+      });
     }
   }
 
@@ -58,25 +70,44 @@ export class FeedFanoutService {
     postId: string,
     authorId: string,
   ): Promise<void> {
-    logger.info(`Removing post ${postId} from followers of ${authorId}`);
+    logger.info("Feed fan-out removal started", {
+      event: "feed.fanout_removal.started",
+      postId,
+      authorId,
+    });
 
     try {
       const followerIds =
         await this.followRepository.getFollowerPublicIdsByPublicId(
           asUserPublicId(authorId),
         );
-      if (followerIds.length === 0) return;
+      if (followerIds.length === 0) {
+        logger.info("Feed fan-out removal skipped because author has no followers", {
+          event: "feed.fanout_removal.skipped_no_followers",
+          postId,
+          authorId,
+        });
+        return;
+      }
 
       await this.redisService.removeFromFeedsBatch(
         followerIds,
         postId,
         "for_you",
       );
-      logger.info(
-        `Removed post ${postId} from ${followerIds.length} followers' feeds`,
-      );
+      logger.info("Feed fan-out removal completed", {
+        event: "feed.fanout_removal.completed",
+        postId,
+        authorId,
+        followerCount: followerIds.length,
+      });
     } catch (error) {
-      logger.error(`Failed to remove post ${postId} from feeds:`, error);
+      logger.error("Feed fan-out removal failed", {
+        event: "feed.fanout_removal.failed",
+        postId,
+        authorId,
+        error,
+      });
     }
   }
 
