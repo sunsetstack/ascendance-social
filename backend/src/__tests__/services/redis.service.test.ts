@@ -3,6 +3,12 @@ import { expect } from "chai";
 import sinon from "sinon";
 import { RedisService } from "@/services/redis.service";
 import { MetricsService } from "@/metrics/metrics.service";
+import { RedisConnectionModule } from "@/services/redis/redis-connection.module";
+import { RedisJsonCacheModule } from "@/services/redis/redis-json-cache.module";
+import { RedisPresenceModule } from "@/services/redis/redis-presence.module";
+import { RedisPubSubModule } from "@/services/redis/redis-pubsub.module";
+import { RedisResilienceModule } from "@/services/redis/redis-resilience.module";
+import { RedisTaggedCacheModule } from "@/services/redis/redis-tagged-cache.module";
 
 describe("RedisService", () => {
 	let redisService: RedisService;
@@ -36,12 +42,39 @@ describe("RedisService", () => {
 			set: sinon.stub(),
 			setEx: sinon.stub(),
 			del: sinon.stub(),
+			exists: sinon.stub(),
+			ttl: sinon.stub(),
 			type: sinon.stub().resolves("none"),
 			multi: sinon.stub(),
+			publish: sinon.stub(),
+			sAdd: sinon.stub(),
+			expire: sinon.stub(),
+			sRem: sinon.stub(),
+			sCard: sinon.stub(),
 		};
 
 		redisService = new RedisService(metricsServiceStub as unknown as MetricsService);
-		(redisService as any).client = mockClient;
+		const resilienceModule = new RedisResilienceModule();
+		const connectionModule = new RedisConnectionModule(
+			metricsServiceStub as unknown as MetricsService,
+			resilienceModule,
+			() => mockClient,
+		);
+		const cacheModule = new RedisJsonCacheModule(mockClient);
+		(redisService as any).resilienceModule = resilienceModule;
+		(redisService as any).connectionModule = connectionModule;
+		(redisService as any).cacheModule = cacheModule;
+		(redisService as any).taggedCacheModule = new RedisTaggedCacheModule(
+			mockClient,
+			cacheModule,
+			resilienceModule,
+		);
+		(redisService as any).pubSubModule = new RedisPubSubModule(
+			mockClient,
+			connectionModule,
+			resilienceModule,
+		);
+		(redisService as any).presenceModule = new RedisPresenceModule(mockClient);
 	});
 
 	afterEach(() => {
@@ -52,8 +85,7 @@ describe("RedisService", () => {
 		it("should execute operation successfully", async () => {
 			const operation = sinon.stub().resolves("success");
 
-			// Access private method via any cast
-			const result = await (redisService as any).withResilience(operation);
+			const result = await redisService.withResilience(operation);
 
 			expect(result).to.equal("success");
 			expect(operation.calledOnce).to.be.true;
@@ -67,7 +99,7 @@ describe("RedisService", () => {
 			operation.onCall(0).rejects(error);
 			operation.onCall(1).resolves("success");
 
-			const result = await (redisService as any).withResilience(operation, {
+			const result = await redisService.withResilience(operation, {
 				maxAttempts: 3,
 				baseDelayMs: 1,
 			});
@@ -79,7 +111,7 @@ describe("RedisService", () => {
 		it("should return fallback value on failure if provided", async () => {
 			const operation = sinon.stub().rejects(new Error("Fatal"));
 
-			const result = await (redisService as any).withResilience(operation, {
+			const result = await redisService.withResilience(operation, {
 				maxAttempts: 1,
 				fallbackValue: "fallback",
 			});
@@ -92,7 +124,7 @@ describe("RedisService", () => {
 			const operation = sinon.stub().rejects(error);
 
 			try {
-				await (redisService as any).withResilience(operation, {
+				await redisService.withResilience(operation, {
 					maxAttempts: 0,
 				});
 				throw new Error("expected withResilience to throw");
@@ -164,12 +196,16 @@ describe("RedisService", () => {
 	});
 
 	describe("setWithTags", () => {
-		it("should use resilience wrapper", async () => {
-			// Spy on withResilience
-			const withResilienceSpy = sinon.spy(redisService as any, "withResilience");
-
-			// Mock pipeline
-			const pipelineStub = {
+		it("should retry tagged writes on retryable Redis errors", async () => {
+			const firstPipeline = {
+				set: sinon.stub(),
+				setEx: sinon.stub(),
+				sAdd: sinon.stub(),
+				expire: sinon.stub(),
+				persist: sinon.stub(),
+				exec: sinon.stub().rejects(new Error("Connection lost")),
+			};
+			const secondPipeline = {
 				set: sinon.stub(),
 				setEx: sinon.stub(),
 				sAdd: sinon.stub(),
@@ -177,15 +213,13 @@ describe("RedisService", () => {
 				persist: sinon.stub(),
 				exec: sinon.stub().resolves(),
 			};
-			mockClient.multi.returns(pipelineStub);
-
-			// Mock ensureSetKey (private)
-			(redisService as any).ensureSetKey = sinon.stub().resolves();
+			mockClient.multi.onCall(0).returns(firstPipeline);
+			mockClient.multi.onCall(1).returns(secondPipeline);
 
 			await redisService.setWithTags("key", "value", ["tag1"]);
 
-			expect(withResilienceSpy.calledOnce).to.be.true;
-			expect(pipelineStub.exec.calledOnce).to.be.true;
+			expect(firstPipeline.exec.calledOnce).to.be.true;
+			expect(secondPipeline.exec.calledOnce).to.be.true;
 		});
 
 		it("should keep tagged cache entries and metadata persistent when ttl is omitted", async () => {
@@ -200,7 +234,6 @@ describe("RedisService", () => {
 				exec: sinon.stub().resolves(),
 			};
 			mockClient.multi.returns(pipelineStub);
-			(redisService as any).ensureSetKey = sinon.stub().resolves();
 
 			await redisService.setWithTags("key", "value", ["tag1"]);
 
@@ -214,7 +247,7 @@ describe("RedisService", () => {
 
 	describe("subscribe", () => {
 		it("should not mutate the caller's channel array", async () => {
-			(redisService as any).waitForConnection = sinon.stub().resolves(true);
+			mockClient.isOpen = true;
 			const subscriber = {
 				isOpen: false,
 				connect: sinon.stub().resolves(),
