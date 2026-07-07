@@ -10,6 +10,7 @@ import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRep
 import { logger } from "@/utils/winston";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
 @injectable()
 export class FeedInteractionHandler implements IEventHandler<UserInteractedWithPostEvent> {
   constructor(
@@ -183,16 +184,23 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
   ): Promise<void> {
     try {
       const interactionMessage = {
-        type: "interaction" as const,
+        eventId: buildRealtimeEventId(
+          EventRegistry.realtimeMessageTypes.interaction,
+          event.interactionType,
+          event.userId,
+          event.postId,
+          event.timestamp.toISOString(),
+        ),
+        type: EventRegistry.realtimeMessageTypes.interaction,
         userId: event.userId,
         actionType: event.interactionType,
         targetId: event.postId,
         tags: event.tags,
-        timestamp: new Date().toISOString(),
+        timestamp: event.timestamp.toISOString(),
       };
 
       await this.redis.publish(
-        "feed_updates",
+        EventRegistry.redisChannels.feedUpdates,
         JSON.stringify(interactionMessage),
       );
       logger.info(

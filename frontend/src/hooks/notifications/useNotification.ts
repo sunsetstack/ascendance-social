@@ -12,11 +12,13 @@ import {
 import { Notification, NotificationPage } from "../../types";
 import { useSocket } from "../context/useSocket";
 import { useAuth } from "../context/useAuth";
+import { useRecentEventIds } from "../socket/useRecentEventIds";
 
 export const useNotifications = () => {
   const socket = useSocket();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const shouldHandleEvent = useRecentEventIds();
   const isVerified = user
     ? !("isEmailVerified" in user) || user.isEmailVerified !== false
     : false;
@@ -88,6 +90,8 @@ export const useNotifications = () => {
     if (!socket || !isVerified) return;
 
     const handleNew = (notification: Notification) => {
+      if (!shouldHandleEvent(notification.eventId)) return;
+
       queryClient.setQueryData<InfiniteData<NotificationPage>>(
         ["notifications"],
         (oldData) => {
@@ -127,6 +131,8 @@ export const useNotifications = () => {
     };
 
     const handleRead = (updatedNotification: Notification) => {
+      if (!shouldHandleEvent(updatedNotification.eventId)) return;
+
       queryClient.setQueryData<InfiniteData<NotificationPage>>(
         ["notifications"],
         (old) => {
@@ -154,7 +160,7 @@ export const useNotifications = () => {
       socket.off("new_notification", handleNew);
       socket.off("notification_read", handleRead);
     };
-  }, [socket, queryClient, isVerified]);
+  }, [socket, queryClient, isVerified, shouldHandleEvent]);
 
   return {
     notifications,

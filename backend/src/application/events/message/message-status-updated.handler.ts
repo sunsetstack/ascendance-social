@@ -3,6 +3,7 @@ import { IEventHandler } from "@/application/common/interfaces/event-handler.int
 import { MessageStatusUpdatedEvent } from "@/application/events/message/message.event";
 import { RedisService } from "@/services/redis.service";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
 
 @injectable()
 export class MessageStatusUpdatedHandler implements IEventHandler<MessageStatusUpdatedEvent> {
@@ -10,9 +11,15 @@ export class MessageStatusUpdatedHandler implements IEventHandler<MessageStatusU
 
 	async handle(event: MessageStatusUpdatedEvent): Promise<void> {
 		await this.redisService.publish(
-			"messaging_updates",
+			EventRegistry.redisChannels.messagingUpdates,
 			JSON.stringify({
-				type: "message_status_updated",
+				eventId: buildRealtimeEventId(
+					EventRegistry.realtimeMessageTypes.messageStatusUpdated,
+					event.conversationPublicId,
+					event.status,
+					event.timestamp.toISOString(),
+				),
+				type: EventRegistry.realtimeMessageTypes.messageStatusUpdated,
 				conversationId: event.conversationPublicId,
 				recipients: event.participantPublicIds,
 				status: event.status,

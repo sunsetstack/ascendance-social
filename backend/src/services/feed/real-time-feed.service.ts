@@ -4,19 +4,16 @@ import { WebSocketServer } from "../../server/socketServer";
 import { IRealtimeMessageHandler } from "@/application/handlers/realtime/IRealtimeMessageHandler.interface";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import {
+  EventRegistry,
+  RealtimeMessageType,
+  SocketServerEventName,
+} from "@/application/common/events/event-registry";
+import { MetricsService } from "@/metrics/metrics.service";
 
 export interface FeedUpdateMessage {
-  type:
-    | "new_image"
-    | "new_image_global"
-    | "new_post"
-    | "new_post_global"
-    | "post_deleted"
-    | "interaction"
-    | "like_update"
-    | "avatar_changed"
-    | "message_sent"
-    | "message_status_updated";
+  type: RealtimeMessageType;
+  eventId?: string;
   userId?: string;
   uploaderId?: string;
   imageId?: string;
@@ -47,6 +44,8 @@ export class RealTimeFeedService {
     private readonly webSocketServer: WebSocketServer,
     @inject(TOKENS.Services.Realtime)
     private readonly handlers: IRealtimeMessageHandler[],
+    @inject(TOKENS.Services.Metrics)
+    private readonly metricsService: MetricsService,
   ) {
     this.registerHandlers();
     this.initializePubSubListener();
@@ -59,11 +58,11 @@ export class RealTimeFeedService {
     for (const handler of this.handlers) {
       this.handlerRegistry.set(handler.messageType, handler);
       // also register legacy alias mappings
-      if (handler.messageType === "new_post") {
-        this.handlerRegistry.set("new_image", handler);
+      if (handler.messageType === EventRegistry.realtimeMessageTypes.newPost) {
+        this.handlerRegistry.set(EventRegistry.realtimeMessageTypes.newImage, handler);
       }
-      if (handler.messageType === "new_post_global") {
-        this.handlerRegistry.set("new_image_global", handler);
+      if (handler.messageType === EventRegistry.realtimeMessageTypes.newPostGlobal) {
+        this.handlerRegistry.set(EventRegistry.realtimeMessageTypes.newImageGlobal, handler);
       }
     }
     logger.info(
@@ -78,7 +77,10 @@ export class RealTimeFeedService {
     try {
       // Subscribe to feed_updates and messaging_updates channels for real time feed updates and message delivery
       const subscribed = await this.redisService.subscribe(
-        ["feed_updates", "messaging_updates"],
+        [
+          EventRegistry.redisChannels.feedUpdates,
+          EventRegistry.redisChannels.messagingUpdates,
+        ],
         (channel: string, message: unknown) => {
           // Handle case where message might be a string that needs parsing
           let parsedMessage: FeedUpdateMessage;
@@ -146,6 +148,10 @@ export class RealTimeFeedService {
 
     for (const userId of userIds) {
       io.to(userId).emit(event, data);
+      this.metricsService.recordSocketEventEmitted(
+        event as SocketServerEventName,
+        "room",
+      );
     }
   }
 
@@ -155,5 +161,9 @@ export class RealTimeFeedService {
   async broadcast(event: string, data: unknown): Promise<void> {
     const io = this.webSocketServer.getIO();
     io.emit(event, data);
+    this.metricsService.recordSocketEventEmitted(
+      event as SocketServerEventName,
+      "broadcast",
+    );
   }
 }

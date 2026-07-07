@@ -5,6 +5,7 @@ import { RedisService } from "@/services/redis.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
 
 @injectable()
 export class UserAvatarChangedHandler implements IEventHandler<UserAvatarChangedEvent> {
@@ -27,22 +28,27 @@ export class UserAvatarChangedHandler implements IEventHandler<UserAvatarChanged
 
       // Publish real-time avatar update for connected clients
       await this.redis.publish(
-        "feed_updates",
+        EventRegistry.redisChannels.feedUpdates,
         JSON.stringify({
-          type: "avatar_changed",
+          eventId: buildRealtimeEventId(
+            EventRegistry.realtimeMessageTypes.avatarChanged,
+            event.userPublicId,
+            event.timestamp.toISOString(),
+          ),
+          type: EventRegistry.realtimeMessageTypes.avatarChanged,
           userId: event.userPublicId,
           oldAvatar: event.oldAvatarUrl,
           newAvatar: event.newAvatarUrl,
-          timestamp: new Date().toISOString(),
+          timestamp: event.timestamp.toISOString(),
         }),
       );
 
       // Publish to profile_snapshot_updates channel for background worker to update embedded author snapshots in posts
-      await this.redis.publish("profile_snapshot_updates", {
-        type: "avatar_changed",
+      await this.redis.publish(EventRegistry.redisChannels.profileSnapshotUpdates, {
+        type: EventRegistry.realtimeMessageTypes.avatarChanged,
         userPublicId: event.userPublicId,
         avatarUrl: event.newAvatarUrl ?? "",
-        timestamp: new Date().toISOString(),
+        timestamp: event.timestamp.toISOString(),
       });
 
       logger.info(

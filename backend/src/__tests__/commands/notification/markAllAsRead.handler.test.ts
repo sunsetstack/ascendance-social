@@ -18,6 +18,9 @@ describe("MarkAllAsReadCommandHandler", () => {
 	let webSocketServer: {
 		getIO: sinon.SinonStub;
 	};
+	let metricsService: {
+		recordSocketEventEmitted: sinon.SinonStub;
+	};
 
 	beforeEach(() => {
 		notificationRepository = {
@@ -32,11 +35,15 @@ describe("MarkAllAsReadCommandHandler", () => {
 		webSocketServer = {
 			getIO: sinon.stub().returns({ to: roomSpy }),
 		};
+		metricsService = {
+			recordSocketEventEmitted: sinon.stub(),
+		};
 
 		handler = new MarkAllAsReadCommandHandler(
 			webSocketServer as any,
 			notificationRepository as any,
 			redisService as any,
+			metricsService as any,
 		);
 	});
 
@@ -57,6 +64,7 @@ describe("MarkAllAsReadCommandHandler", () => {
 		expect(redisService.markNotificationsRead.calledOnceWith(["notif-1", "notif-2"])).to.be.true;
 		expect(roomSpy.calledOnceWith("user-123")).to.be.true;
 		expect(emitSpy.calledOnceWith("all_notifications_read")).to.be.true;
+		expect(metricsService.recordSocketEventEmitted.calledOnce).to.be.true;
 	});
 
 	it("skips cache and websocket work when nothing was updated", async () => {
@@ -71,5 +79,6 @@ describe("MarkAllAsReadCommandHandler", () => {
 		expect(redisService.markNotificationsRead.called).to.be.false;
 		expect(roomSpy.called).to.be.false;
 		expect(emitSpy.called).to.be.false;
+		expect(metricsService.recordSocketEventEmitted.called).to.be.false;
 	});
 });

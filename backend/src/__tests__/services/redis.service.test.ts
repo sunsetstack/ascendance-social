@@ -9,6 +9,7 @@ import { RedisPresenceModule } from "@/services/redis/redis-presence.module";
 import { RedisPubSubModule } from "@/services/redis/redis-pubsub.module";
 import { RedisResilienceModule } from "@/services/redis/redis-resilience.module";
 import { RedisTaggedCacheModule } from "@/services/redis/redis-tagged-cache.module";
+import { EventRegistry } from "@/application/common/events/event-registry";
 
 describe("RedisService", () => {
 	let redisService: RedisService;
@@ -256,11 +257,50 @@ describe("RedisService", () => {
 				quit: sinon.stub().resolves(),
 			};
 			mockClient.duplicate.returns(subscriber);
-			const channels = ["feed_updates", "messaging_updates"];
+			const channels = [
+				EventRegistry.redisChannels.feedUpdates,
+				EventRegistry.redisChannels.messagingUpdates,
+			];
 
 			await redisService.subscribe(channels, () => undefined);
 
-			expect(channels).to.deep.equal(["feed_updates", "messaging_updates"]);
+			expect(channels).to.deep.equal([
+				EventRegistry.redisChannels.feedUpdates,
+				EventRegistry.redisChannels.messagingUpdates,
+			]);
+		});
+	});
+
+	describe("publish", () => {
+		it("records published and failed publish metrics", async () => {
+			mockClient.publish.onFirstCall().resolves();
+			mockClient.publish.onSecondCall().rejects(new Error("redis down"));
+
+			await redisService.publish(EventRegistry.redisChannels.feedUpdates, {
+				type: EventRegistry.realtimeMessageTypes.newPost,
+			});
+
+			try {
+				await redisService.publish(EventRegistry.redisChannels.feedUpdates, {
+					type: EventRegistry.realtimeMessageTypes.newPost,
+				});
+				throw new Error("expected publish to throw");
+			} catch (error) {
+				expect((error as Error).message).to.equal("redis down");
+			}
+
+			expect(
+				metricsServiceStub.recordRealtimeEventPublished.calledWith(
+					EventRegistry.redisChannels.feedUpdates,
+					"published",
+				),
+			).to.be.true;
+			expect(
+				metricsServiceStub.recordRealtimeEventPublished.calledWith(
+					EventRegistry.redisChannels.feedUpdates,
+					"failed",
+				),
+			).to.be.true;
 		});
 	});
 

@@ -8,6 +8,7 @@ import { UserPreferenceRepository } from "@/repositories/userPreference.reposito
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
 
 @injectable()
 export class ImageUploadHandler implements IEventHandler<ImageUploadedEvent> {
@@ -85,14 +86,18 @@ export class ImageUploadHandler implements IEventHandler<ImageUploadedEvent> {
 
           // Publish real-time updates for this batch
           await this.redis.publish(
-            "feed_updates",
+            EventRegistry.redisChannels.feedUpdates,
             JSON.stringify({
-              type: "new_image",
+              eventId: buildRealtimeEventId(
+                EventRegistry.realtimeMessageTypes.newImage,
+                event.imageId,
+              ),
+              type: EventRegistry.realtimeMessageTypes.newImage,
               uploaderId: event.uploaderPublicId,
               imageId: event.imageId,
               tags: event.tags,
               affectedUsers: batch,
-              timestamp: new Date().toISOString(),
+              timestamp: event.timestamp.toISOString(),
             }),
           );
         }

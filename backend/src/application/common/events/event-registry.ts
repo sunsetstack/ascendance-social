@@ -1,44 +1,20 @@
-/**
- * TLDR: type-safety helper for the string based outbox/event replay path that EventBus.publishByType needed 
- * 
- * 
- * A TS type map for EventBus.publishByType
- * Maps event type strings to the event payload class or type 
- * Now publishByType can say: 
- * `  eventPayload: TEventType extends RegisteredEventType
-    ? EventRegistry[TEventType]
-    : unknown,
-    ...
-   `
-  * Before this type map, EventBus.publishByType was allowing the paylor and string to drift apart silently:
-   `eventBus.publishByType("PostUploadedEvent", { whatever: true });' 
-   //TS doesn't complain because the method was: 
-   publishByType(eventType: string, eventPayload: unknown)
-   `
- * With the registry known event names get type-checked and if 
- * someone passes the wrong payload shape for a known event name, TypeScript can catch it
-
-
-  
- */
-
-import { ColdStartFeedGeneratedEvent } from "@/application/events/ColdStartFeedGenerated.event";
-import {
+import type { ColdStartFeedGeneratedEvent } from "@/application/events/ColdStartFeedGenerated.event";
+import type {
   ImageAssetCleanupRequestedEvent,
   ImageDeletedEvent,
   ImageUploadedEvent,
 } from "@/application/events/image/image.event";
-import {
+import type {
   MessageAttachmentsDeletedEvent,
   MessageSentEvent,
   MessageStatusUpdatedEvent,
 } from "@/application/events/message/message.event";
-import { NotificationRequestedEvent } from "@/application/events/notification/notification.event";
-import {
+import type { NotificationRequestedEvent } from "@/application/events/notification/notification.event";
+import type {
   PostDeletedEvent,
   PostUploadedEvent,
 } from "@/application/events/post/post.event";
-import {
+import type {
   UserAvatarChangedEvent,
   UserCoverChangedEvent,
   UserDeletedEvent,
@@ -46,7 +22,78 @@ import {
   UserUsernameChangedEvent,
 } from "@/application/events/user/user-interaction.event";
 
-export interface EventRegistry {
+export const EventRegistry = {
+  domain: {
+    ColdStartFeedGenerated: "ColdStartFeedGeneratedEvent",
+    ImageAssetCleanupRequested: "ImageAssetCleanupRequestedEvent",
+    ImageDeleted: "ImageDeletedEvent",
+    ImageUploaded: "ImageUploadedEvent",
+    MessageAttachmentsDeleted: "MessageAttachmentsDeletedEvent",
+    MessageSent: "MessageSentEvent",
+    MessageStatusUpdated: "MessageStatusUpdatedEvent",
+    NotificationRequested: "NotificationRequestedEvent",
+    PostDeleted: "PostDeletedEvent",
+    PostUploaded: "PostUploadedEvent",
+    UserAvatarChanged: "UserAvatarChangedEvent",
+    UserCoverChanged: "UserCoverChangedEvent",
+    UserDeleted: "UserDeletedEvent",
+    UserInteractedWithPost: "UserInteractedWithPostEvent",
+    UserUsernameChanged: "UserUsernameChangedEvent",
+  },
+  redisChannels: {
+    feedUpdates: "feed_updates",
+    messagingUpdates: "messaging_updates",
+    profileSnapshotUpdates: "profile_snapshot_updates",
+  },
+  socketClientEvents: {
+    join: "join",
+    conversationOpened: "conversation_opened",
+    conversationClosed: "conversation_closed",
+  },
+  socketServerEvents: {
+    joinResponse: "join_response",
+    feedUpdate: "feed_update",
+    likeUpdate: "like_update",
+    avatarUpdate: "avatar_update",
+    feedInteraction: "feed_interaction",
+    messagingUpdate: "messaging_update",
+    newNotification: "new_notification",
+    notificationRead: "notification_read",
+    allNotificationsRead: "all_notifications_read",
+  },
+  realtimeMessageTypes: {
+    newImage: "new_image",
+    newImageGlobal: "new_image_global",
+    newPost: "new_post",
+    newPostGlobal: "new_post_global",
+    postDeleted: "post_deleted",
+    interaction: "interaction",
+    likeUpdate: "like_update",
+    avatarChanged: "avatar_changed",
+    messageSent: "message_sent",
+    messageStatusUpdated: "message_status_updated",
+    userDeleted: "user_deleted",
+  },
+  socketPayloadTypes: {
+    likeCountChanged: "like_count_changed",
+    postPublished: "post_published",
+    userAvatarChanged: "user_avatar_changed",
+    userDeleted: "user_deleted",
+    userInteraction: "user_interaction",
+    usernameChanged: "username_changed",
+  },
+} as const;
+
+export type DomainEventName =
+  (typeof EventRegistry.domain)[keyof typeof EventRegistry.domain];
+export type RedisChannelName =
+  (typeof EventRegistry.redisChannels)[keyof typeof EventRegistry.redisChannels];
+export type RealtimeMessageType =
+  (typeof EventRegistry.realtimeMessageTypes)[keyof typeof EventRegistry.realtimeMessageTypes];
+export type SocketServerEventName =
+  (typeof EventRegistry.socketServerEvents)[keyof typeof EventRegistry.socketServerEvents];
+
+export interface EventPayloadRegistry {
   ColdStartFeedGeneratedEvent: ColdStartFeedGeneratedEvent;
   ImageAssetCleanupRequestedEvent: ImageAssetCleanupRequestedEvent;
   ImageDeletedEvent: ImageDeletedEvent;
@@ -64,4 +111,13 @@ export interface EventRegistry {
   UserUsernameChangedEvent: UserUsernameChangedEvent;
 }
 
-export type RegisteredEventType = keyof EventRegistry;
+export type RegisteredEventType = keyof EventPayloadRegistry;
+
+export function buildRealtimeEventId(
+  ...parts: Array<string | number | boolean | null | undefined>
+): string {
+  return parts
+    .filter((part) => part !== undefined && part !== null && part !== "")
+    .map(String)
+    .join(":");
+}

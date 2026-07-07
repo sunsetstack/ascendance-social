@@ -4,6 +4,7 @@ import { useSocket } from "../context/useSocket";
 import { MessagingUpdatePayload, MessageDTO, ConversationMessagesResponse } from "../../types";
 import type { InfiniteData } from "@tanstack/react-query";
 import { useAuth } from "../context/useAuth";
+import { useRecentEventIds } from "../socket/useRecentEventIds";
 
 type MessageSentPayload = Extract<MessagingUpdatePayload, { type: "message_sent" }>;
 type MessageStatusPayload = Extract<MessagingUpdatePayload, { type: "message_status_updated" }>;
@@ -48,12 +49,14 @@ export const useMessagingSocketIntegration = (): void => {
 	const socket = useSocket();
 	const queryClient = useQueryClient();
 	const { user } = useAuth();
+	const shouldHandleEvent = useRecentEventIds();
 
 	useEffect(() => {
 		if (!socket) return;
 
 		const handleMessagingUpdate = (payload: unknown) => {
 			if (!isMessagingUpdatePayload(payload)) return;
+			if (!shouldHandleEvent(payload.eventId)) return;
 
 			const { conversationId } = payload;
 
@@ -120,5 +123,5 @@ export const useMessagingSocketIntegration = (): void => {
 		return () => {
 			socket.off("messaging_update", handleMessagingUpdate);
 		};
-	}, [socket, queryClient, user?.publicId]);
+	}, [socket, queryClient, user?.publicId, shouldHandleEvent]);
 };

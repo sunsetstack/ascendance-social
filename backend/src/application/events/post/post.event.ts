@@ -1,11 +1,12 @@
 import { PostPublicId, UserPublicId } from "@/types/branded";
 import { IEvent } from "@/application/common/interfaces/event.interface";
+import { EventRegistry } from "@/application/common/events/event-registry";
 
 /**
  * Fired when a new post is created
  */
 export class PostUploadedEvent implements IEvent {
-  readonly type = "PostUploadedEvent";
+  readonly type = EventRegistry.domain.PostUploaded;
   readonly timestamp: Date = new Date();
 
   constructor(
@@ -19,7 +20,7 @@ export class PostUploadedEvent implements IEvent {
  * Fired when a post is deleted
  */
 export class PostDeletedEvent implements IEvent {
-  readonly type = "PostDeletedEvent";
+  readonly type = EventRegistry.domain.PostDeleted;
   readonly timestamp: Date = new Date();
 
   constructor(

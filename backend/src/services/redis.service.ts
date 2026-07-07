@@ -50,7 +50,7 @@ export class RedisService {
 
   constructor(
     @inject(TOKENS.Services.Metrics)
-    metricsService: MetricsService,
+    private readonly metricsService: MetricsService,
   ) {
     this.resilienceModule = new RedisResilienceModule();
     this.connectionModule = new RedisConnectionModule(
@@ -142,7 +142,13 @@ export class RedisService {
   }
 
   async publish<T>(channel: string, message: T): Promise<void> {
-    return this.pubSubModule.publish(channel, message);
+    try {
+      await this.pubSubModule.publish(channel, message);
+      this.metricsService.recordRealtimeEventPublished(channel, "published");
+    } catch (error) {
+      this.metricsService.recordRealtimeEventPublished(channel, "failed");
+      throw error;
+    }
   }
 
   async subscribe<T>(

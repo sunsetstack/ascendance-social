@@ -6,10 +6,11 @@ import { OutboxRepository } from "@/repositories/outbox.repository";
 import { sessionALS } from "@/database/UnitOfWork";
 import { TOKENS } from "@/types/tokens";
 import { getCorrelationId } from "@/runtime/request-context";
-import {
-  EventRegistry,
+import type {
+  EventPayloadRegistry,
   RegisteredEventType,
 } from "@/application/common/events/event-registry";
+import { MetricsService } from "@/metrics/metrics.service";
 
 type RegisteredEventHandler<TEvent = unknown> = {
   key: string;
@@ -23,6 +24,8 @@ export class EventBus {
   constructor(
     @inject(TOKENS.Repositories.Outbox)
     private readonly outboxRepository: OutboxRepository,
+    @inject(TOKENS.Services.Metrics)
+    private readonly metricsService: MetricsService,
   ) {}
 
   /**
@@ -52,16 +55,21 @@ export class EventBus {
       []) as RegisteredEventHandler<TEvent>[];
 
     await Promise.all(handlers.map((handler) => handler.handle(event)));
+    this.metricsService.recordDomainEventPublished(
+      event.constructor.name,
+      "immediate",
+    );
   }
 
   async publishByType<TEventType extends string>(
     eventType: TEventType,
     eventPayload: TEventType extends RegisteredEventType
-      ? EventRegistry[TEventType]
+      ? EventPayloadRegistry[TEventType]
       : unknown,
   ): Promise<void> {
     const handlers = this.getRegisteredHandlers(eventType);
     await Promise.all(handlers.map((handler) => handler.handle(eventPayload)));
+    this.metricsService.recordDomainEventPublished(eventType, "immediate");
   }
 
   getRegisteredHandlers(eventType: string): RegisteredEventHandler[] {
@@ -90,6 +98,10 @@ export class EventBus {
       randomUUID(),
       getCorrelationId(),
     );
+    this.metricsService.recordDomainEventPublished(
+      event.constructor.name,
+      "transactional_outbox",
+    );
   }
 
   async queueDurable<TEvent extends IEvent>(event: TEvent): Promise<void> {
@@ -98,6 +110,10 @@ export class EventBus {
       event,
       randomUUID(),
       getCorrelationId(),
+    );
+    this.metricsService.recordDomainEventPublished(
+      event.constructor.name,
+      "durable_outbox",
     );
   }
 

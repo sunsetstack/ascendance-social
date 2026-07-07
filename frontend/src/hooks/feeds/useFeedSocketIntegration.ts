@@ -6,6 +6,7 @@ import {
   removePostFromFeedCaches,
   updatePostLikesInFeedCaches,
 } from "../posts/postCache";
+import { useRecentEventIds } from "../socket/useRecentEventIds";
 
 /**
  * Hook to handle real-time feed updates via WebSocket
@@ -14,6 +15,7 @@ import {
 export const useFeedSocketIntegration = () => {
   const socket = useSocket();
   const queryClient = useQueryClient();
+  const shouldHandleEvent = useRecentEventIds();
 
   useEffect(() => {
     if (!socket) return;
@@ -65,8 +67,11 @@ export const useFeedSocketIntegration = () => {
      */
     const handleFeedUpdate = (data: {
       type: string;
+      eventId?: string;
       [key: string]: unknown;
     }) => {
+      if (!shouldHandleEvent(data.eventId)) return;
+
       if (data.type === "new_post") {
         handleNewPost(data as Parameters<typeof handleNewPost>[0]);
       } else if (data.type === "post_deleted") {
@@ -80,10 +85,13 @@ export const useFeedSocketIntegration = () => {
      */
     const handleLikeUpdate = (data: {
       type: "like_count_changed";
+      eventId?: string;
       imageId: string;
       newLikes: number;
       timestamp: string;
     }) => {
+      if (!shouldHandleEvent(data.eventId)) return;
+
       updatePostLikesInFeedCaches(queryClient, data.imageId, data.newLikes);
 
       // Update specific image queries
@@ -96,11 +104,14 @@ export const useFeedSocketIntegration = () => {
      */
     const handleAvatarUpdate = (data: {
       type: "user_avatar_changed";
+      eventId?: string;
       userId: string;
       oldAvatar?: string;
       newAvatar?: string;
       timestamp: string;
     }) => {
+      if (!shouldHandleEvent(data.eventId)) return;
+
       // Invalidate user data and any feed that shows avatars
       const currentUser = queryClient.getQueryData<{ publicId?: string }>([
         "currentUser",
@@ -129,12 +140,15 @@ export const useFeedSocketIntegration = () => {
      */
     const handleFeedInteraction = (data: {
       type: "user_interaction";
+      eventId?: string;
       userId: string;
       actionType: string;
       targetId: string;
       tags?: string[];
       timestamp: string;
     }) => {
+      if (!shouldHandleEvent(data.eventId)) return;
+
       // For comments and other interactions that affect counts
       if (
         data.actionType === "comment" ||
@@ -164,5 +178,5 @@ export const useFeedSocketIntegration = () => {
       socket.off("avatar_update", handleAvatarUpdate);
       socket.off("feed_interaction", handleFeedInteraction);
     };
-  }, [socket, queryClient]);
+  }, [socket, queryClient, shouldHandleEvent]);
 };

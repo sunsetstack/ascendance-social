@@ -59,7 +59,7 @@ describe("Transactional Outbox Pattern", () => {
     } as unknown as sinon.SinonStubbedInstance<OutboxRepository>;
 
     metricsService = sinon.createStubInstance(MetricsService);
-    eventBus = new EventBus(outboxRepository as any);
+    eventBus = new EventBus(outboxRepository as any, metricsService as any);
     outboxWorker = new OutboxWorker(
       outboxRepository as any,
       eventBus,

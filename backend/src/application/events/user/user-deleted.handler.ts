@@ -5,6 +5,7 @@ import { RedisService } from "@/services/redis.service";
 import { logger } from "@/utils/winston";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
 
 /**
  * Handles cache cleanup when a user is deleted
@@ -83,9 +84,13 @@ export class UserDeletedHandler implements IEventHandler<UserDeletedEvent> {
 
       // publish event for real-time updates
       await this.redis.publish(
-        "feed_updates",
+        EventRegistry.redisChannels.feedUpdates,
         JSON.stringify({
-          type: "user_deleted",
+          eventId: buildRealtimeEventId(
+            EventRegistry.realtimeMessageTypes.userDeleted,
+            event.userPublicId,
+          ),
+          type: EventRegistry.realtimeMessageTypes.userDeleted,
           userPublicId: event.userPublicId,
           timestamp: event.timestamp.toISOString(),
         }),

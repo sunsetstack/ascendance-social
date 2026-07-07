@@ -9,6 +9,7 @@ import { UserActivityService } from "@/services/user-activity.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
 
 @injectable()
 export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
@@ -128,14 +129,18 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
       // Publish real-time feed update for WebSocket notifications
       if (affectedUsers.length > 0) {
         await this.redis.publish(
-          "feed_updates",
+          EventRegistry.redisChannels.feedUpdates,
           JSON.stringify({
-            type: "new_post",
+            eventId: buildRealtimeEventId(
+              EventRegistry.realtimeMessageTypes.newPost,
+              event.postId,
+            ),
+            type: EventRegistry.realtimeMessageTypes.newPost,
             authorId: event.authorPublicId,
             postId: event.postId,
             tags: event.tags,
             affectedUsers,
-            timestamp: new Date().toISOString(),
+            timestamp: event.timestamp.toISOString(),
           }),
         );
       }

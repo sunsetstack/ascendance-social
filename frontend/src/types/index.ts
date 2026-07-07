@@ -233,6 +233,7 @@ export interface GalleryProps {
 
 export interface Notification {
   id: string;
+  eventId?: string;
   userId: string;
   actionType: string; // 'like' | 'comment' | 'follow' | 'message' | 'security_alert'
   actorId: string; // actor's publicId
@@ -295,6 +296,7 @@ export interface ConversationSummaryDTO {
 export type MessagingUpdatePayload =
   | {
       type: "message_sent";
+      eventId?: string;
       conversationId: string;
       messageId?: string;
       senderId: string;
@@ -302,6 +304,7 @@ export type MessagingUpdatePayload =
     }
   | {
       type: "message_status_updated";
+      eventId?: string;
       conversationId: string;
       timestamp: string;
       status: "delivered" | "read";

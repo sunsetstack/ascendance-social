@@ -11,6 +11,7 @@ import { Errors } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
 
 @injectable()
 export class FeedInteractionService {
@@ -81,15 +82,23 @@ export class FeedInteractionService {
     const invalidationTags = [CacheKeyBuilder.getUserFeedTag(userPublicId)];
     await this.redisService.invalidateByTags(invalidationTags);
 
+    const timestamp = new Date().toISOString();
     await this.redisService.publish(
-      "feed_updates",
+      EventRegistry.redisChannels.feedUpdates,
       JSON.stringify({
-        type: "interaction",
+        eventId: buildRealtimeEventId(
+          EventRegistry.realtimeMessageTypes.interaction,
+          actionType,
+          userPublicId,
+          targetIdentifier,
+          timestamp,
+        ),
+        type: EventRegistry.realtimeMessageTypes.interaction,
         userId: userPublicId,
         actionType,
         targetId: targetIdentifier,
         tags,
-        timestamp: new Date().toISOString(),
+        timestamp,
       }),
     );
 

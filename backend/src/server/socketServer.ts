@@ -11,6 +11,8 @@ import { createAdapter } from "@socket.io/redis-adapter";
 import { RedisService } from "@/services/redis.service";
 import { getAllowedOrigins } from "@/config/corsConfig";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry } from "@/application/common/events/event-registry";
+import { MetricsService } from "@/metrics/metrics.service";
 
 let ioInstance: SocketIOServer | null = null;
 let viewingStateRedisService: RedisService | null = null;
@@ -53,6 +55,8 @@ export class WebSocketServer {
     @inject(RedisService) private readonly redisService: RedisService,
     @inject(TOKENS.Services.AuthMiddleware)
     authMiddlewareService: AuthMiddlewareService,
+    @inject(TOKENS.Services.Metrics)
+    private readonly metricsService: MetricsService,
   ) {
     this.socketAuthHandler = authMiddlewareService.required();
     viewingStateRedisService = this.redisService;
@@ -163,11 +167,15 @@ export class WebSocketServer {
         });
 
         // Send confirmation to client
-        socket.emit("join_response", {
+        socket.emit(EventRegistry.socketServerEvents.joinResponse, {
           success: true,
           userId: userPublicId,
           message: "Automatically joined user room",
         });
+        this.metricsService.recordSocketEventEmitted(
+          EventRegistry.socketServerEvents.joinResponse,
+          "socket",
+        );
       } else {
         logger.warn("Socket connected without user data", {
           event: "websocket.client.missing_user",
@@ -179,7 +187,7 @@ export class WebSocketServer {
        * Event listener for users manually joining a room.
        * This ensures the user is authenticated before joining.
        */
-      socket.on("join", (userId: string) => {
+      socket.on(EventRegistry.socketClientEvents.join, (userId: string) => {
         if (!socket.data.user) {
           logger.warn("Unauthorized socket room join attempt", {
             event: "websocket.room.join_unauthorized",
@@ -193,10 +201,14 @@ export class WebSocketServer {
             event: "websocket.room.join_invalid_user_id",
             socketId: socket.id,
           });
-          socket.emit("join_response", {
+          socket.emit(EventRegistry.socketServerEvents.joinResponse, {
             success: false,
             error: "Invalid userId",
           });
+          this.metricsService.recordSocketEventEmitted(
+            EventRegistry.socketServerEvents.joinResponse,
+            "socket",
+          );
           return;
         }
 
@@ -214,10 +226,14 @@ export class WebSocketServer {
             authenticatedUserId,
             socketId: socket.id,
           });
-          socket.emit("join_response", {
+          socket.emit(EventRegistry.socketServerEvents.joinResponse, {
             success: false,
             error: "Forbidden room join",
           });
+          this.metricsService.recordSocketEventEmitted(
+            EventRegistry.socketServerEvents.joinResponse,
+            "socket",
+          );
           return;
         }
 
@@ -230,19 +246,23 @@ export class WebSocketServer {
         });
 
         // Emit success message
-        socket.emit("join_response", {
+        socket.emit(EventRegistry.socketServerEvents.joinResponse, {
           success: true,
           userId: trimmedUserId,
         });
+        this.metricsService.recordSocketEventEmitted(
+          EventRegistry.socketServerEvents.joinResponse,
+          "socket",
+        );
       });
 
       // track when user opens a conversation (for suppressing notifications)
-      socket.on("conversation_opened", (conversationId: string) => {
+      socket.on(EventRegistry.socketClientEvents.conversationOpened, (conversationId: string) => {
         void this.handleConversationOpened(socket, conversationId);
       });
 
       // track when user closes/leaves a conversation
-      socket.on("conversation_closed", (conversationId?: string) => {
+      socket.on(EventRegistry.socketClientEvents.conversationClosed, (conversationId?: string) => {
         void this.handleConversationClosed(socket, conversationId);
       });
 

@@ -7,6 +7,7 @@ import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRep
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
 
 @injectable()
 export class PostDeleteHandler implements IEventHandler<PostDeletedEvent> {
@@ -67,12 +68,16 @@ export class PostDeleteHandler implements IEventHandler<PostDeletedEvent> {
       await this.redis.zrem("trending:posts", event.postId);
 
       await this.redis.publish(
-        "feed_updates",
+        EventRegistry.redisChannels.feedUpdates,
         JSON.stringify({
-          type: "post_deleted",
+          eventId: buildRealtimeEventId(
+            EventRegistry.realtimeMessageTypes.postDeleted,
+            event.postId,
+          ),
+          type: EventRegistry.realtimeMessageTypes.postDeleted,
           postId: event.postId,
           authorId: event.authorPublicId,
-          timestamp: new Date().toISOString(),
+          timestamp: event.timestamp.toISOString(),
         }),
       );
 
