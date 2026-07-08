@@ -102,6 +102,7 @@ services:
       JWT_SECRET: YourProductionJWTSecretGoesHere
       ALLOWED_ORIGINS: http://localhost,http://localhost:80,http://localhost:5173,http://localhost:8000,http://192.168.1.10:80
       COOKIE_SECURE: "false" # true in real production environment with HTTPS
+      ALLOW_INSECURE_COOKIES: "true"
       # Cloudinary credentials go here for production
       # CLOUDINARY_CLOUD_NAME: ...
       # CLOUDINARY_API_KEY: ...

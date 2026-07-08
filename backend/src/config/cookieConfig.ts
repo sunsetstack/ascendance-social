@@ -1,8 +1,13 @@
 import { CookieOptions } from "express";
 
-// Allow explicit override for COOKIE_SECURE=false when running production mode on plain HTTP in local docker
 const explicitSecure = process.env.COOKIE_SECURE;
-const secureFlag = explicitSecure !== undefined ? explicitSecure === "true" : process.env.NODE_ENV === "production";
+const allowInsecureCookies = process.env.ALLOW_INSECURE_COOKIES === "true";
+const secureFlag =
+	process.env.NODE_ENV === "production" && !allowInsecureCookies
+		? true
+		: explicitSecure !== undefined
+			? explicitSecure === "true"
+			: process.env.NODE_ENV === "production";
 const cookieDomain =
 	process.env.NODE_ENV === "production" && process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {};
 

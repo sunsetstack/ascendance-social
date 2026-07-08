@@ -35,6 +35,7 @@ import { TOKENS } from "@/types/tokens";
 import { buildCorsOptions } from "@/config/corsConfig";
 import { getClientIp } from "@/utils/request-ip";
 import { getRateLimitStoreOptions } from "@/config/rateLimit";
+import { csrfOriginMiddleware } from "@/middleware/csrf-origin.middleware";
 
 @injectable()
 export class Server {
@@ -109,6 +110,7 @@ export class Server {
     this.app.use(this.metricsService.httpMetricsMiddleware());
 
     this.app.use(cookieParser()); // Parsing cookies
+    this.app.use(csrfOriginMiddleware);
     this.app.use(express.json({ limit: "1mb" })); // Parsing JSON request bodies
     this.app.use(express.urlencoded({ extended: true, limit: "1mb" })); // Handling URL-encoded payloads
 
@@ -202,7 +204,7 @@ export class Server {
   public start(server: http.Server, port: number): void {
     server.timeout = 30000;
     server.headersTimeout = 31000;
-      server.keepAliveTimeout = 65000;
+    server.keepAliveTimeout = 65000;
 
     server.listen(port, () => {
       logger.info("HTTP server started", {
@@ -215,7 +217,7 @@ export class Server {
   private resolveTrustProxySetting(): boolean | number | string {
     const configuredValue = process.env.TRUST_PROXY;
     if (!configuredValue) {
-      return 1;
+      return false;
     }
 
     if (configuredValue === "true") {

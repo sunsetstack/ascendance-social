@@ -30,6 +30,8 @@ declare global {
   }
 }
 
+const isTestEnv = process.env.NODE_ENV === "test";
+
 export abstract class AuthStrategy {
   abstract authenticate(req: Request): Promise<DecodedUser>;
 }
@@ -144,21 +146,7 @@ export class AuthenticationMiddleware {
     private readonly metricsService: MetricsService | null,
   ) {}
 
-  private async enforceVerifiedEmail(decodedUser: DecodedUser): Promise<void> {
-    if (decodedUser.isEmailVerified === true) {
-      return;
-    }
-
-    if (decodedUser.isEmailVerified === false) {
-      throw Errors.forbidden("Email verification required", {
-        context: {
-          userId: decodedUser.publicId,
-          emailVerified: false,
-        },
-        errorCode: ErrorCode.EMAIL_NOT_VERIFIED,
-      });
-    }
-
+  private async enforceActiveUser(decodedUser: DecodedUser): Promise<void> {
     const user = await this.userReadRepository.findByPublicId(
       decodedUser.publicId,
     );
@@ -166,6 +154,15 @@ export class AuthenticationMiddleware {
     if (!user) {
       throw Errors.authentication("User not found", {
         errorCode: ErrorCode.UNAUTHORIZED,
+      });
+    }
+
+    if (user.isBanned) {
+      throw Errors.forbidden("Account banned", {
+        context: {
+          userId: decodedUser.publicId,
+          banned: true,
+        },
       });
     }
 
@@ -179,6 +176,7 @@ export class AuthenticationMiddleware {
       });
     }
 
+    decodedUser.isAdmin = user.isAdmin;
     decodedUser.isEmailVerified = true;
   }
 
@@ -226,7 +224,7 @@ export class AuthenticationMiddleware {
     return async (req: Request, _res: Response, next: NextFunction) => {
       try {
         req.decodedUser = await this.strategy.authenticate(req);
-        await this.enforceVerifiedEmail(req.decodedUser);
+        await this.enforceActiveUser(req.decodedUser);
         setRequestContextUserId(req.decodedUser.publicId);
         next();
       } catch (error) {
@@ -251,7 +249,7 @@ export class AuthenticationMiddleware {
     return async (req: Request, _res: Response, next: NextFunction) => {
       try {
         req.decodedUser = await this.strategy.authenticate(req);
-        await this.enforceVerifiedEmail(req.decodedUser);
+        await this.enforceActiveUser(req.decodedUser);
         setRequestContextUserId(req.decodedUser.publicId);
       } catch (error) {
         req.decodedUser = undefined;
@@ -264,7 +262,7 @@ export class AuthenticationMiddleware {
 
 // Admin-specific rate limiting
 export const adminRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("admin"),
+  ...getRateLimitStoreOptions("admin", { passOnStoreError: false }),
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 50, // 50 admin actions per 5 minutes
   message: "Too many admin actions, please slow down",
@@ -274,8 +272,46 @@ export const adminRateLimit = rateLimit({
     `admin-${req.decodedUser?.publicId || getClientIp(req)}`,
 });
 
+export const registerIpRateLimit = rateLimit({
+  ...getRateLimitStoreOptions("register-ip", { passOnStoreError: false }),
+  windowMs: Number(process.env.REGISTER_IP_WINDOW_MS) || 60 * 60 * 1000,
+  max: Number(process.env.REGISTER_IP_MAX) || (isTestEnv ? 1000 : 5),
+  message: "Too many registration attempts, please try again later",
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `register-ip:${getClientIp(req)}`,
+});
+
+export const loginIpRateLimit = rateLimit({
+  ...getRateLimitStoreOptions("login-ip", { passOnStoreError: false }),
+  windowMs: Number(process.env.LOGIN_IP_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.LOGIN_IP_MAX) || (isTestEnv ? 1000 : 20),
+  message: "Too many login attempts, please try again later",
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `login-ip:${getClientIp(req)}`,
+});
+
+export const loginEmailRateLimit = rateLimit({
+  ...getRateLimitStoreOptions("login-email", { passOnStoreError: false }),
+  windowMs: Number(process.env.LOGIN_EMAIL_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.LOGIN_EMAIL_MAX) || (isTestEnv ? 1000 : 5),
+  message: "Too many login attempts, please try again later",
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const email =
+      typeof req.body?.email === "string"
+        ? req.body.email.trim().toLowerCase()
+        : "";
+    return `login-email:${email || "unknown"}`;
+  },
+});
+
 export const forgotPasswordIpRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("forgot-password-ip"),
+  ...getRateLimitStoreOptions("forgot-password-ip", {
+    passOnStoreError: false,
+  }),
   windowMs: Number(process.env.FORGOT_PASSWORD_IP_WINDOW_MS) || 15 * 60 * 1000,
   max: Number(process.env.FORGOT_PASSWORD_IP_MAX) || 5,
   message: "Too many password reset requests, please try again later",
@@ -285,7 +321,9 @@ export const forgotPasswordIpRateLimit = rateLimit({
 });
 
 export const forgotPasswordEmailRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("forgot-password-email"),
+  ...getRateLimitStoreOptions("forgot-password-email", {
+    passOnStoreError: false,
+  }),
   windowMs:
     Number(process.env.FORGOT_PASSWORD_EMAIL_WINDOW_MS) || 60 * 60 * 1000,
   max: Number(process.env.FORGOT_PASSWORD_EMAIL_MAX) || 3,
@@ -298,6 +336,49 @@ export const forgotPasswordEmailRateLimit = rateLimit({
         ? req.body.email.trim().toLowerCase()
         : "";
     return `forgot-password-email:${email || "unknown"}`;
+  },
+});
+
+export const resetPasswordIpRateLimit = rateLimit({
+  ...getRateLimitStoreOptions("reset-password-ip", {
+    passOnStoreError: false,
+  }),
+  windowMs: Number(process.env.RESET_PASSWORD_IP_WINDOW_MS) || 15 * 60 * 1000,
+  max: Number(process.env.RESET_PASSWORD_IP_MAX) || (isTestEnv ? 1000 : 10),
+  message: "Too many password reset attempts, please try again later",
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `reset-password-ip:${getClientIp(req)}`,
+});
+
+export const verifyEmailIpRateLimit = rateLimit({
+  ...getRateLimitStoreOptions("verify-email-ip", {
+    passOnStoreError: false,
+  }),
+  windowMs: Number(process.env.VERIFY_EMAIL_IP_WINDOW_MS) || 60 * 60 * 1000,
+  max: Number(process.env.VERIFY_EMAIL_IP_MAX) || (isTestEnv ? 1000 : 20),
+  message: "Too many email verification attempts, please try again later",
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `verify-email-ip:${getClientIp(req)}`,
+});
+
+export const verifyEmailAddressRateLimit = rateLimit({
+  ...getRateLimitStoreOptions("verify-email-address", {
+    passOnStoreError: false,
+  }),
+  windowMs:
+    Number(process.env.VERIFY_EMAIL_ADDRESS_WINDOW_MS) || 60 * 60 * 1000,
+  max: Number(process.env.VERIFY_EMAIL_ADDRESS_MAX) || (isTestEnv ? 1000 : 5),
+  message: "Too many email verification attempts, please try again later",
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const email =
+      typeof req.body?.email === "string"
+        ? req.body.email.trim().toLowerCase()
+        : "";
+    return `verify-email-address:${email || "unknown"}`;
   },
 });
 

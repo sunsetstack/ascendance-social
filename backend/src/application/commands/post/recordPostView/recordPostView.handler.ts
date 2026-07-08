@@ -10,7 +10,6 @@ import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRep
 import { FeedService } from "@/services/feed/feed.service";
 import { TransactionQueueService } from "@/services/transaction-queue.service";
 import { BloomFilterService } from "@/services/redis/bloom-filter.service";
-import { UnitOfWork } from "@/database/UnitOfWork";
 import { Errors } from "@/utils/errors";
 import { isValidPublicId } from "@/utils/sanitizers";
 import {
@@ -51,8 +50,6 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
     private readonly transactionQueue: TransactionQueueService,
     @inject(TOKENS.Services.BloomFilter)
     private readonly bloomFilterService: BloomFilterService,
-    @inject(TOKENS.Repositories.UnitOfWork)
-    private readonly unitOfWork: UnitOfWork,
   ) {
     this.transactionQueue.registerHandler(
       "UPDATE_VIEW_COUNT_METADATA",

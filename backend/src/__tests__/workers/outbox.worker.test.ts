@@ -316,8 +316,10 @@ describe("Transactional Outbox Pattern", () => {
       await (outboxWorker as any).tick();
 
       expect(firstHandleSpy.called).to.be.false;
-      expect(secondHandleSpy.calledOnceWithExactly({ payload: "resume" })).to.be
-        .true;
+      expect(secondHandleSpy.calledOnce).to.be.true;
+      expect(secondHandleSpy.firstCall.args[0]).to.deep.equal({
+        payload: "resume",
+      });
       expect(
         outboxRepository.markHandlerProcessed.calledOnceWithExactly(
           "event1",

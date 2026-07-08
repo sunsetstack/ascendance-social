@@ -18,7 +18,7 @@ import {
 import { asUserPublicId } from "@/types/branded";
 
 describe("user auth response helpers", () => {
-	it("builds request context from the request", () => {
+	it("builds request context from the trusted request IP", () => {
 		const req = {
 			headers: {
 				"x-forwarded-for": "203.0.113.10:443",
@@ -31,7 +31,7 @@ describe("user auth response helpers", () => {
 		const result = buildAuthRequestContext(req);
 
 		expect(result).to.deep.equal({
-			ip: "203.0.113.10",
+			ip: "127.0.0.1",
 			userAgent: "Mozilla/Test",
 		});
 	});

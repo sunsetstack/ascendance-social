@@ -71,12 +71,6 @@ export class SetFollowStateCommandHandler implements ICommandHandler<
       await this.unitOfWork.executeInTransaction(async () => {
         if (shouldFollow) {
           await this.followRepository.addFollow(followerId, followeeId);
-          await this.userWriteRepository.update(followerId, {
-            $addToSet: { following: followeeId },
-          });
-          await this.userWriteRepository.update(followeeId, {
-            $addToSet: { followers: followerId },
-          });
           await this.userWriteRepository.updateFollowingCount(followerId, 1);
           await this.userWriteRepository.updateFollowerCount(followeeId, 1);
 
@@ -100,15 +94,7 @@ export class SetFollowStateCommandHandler implements ICommandHandler<
         }
 
         if (!shouldFollow) {
-          // unfollow logic
           await this.followRepository.removeFollow(followerId, followeeId);
-          await this.userWriteRepository.update(followerId, {
-            $pull: { following: followeeId },
-          });
-          await this.userWriteRepository.update(followeeId, {
-            $pull: { followers: followerId },
-          });
-          // decrement denormalized counts
           await this.userWriteRepository.updateFollowingCount(followerId, -1);
           await this.userWriteRepository.updateFollowerCount(followeeId, -1);
 

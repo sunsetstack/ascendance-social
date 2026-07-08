@@ -8,7 +8,7 @@ import { TransactionQueueService } from "@/services/transaction-queue.service";
 import { FeedService } from "@/services/feed/feed.service";
 import { PostViewRepository } from "@/repositories/postView.repository";
 import { BloomFilterService } from "@/services/redis/bloom-filter.service";
-
+import { asPostPublicId, asUserPublicId } from "@/types/branded";
 describe("RecordPostViewCommandHandler", () => {
   let handler: RecordPostViewCommandHandler;
   let postReadRepoStub: any;
@@ -18,13 +18,12 @@ describe("RecordPostViewCommandHandler", () => {
   let feedServiceStub: any;
   let transactionQueueStub: any;
   let bloomFilterServiceStub: any;
-  let unitOfWorkStub: any;
 
   const postId = new mongoose.Types.ObjectId();
   const userId = new mongoose.Types.ObjectId();
   // use valid UUID v4 format for publicIds
-  const postPublicId = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
-  const userPublicId = "f1e2d3c4-b5a6-4978-8d9e-0f1a2b3c4d5e";
+  const postPublicId = asPostPublicId("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d");
+  const userPublicId = asUserPublicId("f1e2d3c4-b5a6-4978-8d9e-0f1a2b3c4d5e");
 
   beforeEach(() => {
     postReadRepoStub = {
@@ -40,9 +39,6 @@ describe("RecordPostViewCommandHandler", () => {
     feedServiceStub = sinon.createStubInstance(FeedService);
     transactionQueueStub = sinon.createStubInstance(TransactionQueueService);
     bloomFilterServiceStub = sinon.createStubInstance(BloomFilterService);
-    unitOfWorkStub = {
-      executeInTransaction: sinon.stub().callsFake(async (work: () => Promise<void>) => await work()),
-    };
 
     // Default successful mocks
     postReadRepoStub.findOneByPublicId.resolves({
@@ -71,7 +67,6 @@ describe("RecordPostViewCommandHandler", () => {
       feedServiceStub,
       transactionQueueStub,
       bloomFilterServiceStub,
-      unitOfWorkStub,
     );
   });
 

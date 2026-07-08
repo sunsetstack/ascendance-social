@@ -122,15 +122,22 @@ function makeRateLimitStore(prefix: string): RateLimitStore | undefined {
   return new LazyRedisStore(prefix);
 }
 
-export function getRateLimitStoreOptions(prefix: string):
+export function getRateLimitStoreOptions(
+  prefix: string,
+  options: { passOnStoreError?: boolean } = {},
+):
   | {
       store: RateLimitStore;
-      passOnStoreError: true;
+      passOnStoreError: boolean;
       validate: { unsharedStore: false };
     }
   | {} {
   const store = makeRateLimitStore(prefix);
   return store
-    ? { store, passOnStoreError: true, validate: { unsharedStore: false } }
+    ? {
+        store,
+        passOnStoreError: options.passOnStoreError ?? true,
+        validate: { unsharedStore: false },
+      }
     : {};
 }

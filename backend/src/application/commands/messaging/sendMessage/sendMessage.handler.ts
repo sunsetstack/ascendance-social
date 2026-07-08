@@ -25,6 +25,7 @@ import {
   requireUserInternalId,
   resolveParticipantPublicIds,
 } from "@/application/messaging/messaging-support";
+import { logger } from "@/utils/winston";
 
 @injectable()
 export class SendMessageCommandHandler implements ICommandHandler<
@@ -48,6 +49,8 @@ export class SendMessageCommandHandler implements ICommandHandler<
   ) {}
 
   async execute(command: SendMessageCommand): Promise<MessageDTO> {
+    let uploadedAttachmentPublicId: string | undefined;
+
     try {
       const { senderPublicId, payload, file } = command;
 
@@ -114,14 +117,31 @@ export class SendMessageCommandHandler implements ICommandHandler<
         );
       }
 
-      let attachments = payload.attachments || [];
+      let recipientInternalId: string | null = null;
+      if (targetConversation) {
+        const existingParticipantIds = getParticipantIds(
+          targetConversation.participants,
+        );
+        if (!new Set(existingParticipantIds).has(senderInternalId)) {
+          throw Errors.forbidden(
+            "You do not have access to this conversation",
+          );
+        }
+      } else if (payload.recipientPublicId) {
+        recipientInternalId = await requireUserInternalId(
+          this.userReadRepository,
+          payload.recipientPublicId,
+        );
+      }
+
+      const attachments = [...(payload.attachments || [])];
       if (file) {
         const convIdForPath = targetConversation
           ? targetConversation.publicId
           : "initial";
         const uploadPath = `${senderPublicId}/${convIdForPath}`;
 
-        const { url } = await this.imageStorageService.uploadImageStream(
+        const { url, publicId } = await this.imageStorageService.uploadImageStream(
           {
             buffer: file.buffer,
             originalName: file.originalname,
@@ -130,6 +150,7 @@ export class SendMessageCommandHandler implements ICommandHandler<
           senderPublicId,
           uploadPath,
         );
+        uploadedAttachmentPublicId = publicId;
         attachments.push({
           url,
           type: "image",
@@ -154,10 +175,11 @@ export class SendMessageCommandHandler implements ICommandHandler<
           }
 
           if (!conversationDoc) {
-            const recipientInternalId = await requireUserInternalId(
-              this.userReadRepository,
-              payload.recipientPublicId!,
-            );
+            if (!recipientInternalId) {
+              throw Errors.validation(
+                "Recipient is required when no conversation is provided",
+              );
+            }
 
             const participantIds = [senderInternalId, recipientInternalId];
             const participantHash = buildParticipantHash(participantIds);
@@ -184,15 +206,6 @@ export class SendMessageCommandHandler implements ICommandHandler<
                 lastMessageAt: new Date(),
                 unreadCounts: unreadSeed,
               });
-            }
-          } else {
-            const existingParticipantIds = getParticipantIds(
-              conversationDoc.participants,
-            );
-            if (!new Set(existingParticipantIds).has(senderInternalId)) {
-              throw Errors.forbidden(
-                "You do not have access to this conversation",
-              );
             }
           }
 
@@ -294,6 +307,7 @@ export class SendMessageCommandHandler implements ICommandHandler<
           return message;
         },
       );
+      uploadedAttachmentPublicId = undefined;
 
       if (!targetConversation) {
         throw Errors.internal(
@@ -306,9 +320,24 @@ export class SendMessageCommandHandler implements ICommandHandler<
         targetConversation.publicId,
       );
     } catch (error) {
+      if (uploadedAttachmentPublicId) {
+        await this.deleteUploadedAttachment(uploadedAttachmentPublicId);
+      }
       if (error instanceof Error && error.name === "AppError") throw error;
       throw wrapError(error, "InternalServerError", {
         context: { operation: "sendMessage" },
+      });
+    }
+  }
+
+  private async deleteUploadedAttachment(publicId: string): Promise<void> {
+    try {
+      await this.imageStorageService.deleteImage(publicId);
+    } catch (error) {
+      logger.warn("Failed to delete uploaded message attachment", {
+        event: "messaging.attachment_cleanup_failed",
+        publicId,
+        error,
       });
     }
   }

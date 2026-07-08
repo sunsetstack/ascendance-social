@@ -14,8 +14,10 @@ export function getAllowedOrigins(): string[] {
     process.env.ALLOWED_ORIGINS?.split(/[,\s]+/)
       .map((origin) => origin.trim())
       .filter(Boolean) ?? [];
+  const defaultOrigins =
+    process.env.NODE_ENV === "production" ? [] : DEFAULT_ALLOWED_ORIGINS;
 
-  return [...new Set([...DEFAULT_ALLOWED_ORIGINS, ...envOrigins])];
+  return [...new Set([...defaultOrigins, ...envOrigins])];
 }
 
 export function buildCorsOptions(): CorsOptions {

@@ -4,6 +4,7 @@ import { BanUserCommand } from "./banUser.command";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
 import type { IUserWriteRepository } from "@/repositories/interfaces/IUserWriteRepository";
 import { DTOService, AdminUserDTO } from "@/services/dto.service";
+import { AuthSessionService } from "@/services/auth-session.service";
 import { Errors } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
 
@@ -23,6 +24,8 @@ export class BanUserCommandHandler implements ICommandHandler<
     @inject(TOKENS.Repositories.UserWrite)
     private readonly userWriteRepository: IUserWriteRepository,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
+    @inject(TOKENS.Services.AuthSession)
+    private readonly authSessionService: AuthSessionService,
   ) {}
 
   async execute(command: BanUserCommand): Promise<BanUserResult> {
@@ -51,6 +54,8 @@ export class BanUserCommandHandler implements ICommandHandler<
     if (!updatedUser) {
       throw Errors.internal("Failed to update user during ban");
     }
+
+    await this.authSessionService.revokeAllSessionsForUser(user.publicId);
 
     return {
       message: "User banned successfully",

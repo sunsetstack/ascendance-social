@@ -69,6 +69,9 @@ export class AuthService {
     if (!user || !(await verifyPassword(password, user.password))) {
       throw Errors.authentication("Invalid email or password");
     }
+    if (user.isBanned) {
+      throw Errors.forbidden("Account banned");
+    }
 
     const userDTO = user.isAdmin
       ? this.dtoService.toAdminDTO(user)
@@ -122,6 +125,10 @@ export class AuthService {
     if (!user) {
       await this.authSessionService.revokeSession(session.sid);
       throw Errors.authentication("User not found");
+    }
+    if (user.isBanned) {
+      await this.authSessionService.revokeSession(session.sid);
+      throw Errors.forbidden("Account banned");
     }
 
     const userDTO = user.isAdmin

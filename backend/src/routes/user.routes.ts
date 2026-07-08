@@ -9,10 +9,16 @@ import {
   AuthMiddlewareService,
   forgotPasswordEmailRateLimit,
   forgotPasswordIpRateLimit,
+  loginEmailRateLimit,
+  loginIpRateLimit,
+  registerIpRateLimit,
+  resetPasswordIpRateLimit,
+  verifyEmailAddressRateLimit,
+  verifyEmailIpRateLimit,
 } from "../middleware/authentication.middleware";
 import { honeypotMiddleware } from "../middleware/honeypot.middleware";
 import { ValidationMiddleware } from "../middleware/validation.middleware";
-import upload from "@/config/multer";
+import upload, { validateImageUpload } from "@/config/multer";
 import {
   registrationSchema,
   loginSchema,
@@ -63,6 +69,7 @@ export class UserRoutes {
     this.router.post(
       "/register",
       honeypotMiddleware,
+      registerIpRateLimit,
       new ValidationMiddleware({ body: registrationSchema }).validate(),
       asyncHandler(this.authController.register),
     );
@@ -70,7 +77,9 @@ export class UserRoutes {
     this.router.post(
       "/login",
       honeypotMiddleware,
+      loginIpRateLimit,
       new ValidationMiddleware({ body: loginSchema }).validate(),
+      loginEmailRateLimit,
       asyncHandler(this.authController.login),
     );
 
@@ -88,13 +97,16 @@ export class UserRoutes {
 
     this.router.post(
       "/reset-password",
+      resetPasswordIpRateLimit,
       new ValidationMiddleware({ body: resetPasswordSchema }).validate(),
       asyncHandler(this.authController.resetPassword),
     );
 
     this.router.post(
       "/verify-email",
+      verifyEmailIpRateLimit,
       new ValidationMiddleware({ body: verifyEmailSchema }).validate(),
+      verifyEmailAddressRateLimit,
       asyncHandler(this.authController.verifyEmail),
     );
 
@@ -161,11 +173,13 @@ export class UserRoutes {
     this.router.put(
       "/me/avatar",
       upload.single("avatar"),
+      validateImageUpload,
       asyncHandler(this.profileController.updateAvatar),
     );
     this.router.put(
       "/me/cover",
       upload.single("cover"),
+      validateImageUpload,
       asyncHandler(this.profileController.updateCover),
     );
     this.router.put(
