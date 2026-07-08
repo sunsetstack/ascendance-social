@@ -12,6 +12,7 @@ export interface NotificationPayload {
 	targetId?: PostPublicId | ImagePublicId | UserPublicId | MongoId;
 	targetType?: string;
 	targetPreview?: string;
+	idempotencyKey?: string;
 }
 
 export class NotificationRequestedEvent implements IEvent {

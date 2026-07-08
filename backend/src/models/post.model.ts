@@ -119,6 +119,13 @@ postSchema.index(
 	},
 );
 postSchema.index({ repostOf: 1, createdAt: -1 }); // fetch reposts of a given post
+postSchema.index(
+	{ user: 1, repostOf: 1, type: 1 },
+	{
+		unique: true,
+		partialFilterExpression: { type: "repost", repostOf: { $exists: true } },
+	},
+);
 
 postSchema.set("toJSON", {
 	transform: (_doc, raw) => {

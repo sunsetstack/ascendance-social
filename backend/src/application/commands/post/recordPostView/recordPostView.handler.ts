@@ -10,6 +10,7 @@ import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRep
 import { FeedService } from "@/services/feed/feed.service";
 import { TransactionQueueService } from "@/services/transaction-queue.service";
 import { BloomFilterService } from "@/services/redis/bloom-filter.service";
+import { UnitOfWork } from "@/database/UnitOfWork";
 import { Errors } from "@/utils/errors";
 import { isValidPublicId } from "@/utils/sanitizers";
 import {
@@ -50,6 +51,8 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
     private readonly transactionQueue: TransactionQueueService,
     @inject(TOKENS.Services.BloomFilter)
     private readonly bloomFilterService: BloomFilterService,
+    @inject(TOKENS.Repositories.UnitOfWork)
+    private readonly unitOfWork: UnitOfWork,
   ) {
     this.transactionQueue.registerHandler(
       "UPDATE_VIEW_COUNT_METADATA",
@@ -120,11 +123,13 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
         return false;
       }
 
-      let isNewView = false;
-      isNewView = await this.postViewRepository.recordView(postId, userId);
-      if (isNewView) {
-        await this.postWriteRepository.incrementViewCount(postId);
-      }
+      const isNewView = await this.unitOfWork.executeInTransaction(async () => {
+        const recorded = await this.postViewRepository.recordView(postId, userId);
+        if (recorded) {
+          await this.postWriteRepository.incrementViewCount(postId);
+        }
+        return recorded;
+      });
 
       await this.markViewSeenInBloom(bloomKey, bloomItem);
 

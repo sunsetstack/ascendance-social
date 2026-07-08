@@ -69,6 +69,7 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
       let actorAvatar = data.actorAvatar?.trim();
       const targetType = data.targetType?.trim();
       const targetPreview = data.targetPreview?.trim();
+      const idempotencyKey = data.idempotencyKey?.trim();
 
       if (
         (!actorUsername || !actorHandle || !actorAvatar) &&
@@ -95,7 +96,7 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
         actorAvatar = SystemActor.avatar;
       }
 
-      const notification = await this.notificationRepository.create({
+      const notificationData: Partial<INotification> = {
         userId: asUserPublicId(userPublicId),
         actionType: data.actionType,
         actorId: asUserPublicId(actorPublicId),
@@ -111,7 +112,14 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
         targetPreview,
         isRead: false,
         timestamp: new Date(),
-      });
+      };
+
+      const notification = idempotencyKey
+        ? await this.notificationRepository.createOnce(
+            notificationData,
+            idempotencyKey,
+          )
+        : await this.notificationRepository.create(notificationData);
 
       try {
         const plain = this.toPlainNotification(notification);

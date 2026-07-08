@@ -7,8 +7,6 @@ import { UnitOfWork } from "@/database/UnitOfWork";
 import { DTOService } from "@/services/dto.service";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { MessageSentEvent } from "@/application/events/message/message.event";
-import { CommandBus } from "@/application/common/buses/command.bus";
-import { CreateNotificationCommand } from "@/application/commands/notification/createNotification/createNotification.command";
 import { Errors, wrapError } from "@/utils/errors";
 import {
   buildParticipantHash,
@@ -16,7 +14,6 @@ import {
   asPopulatedMessage,
 } from "@/utils/messaging-helpers";
 import { sanitizeTextInput } from "@/utils/sanitizers";
-import { isUserViewingConversation } from "@/server/socketServer";
 import { IImageStorageService, MessageDTO, toObjectId } from "@/types";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
@@ -43,7 +40,6 @@ export class SendMessageCommandHandler implements ICommandHandler<
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
-    @inject(TOKENS.CQRS.Commands.Bus) private readonly commandBus: CommandBus,
     @inject(TOKENS.Services.ImageStorage)
     private readonly imageStorageService: IImageStorageService,
   ) {}
@@ -259,40 +255,6 @@ export class SendMessageCommandHandler implements ICommandHandler<
           const recipients = participantPublicIds.filter(
             (id: string) => id !== senderPublicId,
           );
-          const recipientViewingStates = await Promise.all(
-            recipients.map(async (recipientId) => ({
-              recipientId,
-              isViewingConversation: await isUserViewingConversation(
-                recipientId,
-                conversationDoc!.publicId,
-              ),
-            })),
-          );
-          const recipientsNeedingNotification = recipientViewingStates
-            .filter(({ isViewingConversation }) => !isViewingConversation)
-            .map(({ recipientId }) => recipientId);
-
-          if (recipientsNeedingNotification.length > 0) {
-            await Promise.all(
-              recipientsNeedingNotification.map((recipientId) =>
-                this.commandBus.dispatch(
-                  new CreateNotificationCommand({
-                    receiverId: recipientId,
-                    actionType: "message",
-                    actorId: senderPublicId,
-                    actorUsername: populatedMessage.sender?.username,
-                    actorHandle: populatedMessage.sender?.handle,
-                    actorAvatar: populatedMessage.sender?.avatar,
-                    targetId: conversationDoc!.publicId,
-                    targetType: "conversation",
-                    targetPreview:
-                      sanitizedBody.substring(0, 50) +
-                      (sanitizedBody.length > 50 ? "..." : ""),
-                  }),
-                ),
-              ),
-            );
-          }
 
           await this.eventBus.queueTransactional(
             new MessageSentEvent(
@@ -300,6 +262,14 @@ export class SendMessageCommandHandler implements ICommandHandler<
               senderPublicId,
               recipients,
               message.publicId,
+              {
+                actorUsername: populatedMessage.sender?.username,
+                actorHandle: populatedMessage.sender?.handle,
+                actorAvatar: populatedMessage.sender?.avatar,
+                targetPreview:
+                  sanitizedBody.substring(0, 50) +
+                  (sanitizedBody.length > 50 ? "..." : ""),
+              },
             ),
           );
 

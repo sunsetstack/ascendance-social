@@ -45,6 +45,7 @@ export class RedisNotificationModule {
       timestamp: String(notification.timestamp),
     });
     pipeline.expire(hashKey, 2592000);
+    pipeline.lRem(listKey, 0, notificationId);
     pipeline.lPush(listKey, notificationId);
     pipeline.lTrim(listKey, 0, maxCount - 1);
     pipeline.expire(listKey, 2592000);

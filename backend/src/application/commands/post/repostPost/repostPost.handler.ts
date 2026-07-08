@@ -76,6 +76,7 @@ export class RepostPostCommandHandler implements ICommandHandler<
     const duplicates = await this.postReadRepository.countDocuments({
       user: (user as IUser)._id,
       repostOf: targetPost._id,
+      type: "repost",
     });
     if (duplicates > 0) {
       throw Errors.validation("Post already reposted by this user");
@@ -83,80 +84,12 @@ export class RepostPostCommandHandler implements ICommandHandler<
 
     const normalizedBody = this.normalizeBody(command.body);
 
-    const created = (await this.unitOfWork.executeInTransaction(async () => {
-      const postPublicId = uuidv4();
-      const payload = sanitizeForMongo({
-        publicId: postPublicId,
-        user: user._id as mongoose.Types.ObjectId,
-        author: {
-          _id: user._id,
-          publicId: user.publicId,
-          handle: user.handle,
-          username: user.username,
-          avatarUrl: user.avatar ?? "",
-          displayName: user.username,
-        },
-        body: normalizedBody,
-        slug: `${postPublicId}`,
-        type: "repost" as const,
-        repostOf: targetPost._id,
-        tags: Array.isArray(targetPost.tags)
-          ? (
-              targetPost.tags as (mongoose.Types.ObjectId | PopulatedPostTag)[]
-            ).map((t) =>
-              typeof t === "object" && "_id" in t
-                ? (t as PopulatedPostTag)._id || t
-                : t,
-            )
-          : [],
-        likesCount: 0,
-        commentsCount: 0,
-        viewsCount: 0,
-      }) as Partial<IPost>;
-
-      const newPost = await this.postWriteRepository.create(payload);
-      await this.postWriteRepository.updateRepostCount(
-        asMongoId(targetPost._id!.toString()),
-        1,
-      );
-
-      const targetOwner = this.resolvePostOwnerPublicId(targetPost);
-      if (targetOwner && targetOwner !== command.userPublicId) {
-        await this.eventBus.queueTransactional(
-          new NotificationRequestedEvent({
-            receiverId: asUserPublicId(targetOwner),
-            actionType: "repost",
-            actorId: command.userPublicId,
-            actorUsername: user.username,
-            actorHandle: user.handle,
-            actorAvatar: user.avatar,
-            targetId: targetPost.publicId,
-            targetType: "post",
-            targetPreview: this.buildPostPreview(targetPost),
-          }),
-        );
-      }
-
-      const tagNames = Array.isArray(targetPost.tags)
-        ? (targetPost.tags as (mongoose.Types.ObjectId | PopulatedPostTag)[])
-            .map((t) =>
-              typeof t === "object" && "tag" in t
-                ? (t as PopulatedPostTag).tag
-                : undefined,
-            )
-            .filter((t): t is string => typeof t === "string")
-        : [];
-
-      await this.eventBus.queueTransactional(
-        new PostUploadedEvent(
-          newPost.publicId,
-          user.publicId,
-          Array.from(new Set(tagNames)),
-        ),
-      );
-
-      return newPost;
-    })) as IPost;
+    const created = await this.createRepost(
+      command,
+      user as IUser,
+      targetPost,
+      normalizedBody,
+    );
 
     const hydrated = await this.postReadRepository.findByPublicId(
       created.publicId,
@@ -182,6 +115,114 @@ export class RepostPostCommandHandler implements ICommandHandler<
       }
       return "";
     }
+  }
+
+  private async createRepost(
+    command: RepostPostCommand,
+    user: IUser,
+    targetPost: IPost,
+    normalizedBody: string,
+  ): Promise<IPost> {
+    try {
+      return (await this.unitOfWork.executeInTransaction(async () => {
+        const postPublicId = uuidv4();
+        const payload = sanitizeForMongo({
+          publicId: postPublicId,
+          user: user._id as mongoose.Types.ObjectId,
+          author: {
+            _id: user._id,
+            publicId: user.publicId,
+            handle: user.handle,
+            username: user.username,
+            avatarUrl: user.avatar ?? "",
+            displayName: user.username,
+          },
+          body: normalizedBody,
+          slug: `${postPublicId}`,
+          type: "repost" as const,
+          repostOf: targetPost._id,
+          tags: Array.isArray(targetPost.tags)
+            ? (
+                targetPost.tags as (mongoose.Types.ObjectId | PopulatedPostTag)[]
+              ).map((t) =>
+                typeof t === "object" && "_id" in t
+                  ? (t as PopulatedPostTag)._id || t
+                  : t,
+              )
+            : [],
+          likesCount: 0,
+          commentsCount: 0,
+          viewsCount: 0,
+        }) as Partial<IPost>;
+
+        const newPost = await this.postWriteRepository.create(payload);
+        await this.postWriteRepository.updateRepostCount(
+          asMongoId(targetPost._id!.toString()),
+          1,
+        );
+
+        const targetOwner = this.resolvePostOwnerPublicId(targetPost);
+        if (targetOwner && targetOwner !== command.userPublicId) {
+          await this.eventBus.queueTransactional(
+            new NotificationRequestedEvent({
+              receiverId: asUserPublicId(targetOwner),
+              actionType: "repost",
+              actorId: command.userPublicId,
+              actorUsername: user.username,
+              actorHandle: user.handle,
+              actorAvatar: user.avatar,
+              targetId: targetPost.publicId,
+              targetType: "post",
+              targetPreview: this.buildPostPreview(targetPost),
+            }),
+          );
+        }
+
+        const tagNames = Array.isArray(targetPost.tags)
+          ? (targetPost.tags as (mongoose.Types.ObjectId | PopulatedPostTag)[])
+              .map((t) =>
+                typeof t === "object" && "tag" in t
+                  ? (t as PopulatedPostTag).tag
+                  : undefined,
+              )
+              .filter((t): t is string => typeof t === "string")
+          : [];
+
+        await this.eventBus.queueTransactional(
+          new PostUploadedEvent(
+            newPost.publicId,
+            user.publicId,
+            Array.from(new Set(tagNames)),
+          ),
+        );
+
+        return newPost;
+      })) as IPost;
+    } catch (error) {
+      if (!this.isDuplicateRepostError(error)) {
+        throw error;
+      }
+
+      const existing = await this.postReadRepository.findOneByFilter({
+        user: user._id,
+        repostOf: targetPost._id,
+        type: "repost",
+      });
+      if (!existing) {
+        throw error;
+      }
+      return existing;
+    }
+  }
+
+  private isDuplicateRepostError(error: unknown): boolean {
+    if (!error || typeof error !== "object") return false;
+    const maybeError = error as { name?: string; code?: number; message?: string };
+    return (
+      maybeError.name === "DuplicateError" ||
+      maybeError.code === 11000 ||
+      Boolean(maybeError.message?.toLowerCase().includes("duplicate"))
+    );
   }
 
   private resolvePostOwnerPublicId(post: IPost): string {

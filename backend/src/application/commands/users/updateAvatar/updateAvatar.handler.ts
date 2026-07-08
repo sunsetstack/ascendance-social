@@ -8,7 +8,6 @@ import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRep
 import type { IImageStorageService } from "@/types";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { EventBus } from "@/application/common/buses/event.bus";
-import { RedisService } from "@/services/redis.service";
 import { DTOService, PublicUserDTO } from "@/services/dto.service";
 import { RetryPresets, RetryService } from "@/services/retry.service";
 import { Errors, wrapError } from "@/utils/errors";
@@ -34,7 +33,6 @@ export class UpdateAvatarCommandHandler implements ICommandHandler<
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
-    @inject(TOKENS.Services.Redis) private readonly redisService: RedisService,
     @inject(TOKENS.Services.Retry) private readonly retryService: RetryService,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
   ) {}
@@ -55,6 +53,7 @@ export class UpdateAvatarCommandHandler implements ICommandHandler<
     let newAvatarPublicId: string | null = null;
     const oldAvatarUrl = user.avatar ?? null;
     const userPublicId = user.publicId;
+    let committed = false;
 
     try {
       const uploadResult = await this.imageStorageService.uploadImageStream(
@@ -78,18 +77,17 @@ export class UpdateAvatarCommandHandler implements ICommandHandler<
         const userId = asMongoId(user._id.toString());
 
         await this.userWriteRepository.updateAvatar(userId, newAvatarUrl!);
+        await this.eventBus.queueTransactional(
+          new UserAvatarChangedEvent(
+            userPublicId,
+            oldAvatarUrl || undefined,
+            newAvatarUrl || undefined,
+          ),
+        );
       });
+      committed = true;
 
       await this.deleteOldAvatarAfterCommit(userPublicId, oldAvatarUrl);
-
-      await this.redisService.invalidateByTags([`user_data:${userPublicId}`]);
-
-      const avatarChangedEvent = new UserAvatarChangedEvent(
-        userPublicId,
-        oldAvatarUrl || undefined,
-        newAvatarUrl || undefined,
-      );
-      await this.eventBus.publish(avatarChangedEvent);
 
       const updatedUser = await this.userReadRepository.findByPublicId(
         command.userPublicId,
@@ -105,7 +103,7 @@ export class UpdateAvatarCommandHandler implements ICommandHandler<
 
       return this.dtoService.toPublicDTO(updatedUser);
     } catch (error) {
-      if (newAvatarPublicId) {
+      if (!committed && newAvatarPublicId) {
         try {
           await this.imageStorageService.deleteImage(newAvatarPublicId);
         } catch (deleteError) {

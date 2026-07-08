@@ -15,6 +15,12 @@ export class MessageSentEvent implements IEvent {
     public readonly senderPublicId: UserPublicId,
     public readonly recipientPublicIds: UserPublicId[],
     public readonly messagePublicId: MessagePublicId,
+    public readonly notification?: {
+      actorUsername?: string;
+      actorHandle?: string;
+      actorAvatar?: string;
+      targetPreview?: string;
+    },
   ) {}
 }
 

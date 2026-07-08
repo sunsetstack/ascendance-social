@@ -102,6 +102,7 @@ describe("CreatePostCommandHandler", () => {
 		mockTagService = {
 			ensureTagsExist: sinon.stub(),
 			incrementUsage: sinon.stub(),
+			trackUsageActivity: sinon.stub(),
 			collectTagNames: sinon.stub(),
 		};
 

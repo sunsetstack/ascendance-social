@@ -18,6 +18,7 @@ describe("RecordPostViewCommandHandler", () => {
   let feedServiceStub: any;
   let transactionQueueStub: any;
   let bloomFilterServiceStub: any;
+  let unitOfWorkStub: any;
 
   const postId = new mongoose.Types.ObjectId();
   const userId = new mongoose.Types.ObjectId();
@@ -39,6 +40,9 @@ describe("RecordPostViewCommandHandler", () => {
     feedServiceStub = sinon.createStubInstance(FeedService);
     transactionQueueStub = sinon.createStubInstance(TransactionQueueService);
     bloomFilterServiceStub = sinon.createStubInstance(BloomFilterService);
+    unitOfWorkStub = {
+      executeInTransaction: sinon.stub().callsFake(async (fn) => await fn()),
+    };
 
     // Default successful mocks
     postReadRepoStub.findOneByPublicId.resolves({
@@ -67,6 +71,7 @@ describe("RecordPostViewCommandHandler", () => {
       feedServiceStub,
       transactionQueueStub,
       bloomFilterServiceStub,
+      unitOfWorkStub,
     );
   });
 

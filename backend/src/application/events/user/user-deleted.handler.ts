@@ -33,6 +33,8 @@ export class UserDeletedHandler implements IEventHandler<UserDeletedEvent> {
       );
       tagsToInvalidate.push(`user_post_count:${event.userPublicId}`);
       tagsToInvalidate.push(`user_profile:${event.userPublicId}`);
+      tagsToInvalidate.push("who_to_follow");
+      tagsToInvalidate.push(`user:${event.userPublicId}`);
 
       // user's cache patterns
       patternsToDelete.push(
@@ -68,6 +70,7 @@ export class UserDeletedHandler implements IEventHandler<UserDeletedEvent> {
 
       // invalidate global feeds that might contain user's posts
       tagsToInvalidate.push(CacheKeyBuilder.getTrendingFeedTag());
+      tagsToInvalidate.push(CacheKeyBuilder.getNewFeedTag());
       patternsToDelete.push(CacheKeyBuilder.getTrendingFeedPattern());
       patternsToDelete.push(`${CacheKeyBuilder.PREFIXES.NEW_FEED}:*`);
 
@@ -118,6 +121,7 @@ export class UserDeletedHandler implements IEventHandler<UserDeletedEvent> {
           fallbackError,
         });
       }
+      throw error;
     }
   }
 }

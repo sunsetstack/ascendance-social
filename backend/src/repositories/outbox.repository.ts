@@ -4,6 +4,7 @@ import { BaseRepository } from "./base.repository";
 import { IOutboxEvent } from "@/models/outbox.model";
 import { TOKENS } from "@/types/tokens";
 import { Errors } from "@/utils/errors";
+import { EventRegistry } from "@/application/common/events/event-registry";
 
 @injectable()
 export class OutboxRepository extends BaseRepository<IOutboxEvent> {
@@ -19,11 +20,12 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
   ): Promise<IOutboxEvent> {
     try {
       const session = this.getSession();
+      const eventPayload = this.preparePayload(eventType, payload, traceId);
       const outboxDocs = await this.model.create(
         [
           {
             eventType,
-            payload,
+            payload: eventPayload,
             traceId,
             correlationId,
             processed: false,
@@ -121,11 +123,14 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
     }
   }
 
-  async markAsProcessed(eventId: string): Promise<void> {
+  async markAsProcessed(
+    eventId: string,
+    workerId?: string,
+  ): Promise<boolean> {
     try {
-      await this.model
+      const result = await this.model
         .updateOne(
-          { _id: eventId },
+          this.buildOwnedFilter(eventId, workerId),
           {
             $set: {
               processed: true,
@@ -140,6 +145,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
           },
         )
         .exec();
+      return result.modifiedCount > 0;
     } catch (error: unknown) {
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
@@ -151,14 +157,16 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
   async markHandlerProcessed(
     eventId: string,
     handlerKey: string,
-  ): Promise<void> {
+    workerId?: string,
+  ): Promise<boolean> {
     try {
-      await this.model
+      const result = await this.model
         .updateOne(
-          { _id: eventId },
+          this.buildOwnedFilter(eventId, workerId),
           { $addToSet: { processedHandlers: handlerKey } },
         )
         .exec();
+      return result.modifiedCount > 0;
     } catch (error: unknown) {
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
@@ -167,11 +175,15 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
     }
   }
 
-  async markAsFailed(eventId: string, errorMessage: string): Promise<void> {
+  async markAsFailed(
+    eventId: string,
+    errorMessage: string,
+    workerId?: string,
+  ): Promise<boolean> {
     try {
-      await this.model
+      const result = await this.model
         .updateOne(
-          { _id: eventId },
+          this.buildOwnedFilter(eventId, workerId),
           {
             $inc: { retries: 1 },
             $set: { error: errorMessage, processing: false },
@@ -179,11 +191,45 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
           },
         )
         .exec();
+      return result.modifiedCount > 0;
     } catch (error: unknown) {
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to mark event as failed",
       );
     }
+  }
+
+  private buildOwnedFilter(
+    eventId: string,
+    workerId?: string,
+  ): Record<string, unknown> {
+    const filter: Record<string, unknown> = { _id: eventId };
+    if (workerId) {
+      filter.processingOwner = workerId;
+    }
+    return filter;
+  }
+
+  private preparePayload(
+    eventType: string,
+    payload: any,
+    traceId: string,
+  ): any {
+    if (
+      eventType !== EventRegistry.domain.NotificationRequested ||
+      !payload?.payload ||
+      payload.payload.idempotencyKey
+    ) {
+      return payload;
+    }
+
+    return {
+      ...payload,
+      payload: {
+        ...payload.payload,
+        idempotencyKey: `notification:${traceId}`,
+      },
+    };
   }
 }

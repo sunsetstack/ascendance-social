@@ -11,6 +11,7 @@ const notificationSchema = new Schema<INotification>({
 	targetId: { type: String }, // optional target publicId (post/image)
 	targetType: { type: String }, // 'post' | 'image' | 'user'
 	targetPreview: { type: String }, // preview text/snippet of the target content
+	idempotencyKey: { type: String },
 	isRead: { type: Boolean, default: false },
 	timestamp: { type: Date, default: Date.now },
 });
@@ -18,6 +19,10 @@ const notificationSchema = new Schema<INotification>({
 // index for efficient queries
 notificationSchema.index({ userId: 1, timestamp: -1 });
 notificationSchema.index({ userId: 1, isRead: 1 });
+notificationSchema.index(
+	{ idempotencyKey: 1 },
+	{ unique: true, sparse: true },
+);
 
 notificationSchema.set("toJSON", {
 	transform: (_doc, ret: any) => {

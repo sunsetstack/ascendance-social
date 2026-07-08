@@ -66,15 +66,28 @@ export class OutboxWorker extends BasePollingWorker {
             }
 
             await handler.handle(record.payload);
-            await this.outboxRepository.markHandlerProcessed(
-              eventId,
-              handler.key,
-            );
+            const handlerMarked =
+              await this.outboxRepository.markHandlerProcessed(
+                eventId,
+                handler.key,
+                this.workerId,
+              );
+            if (!handlerMarked) {
+              throw new Error(
+                "Outbox event ownership lost before handler checkpoint",
+              );
+            }
             processedHandlers.add(handler.key);
           }
         });
 
-        await this.outboxRepository.markAsProcessed(eventId);
+        const eventMarked = await this.outboxRepository.markAsProcessed(
+          eventId,
+          this.workerId,
+        );
+        if (!eventMarked) {
+          throw new Error("Outbox event ownership lost before completion");
+        }
         this.metricsService.recordOutboxAttempt(
           record.eventType,
           "processed",
@@ -109,7 +122,24 @@ export class OutboxWorker extends BasePollingWorker {
           correlationId,
           durationMs: Date.now() - attemptStartedAt,
         });
-        await this.outboxRepository.markAsFailed(eventId, message);
+        const failedMarked = await this.outboxRepository.markAsFailed(
+          eventId,
+          message,
+          this.workerId,
+        );
+        if (!failedMarked) {
+          logger.warn(
+            "Outbox event failure not recorded because ownership changed",
+            {
+              event: "outbox.event.ownership_lost",
+              worker: "OutboxWorker",
+              eventId,
+              eventType: record.eventType,
+              traceId,
+              correlationId,
+            },
+          );
+        }
       }
     }
 
