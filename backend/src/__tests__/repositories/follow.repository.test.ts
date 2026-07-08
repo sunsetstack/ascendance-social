@@ -8,6 +8,7 @@ import sinon, { SinonStub } from "sinon";
 import { FollowRepository } from "@/repositories/follow.repository";
 import { ClientSession, Model, Types } from "mongoose";
 import { IFollow } from "@/types";
+import { sessionALS } from "@/database/UnitOfWork";
 
 chai.use(chaiAsPromised);
 
@@ -237,7 +238,9 @@ describe("FollowRepository", () => {
 			mockModel.findOne.resolves(null);
 			mockModel.create.resolves([mockFollow]);
 
-			const result = await repository.addFollow(followerId, followeeId, mockSession);
+			const result = await sessionALS.run(mockSession, () =>
+				repository.addFollow(followerId, followeeId),
+			);
 
 			expect(result).to.deep.equal(mockFollow);
 			expect(mockModel.findOne.calledOnceWith({ followerId, followeeId })).to.be.true;
@@ -314,7 +317,9 @@ describe("FollowRepository", () => {
 			mockModel.findOne.resolves(null);
 			mockModel.create.resolves([mockFollow]);
 
-			const result = await repository.addFollowByPublicId(followerPublicId, followeePublicId, mockSession);
+			const result = await sessionALS.run(mockSession, () =>
+				repository.addFollowByPublicId(followerPublicId, followeePublicId),
+			);
 
 			expect(result).to.deep.equal(mockFollow);
 			expect(mockUsersCollection.findOne.calledTwice).to.be.true;
@@ -466,7 +471,7 @@ describe("FollowRepository", () => {
 			mockModel.findOne.resolves(existingFollow);
 			mockModel.deleteOne.resolves({ deletedCount: 1 });
 
-			await repository.removeFollow(followerId, followeeId, mockSession);
+			await sessionALS.run(mockSession, () => repository.removeFollow(followerId, followeeId));
 
 			expect(mockModel.findOne.calledOnceWith({ followerId, followeeId })).to.be.true;
 			expect(mockModel.deleteOne.calledOnceWith({ followerId, followeeId }, { session: mockSession })).to.be.true;
@@ -542,7 +547,9 @@ describe("FollowRepository", () => {
 			mockModel.findOne.resolves(existingFollow);
 			mockModel.deleteOne.resolves({ deletedCount: 1 });
 
-			await repository.removeFollowByPublicId(followerPublicId, followeePublicId, mockSession);
+			await sessionALS.run(mockSession, () =>
+				repository.removeFollowByPublicId(followerPublicId, followeePublicId),
+			);
 
 			expect(mockUsersCollection.findOne.calledTwice).to.be.true;
 			expect(mockModel.findOne.calledOnceWith({ followerId: followerId.toString(), followeeId: followeeId.toString() }))
