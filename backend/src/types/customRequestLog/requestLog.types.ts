@@ -11,5 +11,9 @@ export interface IRequestLog extends Document {
     statusCode: number;
     responseTimeMs: number;
     correlationId?: string;
+    authAction?: string;
+    authEmail?: string;
+    authUsername?: string;
+    authHandle?: string;
   };
 }

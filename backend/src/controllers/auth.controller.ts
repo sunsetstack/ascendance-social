@@ -94,6 +94,13 @@ export class AuthController {
     );
     const { user } =
       await this.commandBus.dispatch<RegisterUserResult>(command);
+    req.authLogMetadata = {
+      authAction: "register",
+      userId: user.publicId,
+      authEmail: user.email,
+      authUsername: user.username,
+      authHandle: user.handle,
+    };
     const { accessToken, refreshToken } =
       await this.authService.issueTokensForUser(
         toSessionUser(user),
@@ -109,6 +116,13 @@ export class AuthController {
       await this.commandBus.dispatch<AuthenticatedSessionResult>(
         new LoginCommand(email, password, buildAuthRequestContext(req)),
       );
+    req.authLogMetadata = {
+      authAction: "login",
+      userId: user.publicId,
+      authEmail: user.email,
+      authUsername: user.username,
+      authHandle: user.handle,
+    };
     setAuthCookies(res, accessToken, refreshToken);
     res.status(200).json({ user });
   };
@@ -122,11 +136,25 @@ export class AuthController {
     } = await this.commandBus.dispatch<AuthenticatedSessionResult>(
       new RefreshSessionCommand(refreshToken, buildAuthRequestContext(req)),
     );
+    req.authLogMetadata = {
+      authAction: "refresh",
+      userId: user.publicId,
+      authEmail: user.email,
+      authUsername: user.username,
+      authHandle: user.handle,
+    };
     setAuthCookies(res, accessToken, nextRefreshToken);
     res.status(200).json({ user });
   };
 
   logout = async (req: Request, res: Response) => {
+    req.authLogMetadata = {
+      authAction: "logout",
+      userId: req.decodedUser?.publicId,
+      authEmail: req.decodedUser?.email,
+      authUsername: req.decodedUser?.username,
+      authHandle: req.decodedUser?.handle,
+    };
     await this.revokeSessionFromRequest(req);
     clearAuthCookies(res);
     res.status(200).json({ message: "Logged out successfully" });

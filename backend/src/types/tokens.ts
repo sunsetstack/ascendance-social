@@ -13,7 +13,6 @@ export const TOKENS = {
     Profile: "ProfileController",
     Search: "SearchController",
     Social: "SocialController",
-    User: "UserController",
     UserQuery: "UserQueryController",
   },
   Models: {

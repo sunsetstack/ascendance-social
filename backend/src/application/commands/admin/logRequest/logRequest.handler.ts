@@ -28,6 +28,10 @@ export class LogRequestCommandHandler implements ICommandHandler<
       correlationId,
       userId,
       userAgent,
+      authAction,
+      authEmail,
+      authUsername,
+      authHandle,
     } = command.payload;
 
     const tasks: Promise<any>[] = [
@@ -42,6 +46,10 @@ export class LogRequestCommandHandler implements ICommandHandler<
           correlationId,
           userId,
           userAgent,
+          authAction,
+          authEmail,
+          authUsername,
+          authHandle,
         },
       }),
     ];

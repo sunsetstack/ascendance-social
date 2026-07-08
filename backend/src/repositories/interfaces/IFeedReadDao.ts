@@ -8,7 +8,7 @@ import {
 
 /**
  * Read-only Data Access Object tailored for executing complex Feed aggregations.
- * This separates heavy analytical queries from the domain-focused PostRepository.
+ * This separates heavy analytical queries from the domain-focused post read repository.
  */
 export interface IFeedReadDao {
   getFeedForUserCoreWithCursor(
@@ -16,8 +16,6 @@ export interface IFeedReadDao {
     favoriteTags: string[],
     options: CursorPaginationOptions
   ): Promise<CursorPaginationResult<FeedPost>>;
-
-  getRankedFeed(favoriteTags: string[], limit: number, skip: number): Promise<PaginationResult<FeedPost>>;
 
   getTrendingFeed(
     limit: number,
@@ -49,16 +47,4 @@ export interface IFeedReadDao {
       weights?: { recency?: number; popularity?: number; tagMatch?: number };
     }
   ): Promise<CursorPaginationResult<FeedPost>>;
-
-  getNewFeedWithFacet(limit: number, skip: number): Promise<PaginationResult<FeedPost>>;
-
-  getTrendingFeedWithFacet(
-    limit: number,
-    skip: number,
-    options?: {
-      timeWindowDays?: number;
-      minLikes?: number;
-      weights?: { recency?: number; popularity?: number; comments?: number };
-    }
-  ): Promise<PaginationResult<FeedPost>>;
 }

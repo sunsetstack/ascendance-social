@@ -8,7 +8,6 @@ import {
   getErrorMessage,
   getErrorName,
 } from "@/utils/errors";
-import rateLimit from "express-rate-limit";
 import { DecodedUser, AdminContext } from "@/types";
 import { asUserPublicId, asSessionId } from "@/types/branded";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
@@ -17,9 +16,9 @@ import { authCookieNames } from "@/config/cookieConfig";
 import { AuthSessionService } from "@/services/auth-session.service";
 import { MetricsService } from "@/metrics/metrics.service";
 import { getClientIp } from "@/utils/request-ip";
-import { getRateLimitStoreOptions } from "@/config/rateLimit";
 import { TOKENS } from "@/types/tokens";
 import { setRequestContextUserId } from "@/runtime/request-context";
+import { createAdminOnlyMiddleware } from "@/middleware/admin-auth.middleware";
 
 declare global {
   namespace Express {
@@ -30,7 +29,18 @@ declare global {
   }
 }
 
-const isTestEnv = process.env.NODE_ENV === "test";
+export { adminActionValidation } from "@/middleware/admin-action-validation.middleware";
+export {
+  adminRateLimit,
+  forgotPasswordEmailRateLimit,
+  forgotPasswordIpRateLimit,
+  loginEmailRateLimit,
+  loginIpRateLimit,
+  registerIpRateLimit,
+  resetPasswordIpRateLimit,
+  verifyEmailAddressRateLimit,
+  verifyEmailIpRateLimit,
+} from "@/middleware/auth-rate-limits.middleware";
 
 export abstract class AuthStrategy {
   abstract authenticate(req: Request): Promise<DecodedUser>;
@@ -260,128 +270,6 @@ export class AuthenticationMiddleware {
   }
 }
 
-// Admin-specific rate limiting
-export const adminRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("admin", { passOnStoreError: false }),
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 50, // 50 admin actions per 5 minutes
-  message: "Too many admin actions, please slow down",
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) =>
-    `admin-${req.decodedUser?.publicId || getClientIp(req)}`,
-});
-
-export const registerIpRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("register-ip", { passOnStoreError: false }),
-  windowMs: Number(process.env.REGISTER_IP_WINDOW_MS) || 60 * 60 * 1000,
-  max: Number(process.env.REGISTER_IP_MAX) || (isTestEnv ? 1000 : 5),
-  message: "Too many registration attempts, please try again later",
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => `register-ip:${getClientIp(req)}`,
-});
-
-export const loginIpRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("login-ip", { passOnStoreError: false }),
-  windowMs: Number(process.env.LOGIN_IP_WINDOW_MS) || 15 * 60 * 1000,
-  max: Number(process.env.LOGIN_IP_MAX) || (isTestEnv ? 1000 : 20),
-  message: "Too many login attempts, please try again later",
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => `login-ip:${getClientIp(req)}`,
-});
-
-export const loginEmailRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("login-email", { passOnStoreError: false }),
-  windowMs: Number(process.env.LOGIN_EMAIL_WINDOW_MS) || 15 * 60 * 1000,
-  max: Number(process.env.LOGIN_EMAIL_MAX) || (isTestEnv ? 1000 : 5),
-  message: "Too many login attempts, please try again later",
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    const email =
-      typeof req.body?.email === "string"
-        ? req.body.email.trim().toLowerCase()
-        : "";
-    return `login-email:${email || "unknown"}`;
-  },
-});
-
-export const forgotPasswordIpRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("forgot-password-ip", {
-    passOnStoreError: false,
-  }),
-  windowMs: Number(process.env.FORGOT_PASSWORD_IP_WINDOW_MS) || 15 * 60 * 1000,
-  max: Number(process.env.FORGOT_PASSWORD_IP_MAX) || 5,
-  message: "Too many password reset requests, please try again later",
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => `forgot-password-ip:${getClientIp(req)}`,
-});
-
-export const forgotPasswordEmailRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("forgot-password-email", {
-    passOnStoreError: false,
-  }),
-  windowMs:
-    Number(process.env.FORGOT_PASSWORD_EMAIL_WINDOW_MS) || 60 * 60 * 1000,
-  max: Number(process.env.FORGOT_PASSWORD_EMAIL_MAX) || 3,
-  message: "Too many password reset requests, please try again later",
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    const email =
-      typeof req.body?.email === "string"
-        ? req.body.email.trim().toLowerCase()
-        : "";
-    return `forgot-password-email:${email || "unknown"}`;
-  },
-});
-
-export const resetPasswordIpRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("reset-password-ip", {
-    passOnStoreError: false,
-  }),
-  windowMs: Number(process.env.RESET_PASSWORD_IP_WINDOW_MS) || 15 * 60 * 1000,
-  max: Number(process.env.RESET_PASSWORD_IP_MAX) || (isTestEnv ? 1000 : 10),
-  message: "Too many password reset attempts, please try again later",
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => `reset-password-ip:${getClientIp(req)}`,
-});
-
-export const verifyEmailIpRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("verify-email-ip", {
-    passOnStoreError: false,
-  }),
-  windowMs: Number(process.env.VERIFY_EMAIL_IP_WINDOW_MS) || 60 * 60 * 1000,
-  max: Number(process.env.VERIFY_EMAIL_IP_MAX) || (isTestEnv ? 1000 : 20),
-  message: "Too many email verification attempts, please try again later",
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => `verify-email-ip:${getClientIp(req)}`,
-});
-
-export const verifyEmailAddressRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("verify-email-address", {
-    passOnStoreError: false,
-  }),
-  windowMs:
-    Number(process.env.VERIFY_EMAIL_ADDRESS_WINDOW_MS) || 60 * 60 * 1000,
-  max: Number(process.env.VERIFY_EMAIL_ADDRESS_MAX) || (isTestEnv ? 1000 : 5),
-  message: "Too many email verification attempts, please try again later",
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    const email =
-      typeof req.body?.email === "string"
-        ? req.body.email.trim().toLowerCase()
-        : "";
-    return `verify-email-address:${email || "unknown"}`;
-  },
-});
-
 @injectable()
 export class AuthMiddlewareService {
   private readonly authenticationMiddleware: AuthenticationMiddleware;
@@ -413,135 +301,6 @@ export class AuthMiddlewareService {
   }
 
   adminOnly(): RequestHandler {
-    return async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const decodedUser = req.decodedUser;
-
-        if (!decodedUser) {
-          logger.warn("Unauthenticated admin access attempt", {
-            event: "security.admin_access.unauthenticated",
-            method: req.method,
-            route: req.path,
-            ip: req.ip,
-          });
-          return res.status(401).json({ error: "Authentication required" });
-        }
-
-        if (!decodedUser.isAdmin) {
-          logger.warn("Unauthorized admin access attempt", {
-            event: "security.admin_access.unauthorized",
-            method: req.method,
-            route: req.path,
-            userId: decodedUser.publicId,
-            username: decodedUser.username,
-            ip: req.ip,
-          });
-          return res.status(403).json({ error: "Admin privileges required" });
-        }
-
-        const user = await this.userReadRepository.findByPublicId(
-          decodedUser.publicId,
-        );
-
-        if (!user) {
-          logger.warn("Admin user not found in database", {
-            event: "security.admin_access.user_not_found",
-            userId: decodedUser.publicId,
-          });
-          return res.status(401).json({ error: "User not found" });
-        }
-
-        if (user.isBanned) {
-          logger.warn("Banned admin attempted access", {
-            event: "security.admin_access.banned_user",
-            userId: decodedUser.publicId,
-            username: decodedUser.username,
-            ip: req.ip,
-          });
-          return res.status(403).json({ error: "Account banned" });
-        }
-
-        if (!user.isAdmin) {
-          logger.warn("Admin JWT no longer matches database role", {
-            event: "security.admin_access.role_mismatch",
-            userId: decodedUser.publicId,
-            username: decodedUser.username,
-          });
-          return res.status(403).json({ error: "Admin privileges required" });
-        }
-
-        const adminEmailsEnv = process.env.ADMIN_EMAILS;
-        if (adminEmailsEnv) {
-          const allowedEmails = adminEmailsEnv
-            .split(",")
-            .map((e) => e.trim().toLowerCase())
-            .filter((e) => e.length > 0);
-
-          if (user.email && !allowedEmails.includes(user.email.toLowerCase())) {
-            logger.warn("Admin email not in allowlist", {
-              event: "security.admin_access.email_not_allowed",
-              userId: decodedUser.publicId,
-              username: decodedUser.username,
-              ip: req.ip,
-            });
-            return res
-              .status(403)
-              .json({ error: "Admin privileges restricted" });
-          }
-        }
-
-        logger.info("Admin action authorized", {
-          event: "admin.action.authorized",
-          userId: decodedUser.publicId,
-          username: decodedUser.username,
-          method: req.method,
-          route: req.path,
-          ip: req.ip,
-        });
-
-        req.adminContext = {
-          adminId: decodedUser.publicId,
-          adminUsername: decodedUser.username,
-          timestamp: new Date(),
-          ip: req.ip,
-          userAgent: req.get("User-Agent"),
-        };
-
-        next();
-      } catch (error) {
-        logger.error("Admin middleware failed", {
-          event: "security.admin_access.middleware_failed",
-          error,
-        });
-        return res.status(500).json({ error: "Internal server error" });
-      }
-    };
+    return createAdminOnlyMiddleware(this.userReadRepository);
   }
 }
-
-// Admin action validation middleware
-export const adminActionValidation = (requiredFields: string[] = []) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    // Validate required fields
-    for (const field of requiredFields) {
-      if (!req.body[field]) {
-        return res.status(400).json({
-          error: `Missing required field: ${field}`,
-          requiredFields,
-        });
-      }
-    }
-
-    // Validate publicId format in params
-    if (
-      req.params.publicId &&
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        req.params.publicId,
-      )
-    ) {
-      return res.status(400).json({ error: "Invalid publicId format" });
-    }
-
-    next();
-  };
-};

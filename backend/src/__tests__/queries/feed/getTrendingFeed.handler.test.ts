@@ -17,9 +17,7 @@ describe("GetTrendingFeedQueryHandler", () => {
 		findPostsByPublicIds: SinonStub;
 		getTrendingFeedWithCursor: SinonStub;
 	};
-	let mockUserReadRepository: { findByPublicId: SinonStub };
 	let mockRedisService: { getTrendingFeedWithCursor: SinonStub };
-	let mockDTOService: unknown;
 	let mockFeedEnrichmentService: { enrichFeedWithCurrentData: SinonStub };
 
 	beforeEach(() => {
@@ -31,19 +29,15 @@ describe("GetTrendingFeedQueryHandler", () => {
 			findPostsByPublicIds: sinon.stub(),
 			getTrendingFeedWithCursor: sinon.stub(),
 		};
-		mockUserReadRepository = { findByPublicId: sinon.stub() };
 		mockRedisService = {
 			getTrendingFeedWithCursor: sinon.stub(),
 		};
-		mockDTOService = {};
 		mockFeedEnrichmentService = { enrichFeedWithCurrentData: sinon.stub() };
 
 		handler = new GetTrendingFeedQueryHandler(
 			mockFeedReadDao as any,
 			mockPostReadRepository as any,
-			mockUserReadRepository as any,
 			mockRedisService as any,
-			mockDTOService as any,
 			mockFeedEnrichmentService as any,
 		);
 	});

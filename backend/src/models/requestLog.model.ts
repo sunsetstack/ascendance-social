@@ -13,6 +13,10 @@ const RequestLogSchema = new Schema<IRequestLog>(
       userAgent: { type: String },
       statusCode: { type: Number, required: true },
       responseTimeMs: { type: Number, required: true },
+      authAction: { type: String },
+      authEmail: { type: String },
+      authUsername: { type: String },
+      authHandle: { type: String },
     },
   },
   {

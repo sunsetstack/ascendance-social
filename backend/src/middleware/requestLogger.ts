@@ -7,6 +7,18 @@ import { getClientIp } from "@/utils/request-ip";
 import { TOKENS } from "@/types/tokens";
 import { getCorrelationId } from "@/runtime/request-context";
 
+declare module "express-serve-static-core" {
+  interface Request {
+    authLogMetadata?: {
+      authAction?: string;
+      userId?: string;
+      authEmail?: string;
+      authUsername?: string;
+      authHandle?: string;
+    };
+  }
+}
+
 let commandBus: CommandBus | null = null;
 
 function getCommandBus(): CommandBus {
@@ -36,8 +48,11 @@ export const requestLogger = (
     }
 
     const responseTimeMs = Date.now() - startTime;
-    const userId = req.decodedUser?.publicId;
-    const userAgent = req.get("user-agent");
+    const authMetadata = req.authLogMetadata ?? {};
+    const userId = authMetadata.userId ?? req.decodedUser?.publicId;
+    const authEmail = authMetadata.authEmail ?? req.decodedUser?.email;
+    const authUsername = authMetadata.authUsername ?? req.decodedUser?.username;
+    const authHandle = authMetadata.authHandle ?? req.decodedUser?.handle;
 
     const command = new LogRequestCommand({
       method: req.method,
@@ -47,7 +62,11 @@ export const requestLogger = (
       responseTimeMs,
       correlationId: req.correlationId ?? getCorrelationId(),
       userId,
-      userAgent,
+      userAgent: req.get("user-agent"),
+      authAction: authMetadata.authAction,
+      authEmail,
+      authUsername,
+      authHandle,
     });
 
     void getCommandBus()

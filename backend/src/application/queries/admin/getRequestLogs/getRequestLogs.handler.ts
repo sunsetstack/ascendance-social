@@ -16,6 +16,10 @@ export interface RequestLogDTO {
   correlationId?: string;
   userId?: string;
   userAgent?: string;
+  authAction?: string;
+  authEmail?: string;
+  authUsername?: string;
+  authHandle?: string;
 }
 
 @injectable()
@@ -88,6 +92,10 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<
       correlationId: log.metadata.correlationId,
       userId: log.metadata.userId,
       userAgent: log.metadata.userAgent,
+      authAction: log.metadata.authAction,
+      authEmail: log.metadata.authEmail,
+      authUsername: log.metadata.authUsername,
+      authHandle: log.metadata.authHandle,
     }));
 
     return {

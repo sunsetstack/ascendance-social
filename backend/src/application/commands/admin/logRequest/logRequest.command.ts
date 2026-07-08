@@ -9,6 +9,10 @@ export interface LogRequestPayload {
   correlationId?: string;
   userId?: string;
   userAgent?: string;
+  authAction?: string;
+  authEmail?: string;
+  authUsername?: string;
+  authHandle?: string;
 }
 
 export class LogRequestCommand implements ICommand {
