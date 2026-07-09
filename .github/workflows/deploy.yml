@@ -51,13 +51,25 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         env:
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          DEPLOY_SHA: ${{ github.sha }}
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: 22
-          envs: REDIS_PASSWORD
+          envs: REDIS_PASSWORD,DEPLOY_SHA
+          script_stop: true
           script: |
+            set -eu
+
+            compose() {
+              if docker compose version >/dev/null 2>&1; then
+                docker compose "$@"
+              else
+                docker-compose "$@"
+              fi
+            }
+
             cd /opt/ascendance-social
 
             touch .env
@@ -68,8 +80,13 @@ jobs:
             fi
 
             git fetch origin master
-            git reset --hard origin/master
+            git reset --hard "$DEPLOY_SHA"
+            test "$(git rev-parse HEAD)" = "$DEPLOY_SHA"
+            test -s Caddyfile
+            test -s docker-compose-prod.yml
+            test -s frontend/nginx.conf
 
-            docker-compose -f docker-compose-prod.yml pull
-            docker-compose -f docker-compose-prod.yml up -d
+            compose -f docker-compose-prod.yml pull
+            compose -f docker-compose-prod.yml up -d --remove-orphans
+            compose -f docker-compose-prod.yml restart caddy
             docker system prune -f
