@@ -7,8 +7,6 @@ import { UnitOfWork } from "@/database/UnitOfWork";
 import { DTOService } from "@/services/dto.service";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { MessageSentEvent } from "@/application/events/message/message.event";
-import { CommandBus } from "@/application/common/buses/command.bus";
-import { CreateNotificationCommand } from "@/application/commands/notification/createNotification/createNotification.command";
 import { Errors, wrapError } from "@/utils/errors";
 import {
   buildParticipantHash,
@@ -16,7 +14,6 @@ import {
   asPopulatedMessage,
 } from "@/utils/messaging-helpers";
 import { sanitizeTextInput } from "@/utils/sanitizers";
-import { isUserViewingConversation } from "@/server/socketServer";
 import { IImageStorageService, MessageDTO, toObjectId } from "@/types";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
@@ -25,6 +22,7 @@ import {
   requireUserInternalId,
   resolveParticipantPublicIds,
 } from "@/application/messaging/messaging-support";
+import { logger } from "@/utils/winston";
 
 @injectable()
 export class SendMessageCommandHandler implements ICommandHandler<
@@ -42,12 +40,13 @@ export class SendMessageCommandHandler implements ICommandHandler<
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
-    @inject(TOKENS.CQRS.Commands.Bus) private readonly commandBus: CommandBus,
     @inject(TOKENS.Services.ImageStorage)
     private readonly imageStorageService: IImageStorageService,
   ) {}
 
   async execute(command: SendMessageCommand): Promise<MessageDTO> {
+    let uploadedAttachmentPublicId: string | undefined;
+
     try {
       const { senderPublicId, payload, file } = command;
 
@@ -114,14 +113,31 @@ export class SendMessageCommandHandler implements ICommandHandler<
         );
       }
 
-      let attachments = payload.attachments || [];
+      let recipientInternalId: string | null = null;
+      if (targetConversation) {
+        const existingParticipantIds = getParticipantIds(
+          targetConversation.participants,
+        );
+        if (!new Set(existingParticipantIds).has(senderInternalId)) {
+          throw Errors.forbidden(
+            "You do not have access to this conversation",
+          );
+        }
+      } else if (payload.recipientPublicId) {
+        recipientInternalId = await requireUserInternalId(
+          this.userReadRepository,
+          payload.recipientPublicId,
+        );
+      }
+
+      const attachments = [...(payload.attachments || [])];
       if (file) {
         const convIdForPath = targetConversation
           ? targetConversation.publicId
           : "initial";
         const uploadPath = `${senderPublicId}/${convIdForPath}`;
 
-        const { url } = await this.imageStorageService.uploadImageStream(
+        const { url, publicId } = await this.imageStorageService.uploadImageStream(
           {
             buffer: file.buffer,
             originalName: file.originalname,
@@ -130,6 +146,7 @@ export class SendMessageCommandHandler implements ICommandHandler<
           senderPublicId,
           uploadPath,
         );
+        uploadedAttachmentPublicId = publicId;
         attachments.push({
           url,
           type: "image",
@@ -154,10 +171,11 @@ export class SendMessageCommandHandler implements ICommandHandler<
           }
 
           if (!conversationDoc) {
-            const recipientInternalId = await requireUserInternalId(
-              this.userReadRepository,
-              payload.recipientPublicId!,
-            );
+            if (!recipientInternalId) {
+              throw Errors.validation(
+                "Recipient is required when no conversation is provided",
+              );
+            }
 
             const participantIds = [senderInternalId, recipientInternalId];
             const participantHash = buildParticipantHash(participantIds);
@@ -184,15 +202,6 @@ export class SendMessageCommandHandler implements ICommandHandler<
                 lastMessageAt: new Date(),
                 unreadCounts: unreadSeed,
               });
-            }
-          } else {
-            const existingParticipantIds = getParticipantIds(
-              conversationDoc.participants,
-            );
-            if (!new Set(existingParticipantIds).has(senderInternalId)) {
-              throw Errors.forbidden(
-                "You do not have access to this conversation",
-              );
             }
           }
 
@@ -246,40 +255,6 @@ export class SendMessageCommandHandler implements ICommandHandler<
           const recipients = participantPublicIds.filter(
             (id: string) => id !== senderPublicId,
           );
-          const recipientViewingStates = await Promise.all(
-            recipients.map(async (recipientId) => ({
-              recipientId,
-              isViewingConversation: await isUserViewingConversation(
-                recipientId,
-                conversationDoc!.publicId,
-              ),
-            })),
-          );
-          const recipientsNeedingNotification = recipientViewingStates
-            .filter(({ isViewingConversation }) => !isViewingConversation)
-            .map(({ recipientId }) => recipientId);
-
-          if (recipientsNeedingNotification.length > 0) {
-            await Promise.all(
-              recipientsNeedingNotification.map((recipientId) =>
-                this.commandBus.dispatch(
-                  new CreateNotificationCommand({
-                    receiverId: recipientId,
-                    actionType: "message",
-                    actorId: senderPublicId,
-                    actorUsername: populatedMessage.sender?.username,
-                    actorHandle: populatedMessage.sender?.handle,
-                    actorAvatar: populatedMessage.sender?.avatar,
-                    targetId: conversationDoc!.publicId,
-                    targetType: "conversation",
-                    targetPreview:
-                      sanitizedBody.substring(0, 50) +
-                      (sanitizedBody.length > 50 ? "..." : ""),
-                  }),
-                ),
-              ),
-            );
-          }
 
           await this.eventBus.queueTransactional(
             new MessageSentEvent(
@@ -287,6 +262,14 @@ export class SendMessageCommandHandler implements ICommandHandler<
               senderPublicId,
               recipients,
               message.publicId,
+              {
+                actorUsername: populatedMessage.sender?.username,
+                actorHandle: populatedMessage.sender?.handle,
+                actorAvatar: populatedMessage.sender?.avatar,
+                targetPreview:
+                  sanitizedBody.substring(0, 50) +
+                  (sanitizedBody.length > 50 ? "..." : ""),
+              },
             ),
           );
 
@@ -294,6 +277,7 @@ export class SendMessageCommandHandler implements ICommandHandler<
           return message;
         },
       );
+      uploadedAttachmentPublicId = undefined;
 
       if (!targetConversation) {
         throw Errors.internal(
@@ -306,9 +290,24 @@ export class SendMessageCommandHandler implements ICommandHandler<
         targetConversation.publicId,
       );
     } catch (error) {
+      if (uploadedAttachmentPublicId) {
+        await this.deleteUploadedAttachment(uploadedAttachmentPublicId);
+      }
       if (error instanceof Error && error.name === "AppError") throw error;
       throw wrapError(error, "InternalServerError", {
         context: { operation: "sendMessage" },
+      });
+    }
+  }
+
+  private async deleteUploadedAttachment(publicId: string): Promise<void> {
+    try {
+      await this.imageStorageService.deleteImage(publicId);
+    } catch (error) {
+      logger.warn("Failed to delete uploaded message attachment", {
+        event: "messaging.attachment_cleanup_failed",
+        publicId,
+        error,
       });
     }
   }

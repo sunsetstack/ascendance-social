@@ -11,6 +11,8 @@ import { SystemActor } from "@/utils/actors/SystemActor";
 import { logger } from "@/utils/winston";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
+import { MetricsService } from "@/metrics/metrics.service";
 import {
   asUserPublicId,
   PostPublicId,
@@ -34,6 +36,8 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
     private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Services.Redis)
     private readonly redisService: RedisService,
+    @inject(TOKENS.Services.Metrics)
+    private readonly metricsService: MetricsService,
   ) {}
 
   private toPlainNotification(
@@ -65,6 +69,7 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
       let actorAvatar = data.actorAvatar?.trim();
       const targetType = data.targetType?.trim();
       const targetPreview = data.targetPreview?.trim();
+      const idempotencyKey = data.idempotencyKey?.trim();
 
       if (
         (!actorUsername || !actorHandle || !actorAvatar) &&
@@ -91,7 +96,7 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
         actorAvatar = SystemActor.avatar;
       }
 
-      const notification = await this.notificationRepository.create({
+      const notificationData: Partial<INotification> = {
         userId: asUserPublicId(userPublicId),
         actionType: data.actionType,
         actorId: asUserPublicId(actorPublicId),
@@ -107,17 +112,36 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
         targetPreview,
         isRead: false,
         timestamp: new Date(),
-      });
+      };
+
+      const notification = idempotencyKey
+        ? await this.notificationRepository.createOnce(
+            notificationData,
+            idempotencyKey,
+          )
+        : await this.notificationRepository.create(notificationData);
 
       try {
         const plain = this.toPlainNotification(notification);
+        const notificationId = plain.id ?? plain._id ?? String(notification._id);
+        const payload = {
+          ...plain,
+          eventId: buildRealtimeEventId(
+            EventRegistry.socketServerEvents.newNotification,
+            notificationId,
+          ),
+        };
         logger.info(`Sending new_notification to user ${userPublicId}:`, {
-          notification: plain,
+          notification: payload,
         });
         this.webSocketServer
           .getIO()
           .to(userPublicId)
-          .emit("new_notification", plain);
+          .emit(EventRegistry.socketServerEvents.newNotification, payload);
+        this.metricsService.recordSocketEventEmitted(
+          EventRegistry.socketServerEvents.newNotification,
+          "room",
+        );
         logger.info("Notification sent successfully");
       } catch (error) {
         logger.error("Error sending notification:", { error });

@@ -13,6 +13,7 @@ import {
   adminFavoriteParamsSchema,
   adminImagesQuerySchema,
   adminUsersQuerySchema,
+  authActivityLogsQuerySchema,
   banUserBodySchema,
   cacheClearQuerySchema,
   recentActivityQuerySchema,
@@ -144,6 +145,12 @@ export class AdminUserRoutes {
       "/dashboard/request-logs",
       new ValidationMiddleware({ query: requestLogsQuerySchema }).validate(),
       asyncHandler(this.adminUserController.getRequestLogs),
+    );
+
+    this.router.get(
+      "/dashboard/auth-activity",
+      new ValidationMiddleware({ query: authActivityLogsQuerySchema }).validate(),
+      asyncHandler(this.adminUserController.getAuthActivityLogs),
     );
 
     // Cache management

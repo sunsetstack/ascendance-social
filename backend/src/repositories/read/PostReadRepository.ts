@@ -1,4 +1,4 @@
-import mongoose, { Model, PipelineStage } from "mongoose";
+import { Model, PipelineStage } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { FeedPost, IPost, PaginationOptions, PaginationResult } from "@/types";
 import type { IPostReadRepository } from "../interfaces/IPostReadRepository";
@@ -181,10 +181,19 @@ export class PostReadRepository
   ): Promise<FeedPost[]> {
     try {
       const objectIds = ids.map((id) => normalizeObjectId(id, "id"));
+      if (objectIds.length === 0) return [];
+
       const pipeline: PipelineStage[] = [
         { $match: withActivePostFilter({ _id: { $in: objectIds } }) },
+        { $addFields: { inputOrder: { $indexOfArray: [objectIds, "$_id"] } } },
+        { $sort: { inputOrder: 1 } },
         ...getStandardLookups(),
-        getStandardProjection(),
+        {
+          $project: {
+            ...getStandardProjectionFields(),
+            inputOrder: 0,
+          },
+        },
       ];
       return await this.model.aggregate<FeedPost>(pipeline).exec();
     } catch (error: unknown) {
@@ -336,7 +345,9 @@ export class PostReadRepository
           .skip(skip)
           .limit(limit)
           .exec(),
-        this.model.countDocuments(withActivePostFilter({ tags: { $in: tagIds } })),
+        this.model.countDocuments(
+          withActivePostFilter({ tags: { $in: tagIds } }),
+        ),
       ]);
 
       return { data, total, page, limit, totalPages: Math.ceil(total / limit) };

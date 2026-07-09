@@ -77,17 +77,17 @@ export class UpdateProfileCommandHandler implements ICommandHandler<
         "profile_update",
         userId,
       );
-    });
 
-    // emit username change event after successful transaction
-    if (usernameChanged && allowedUpdates.username) {
-      const usernameChangedEvent = new UserUsernameChangedEvent(
-        command.userPublicId,
-        oldUsername,
-        allowedUpdates.username as string,
-      );
-      await this.eventBus.publish(usernameChangedEvent);
-    }
+      if (usernameChanged && allowedUpdates.username) {
+        await this.eventBus.queueTransactional(
+          new UserUsernameChangedEvent(
+            command.userPublicId,
+            oldUsername,
+            allowedUpdates.username as string,
+          ),
+        );
+      }
+    });
 
     // fetch updated user
     const updatedUser = await this.userReadRepository.findByPublicId(

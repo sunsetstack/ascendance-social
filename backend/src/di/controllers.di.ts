@@ -1,7 +1,6 @@
 import { container } from "tsyringe";
 
 import { SearchController } from "../controllers/search.controller";
-import { UserController } from "../controllers/user.controller";
 import { AuthController } from "../controllers/auth.controller";
 import { ProfileController } from "../controllers/profile.controller";
 import { SocialController } from "../controllers/social.controller";
@@ -20,7 +19,6 @@ import { TOKENS } from "@/types/tokens";
 
 export function registerControllers(): void {
   container.registerSingleton(TOKENS.Controllers.Search, SearchController);
-  container.registerSingleton(TOKENS.Controllers.User, UserController);
   container.registerSingleton(TOKENS.Controllers.Auth, AuthController);
   container.registerSingleton(TOKENS.Controllers.Profile, ProfileController);
   container.registerSingleton(TOKENS.Controllers.Social, SocialController);

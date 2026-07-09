@@ -248,7 +248,7 @@ export class CreatePostCommandHandler implements ICommandHandler<
     const tagIds = tagDocs.map((tag) => new mongoose.Types.ObjectId(tag._id));
 
     if (tagIds.length > 0) {
-      await this.tagService.incrementUsage(tagIds);
+      await this.tagService.incrementUsage(tagIds, { trackActivity: false });
     }
 
     const imageSummary = await this.createImageRecord(
@@ -379,9 +379,22 @@ export class CreatePostCommandHandler implements ICommandHandler<
     if (!hydratedPost)
       throw new PostNotFoundError("Post not found after creation");
 
-    await this.redisService.invalidateByTags([
-      CacheKeyBuilder.getUserFeedTag(result.user.publicId),
-    ]);
+    try {
+      await this.redisService.invalidateByTags([
+        CacheKeyBuilder.getUserFeedTag(result.user.publicId),
+      ]);
+    } catch (error) {
+      logger.warn("Failed to invalidate feed cache after post creation", {
+        postPublicId: result.post.publicId,
+        userPublicId: result.user.publicId,
+        error,
+      });
+    }
+
+    const tagUsageCount = new Set(result.tagNames).size;
+    if (tagUsageCount > 0) {
+      await this.tagService.trackUsageActivity(tagUsageCount);
+    }
 
     return this.dtoService.toPostDTO(hydratedPost);
   }

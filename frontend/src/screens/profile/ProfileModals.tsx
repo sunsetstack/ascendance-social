@@ -1,6 +1,6 @@
 import { Modal, Paper, Typography } from "@mui/material";
 import { useTranslation } from "react-i18next";
-import { Id } from "react-toastify";
+import type { Id } from "react-toastify";
 import { EditProfile } from "../../components/EditProfile";
 import ImageEditor from "../../components/ImageEditor";
 import { PublicUserDTO } from "../../types";

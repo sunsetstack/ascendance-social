@@ -19,6 +19,29 @@ export class NotificationRepository extends BaseRepository<INotification> {
 		return notification;
 	}
 
+	async createOnce(
+		notificationData: Partial<INotification>,
+		idempotencyKey: string,
+	): Promise<INotification> {
+		const session = this.getSession();
+		const query = this.model.findOneAndUpdate(
+			{ idempotencyKey },
+			{
+				$setOnInsert: {
+					...notificationData,
+					idempotencyKey,
+				},
+			},
+			{
+				new: true,
+				upsert: true,
+				setDefaultsOnInsert: true,
+			},
+		);
+		if (session) query.session(session);
+		return await query.exec() as INotification;
+	}
+
 	/**
 	 * Get notifications for a user with pagination support
 	 * @param userId - user publicId

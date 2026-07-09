@@ -8,7 +8,6 @@ import {
   getErrorMessage,
   getErrorName,
 } from "@/utils/errors";
-import rateLimit from "express-rate-limit";
 import { DecodedUser, AdminContext } from "@/types";
 import { asUserPublicId, asSessionId } from "@/types/branded";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
@@ -17,8 +16,9 @@ import { authCookieNames } from "@/config/cookieConfig";
 import { AuthSessionService } from "@/services/auth-session.service";
 import { MetricsService } from "@/metrics/metrics.service";
 import { getClientIp } from "@/utils/request-ip";
-import { getRateLimitStoreOptions } from "@/config/rateLimit";
 import { TOKENS } from "@/types/tokens";
+import { setRequestContextUserId } from "@/runtime/request-context";
+import { createAdminOnlyMiddleware } from "@/middleware/admin-auth.middleware";
 
 declare global {
   namespace Express {
@@ -28,6 +28,19 @@ declare global {
     }
   }
 }
+
+export { adminActionValidation } from "@/middleware/admin-action-validation.middleware";
+export {
+  adminRateLimit,
+  forgotPasswordEmailRateLimit,
+  forgotPasswordIpRateLimit,
+  loginEmailRateLimit,
+  loginIpRateLimit,
+  registerIpRateLimit,
+  resetPasswordIpRateLimit,
+  verifyEmailAddressRateLimit,
+  verifyEmailIpRateLimit,
+} from "@/middleware/auth-rate-limits.middleware";
 
 export abstract class AuthStrategy {
   abstract authenticate(req: Request): Promise<DecodedUser>;
@@ -61,7 +74,12 @@ export class BearerTokenStrategy extends AuthStrategy {
       }
     }
     if (!token) {
-      logger.warn(`[AUTH] Missing token for ${req.method} ${req.originalUrl}`);
+      logger.warn("Missing authentication token", {
+        event: "auth.missing_token",
+        method: req.method,
+        route: req.originalUrl.split("?")[0],
+        ip: getClientIp(req),
+      });
       throw Errors.authentication("Missing token", {
         errorCode: ErrorCode.TOKEN_INVALID,
       });
@@ -112,7 +130,12 @@ export class BearerTokenStrategy extends AuthStrategy {
         throw err;
       }
       const errorMessage = err instanceof Error ? err.message : String(err);
-      logger.error("[AUTH] Token verification failed", errorMessage);
+      logger.warn("Token verification failed", {
+        event: "auth.token_verification_failed",
+        method: req.method,
+        route: req.originalUrl.split("?")[0],
+        reason: errorMessage,
+      });
       const errorCode =
         err instanceof Error && err.name === "TokenExpiredError"
           ? ErrorCode.TOKEN_EXPIRED
@@ -133,21 +156,7 @@ export class AuthenticationMiddleware {
     private readonly metricsService: MetricsService | null,
   ) {}
 
-  private async enforceVerifiedEmail(decodedUser: DecodedUser): Promise<void> {
-    if (decodedUser.isEmailVerified === true) {
-      return;
-    }
-
-    if (decodedUser.isEmailVerified === false) {
-      throw Errors.forbidden("Email verification required", {
-        context: {
-          userId: decodedUser.publicId,
-          emailVerified: false,
-        },
-        errorCode: ErrorCode.EMAIL_NOT_VERIFIED,
-      });
-    }
-
+  private async enforceActiveUser(decodedUser: DecodedUser): Promise<void> {
     const user = await this.userReadRepository.findByPublicId(
       decodedUser.publicId,
     );
@@ -155,6 +164,15 @@ export class AuthenticationMiddleware {
     if (!user) {
       throw Errors.authentication("User not found", {
         errorCode: ErrorCode.UNAUTHORIZED,
+      });
+    }
+
+    if (user.isBanned) {
+      throw Errors.forbidden("Account banned", {
+        context: {
+          userId: decodedUser.publicId,
+          banned: true,
+        },
       });
     }
 
@@ -168,6 +186,7 @@ export class AuthenticationMiddleware {
       });
     }
 
+    decodedUser.isAdmin = user.isAdmin;
     decodedUser.isEmailVerified = true;
   }
 
@@ -192,7 +211,8 @@ export class AuthenticationMiddleware {
     const route = `${req.baseUrl || ""}${req.path || req.originalUrl || "/"}`;
 
     if (reason !== "missing_token") {
-      logger.warn("[AUTH][OPTIONAL] Authentication failed", {
+      logger.warn("Optional authentication failed", {
+        event: "auth.optional_failed",
         reason,
         route,
         method: req.method,
@@ -203,11 +223,9 @@ export class AuthenticationMiddleware {
     try {
       this.metricsService?.recordOptionalAuthFailure(reason, route);
     } catch (metricsError) {
-      logger.warn("[AUTH][OPTIONAL] Failed to record auth metric", {
-        error:
-          metricsError instanceof Error
-            ? metricsError.message
-            : String(metricsError),
+      logger.warn("Failed to record optional auth metric", {
+        event: "auth.optional_metric_failed",
+        error: metricsError,
       });
     }
   }
@@ -216,9 +234,24 @@ export class AuthenticationMiddleware {
     return async (req: Request, _res: Response, next: NextFunction) => {
       try {
         req.decodedUser = await this.strategy.authenticate(req);
-        await this.enforceVerifiedEmail(req.decodedUser);
+        await this.enforceActiveUser(req.decodedUser);
+        req.authSource = "access_token";
+        req.authLogMetadata = {
+          ...req.authLogMetadata,
+          authState: "authenticated",
+          authSource: "access_token",
+          sessionId: req.decodedUser.sid,
+          tokenFamilyId: req.decodedUser.sid,
+        };
+        setRequestContextUserId(req.decodedUser.publicId);
         next();
       } catch (error) {
+        const reason = this.getOptionalAuthFailureReason(error);
+        req.authLogMetadata = {
+          ...req.authLogMetadata,
+          authState: "auth_failed",
+          authSource: reason === "missing_token" ? "none" : "access_token",
+        };
         // Preserve original AppError Wwith statusCode
         if (isErrorWithStatusCode(error)) {
           return next(error);
@@ -240,54 +273,32 @@ export class AuthenticationMiddleware {
     return async (req: Request, _res: Response, next: NextFunction) => {
       try {
         req.decodedUser = await this.strategy.authenticate(req);
-        await this.enforceVerifiedEmail(req.decodedUser);
+        await this.enforceActiveUser(req.decodedUser);
+        req.authSource = "access_token";
+        req.authLogMetadata = {
+          ...req.authLogMetadata,
+          authState: "authenticated",
+          authSource: "access_token",
+          sessionId: req.decodedUser.sid,
+          tokenFamilyId: req.decodedUser.sid,
+        };
+        setRequestContextUserId(req.decodedUser.publicId);
       } catch (error) {
         req.decodedUser = undefined;
+        const reason = this.getOptionalAuthFailureReason(error);
+        if (reason !== "missing_token") {
+          req.authLogMetadata = {
+            ...req.authLogMetadata,
+            authState: "auth_failed",
+            authSource: "access_token",
+          };
+        }
         this.recordOptionalAuthFailure(req, error);
       }
       next();
     };
   }
 }
-
-// Admin-specific rate limiting
-export const adminRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("admin"),
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 50, // 50 admin actions per 5 minutes
-  message: "Too many admin actions, please slow down",
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) =>
-    `admin-${req.decodedUser?.publicId || getClientIp(req)}`,
-});
-
-export const forgotPasswordIpRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("forgot-password-ip"),
-  windowMs: Number(process.env.FORGOT_PASSWORD_IP_WINDOW_MS) || 15 * 60 * 1000,
-  max: Number(process.env.FORGOT_PASSWORD_IP_MAX) || 5,
-  message: "Too many password reset requests, please try again later",
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => `forgot-password-ip:${getClientIp(req)}`,
-});
-
-export const forgotPasswordEmailRateLimit = rateLimit({
-  ...getRateLimitStoreOptions("forgot-password-email"),
-  windowMs:
-    Number(process.env.FORGOT_PASSWORD_EMAIL_WINDOW_MS) || 60 * 60 * 1000,
-  max: Number(process.env.FORGOT_PASSWORD_EMAIL_MAX) || 3,
-  message: "Too many password reset requests, please try again later",
-  standardHeaders: true,
-  legacyHeaders: false,
-  keyGenerator: (req) => {
-    const email =
-      typeof req.body?.email === "string"
-        ? req.body.email.trim().toLowerCase()
-        : "";
-    return `forgot-password-email:${email || "unknown"}`;
-  },
-});
 
 @injectable()
 export class AuthMiddlewareService {
@@ -320,110 +331,6 @@ export class AuthMiddlewareService {
   }
 
   adminOnly(): RequestHandler {
-    return async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const decodedUser = req.decodedUser;
-
-        if (!decodedUser) {
-          logger.warn(
-            `[SECURITY] Unauthenticated admin access attempt from IP: ${req.ip}`,
-          );
-          return res.status(401).json({ error: "Authentication required" });
-        }
-
-        if (!decodedUser.isAdmin) {
-          logger.warn(
-            `[SECURITY] Unauthorized admin access attempt by user ${decodedUser.username} (${decodedUser.publicId}) from IP ${req.ip}`,
-          );
-          return res.status(403).json({ error: "Admin privileges required" });
-        }
-
-        const user = await this.userReadRepository.findByPublicId(
-          decodedUser.publicId,
-        );
-
-        if (!user) {
-          logger.warn(
-            `[SECURITY] Admin user ${decodedUser.publicId} not found in database`,
-          );
-          return res.status(401).json({ error: "User not found" });
-        }
-
-        if (user.isBanned) {
-          logger.warn(
-            `[SECURITY] Banned admin ${decodedUser.username} attempted access from IP ${req.ip}`,
-          );
-          return res.status(403).json({ error: "Account banned" });
-        }
-
-        if (!user.isAdmin) {
-          logger.warn(
-            `[SECURITY] User ${decodedUser.username} has admin JWT but is no longer admin in DB`,
-          );
-          return res.status(403).json({ error: "Admin privileges required" });
-        }
-
-        const adminEmailsEnv = process.env.ADMIN_EMAILS;
-        if (adminEmailsEnv) {
-          const allowedEmails = adminEmailsEnv
-            .split(",")
-            .map((e) => e.trim().toLowerCase())
-            .filter((e) => e.length > 0);
-
-          if (user.email && !allowedEmails.includes(user.email.toLowerCase())) {
-            logger.warn(
-              `[SECURITY] Admin access denied for ${user.email} (not in ADMIN_EMAILS allowlist) from IP ${req.ip}`,
-            );
-            return res
-              .status(403)
-              .json({ error: "Admin privileges restricted" });
-          }
-        }
-
-        logger.info(
-          `[ADMIN_AUDIT] ${decodedUser.username} (${decodedUser.publicId}) performing ${req.method} ${req.path} from IP ${req.ip}`,
-        );
-
-        req.adminContext = {
-          adminId: decodedUser.publicId,
-          adminUsername: decodedUser.username,
-          timestamp: new Date(),
-          ip: req.ip,
-          userAgent: req.get("User-Agent"),
-        };
-
-        next();
-      } catch (error) {
-        logger.error("[ADMIN_SECURITY] Admin middleware error:", error);
-        return res.status(500).json({ error: "Internal server error" });
-      }
-    };
+    return createAdminOnlyMiddleware(this.userReadRepository);
   }
 }
-
-// Admin action validation middleware
-export const adminActionValidation = (requiredFields: string[] = []) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    // Validate required fields
-    for (const field of requiredFields) {
-      if (!req.body[field]) {
-        return res.status(400).json({
-          error: `Missing required field: ${field}`,
-          requiredFields,
-        });
-      }
-    }
-
-    // Validate publicId format in params
-    if (
-      req.params.publicId &&
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        req.params.publicId,
-      )
-    ) {
-      return res.status(400).json({ error: "Invalid publicId format" });
-    }
-
-    next();
-  };
-};

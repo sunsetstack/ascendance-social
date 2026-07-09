@@ -24,10 +24,9 @@ import { UnitOfWork, sessionALS } from "@/database/UnitOfWork";
 import { Errors, wrapError } from "@/utils/errors";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { UserDeletedEvent } from "@/application/events/user/user-interaction.event";
-import { RedisService } from "@/services/redis.service";
-import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
 import { logger } from "@/utils/winston";
+import { verifyPassword } from "@/application/common/policies/password.policy";
 
 @injectable()
 export class DeleteUserCommandHandler implements ICommandHandler<
@@ -72,7 +71,6 @@ export class DeleteUserCommandHandler implements ICommandHandler<
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
-    @inject(TOKENS.Services.Redis) private readonly redisService: RedisService,
     @inject(TOKENS.Models.User) private readonly userModel: Model<IUser>,
   ) {}
 
@@ -92,8 +90,9 @@ export class DeleteUserCommandHandler implements ICommandHandler<
         throw Errors.notFound("User");
       }
 
-      const isPasswordValid = await userWithPassword.comparePassword(
+      const isPasswordValid = await verifyPassword(
         command.password,
+        userWithPassword.password,
       );
       if (!isPasswordValid) {
         throw Errors.authentication("Invalid password");
@@ -221,6 +220,14 @@ export class DeleteUserCommandHandler implements ICommandHandler<
 
         // finally, delete the user
         await this.userWriteRepository.delete(asMongoId(userId));
+
+        await this.eventBus.queueTransactional(
+          new UserDeletedEvent(
+            userPublicId,
+            asMongoId(userId),
+            followerPublicIds,
+          ),
+        );
       });
 
       // delete all user-related cloud storage assets (after successful transaction commit)
@@ -240,24 +247,6 @@ export class DeleteUserCommandHandler implements ICommandHandler<
           cloudError,
         });
       }
-
-      // emit event after successful deletion to trigger cache cleanup
-      await this.eventBus.publish(
-        new UserDeletedEvent(
-          userPublicId,
-          asMongoId(userId),
-          followerPublicIds,
-        ),
-      );
-
-      // Explicitly invalidate "Who to follow" cache (global or user-specific if tagged)
-      await this.redisService.invalidateByTags([
-        "who_to_follow",
-        `user:${userPublicId}`,
-        CacheKeyBuilder.getUserFeedTag(userPublicId),
-        CacheKeyBuilder.getTrendingFeedTag(),
-        CacheKeyBuilder.getNewFeedTag(),
-      ]);
 
       // Remove user from trending sets if they are there (though trending is usually post-based)
     } catch (error) {

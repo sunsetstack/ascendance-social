@@ -1,9 +1,5 @@
 import { injectable, inject } from "tsyringe";
-import { createClient, RedisClientType } from "redis";
-import fs from "fs";
-import { performance } from "perf_hooks";
-import { redisLogger } from "@/utils/winston";
-import { getErrorMessage } from "@/utils/errors";
+import type { RedisClientType } from "redis";
 import { INotification } from "@/types";
 import { NotificationPlain } from "@/types/customNotifications/notifications.types";
 import { MetricsService } from "../metrics/metrics.service";
@@ -17,773 +13,179 @@ import {
 import { RedisFeedType } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
 import { XPendingRangeEntry, XClaimReply } from "./redis/redis-stream.module";
+import { RedisConnectionModule } from "./redis/redis-connection.module";
+import { RedisJsonCacheModule } from "./redis/redis-json-cache.module";
+import {
+  RedisTaggedCacheModule,
+  TaggedCacheEntry,
+} from "./redis/redis-tagged-cache.module";
+import {
+  RedisPubSubModule,
+  RedisSubscribeOptions,
+} from "./redis/redis-pubsub.module";
+import { RedisPresenceModule } from "./redis/redis-presence.module";
+import {
+  RedisResilienceModule,
+  ResilienceConfig,
+} from "./redis/redis-resilience.module";
 
 /**
- * Configuration for resilient Redis operations
- */
-interface ResilienceConfigBase {
-  maxAttempts?: number;
-  baseDelayMs?: number;
-  maxDelayMs?: number;
-}
-
-interface ResilienceConfigWithFallback<T> extends ResilienceConfigBase {
-  fallbackValue: T;
-}
-
-type ResilienceConfig<T> =
-  | ResilienceConfigBase
-  | ResilienceConfigWithFallback<T>;
-
-type RedisScanResult = {
-  cursor: number;
-  keys: string[];
-};
-
-type TaggedCacheEntry<T> = {
-  key: string;
-  value: T;
-  tags: string[];
-};
-
-type RedisSubscribeOptions = {
-  timeoutMs?: number;
-};
-
-const DEFAULT_RESILIENCE: Required<ResilienceConfigBase> = {
-  maxAttempts: 3,
-  baseDelayMs: 50,
-  maxDelayMs: 1000,
-};
-
-/**
- * Facade over Redis modules.
- * - Core cache/tag operations remain here.
- * - Feed, notification, and stream responsibilities are delegated to focused modules.
+ * The service is much more of a facade now than it used to be.
+ * It delegates to the appropriate module, constructs the focused redis modules
+ * and has much less reason to change. redis api surface and wiring is pretty much the only reason for change.
  */
 
 @injectable()
 export class RedisService {
-  private client: RedisClientType;
+  private readonly connectionModule: RedisConnectionModule;
+  private readonly resilienceModule: RedisResilienceModule;
+  private readonly cacheModule: RedisJsonCacheModule;
+  private readonly taggedCacheModule: RedisTaggedCacheModule;
+  private readonly pubSubModule: RedisPubSubModule;
+  private readonly presenceModule: RedisPresenceModule;
   private readonly notificationModule: RedisNotificationModule;
   private readonly feedModule: RedisFeedModule;
   private readonly streamModule: RedisStreamModule;
   private readonly sessionModule: RedisSessionModule;
-  private readonly subscribers = new Map<string, RedisClientType>();
 
   constructor(
     @inject(TOKENS.Services.Metrics)
     private readonly metricsService: MetricsService,
   ) {
-    const runningInDocker = fs.existsSync("/.dockerenv"); // check if inside docker environment
-    const redisUrl =
-      process.env.REDIS_URL ||
-      (runningInDocker
-        ? "redis://redis-service:6379"
-        : "redis://127.0.0.1:6379");
+    this.resilienceModule = new RedisResilienceModule();
+    this.connectionModule = new RedisConnectionModule(
+      metricsService,
+      this.resilienceModule,
+    );
 
-    this.metricsService.setRedisConnectionState(false);
+    const client = this.connectionModule.clientInstance;
+    this.cacheModule = new RedisJsonCacheModule(client);
+    this.taggedCacheModule = new RedisTaggedCacheModule(
+      client,
+      this.cacheModule,
+      this.resilienceModule,
+    );
+    this.pubSubModule = new RedisPubSubModule(
+      client,
+      this.connectionModule,
+      this.resilienceModule,
+    );
+    this.presenceModule = new RedisPresenceModule(client);
+    this.notificationModule = new RedisNotificationModule(client);
+    this.feedModule = new RedisFeedModule(client);
+    this.streamModule = new RedisStreamModule(client);
+    this.sessionModule = new RedisSessionModule(client);
 
-    this.client = createClient({ url: redisUrl });
-    this.notificationModule = new RedisNotificationModule(this.client);
-    this.feedModule = new RedisFeedModule(this.client);
-    this.streamModule = new RedisStreamModule(this.client);
-    this.sessionModule = new RedisSessionModule(this.client);
-
-    this.client.on("connect", () => {
-      redisLogger.info(`Redis connected`, { url: redisUrl });
-      this.metricsService.setRedisConnectionState(true);
-    });
-    this.client.on("error", (err) => {
-      redisLogger.error(`Redis client error`, {
-        error: err.message,
-        stack: err.stack,
-      });
-      this.metricsService.setRedisConnectionState(false);
-    });
-    this.client.on("end", () => {
-      this.metricsService.setRedisConnectionState(false);
-    });
-
-    // avoid opening sockets during unit tests (causes Mocha to hang)
-    if (
-      process.env.NODE_ENV !== "test" ||
-      process.env.REDIS_AUTOCONNECT === "true"
-    ) {
-      void this.connect();
-    }
+    this.connectionModule.start();
   }
 
   get clientInstance(): RedisClientType {
-    return this.client;
+    return this.connectionModule.clientInstance;
   }
 
   async createDedicatedClient(): Promise<RedisClientType> {
-    const client = this.client.duplicate();
-    await client.connect();
-    return client;
+    return this.connectionModule.createDedicatedClient();
   }
 
-  private parseJson<T>(payload: string): T {
-    return JSON.parse(payload) as T;
-  }
-
-  /**
-   * Type-safe cache read. Callers must supply a type guard that narrows
-   * the parsed value to T before it's returned — prevents silent type lies
-   * from deserialized cache hits.
-   */
-  async getValidated<T>(
-    key: string,
-    guard: (v: unknown) => v is T,
-  ): Promise<T | null> {
-    const raw = await this.get<string>(key);
-    if (raw === null) return null;
-    try {
-      const parsed: unknown = typeof raw === "string" ? JSON.parse(raw) : raw;
-      return guard(parsed) ? parsed : null;
-    } catch {
-      return null;
-    }
-  }
-
-  private hasFallback<T>(
-    config?: ResilienceConfig<T>,
-  ): config is ResilienceConfigWithFallback<T> {
-    return config !== undefined && "fallbackValue" in config;
-  }
-
-  private async scanKeys(
-    cursor: number,
-    match: string,
-    count: number,
-  ): Promise<RedisScanResult> {
-    const result = await this.client.scan(cursor, {
-      MATCH: match,
-      COUNT: count,
-    });
-
-    return {
-      cursor:
-        typeof result.cursor === "number"
-          ? result.cursor
-          : Number(result.cursor),
-      keys: result.keys,
-    };
-  }
-
-  private async connect() {
-    try {
-      await this.client.connect();
-      redisLogger.info(`Redis client connection established`);
-    } catch (error) {
-      redisLogger.error(`Redis connection failed`, {
-        error: getErrorMessage(error) || String(error),
-      });
-      this.metricsService.setRedisConnectionState(false);
-    }
-  }
-
-  /**
-   * Ensures the Redis client is connected.
-   * Useful for workers that need to wait for connection before starting processing loops.
-   */
   async waitForConnection(timeoutMs?: number): Promise<boolean> {
-    if (this.client.isOpen) return true;
-
-    return new Promise((resolve) => {
-      if (this.client.isOpen) {
-        resolve(true);
-        return;
-      }
-
-      let settled = false;
-      let timeout: NodeJS.Timeout | undefined;
-
-      const cleanup = () => {
-        this.client.off("connect", onConnect);
-        this.client.off("error", onError);
-        if (timeout) {
-          clearTimeout(timeout);
-        }
-      };
-
-      const settle = (connected: boolean) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        resolve(connected);
-      };
-
-      const onConnect = () => settle(true);
-      const onError = (error: unknown) => {
-        if (timeoutMs === undefined && !this.isRetryableRedisError(error)) {
-          settle(false);
-          return;
-        }
-
-        if (timeoutMs !== undefined) {
-          settle(false);
-        }
-      };
-
-      this.client.once("connect", onConnect);
-      this.client.once("error", onError);
-
-      if (timeoutMs !== undefined) {
-        timeout = setTimeout(() => settle(this.client.isOpen), timeoutMs);
-      }
-    });
+    return this.connectionModule.waitForConnection(timeoutMs);
   }
 
-  /**
-   * Execute a Redis operation with retry logic and optional fallback
-   * Use for critical cache operations that should be resilient to transient failures
-   */
   async withResilience<T>(
     operation: () => Promise<T>,
     config?: ResilienceConfig<T>,
   ): Promise<T> {
-    const cfg = { ...DEFAULT_RESILIENCE, ...config };
-    let lastError: Error | undefined;
-
-    for (let attempt = 1; attempt <= cfg.maxAttempts; attempt++) {
-      try {
-        return await operation();
-      } catch (error: unknown) {
-        const message = getErrorMessage(error) || String(error);
-        lastError = error instanceof Error ? error : new Error(message);
-
-        if (!this.isRetryableRedisError(error) || attempt >= cfg.maxAttempts) {
-          if (this.hasFallback(config)) {
-            redisLogger.warn(`Redis operation failed, using fallback`, {
-              error: lastError.message,
-              attempt,
-            });
-            return config.fallbackValue;
-          }
-          throw error;
-        }
-
-        redisLogger.warn(`Redis operation failed, retrying`, {
-          error: lastError.message,
-          attempt,
-          maxAttempts: cfg.maxAttempts,
-        });
-
-        await this.backoffWithJitter(attempt, cfg.baseDelayMs, cfg.maxDelayMs);
-      }
-    }
-
-    if (this.hasFallback(config)) {
-      return config.fallbackValue;
-    }
-    throw lastError;
+    return this.resilienceModule.withResilience(operation, config);
   }
 
-  /**
-   * Check if a Redis error is retryable
-   */
-  private isRetryableRedisError(error: unknown): boolean {
-    const message = getErrorMessage(error).toLowerCase();
-    if (!message) return false;
-
-    const retryablePatterns = [
-      "econnreset",
-      "econnrefused",
-      "etimedout",
-      "socket closed",
-      "connection",
-      "network",
-      "busy",
-      "loading",
-    ];
-    return retryablePatterns.some((p) => message.includes(p));
+  async getValidated<T>(
+    key: string,
+    guard: (v: unknown) => v is T,
+  ): Promise<T | null> {
+    return this.cacheModule.getValidated(key, guard);
   }
 
-  /**
-   * Exponential backoff with jitter for Redis retries
-   */
-  private async backoffWithJitter(
-    attempt: number,
-    baseMs: number,
-    maxMs: number,
-  ): Promise<void> {
-    const exponentialDelay = Math.min(baseMs * Math.pow(2, attempt - 1), maxMs);
-    const jitteredDelay = Math.floor(Math.random() * exponentialDelay);
-    return new Promise((resolve) =>
-      setTimeout(resolve, Math.max(jitteredDelay, 10)),
-    );
-  }
-
-  /**
-   * Retrieves and parses a JSON value from Redis.
-   *
-   * @wrapper
-   * @why Centralizes JSON.parse() error handling so the process doesn't crash
-   * if Redis contains corrupted data strings.
-   *
-   * @param key - The key to lookup.
-   * @returns {Promise<T | null>} The parsed object or null if missing.
-   */
   async get<T>(key: string): Promise<T | null> {
-    const data = await this.client.get(key);
-    return data ? this.parseJson<T>(data) : null;
+    return this.cacheModule.get<T>(key);
   }
 
-  /**
-   * Batch-fetches multiple keys in a single Redis round-trip using MGET.
-   * Prefer this over a Promise.all of individual get() calls for any set of N keys.
-   *
-   * @param keys - Array of cache keys to fetch.
-   * @returns Array of parsed values, parallel to input keys; null for each miss.
-   */
   async mGet<T>(keys: string[]): Promise<(T | null)[]> {
-    if (keys.length === 0) return [];
-    const values = await this.client.mGet(keys);
-    return values.map((value) => (value ? this.parseJson<T>(value) : null));
+    return this.cacheModule.mGet<T>(keys);
   }
 
-  /**
-   * Serializes and stores a value in Redis.
-   *
-   * @wrapper
-   * @why Centralizes JSON.stringify() to ensure consistent storage formats across the app.
-   *
-   * @param key - Storage key.
-   * @param value - Object to store.
-   * @param ttl - (Optional) Expiration in seconds.
-   */
   async set<T>(key: string, value: T, ttl?: number): Promise<void> {
-    const stringValue = JSON.stringify(value);
-    if (ttl) {
-      await this.client.setEx(key, ttl, stringValue);
-    } else {
-      await this.client.set(key, stringValue);
-    }
+    return this.cacheModule.set(key, value, ttl);
   }
 
-  /**
-   * Checks existence of a key.
-   *
-   * @complexity O(1)
-   * @returns {Promise<boolean>} True if key exists.
-   */
   async exists(key: string): Promise<boolean> {
-    const result = await this.client.exists(key);
-    return result === 1;
+    return this.cacheModule.exists(key);
   }
 
-  /**
-   *  Retrieves the Time-To-Live of a key.
-   *
-   * @usage Cache debugging or deciding whether to refresh a "hot" key before it expires.
-   * @returns {Promise<number>} TTL in seconds, -1 if no expiry, -2 if missing.
-   */
   async ttl(key: string): Promise<number> {
-    return await this.client.ttl(key);
+    return this.cacheModule.ttl(key);
   }
 
-  /**
-   * Updates specific fields of a stored JSON object (Read-Modify-Write).
-   *
-   * @pattern Partial Update
-   * @warning Not atomic. If two processes merge different fields simultaneously,
-   * one write might be lost (Race Condition). Use `setWithTags` or Hash structures
-   * for critical atomic updates.
-   *
-   * @param key - Key to update.
-   * @param value - Partial object to merge into existing data.
-   * @param ttl - (Optional) Reset the TTL on update.
-   */
   async merge<T extends Record<string, unknown>>(
     key: string,
     value: Partial<T>,
     ttl?: number,
   ): Promise<void> {
-    const existing = await this.get<T>(key);
-    const next = existing ? { ...existing, ...value } : value;
-    await this.set(key, next, ttl);
+    return this.cacheModule.merge(key, value, ttl);
   }
 
-  /**
-   * Safely deletes keys matching a glob pattern using Cursor Scanning.
-   *
-   * @architecture Non-Blocking Deletion
-   * @why The `KEYS` command is O(N) and blocks the single-threaded Redis event loop,
-   * potentially freezing the entire DB for seconds in production. `SCAN` iterates
-   * incrementally, allowing other commands to run in between batches.
-   *
-   * @param keyPattern - Pattern to match (e.g. `session:*`).
-   * @returns {Promise<number>} Total count of deleted keys.
-   */
   async del(keyPattern: string): Promise<number> {
-    let cursor = 0;
-    let deletedCount = 0;
-    const batchSize = 100; // delete in batches to avoid memory issues
-
-    do {
-      const result = await this.scanKeys(cursor, keyPattern, batchSize);
-
-      cursor = result.cursor;
-      const keys = result.keys;
-
-      if (keys.length > 0) {
-        await this.client.del(keys);
-        deletedCount += keys.length;
-      }
-    } while (cursor !== 0);
-
-    redisLogger.info(
-      `[Redis] Deleted ${deletedCount} keys matching pattern: ${keyPattern}`,
-    );
-    return deletedCount;
+    return this.cacheModule.del(keyPattern);
   }
 
-  /**
-   * Helper to delete multiple independent patterns sequentially.
-   *
-   * @param patterns - Array of patterns to scan and delete.
-   */
   async deletePatterns(patterns: string[]): Promise<void> {
-    await Promise.all(patterns.map((p) => this.del(p)));
+    return this.cacheModule.deletePatterns(patterns);
   }
 
-  /**
-   * Defensive programming helper: Ensures a key holds the expected data type.
-   *
-   * @strategy Self-Healing
-   * @why If a bug or race condition overwrites a Set key with a String, subsequent
-   * Set operations (SADD) will throw errors. This method detects type mismatches
-   * and purges the corrupted key to allow fresh creation.
-   */
-  private async ensureSetKey(key: string): Promise<void> {
-    const type = await this.client.type(key);
-    if (type !== "none" && type !== "set") {
-      await this.client.del(key);
+  async publish<T>(channel: string, message: T): Promise<void> {
+    try {
+      await this.pubSubModule.publish(channel, message);
+      this.metricsService.recordRealtimeEventPublished(channel, "published");
+    } catch (error) {
+      this.metricsService.recordRealtimeEventPublished(channel, "failed");
+      throw error;
     }
   }
 
-  /**
-   * Broadcasts a message to the entire distributed system.
-   *
-   * @param channel - Target channel.
-   * @param message - Payload (automatically stringified).
-   */
-  async publish<T>(channel: string, message: T): Promise<void> {
-    await this.client.publish(channel, JSON.stringify(message));
-  }
-
-  /**
-   * Subscribes to Redis Pub/Sub channels for real-time inter-service messaging.
-   *
-   * @architecture Event Bus
-   * @why Pub/Sub is "Fire and Forget" (No persistence). Ideal for ephemeral events
-   * like "User Online", "Typing Indicator", or "Cache Invalidation Signals".
-   *
-   * @param channels - List of channels to listen to.
-   * @param messageHandler - Callback function invoked on message receipt.
-   */
   async subscribe<T>(
     channels: string[],
     messageHandler: (channel: string, message: T) => void,
     options?: RedisSubscribeOptions,
   ): Promise<boolean> {
-    const ready = await this.waitForConnection(options?.timeoutMs);
-    if (!ready) {
-      redisLogger.warn("Redis unavailable, skipping subscription", {
-        channels,
-      });
-      return false;
-    }
-
-    // Use a composite key so multiple subscribe() calls to different channel
-    // sets each get their own tracked connection.
-    const subscriberKey = channels.sort().join(",");
-
-    // Tear down any previous subscriber for the same channel set (e.g. reconnect)
-    const existing = this.subscribers.get(subscriberKey);
-    if (existing?.isOpen) {
-      try {
-        await existing.unsubscribe();
-        await existing.quit();
-      } catch {
-        /* best-effort cleanup */
-      }
-    }
-
-    const subscriber = this.client.duplicate();
-    try {
-      await subscriber.connect();
-      this.subscribers.set(subscriberKey, subscriber);
-
-      await subscriber.subscribe(channels, (message, channel) => {
-        try {
-          const parsedMessage = this.parseJson<T>(message);
-          messageHandler(channel, parsedMessage);
-        } catch (error) {
-          redisLogger.error("Error parsing Redis message", {
-            channel,
-            error: getErrorMessage(error) || String(error),
-          });
-        }
-      });
-      return true;
-    } catch (error) {
-      if (subscriber.isOpen) {
-        try {
-          await subscriber.quit();
-        } catch {
-          // ignore cleanup failures during degraded startup
-        }
-      }
-
-      if (this.isRetryableRedisError(error)) {
-        redisLogger.warn("Redis unavailable, subscription not started", {
-          channels,
-          error: getErrorMessage(error) || String(error),
-        });
-        return false;
-      }
-
-      throw error;
-    }
+    return this.pubSubModule.subscribe(channels, messageHandler, options);
   }
 
-  /**
-   * Tears down all tracked subscriber connections.
-   * Call during graceful shutdown to prevent connection leaks.
-   */
   async unsubscribeAll(): Promise<void> {
-    for (const [key, subscriber] of this.subscribers) {
-      try {
-        if (subscriber.isOpen) {
-          await subscriber.unsubscribe();
-          await subscriber.quit();
-        }
-      } catch (error) {
-        redisLogger.error(`Failed to close subscriber for ${key}`, {
-          error: getErrorMessage(error),
-        });
-      }
-    }
-    this.subscribers.clear();
+    return this.pubSubModule.unsubscribeAll();
   }
 
-  /**
-   * Stores a value in the cache and associates it with invalidation tags using a Pipeline.
-   *
-   * @pattern Write-Behind / Smart Caching
-   * @why Uses a pipeline to execute the SET and SADD (tag association) commands
-   * atomically. This prevents race conditions where a cache key exists without
-   * its corresponding invalidation tags.
-   *
-   * @param key - The main cache key (e.g., `user:profile:123`).
-   * @param value - The data to store. Will be JSON stringified automatically.
-   * @param tags - An array of string tags (e.g., `['user:123', 'feed:global']`) used for group invalidation.
-   * @param ttl - (Optional) Time-to-live in seconds. Defaults to 600s.
-   * @returns {Promise<void>} Resolves when the pipeline executes successfully.
-   */
   async setWithTags<T>(
     key: string,
     value: T,
     tags: string[],
     ttl?: number,
   ): Promise<void> {
-    if (tags.length === 0) {
-      await this.set(key, value, ttl);
-      return;
-    }
-
-    // wrap in resilience for cache write consistency
-    return this.withResilience(
-      async () => {
-        const uniqueTags = [...new Set(tags)];
-        const tagTTL = ttl || 600;
-        const stringValue = JSON.stringify(value);
-        const start = performance.now();
-        // Make sure tag keys hold the correct type (set) before pipeline use.
-        // NOTE: These type-checks run OUTSIDE the pipeline, so there is a narrow
-        // race window between the check and the pipeline execution. A Lua script
-        // would close this gap, but the operation is idempotent and the race is
-        // benign in practice. The worst case is a WRONGTYPE error caught by
-        // withResilience and retried.
-        await Promise.all([
-          ...uniqueTags.map((tag) => this.ensureSetKey(`tag:${tag}`)),
-          this.ensureSetKey(`key_tags:${key}`),
-        ]);
-
-        // Pipeline: batch SET + SADD (tag association) + EXPIRE in one round-trip
-        const pipeline = this.client.multi();
-
-        if (ttl) {
-          pipeline.setEx(key, ttl, stringValue);
-        } else {
-          pipeline.set(key, stringValue);
-        }
-
-        for (const tag of uniqueTags) {
-          const tagKey = `tag:${tag}`;
-          pipeline.sAdd(tagKey, key);
-          pipeline.expire(tagKey, tagTTL);
-        }
-
-        const keyTagKey = `key_tags:${key}`;
-        for (const tag of uniqueTags) {
-          pipeline.sAdd(keyTagKey, tag);
-        }
-        pipeline.expire(keyTagKey, tagTTL);
-
-        await pipeline.exec();
-        const durationMs = performance.now() - start;
-        redisLogger.info(
-          `[Redis] setWithTags key=${key} tags=${uniqueTags.length} duration=${durationMs.toFixed(2)}ms`,
-        );
-      },
-      { maxAttempts: 3 },
-    );
+    return this.taggedCacheModule.setWithTags(key, value, tags, ttl);
   }
 
   async setManyWithTags<T>(
     entries: Array<TaggedCacheEntry<T>>,
     ttl?: number,
   ): Promise<void> {
-    if (entries.length === 0) return;
-
-    return this.withResilience(
-      async () => {
-        const normalizedEntries = entries.map((entry) => ({
-          ...entry,
-          tags: [...new Set(entry.tags)],
-        }));
-        const tagTTL = ttl || 600;
-        const setKeysToEnsure = new Set<string>();
-
-        for (const entry of normalizedEntries) {
-          if (entry.tags.length === 0) {
-            continue;
-          }
-
-          setKeysToEnsure.add(`key_tags:${entry.key}`);
-          for (const tag of entry.tags) {
-            setKeysToEnsure.add(`tag:${tag}`);
-          }
-        }
-
-        await Promise.all(
-          [...setKeysToEnsure].map((keyToEnsure) =>
-            this.ensureSetKey(keyToEnsure),
-          ),
-        );
-
-        const start = performance.now();
-        const pipeline = this.client.multi();
-
-        for (const entry of normalizedEntries) {
-          const stringValue = JSON.stringify(entry.value);
-
-          if (ttl) {
-            pipeline.setEx(entry.key, ttl, stringValue);
-          } else {
-            pipeline.set(entry.key, stringValue);
-          }
-
-          if (entry.tags.length === 0) {
-            continue;
-          }
-
-          const keyTagKey = `key_tags:${entry.key}`;
-          for (const tag of entry.tags) {
-            const tagKey = `tag:${tag}`;
-            pipeline.sAdd(tagKey, entry.key);
-            pipeline.expire(tagKey, tagTTL);
-            pipeline.sAdd(keyTagKey, tag);
-          }
-          pipeline.expire(keyTagKey, tagTTL);
-        }
-
-        await pipeline.exec();
-        const durationMs = performance.now() - start;
-        redisLogger.info(
-          `[Redis] setManyWithTags keys=${normalizedEntries.length} duration=${durationMs.toFixed(2)}ms`,
-        );
-      },
-      { maxAttempts: 3 },
-    );
+    return this.taggedCacheModule.setManyWithTags(entries, ttl);
   }
 
-  /**
-   * Invalidates (deletes) all cache keys associated with the provided tags.
-   *
-   * @complexity O(N) where N is the number of keys linked to these tags.
-   * @strategy Fan-out Invalidation. When a user creates a post, invalidate
-   * 'user_feed:ID', 'global_feed', and 'tag:typescript' in one operation.
-   *
-   * @param tags - The list of tags to invalidate (e.g. `['user:123']`).
-   * @returns {Promise<void>} Resolves after all associated keys have been deleted.
-   */
   async invalidateByTags(tags: string[]): Promise<void> {
-    if (tags.length === 0) return;
-
-    // wrap in resilience for cache consistency
-    return this.withResilience(
-      async () => {
-        const uniqueTags = [...new Set(tags)];
-        const start = performance.now();
-
-        // batch fetch all tag members in one pipeline
-        const fetchPipeline = this.client.multi();
-        for (const tag of uniqueTags) {
-          fetchPipeline.sMembers(`tag:${tag}`);
-        }
-        const tagResults = await fetchPipeline.exec();
-
-        const keysToDelete = new Set<string>();
-        const tagKeysToDelete: string[] = [];
-
-        uniqueTags.forEach((tag, idx) => {
-          const tagKey = `tag:${tag}`;
-          tagKeysToDelete.push(tagKey);
-          const membersResult = tagResults?.[idx];
-          if (Array.isArray(membersResult)) {
-            for (const member of membersResult) {
-              if (typeof member === "string") {
-                keysToDelete.add(member);
-              }
-            }
-          }
-        });
-
-        const deleteTargets: string[] = [];
-        for (const key of keysToDelete) {
-          deleteTargets.push(key, `key_tags:${key}`);
-        }
-        deleteTargets.push(...tagKeysToDelete);
-
-        if (deleteTargets.length > 0) {
-          await this.client.del(deleteTargets);
-        }
-
-        const durationMs = performance.now() - start;
-        redisLogger.info(
-          `[Redis] invalidateByTags tags=${uniqueTags.length} keys=${keysToDelete.size} deletedKeys=${deleteTargets.length} duration=${durationMs.toFixed(2)}ms`,
-        );
-      },
-      { maxAttempts: 3 },
-    );
+    return this.taggedCacheModule.invalidateByTags(tags);
   }
 
-  /**
-   * Retrieval wrapper for Tag-based caching strategy.
-   *
-   * @note Currently an alias for `get`, but serves as an interface contract
-   * implying that the data retrieved is managed by the tagging system.
-   */
   async getWithTags<T>(key: string): Promise<T | null> {
-    return await this.get<T>(key);
+    return this.taggedCacheModule.getWithTags<T>(key);
   }
-
-  // ====== NOTIFICATIONS ======
 
   async pushNotification(
     userId: string,
@@ -836,8 +238,6 @@ export class RedisService {
   async getUnreadNotificationCount(userId: string): Promise<number> {
     return this.notificationModule.getUnreadNotificationCount(userId);
   }
-
-  // ====== AUTH SESSIONS ======
 
   async getAuthSession<T>(sid: string): Promise<T | null> {
     return this.sessionModule.getSession<T>(sid);
@@ -902,7 +302,6 @@ export class RedisService {
     );
   }
 
-  // ====== FEEDS ======
   async addToFeed(
     userId: string,
     postId: string,
@@ -978,54 +377,10 @@ export class RedisService {
     return this.feedModule.getFeedSize(userId, feedType);
   }
 
-  // ====== MAINTENANCE ======
-
-  /**
-   * Garbage Collector for empty tag sets.
-   *
-   * @maintenance Periodic Cleanup
-   * @complexity O(N) where N is the number of keys scanned.
-   * @why Although Redis expires keys automatically, the tag sets (Reverse Indexes)
-   * can sometimes leave empty shells. This method scans and removes them to
-   * keep memory footprint minimal.
-   */
   async cleanupOrphanedTags(): Promise<void> {
-    let cursor = 0;
-    let cleaned = 0;
-
-    do {
-      const result = await this.scanKeys(cursor, "tag:*", 100);
-
-      cursor = result.cursor;
-
-      if (result.keys.length === 0) {
-        continue;
-      }
-
-      const countPipeline = this.client.multi();
-      for (const tagKey of result.keys) {
-        countPipeline.sCard(tagKey);
-      }
-      const counts = await countPipeline.exec();
-
-      const emptyTagKeys: string[] = [];
-      result.keys.forEach((tagKey, idx) => {
-        const count = Number(counts?.[idx] ?? 0);
-        if (count === 0) {
-          emptyTagKeys.push(tagKey);
-        }
-      });
-
-      if (emptyTagKeys.length > 0) {
-        await this.client.del(emptyTagKeys);
-        cleaned += emptyTagKeys.length;
-      }
-    } while (cursor !== 0);
-
-    redisLogger.info(`[Redis] Cleaned ${cleaned} empty tag sets`);
+    return this.taggedCacheModule.cleanupOrphanedTags();
   }
 
-  // ====== STREAM / TRENDING ======
   async pushToStream(
     stream = "stream:interactions",
     payload: Record<string, unknown>,
@@ -1108,14 +463,6 @@ export class RedisService {
     return this.streamModule.xClaim(stream, group, consumer, minIdleMs, ids);
   }
 
-  /**
-   * Low-level sorted-set ADD for feed management.
-   * This is a direct pass-through to the feed module's Redis sorted set.
-   * Prefer higher-level feed service methods when possible.
-   * @param key - Redis sorted set key
-   * @param score - Numeric score (typically a timestamp)
-   * @param member - The value to store
-   */
   async zadd(key: string, score: number, member: string): Promise<number> {
     return this.feedModule.zadd(key, score, member);
   }
@@ -1124,15 +471,6 @@ export class RedisService {
     return this.feedModule.zrem(key, member);
   }
 
-  /**
-   * Low-level sorted-set range-by-score query for feed management.
-   * This is a direct pass-through to the feed module's Redis sorted set.
-   * Prefer higher-level feed service methods when possible.
-   * @param key - Redis sorted set key
-   * @param min - Minimum score (use '-inf' for unbounded)
-   * @param max - Maximum score (use '+inf' for unbounded)
-   * @returns Array of members within the score range
-   */
   async zrangeByScore(
     key: string,
     min: string,
@@ -1155,9 +493,12 @@ export class RedisService {
     socketId: string,
     ttlSeconds: number,
   ): Promise<void> {
-    const key = `active_conversation:${userId}:${conversationId}`;
-    await this.client.sAdd(key, socketId);
-    await this.client.expire(key, ttlSeconds);
+    return this.presenceModule.markConversationPresence(
+      userId,
+      conversationId,
+      socketId,
+      ttlSeconds,
+    );
   }
 
   async clearConversationPresence(
@@ -1165,16 +506,18 @@ export class RedisService {
     conversationId: string,
     socketId: string,
   ): Promise<void> {
-    const key = `active_conversation:${userId}:${conversationId}`;
-    await this.client.sRem(key, socketId);
+    return this.presenceModule.clearConversationPresence(
+      userId,
+      conversationId,
+      socketId,
+    );
   }
 
   async isConversationActive(
     userId: string,
     conversationId: string,
   ): Promise<boolean> {
-    const key = `active_conversation:${userId}:${conversationId}`;
-    return (await this.client.sCard(key)) > 0;
+    return this.presenceModule.isConversationActive(userId, conversationId);
   }
 
   async expire(key: string, seconds: number): Promise<boolean> {

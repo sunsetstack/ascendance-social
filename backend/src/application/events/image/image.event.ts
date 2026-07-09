@@ -1,12 +1,13 @@
 import { ImagePublicId, UserPublicId } from "@/types/branded";
 import { IEvent } from "@/application/common/interfaces/event.interface";
+import { EventRegistry } from "@/application/common/events/event-registry";
 
 /**
  * Fired when a new image is uploaded
  * This is separate from interaction events because it affects different users
  */
 export class ImageUploadedEvent implements IEvent {
-  readonly type = "ImageUploadedEvent";
+  readonly type = EventRegistry.domain.ImageUploaded;
   readonly timestamp: Date = new Date();
 
   constructor(
@@ -20,7 +21,7 @@ export class ImageUploadedEvent implements IEvent {
  * Fired when an image is deleted
  */
 export class ImageDeletedEvent implements IEvent {
-  readonly type = "ImageDeletedEvent";
+  readonly type = EventRegistry.domain.ImageDeleted;
   readonly timestamp: Date = new Date();
 
   constructor(
@@ -34,7 +35,7 @@ export class ImageDeletedEvent implements IEvent {
  * the MongoDB transaction boundary.
  */
 export class ImageAssetCleanupRequestedEvent implements IEvent {
-  readonly type = "ImageAssetCleanupRequestedEvent";
+  readonly type = EventRegistry.domain.ImageAssetCleanupRequested;
   readonly timestamp: Date = new Date();
 
   constructor(

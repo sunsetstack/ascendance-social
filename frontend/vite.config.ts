@@ -16,6 +16,28 @@ const vendorChunkGroups: Array<[string, string[]]> = [
     ],
   ],
   ["mui-vendor", ["@mui", "@emotion", "@popperjs"]],
+  ["query-vendor", ["@tanstack"]],
+  [
+    "socket-vendor",
+    [
+      "socket.io-client",
+      "engine.io-client",
+      "socket.io-parser",
+      "engine.io-parser",
+      "@socket.io/component-emitter",
+      "parseuri",
+    ],
+  ],
+  ["charts-vendor", ["recharts", "d3-", "decimal.js", "eventemitter3"]],
+  ["motion-vendor", ["framer-motion", "motion-dom", "motion-utils"]],
+  ["crop-vendor", ["react-image-crop"]],
+  ["date-vendor", ["date-fns"]],
+  ["toast-vendor", ["react-toastify"]],
+  [
+    "i18n-vendor",
+    ["i18next", "react-i18next", "i18next-browser-languagedetector"],
+  ],
+  ["seo-vendor", ["react-helmet-async"]],
 ];
 
 const resolveManualChunk = (id: string): string | undefined => {

@@ -42,8 +42,12 @@ export class OutboxWorker extends BasePollingWorker {
     if (events.length === 0) return;
 
     this.metricsService.recordOutboxBatchSize(events.length);
-    logger.debug(`[OutboxWorker] Found ${events.length} unprocessed events`, {
+    logger.info("Outbox events claimed", {
+      event: "outbox.batch.claimed",
+      worker: "OutboxWorker",
+      batchSize: events.length,
       pendingCount,
+      workerId: this.workerId,
     });
 
     for (const record of events) {
@@ -62,25 +66,42 @@ export class OutboxWorker extends BasePollingWorker {
             }
 
             await handler.handle(record.payload);
-            await this.outboxRepository.markHandlerProcessed(
-              eventId,
-              handler.key,
-            );
+            const handlerMarked =
+              await this.outboxRepository.markHandlerProcessed(
+                eventId,
+                handler.key,
+                this.workerId,
+              );
+            if (!handlerMarked) {
+              throw new Error(
+                "Outbox event ownership lost before handler checkpoint",
+              );
+            }
             processedHandlers.add(handler.key);
           }
         });
 
-        await this.outboxRepository.markAsProcessed(eventId);
+        const eventMarked = await this.outboxRepository.markAsProcessed(
+          eventId,
+          this.workerId,
+        );
+        if (!eventMarked) {
+          throw new Error("Outbox event ownership lost before completion");
+        }
         this.metricsService.recordOutboxAttempt(
           record.eventType,
           "processed",
           Date.now() - attemptStartedAt,
         );
-        logger.debug("[OutboxWorker] Successfully processed event", {
+        logger.info("Outbox event processed", {
+          event: "outbox.event.processed",
+          worker: "OutboxWorker",
           eventId,
           eventType: record.eventType,
           retries: record.retries,
           traceId,
+          correlationId,
+          durationMs: Date.now() - attemptStartedAt,
         });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
@@ -89,14 +110,36 @@ export class OutboxWorker extends BasePollingWorker {
           "failed",
           Date.now() - attemptStartedAt,
         );
-        logger.error("[OutboxWorker] Failed to process event", {
-          error: message,
+        logger.error("Outbox event failed", {
+          event: "outbox.event.failed",
+          worker: "OutboxWorker",
+          error,
+          message,
           eventId,
           eventType: record.eventType,
           retries: record.retries,
           traceId,
+          correlationId,
+          durationMs: Date.now() - attemptStartedAt,
         });
-        await this.outboxRepository.markAsFailed(eventId, message);
+        const failedMarked = await this.outboxRepository.markAsFailed(
+          eventId,
+          message,
+          this.workerId,
+        );
+        if (!failedMarked) {
+          logger.warn(
+            "Outbox event failure not recorded because ownership changed",
+            {
+              event: "outbox.event.ownership_lost",
+              worker: "OutboxWorker",
+              eventId,
+              eventType: record.eventType,
+              traceId,
+              correlationId,
+            },
+          );
+        }
       }
     }
 

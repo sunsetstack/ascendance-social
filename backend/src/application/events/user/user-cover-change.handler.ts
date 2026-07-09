@@ -16,19 +16,11 @@ export class UserCoverChangedHandler implements IEventHandler<UserCoverChangedEv
       `User ${event.userPublicId} changed cover from "${event.oldCoverUrl || "none"}" to "${event.newCoverUrl}"`,
     );
 
-    try {
-      // invalidate user data caches
-      const coverTags = [`user_data:${event.userPublicId}`];
-      await this.redis.invalidateByTags(coverTags);
+    const coverTags = [`user_data:${event.userPublicId}`];
+    await this.redis.invalidateByTags(coverTags);
 
-      logger.info(
-        `Cache invalidation completed for cover change of user ${event.userPublicId}`,
-      );
-    } catch (error) {
-      logger.error(
-        `Error while handling cover change for user ${event.userPublicId}`,
-        { error },
-      );
-    }
+    logger.info(
+      `Cache invalidation completed for cover change of user ${event.userPublicId}`,
+    );
   }
 }

@@ -58,6 +58,7 @@ import {
   useClearCache,
   useTelemetryMetrics,
   useRequestLogs,
+  useAuthActivityLogs,
 } from "../hooks/admin/useAdmin";
 import { AdminUserDTO, IPost } from "../types";
 import { formatDistanceToNow } from "date-fns";
@@ -152,6 +153,15 @@ export const AdminDashboard: React.FC = () => {
   const [logsStartDate, setLogsStartDate] = useState("");
   const [logsEndDate, setLogsEndDate] = useState("");
 
+  // Auth Activity Tab State
+  const [authLogsPage, setAuthLogsPage] = useState(0);
+  const [authLogsRowsPerPage, setAuthLogsRowsPerPage] = useState(50);
+  const [authLogsActionFilter, setAuthLogsActionFilter] = useState<string>("");
+  const [authLogsStatusFilter, setAuthLogsStatusFilter] = useState<string>("");
+  const [authLogsSearch, setAuthLogsSearch] = useState("");
+  const [authLogsStartDate, setAuthLogsStartDate] = useState("");
+  const [authLogsEndDate, setAuthLogsEndDate] = useState("");
+
   // Queries
   const { data: stats, isLoading: statsLoading } = useDashboardStats();
 
@@ -180,6 +190,19 @@ export const AdminDashboard: React.FC = () => {
     startDate: logsStartDate || undefined,
     endDate: logsEndDate || undefined,
   });
+
+  const { data: authActivityLogsData, isLoading: authLogsLoading } =
+    useAuthActivityLogs({
+      page: authLogsPage + 1,
+      limit: authLogsRowsPerPage,
+      action: authLogsActionFilter || undefined,
+      statusCode: authLogsStatusFilter
+        ? parseInt(authLogsStatusFilter)
+        : undefined,
+      search: authLogsSearch,
+      startDate: authLogsStartDate || undefined,
+      endDate: authLogsEndDate || undefined,
+    });
 
   // Mutations
   const banUserMutation = useBanUser();
@@ -235,7 +258,8 @@ export const AdminDashboard: React.FC = () => {
         <Tab icon={<PeopleIcon />} label="users" />
         <Tab icon={<ImageIcon />} label="posts" />
         <Tab icon={<SpeedIcon />} label="telemetry" />
-        <Tab icon={<StorageIcon />} label="logs" />
+        <Tab icon={<StorageIcon />} label="request logs" />
+        <Tab icon={<StorageIcon />} label="auth logs" />
       </Tabs>
 
       {/* overview tab */}
@@ -992,7 +1016,7 @@ export const AdminDashboard: React.FC = () => {
         )}
       </TabPanel>
 
-      {/* logs tab */}
+      {/* request logs tab */}
       <TabPanel value={currentTab} index={4}>
         <Card>
           <CardContent>
@@ -1122,6 +1146,12 @@ export const AdminDashboard: React.FC = () => {
                         <TableCell>time (ms)</TableCell>
                         <TableCell>ip</TableCell>
                         <TableCell>user / email</TableCell>
+                        <TableCell>auth</TableCell>
+                        <TableCell>session</TableCell>
+                        <TableCell>family</TableCell>
+                        <TableCell>request id</TableCell>
+                        <TableCell>boot id</TableCell>
+                        <TableCell>retry</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1205,6 +1235,18 @@ export const AdminDashboard: React.FC = () => {
                                       color="primary"
                                       sx={{ width: "fit-content", mb: 0.5 }}
                                     />
+                                    <Typography variant="caption" noWrap>
+                                      {log.userId}
+                                    </Typography>
+                                    {log.authEmail && (
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                        noWrap
+                                      >
+                                        {log.authEmail}
+                                      </Typography>
+                                    )}
                                   </Box>
                                 ) : (
                                   <Chip
@@ -1213,6 +1255,76 @@ export const AdminDashboard: React.FC = () => {
                                     variant="outlined"
                                   />
                                 )}
+                              </TableCell>
+                              <TableCell>
+                                <Box
+                                  sx={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 0.5,
+                                  }}
+                                >
+                                  <Chip
+                                    label={log.authState || "unknown"}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    noWrap
+                                  >
+                                    {log.authSource || "none"}
+                                  </Typography>
+                                  {log.refreshRotated && (
+                                    <Typography
+                                      variant="caption"
+                                      color="success.main"
+                                      noWrap
+                                    >
+                                      rotated
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem" }}>
+                                {log.sessionId || "-"}
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem" }}>
+                                {log.tokenFamilyId || "-"}
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem" }}>
+                                <Box sx={{ display: "flex", flexDirection: "column" }}>
+                                  <Typography variant="caption" noWrap>
+                                    {log.clientRequestId || "-"}
+                                  </Typography>
+                                  {log.causedByClientRequestId && (
+                                    <Typography
+                                      variant="caption"
+                                      color="text.secondary"
+                                      noWrap
+                                    >
+                                      caused by {log.causedByClientRequestId}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </TableCell>
+                              <TableCell sx={{ fontSize: "0.75rem" }}>
+                                {log.clientBootId || "-"}
+                              </TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={
+                                    log.axiosRetry
+                                      ? `retry ${log.clientRequestAttempt ?? ""}`.trim()
+                                      : log.clientRequestAttempt
+                                        ? `attempt ${log.clientRequestAttempt}`
+                                        : "-"
+                                  }
+                                  size="small"
+                                  color={log.axiosRetry ? "warning" : "default"}
+                                  variant={log.axiosRetry ? "filled" : "outlined"}
+                                />
                               </TableCell>
                             </TableRow>
                           );
@@ -1229,6 +1341,282 @@ export const AdminDashboard: React.FC = () => {
                   onRowsPerPageChange={(e) => {
                     setLogsRowsPerPage(parseInt(e.target.value, 10));
                     setLogsPage(0);
+                  }}
+                  rowsPerPageOptions={[25, 50, 100]}
+                />
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </TabPanel>
+
+      {/* auth activity logs tab */}
+      <TabPanel value={currentTab} index={5}>
+        <Card>
+          <CardContent>
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: { xs: "column", sm: "row" },
+                justifyContent: "space-between",
+                alignItems: { xs: "flex-start", sm: "center" },
+                mb: 2,
+                gap: 2,
+              }}
+            >
+              <Typography
+                variant="h6"
+                sx={{ display: "flex", alignItems: "center", gap: 1 }}
+              >
+                <StorageIcon />
+                auth activity logs
+              </Typography>
+              <Box
+                sx={{
+                  display: "flex",
+                  gap: 1,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  width: { xs: "100%", sm: "auto" },
+                }}
+              >
+                <TextField
+                  size="small"
+                  label="Search"
+                  value={authLogsSearch}
+                  onChange={(e) => {
+                    setAuthLogsSearch(e.target.value);
+                    setAuthLogsPage(0);
+                  }}
+                  InputProps={{
+                    startAdornment: (
+                      <SearchIcon
+                        color="action"
+                        fontSize="small"
+                        sx={{ mr: 1 }}
+                      />
+                    ),
+                  }}
+                  sx={{ width: { xs: "100%", sm: 200 } }}
+                />
+                <TextField
+                  size="small"
+                  label="Action"
+                  value={authLogsActionFilter}
+                  onChange={(e) => {
+                    setAuthLogsActionFilter(e.target.value);
+                    setAuthLogsPage(0);
+                  }}
+                  sx={{ minWidth: 150, flexGrow: 1 }}
+                />
+                <TextField
+                  type="date"
+                  size="small"
+                  label="Start Date"
+                  value={authLogsStartDate}
+                  onChange={(e) => {
+                    setAuthLogsStartDate(e.target.value);
+                    setAuthLogsPage(0);
+                  }}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ width: { xs: "calc(50% - 4px)", sm: 150 } }}
+                />
+                <TextField
+                  type="date"
+                  size="small"
+                  label="End Date"
+                  value={authLogsEndDate}
+                  onChange={(e) => {
+                    setAuthLogsEndDate(e.target.value);
+                    setAuthLogsPage(0);
+                  }}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ width: { xs: "calc(50% - 4px)", sm: 150 } }}
+                />
+                <TextField
+                  select
+                  size="small"
+                  value={authLogsStatusFilter}
+                  onChange={(e) => {
+                    setAuthLogsStatusFilter(e.target.value);
+                    setAuthLogsPage(0);
+                  }}
+                  SelectProps={{ native: true }}
+                  sx={{ minWidth: 100, flexGrow: 1 }}
+                >
+                  <option value="">Status: All</option>
+                  <option value="200">200</option>
+                  <option value="201">201</option>
+                  <option value="400">400</option>
+                  <option value="401">401</option>
+                  <option value="403">403</option>
+                  <option value="404">404</option>
+                  <option value="500">500</option>
+                </TextField>
+              </Box>
+            </Box>
+            {authLogsLoading ? (
+              <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              <>
+                <TableContainer>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>timestamp</TableCell>
+                        <TableCell>action</TableCell>
+                        <TableCell>route</TableCell>
+                        <TableCell>status</TableCell>
+                        <TableCell>ip</TableCell>
+                        <TableCell>user / email</TableCell>
+                        <TableCell>auth</TableCell>
+                        <TableCell>session</TableCell>
+                        <TableCell>family</TableCell>
+                        <TableCell>request id</TableCell>
+                        <TableCell>boot id</TableCell>
+                        <TableCell>retry</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {authActivityLogsData?.data.map((log, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell sx={{ fontSize: "0.75rem" }}>
+                            {new Date(log.timestamp).toLocaleString()}
+                          </TableCell>
+                          <TableCell>{log.action}</TableCell>
+                          <TableCell
+                            sx={{
+                              fontSize: "0.75rem",
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {log.route || "-"}
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={log.statusCode ?? "-"}
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell
+                            sx={{
+                              fontSize: "0.75rem",
+                              fontFamily: "monospace",
+                            }}
+                          >
+                            {log.ip}
+                          </TableCell>
+                          <TableCell>
+                            {log.userId ? (
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                }}
+                              >
+                                <Typography variant="body2" noWrap>
+                                  {log.userId}
+                                </Typography>
+                                {log.authEmail && (
+                                  <Typography
+                                    variant="caption"
+                                    color="text.secondary"
+                                    noWrap
+                                  >
+                                    {log.authEmail}
+                                  </Typography>
+                                )}
+                              </Box>
+                            ) : (
+                              <Chip label="anon" size="small" variant="outlined" />
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Box
+                              sx={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 0.5,
+                              }}
+                            >
+                              <Chip
+                                label={log.authState || "unknown"}
+                                size="small"
+                                variant="outlined"
+                              />
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                noWrap
+                              >
+                                {log.authSource || "none"}
+                              </Typography>
+                              {log.refreshRotated && (
+                                <Typography
+                                  variant="caption"
+                                  color="success.main"
+                                  noWrap
+                                >
+                                  rotated
+                                </Typography>
+                              )}
+                            </Box>
+                          </TableCell>
+                          <TableCell sx={{ fontSize: "0.75rem" }}>
+                            {log.sessionId || "-"}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: "0.75rem" }}>
+                            {log.tokenFamilyId || "-"}
+                          </TableCell>
+                          <TableCell sx={{ fontSize: "0.75rem" }}>
+                            <Box sx={{ display: "flex", flexDirection: "column" }}>
+                              <Typography variant="caption" noWrap>
+                                {log.clientRequestId || "-"}
+                              </Typography>
+                              {log.causedByClientRequestId && (
+                                <Typography
+                                  variant="caption"
+                                  color="text.secondary"
+                                  noWrap
+                                >
+                                  caused by {log.causedByClientRequestId}
+                                </Typography>
+                              )}
+                            </Box>
+                          </TableCell>
+                          <TableCell sx={{ fontSize: "0.75rem" }}>
+                            {log.clientBootId || "-"}
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              label={
+                                log.axiosRetry
+                                  ? `retry ${log.clientRequestAttempt ?? ""}`.trim()
+                                  : log.clientRequestAttempt
+                                    ? `attempt ${log.clientRequestAttempt}`
+                                    : "-"
+                              }
+                              size="small"
+                              color={log.axiosRetry ? "warning" : "default"}
+                              variant={log.axiosRetry ? "filled" : "outlined"}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <TablePagination
+                  component="div"
+                  count={authActivityLogsData?.total || 0}
+                  page={authLogsPage}
+                  onPageChange={(_, newPage) => setAuthLogsPage(newPage)}
+                  rowsPerPage={authLogsRowsPerPage}
+                  onRowsPerPageChange={(e) => {
+                    setAuthLogsRowsPerPage(parseInt(e.target.value, 10));
+                    setAuthLogsPage(0);
                   }}
                   rowsPerPageOptions={[25, 50, 100]}
                 />

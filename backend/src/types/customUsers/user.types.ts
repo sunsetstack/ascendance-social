@@ -1,5 +1,4 @@
 import { Document, Types } from "mongoose";
-import { IPost } from "../customPosts/posts.types";
 import { ICommunityCacheItem } from "../customCommunities/communityCacheItem.types";
 import { UserPublicId } from "@/types/branded";
 
@@ -33,8 +32,6 @@ export interface IUser extends Document {
   emailVerificationToken?: string;
   emailVerificationExpires?: Date;
 
-  comparePassword(candidatePassword: string): Promise<boolean>;
-  canViewPost(post: Pick<IPost, "canBeViewedBy" | "user" | "author">): boolean;
 }
 
 // Create a user lookup map using publicId

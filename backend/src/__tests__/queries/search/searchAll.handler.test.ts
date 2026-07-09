@@ -10,14 +10,14 @@ chai.use(chaiAsPromised);
 
 describe("SearchAllQueryHandler", () => {
 	let handler: SearchAllQueryHandler;
-	let mockPostRepository: any;
+	let mockPostReadRepository: any;
 	let mockUserRepository: any;
 	let mockTagRepository: any;
 	let mockCommunityRepository: any;
 	let mockDTOService: any;
 
 	beforeEach(() => {
-		mockPostRepository = {
+		mockPostReadRepository = {
 			findByTags: sinon.stub(),
 			searchByText: sinon.stub(),
 		};
@@ -37,7 +37,7 @@ describe("SearchAllQueryHandler", () => {
 		};
 
 		handler = new SearchAllQueryHandler(
-			mockPostRepository,
+			mockPostReadRepository,
 			mockUserRepository,
 			mockTagRepository,
 			mockCommunityRepository,
@@ -58,14 +58,14 @@ describe("SearchAllQueryHandler", () => {
 			mockTagRepository.searchTags.resolves([]);
 
 			const textPost = { publicId: "p1", body: "test post" };
-			mockPostRepository.searchByText.resolves([textPost]);
-			mockPostRepository.findByTags.resolves({ data: [] });
+			mockPostReadRepository.searchByText.resolves([textPost]);
+			mockPostReadRepository.findByTags.resolves({ data: [] });
 
 			mockDTOService.toPostDTO.withArgs(textPost).returns({ publicId: "p1", body: "test post" });
 
 			const result = await handler.execute(query);
 
-			expect(mockPostRepository.searchByText.calledWith(query.query)).to.be.true;
+			expect(mockPostReadRepository.searchByText.calledWith(query.query)).to.be.true;
 			expect(result.posts).to.have.lengthOf(1);
 			expect(result.posts![0].publicId).to.equal("p1");
 		});
@@ -83,16 +83,16 @@ describe("SearchAllQueryHandler", () => {
 			const post2 = { publicId: "p2", body: "other post" };
 
 			// post1 found by text
-			mockPostRepository.searchByText.resolves([post1]);
+			mockPostReadRepository.searchByText.resolves([post1]);
 			// post1 AND post2 found by tag
-			mockPostRepository.findByTags.resolves({ data: [post1, post2] });
+			mockPostReadRepository.findByTags.resolves({ data: [post1, post2] });
 
 			mockDTOService.toPostDTO.callsFake((post: any) => post);
 
 			const result = await handler.execute(query);
 
-			expect(mockPostRepository.searchByText.calledWith(query.query)).to.be.true;
-			expect(mockPostRepository.findByTags.called).to.be.true;
+			expect(mockPostReadRepository.searchByText.calledWith(query.query)).to.be.true;
+			expect(mockPostReadRepository.findByTags.called).to.be.true;
 
 			expect(result.posts).to.have.lengthOf(2);
 			// Verify IDs present
@@ -107,8 +107,8 @@ describe("SearchAllQueryHandler", () => {
 			mockUserRepository.getAll.resolves(null);
 			mockCommunityRepository.search.resolves(null);
 			mockTagRepository.searchTags.resolves([]); 
-			mockPostRepository.searchByText.resolves(null); 
-			mockPostRepository.findByTags.resolves(null); 
+			mockPostReadRepository.searchByText.resolves(null); 
+			mockPostReadRepository.findByTags.resolves(null); 
 
 			const result = await handler.execute(query);
 

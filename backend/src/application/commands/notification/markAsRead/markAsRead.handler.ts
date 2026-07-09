@@ -10,6 +10,8 @@ import { logger } from "@/utils/winston";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 import { asMongoId } from "@/types/branded";
+import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
+import { MetricsService } from "@/metrics/metrics.service";
 
 type NotificationWithToJSON = INotification & {
   toJSON?: () => NotificationPlain;
@@ -27,6 +29,8 @@ export class MarkAsReadCommandHandler implements ICommandHandler<
     private readonly notificationRepository: NotificationRepository,
     @inject(TOKENS.Services.Redis)
     private readonly redisService: RedisService,
+    @inject(TOKENS.Services.Metrics)
+    private readonly metricsService: MetricsService,
   ) {}
 
   private toPlainNotification(
@@ -81,13 +85,24 @@ export class MarkAsReadCommandHandler implements ICommandHandler<
 
       try {
         const plain = this.toPlainNotification(updatedNotification);
+        const payload = {
+          ...plain,
+          eventId: buildRealtimeEventId(
+            EventRegistry.socketServerEvents.notificationRead,
+            plain.id ?? plain._id ?? notificationId,
+          ),
+        };
         logger.info(`Sending notification_read to user ${userPublicId}:`, {
-          notification: plain,
+          notification: payload,
         });
         this.webSocketServer
           .getIO()
           .to(userPublicId)
-          .emit("notification_read", plain);
+          .emit(EventRegistry.socketServerEvents.notificationRead, payload);
+        this.metricsService.recordSocketEventEmitted(
+          EventRegistry.socketServerEvents.notificationRead,
+          "room",
+        );
         logger.info("Notification read event sent successfully");
       } catch (error) {
         logger.warn("Error sending notification read event", {

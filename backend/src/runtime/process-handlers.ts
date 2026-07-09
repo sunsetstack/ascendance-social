@@ -28,10 +28,10 @@ export function registerGlobalProcessHandlers(): void {
 
   process.on("uncaughtException", (error: Error) => {
     errorLogger.error({
+      event: "process.uncaught_exception",
       type: "UncaughtException",
       message: error.message,
       stack: error.stack,
-      timestamp: new Date().toISOString(),
     });
     scheduleFatalExit();
   });
@@ -40,11 +40,11 @@ export function registerGlobalProcessHandlers(): void {
     const details = getErrorDetails(reason);
 
     errorLogger.error({
+      event: "process.unhandled_rejection",
       type: "UnhandledRejection",
       message: details.message,
       stack: details.stack,
       promise: String(promise),
-      timestamp: new Date().toISOString(),
     });
     scheduleFatalExit();
   });

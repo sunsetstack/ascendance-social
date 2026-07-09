@@ -7,33 +7,47 @@ import { FeedInteractionHandler } from "@/application/events/user/feed-interacti
 import { UserInteractedWithPostEvent } from "@/application/events/user/user-interaction.event";
 import { FeedService } from "@/services/feed/feed.service";
 import { RedisService } from "@/services/redis.service";
-import { UserRepository } from "@/repositories/user.repository";
 import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
-import { PostRepository } from "@/repositories/post.repository";
 import { IPost } from "@/types";
+import type {
+  IPostReadRepository,
+  IUserReadRepository,
+} from "@/repositories/interfaces";
 
 describe("FeedInteractionHandler", () => {
   let handler: FeedInteractionHandler;
   let feedServiceMock: sinon.SinonStubbedInstance<FeedService>;
   let redisServiceMock: sinon.SinonStubbedInstance<RedisService>;
-  let userRepositoryMock: sinon.SinonStubbedInstance<UserRepository>;
+  let userRepositoryMock: {
+    findUsersFollowing: sinon.SinonStub;
+  };
   let userPreferenceRepositoryMock: sinon.SinonStubbedInstance<UserPreferenceRepository>;
-  let postRepositoryMock: sinon.SinonStubbedInstance<PostRepository>;
+  let postRepositoryMock: {
+    findByPublicId: sinon.SinonStub;
+  };
 
   beforeEach(() => {
     // Create stubs for all dependencies
     feedServiceMock = sinon.createStubInstance(FeedService);
     redisServiceMock = sinon.createStubInstance(RedisService);
-    userRepositoryMock = sinon.createStubInstance(UserRepository);
+    userRepositoryMock = {
+      findUsersFollowing: sinon.stub(),
+    };
     userPreferenceRepositoryMock = sinon.createStubInstance(UserPreferenceRepository);
-    postRepositoryMock = sinon.createStubInstance(PostRepository);
+    postRepositoryMock = {
+      findByPublicId: sinon.stub(),
+    };
 
     // Register mocks in the DI container
     container.register("FeedService", { useValue: feedServiceMock });
     container.register("RedisService", { useValue: redisServiceMock });
-    container.register("UserReadRepository", { useValue: userRepositoryMock });
+    container.register("UserReadRepository", {
+      useValue: userRepositoryMock as unknown as IUserReadRepository,
+    });
     container.register("UserPreferenceRepository", { useValue: userPreferenceRepositoryMock });
-    container.register("PostReadRepository", { useValue: postRepositoryMock });
+    container.register("PostReadRepository", {
+      useValue: postRepositoryMock as unknown as IPostReadRepository,
+    });
 
     // Resolve the handler with mocked dependencies
     handler = container.resolve(FeedInteractionHandler);

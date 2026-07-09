@@ -37,6 +37,35 @@ export const requestLogsQuerySchema = z
     page: z.coerce.number().int().positive().optional().default(1),
     limit: z.coerce.number().int().positive().max(100).optional().default(50),
     userId: z.string().trim().min(1).optional(),
+    sessionId: z.string().trim().min(1).optional(),
+    tokenFamilyId: z.string().trim().min(1).optional(),
+    clientRequestId: z.string().trim().min(1).optional(),
+    clientBootId: z.string().trim().min(1).optional(),
+    previousClientRequestId: z.string().trim().min(1).optional(),
+    causedByClientRequestId: z.string().trim().min(1).optional(),
+    authState: z.string().trim().max(50).optional(),
+    authSource: z.string().trim().max(50).optional(),
+    statusCode: z.coerce.number().int().min(100).max(599).optional(),
+    startDate: z.coerce.date().optional(),
+    endDate: z.coerce.date().optional(),
+    search: z.string().trim().max(200).transform(sanitize).optional(),
+  })
+  .strict();
+
+export const authActivityLogsQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().optional().default(1),
+    limit: z.coerce.number().int().positive().max(100).optional().default(50),
+    userId: z.string().trim().min(1).optional(),
+    sessionId: z.string().trim().min(1).optional(),
+    tokenFamilyId: z.string().trim().min(1).optional(),
+    clientRequestId: z.string().trim().min(1).optional(),
+    clientBootId: z.string().trim().min(1).optional(),
+    previousClientRequestId: z.string().trim().min(1).optional(),
+    causedByClientRequestId: z.string().trim().min(1).optional(),
+    authState: z.string().trim().max(50).optional(),
+    authSource: z.string().trim().max(50).optional(),
+    action: z.string().trim().max(100).optional(),
     statusCode: z.coerce.number().int().min(100).max(599).optional(),
     startDate: z.coerce.date().optional(),
     endDate: z.coerce.date().optional(),
@@ -73,6 +102,7 @@ export type AdminUsersQuery = z.infer<typeof adminUsersQuerySchema>;
 export type AdminImagesQuery = z.infer<typeof adminImagesQuerySchema>;
 export type RecentActivityQuery = z.infer<typeof recentActivityQuerySchema>;
 export type RequestLogsQuery = z.infer<typeof requestLogsQuerySchema>;
+export type AuthActivityLogsQuery = z.infer<typeof authActivityLogsQuerySchema>;
 export type CacheClearQuery = z.infer<typeof cacheClearQuerySchema>;
 export type BanUserBody = z.infer<typeof banUserBodySchema>;
 export type AdminFavoriteParams = z.infer<typeof adminFavoriteParamsSchema>;

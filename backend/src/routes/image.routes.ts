@@ -13,7 +13,7 @@ import {
   userPostsQuerySchema,
 } from "@/utils/schemas/post.schemas";
 import { handleSchema } from "@/utils/schemas/user.schemas";
-import upload from "@/config/multer";
+import upload, { validateImageUpload } from "@/config/multer";
 import { AuthMiddlewareService } from "../middleware/authentication.middleware";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
@@ -86,6 +86,7 @@ export class ImageRoutes {
     this.router.post(
       "/upload",
       upload.single("image"),
+      validateImageUpload,
       new ValidationMiddleware({ body: createPostSchema }).validate(),
       asyncHandler(this.controller.createPost),
     );

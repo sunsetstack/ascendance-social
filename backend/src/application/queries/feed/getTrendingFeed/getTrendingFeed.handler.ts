@@ -3,17 +3,16 @@ import { IQueryHandler } from "@/application/common/interfaces/query-handler.int
 import { GetTrendingFeedQuery } from "./getTrendingFeed.query";
 import type {
   IPostReadRepository,
-  IUserReadRepository,
   IFeedReadDao,
 } from "@/repositories/interfaces";
 import { RedisService } from "@/services/redis.service";
-import { DTOService } from "@/services/dto.service";
 import { Errors } from "@/utils/errors";
 import { redisLogger } from "@/utils/winston";
-import { FeedPost, PaginatedFeedResult, IPost, IImage, ITag } from "@/types";
+import { FeedPost, PaginatedFeedResult } from "@/types";
 import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
-import { asPostPublicId, asUserPublicId } from "@/types/branded";
+import { asPostPublicId } from "@/types/branded";
 import { TOKENS } from "@/types/tokens";
+import { normalizeFeedPosts } from "@/application/queries/feed/feed-post-normalizer";
 
 @injectable()
 export class GetTrendingFeedQueryHandler implements IQueryHandler<
@@ -25,10 +24,7 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
     private readonly feedReadDao: IFeedReadDao,
     @inject(TOKENS.Repositories.PostRead)
     private postReadRepository: IPostReadRepository,
-    @inject(TOKENS.Repositories.UserRead)
-    private userReadRepository: IUserReadRepository,
     @inject(TOKENS.Services.Redis) private redisService: RedisService,
-    @inject(TOKENS.Services.DTO) private dtoService: DTOService,
     @inject(TOKENS.Services.FeedEnrichment)
     private feedEnrichmentService: FeedEnrichmentService,
   ) {}
@@ -58,7 +54,7 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
           limit,
           cursor: actualCursor,
         });
-        const transformedPosts = this.transformPosts(result.data);
+        const transformedPosts = normalizeFeedPosts(result.data);
         const enriched =
           await this.feedEnrichmentService.enrichFeedWithCurrentData(
             transformedPosts,
@@ -97,7 +93,7 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
             .map((id) => postMap.get(id))
             .filter((p): p is FeedPost => p !== undefined);
 
-          const transformedPosts = this.transformPosts(orderedPosts);
+          const transformedPosts = normalizeFeedPosts(orderedPosts);
           const enriched =
             await this.feedEnrichmentService.enrichFeedWithCurrentData(
               transformedPosts,
@@ -131,7 +127,7 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
         minLikes: 1,
       });
 
-      let transformedPosts = this.transformPosts(result.data);
+      let transformedPosts = normalizeFeedPosts(result.data);
       let nextCursor = result.nextCursor;
       let hasMore = result.hasMore;
 
@@ -148,7 +144,7 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
           const uniqueBackfill = backfill.data.filter(
             (p) => !existingIds.has(p.publicId),
           );
-          const mappedBackfill = this.transformPosts(uniqueBackfill);
+          const mappedBackfill = normalizeFeedPosts(uniqueBackfill);
 
           transformedPosts = [...transformedPosts, ...mappedBackfill];
           nextCursor = backfill.nextCursor
@@ -196,157 +192,4 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
     }
   }
 
-  private transformPosts(
-    posts: (IPost | FeedPost | Record<string, unknown>)[],
-  ): FeedPost[] {
-    return posts.map((post) => {
-      const plainPost =
-        typeof (post as IPost).toObject === "function"
-          ? (post as IPost).toObject()
-          : (post as Record<string, unknown>);
-      const userDoc = this.getUserSnapshot(plainPost);
-      const imageDoc = plainPost.image as
-        | IImage
-        | Record<string, unknown>
-        | undefined;
-      const repostOfDoc = plainPost.repostOf as
-        | IPost
-        | Record<string, unknown>
-        | undefined;
-      const tagsArray = (
-        Array.isArray(plainPost.tags) ? plainPost.tags : []
-      ) as unknown[];
-      const normalizedTags = tagsArray.reduce<
-        { tag: string; publicId?: string }[]
-      >((acc, tag) => {
-        if (tag && typeof tag === "object") {
-          if ("tag" in tag) {
-            acc.push({
-              tag: (tag as { tag: string }).tag,
-              publicId: (tag as { publicId?: string }).publicId,
-            });
-          } else {
-            acc.push({ tag: (tag as ITag).tag });
-          }
-        }
-        return acc;
-      }, []);
-
-      return {
-        publicId: plainPost.publicId as string,
-        body: (plainPost.body as string) ?? "",
-        slug: (plainPost.slug as string) ?? "",
-        createdAt: plainPost.createdAt as Date,
-        likes: (plainPost.likesCount as number) ?? 0,
-        commentsCount: (plainPost.commentsCount as number) ?? 0,
-        viewsCount: (plainPost.viewsCount as number) ?? 0,
-        userPublicId: asUserPublicId(userDoc?.publicId as string),
-        tags: normalizedTags,
-        user: {
-          publicId: userDoc?.publicId as string,
-          handle: userDoc?.handle ?? "",
-          username: userDoc?.username as string,
-          avatar: userDoc?.avatar ?? userDoc?.avatarUrl ?? "",
-        },
-        image: imageDoc
-          ? {
-              publicId: (imageDoc as IImage).publicId,
-              url: (imageDoc as IImage).url,
-              slug: (imageDoc as IImage).slug,
-            }
-          : undefined,
-        repostOf: repostOfDoc ? this.transformRepostOf(repostOfDoc) : undefined,
-        rankScore: plainPost.rankScore as number | undefined,
-        trendScore: plainPost.trendScore as number | undefined,
-      };
-    });
-  }
-
-  private transformRepostOf(
-    repostOf: IPost | Record<string, unknown>,
-  ): Partial<FeedPost> | undefined {
-    if (!repostOf) return undefined;
-
-    const originalUserDoc = this.getUserSnapshot(repostOf);
-    const originalImageDoc = repostOf.image as
-      | IImage
-      | Record<string, unknown>
-      | undefined;
-    const originalTagsArray = (
-      Array.isArray(repostOf.tags) ? repostOf.tags : []
-    ) as unknown[];
-    const normalizedOriginalTags = originalTagsArray.reduce<
-      { tag: string; publicId?: string }[]
-    >((acc, tag: unknown) => {
-      if (tag && typeof tag === "object") {
-        if ("tag" in tag) {
-          acc.push({
-            tag: (tag as { tag: string }).tag,
-            publicId: (tag as { publicId?: string }).publicId,
-          });
-        } else {
-          acc.push({ tag: (tag as ITag).tag });
-        }
-      }
-      return acc;
-    }, []);
-
-    return {
-      publicId: repostOf.publicId as string,
-      body: (repostOf.body as string) ?? "",
-      slug: (repostOf.slug as string) ?? "",
-      createdAt: repostOf.createdAt as Date,
-      likes: (repostOf.likesCount as number) ?? 0,
-      commentsCount: (repostOf.commentsCount as number) ?? 0,
-      tags: normalizedOriginalTags,
-      user: {
-        publicId: originalUserDoc?.publicId as string,
-        handle: originalUserDoc?.handle ?? "",
-        username: originalUserDoc?.username as string,
-        avatar: originalUserDoc?.avatar ?? originalUserDoc?.avatarUrl ?? "",
-      },
-      image: originalImageDoc
-        ? ({
-            publicId: originalImageDoc.publicId,
-            url: originalImageDoc.url,
-            slug: originalImageDoc.slug,
-          } as IImage)
-        : undefined,
-    };
-  }
-
-  private getUserSnapshot(post: IPost | Record<string, unknown>): {
-    publicId?: string;
-    handle?: string;
-    username?: string;
-    avatar?: string;
-    avatarUrl?: string;
-  } {
-    const rawUser =
-      "user" in post ? (post as Record<string, unknown>).user : undefined;
-    if (
-      rawUser &&
-      typeof rawUser === "object" &&
-      ("publicId" in rawUser || "username" in rawUser)
-    ) {
-      return rawUser as {
-        publicId?: string;
-        handle?: string;
-        username?: string;
-        avatar?: string;
-        avatarUrl?: string;
-      };
-    }
-    const author =
-      "author" in post ? (post as Record<string, unknown>).author : undefined;
-    return (
-      (author as {
-        publicId?: string;
-        handle?: string;
-        username?: string;
-        avatar?: string;
-        avatarUrl?: string;
-      }) ?? {}
-    );
-  }
 }

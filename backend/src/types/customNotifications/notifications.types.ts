@@ -11,6 +11,7 @@ export interface INotification extends Document {
   targetId?: PostPublicId | ImagePublicId | UserPublicId; // optional target publicId (e.g., post publicId, image publicId)
   targetType?: string; // 'post' | 'image' | 'user'
   targetPreview?: string; // preview text/snippet of the target content
+  idempotencyKey?: string;
   isRead: boolean;
   timestamp: Date;
 }
@@ -30,6 +31,7 @@ export interface NotificationPlain {
   targetId?: PostPublicId | ImagePublicId | UserPublicId;
   targetType?: string;
   targetPreview?: string;
+  idempotencyKey?: string;
   isRead?: boolean;
   timestamp?: Date;
 }

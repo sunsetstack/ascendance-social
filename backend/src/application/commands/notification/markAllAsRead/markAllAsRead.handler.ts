@@ -6,6 +6,8 @@ import { WebSocketServer } from "@/server/socketServer";
 import { wrapError } from "@/utils/errors";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry } from "@/application/common/events/event-registry";
+import { MetricsService } from "@/metrics/metrics.service";
 
 @injectable()
 export class MarkAllAsReadCommandHandler
@@ -18,6 +20,8 @@ export class MarkAllAsReadCommandHandler
     private readonly notificationRepository: NotificationRepository,
     @inject(TOKENS.Services.Redis)
     private readonly redisService: RedisService,
+    @inject(TOKENS.Services.Metrics)
+    private readonly metricsService: MetricsService,
   ) {}
 
   async execute(command: MarkAllAsReadCommand): Promise<number> {
@@ -33,8 +37,14 @@ export class MarkAllAsReadCommandHandler
         if (notificationIds.length > 0) {
           await this.redisService.markNotificationsRead(notificationIds);
         }
-
-        this.webSocketServer.getIO().to(userPublicId).emit("all_notifications_read");
+        this.webSocketServer
+          .getIO()
+          .to(userPublicId)
+          .emit(EventRegistry.socketServerEvents.allNotificationsRead);
+        this.metricsService.recordSocketEventEmitted(
+          EventRegistry.socketServerEvents.allNotificationsRead,
+          "room",
+        );
       }
 
       return modifiedCount;

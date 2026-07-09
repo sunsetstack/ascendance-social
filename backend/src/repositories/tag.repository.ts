@@ -110,4 +110,31 @@ export class TagRepository extends BaseRepository<ITag> {
 			throw Errors.database("Failed to find tags", { cause: error });
 		}
 	}
+
+	async upsertByTag(tag: string): Promise<ITag> {
+		try {
+			const session = this.getSession();
+			const query = this.model.findOneAndUpdate(
+				{ tag },
+				{
+					$setOnInsert: {
+						tag,
+						count: 0,
+						modifiedAt: new Date(),
+					},
+				},
+				{
+					new: true,
+					upsert: true,
+					setDefaultsOnInsert: true,
+				},
+			);
+			if (session) {
+				query.session(session);
+			}
+			return await query.exec() as ITag;
+		} catch (error) {
+			throw Errors.database("Failed to upsert tag", { cause: error });
+		}
+	}
 }

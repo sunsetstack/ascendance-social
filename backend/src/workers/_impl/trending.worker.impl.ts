@@ -54,6 +54,7 @@ export class TrendingWorker {
   private CHUNK_SIZE = 50;
   private FULL_REFRESH_INTERVAL_MS =
     Number(process.env.TRENDING_FULL_REFRESH_MS) || 300_000; // full refresh every 5 min
+  private REDIS_STARTUP_TIMEOUT_MS = 5000;
 
   private WEIGHTS = { recency: 0.4, popularity: 0.5, comments: 0.1 };
 
@@ -78,7 +79,12 @@ export class TrendingWorker {
   /** initialize dependencies and create consumer group if necessary */
   async init(): Promise<void> {
     // ensure redis is connected before creating group or starting read loop
-    await this.redisService.waitForConnection();
+    const connected = await this.redisService.waitForConnection(
+      this.REDIS_STARTUP_TIMEOUT_MS,
+    );
+    if (!connected) {
+      throw new Error("Redis unavailable; trending worker cannot start");
+    }
 
     // create group via helper (MKSTREAM)
     await this.redisService.createStreamConsumerGroup(this.STREAM, this.GROUP);

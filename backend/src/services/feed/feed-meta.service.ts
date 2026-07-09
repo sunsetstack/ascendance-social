@@ -3,6 +3,7 @@ import { inject, injectable } from "tsyringe";
 import { RedisService } from "../redis.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
 
 @injectable()
 export class FeedMetaService {
@@ -29,9 +30,14 @@ export class FeedMetaService {
     );
 
     await this.redisService.publish(
-      "feed_updates",
+      EventRegistry.redisChannels.feedUpdates,
       JSON.stringify({
-        type: "like_update",
+        eventId: buildRealtimeEventId(
+          EventRegistry.realtimeMessageTypes.likeUpdate,
+          postPublicId,
+          newTotalLikes,
+        ),
+        type: EventRegistry.realtimeMessageTypes.likeUpdate,
         postId: postPublicId,
         newLikes: newTotalLikes,
         timestamp: new Date().toISOString(),

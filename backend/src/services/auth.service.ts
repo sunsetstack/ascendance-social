@@ -12,6 +12,7 @@ import { DecodedUser, IUser } from "@/types";
 import { AuthSessionService } from "@/services/auth-session.service";
 import { TOKENS } from "@/types/tokens";
 import { asSessionId, UserPublicId } from "@/types/branded";
+import { verifyPassword } from "@/application/common/policies/password.policy";
 
 export interface AuthSessionContext {
   ip?: string;
@@ -65,12 +66,11 @@ export class AuthService {
     context: AuthSessionContext = {},
   ): Promise<AuthenticatedSessionResult> {
     const user = await this.userReadRepository.findByEmail(email);
-    if (
-      !user ||
-      typeof user.comparePassword !== "function" ||
-      !(await user.comparePassword(password))
-    ) {
+    if (!user || !(await verifyPassword(password, user.password))) {
       throw Errors.authentication("Invalid email or password");
+    }
+    if (user.isBanned) {
+      throw Errors.forbidden("Account banned");
     }
 
     const userDTO = user.isAdmin
@@ -125,6 +125,10 @@ export class AuthService {
     if (!user) {
       await this.authSessionService.revokeSession(session.sid);
       throw Errors.authentication("User not found");
+    }
+    if (user.isBanned) {
+      await this.authSessionService.revokeSession(session.sid);
+      throw Errors.forbidden("Account banned");
     }
 
     const userDTO = user.isAdmin
@@ -184,6 +188,13 @@ export class AuthService {
    */
   async revokeAllSessionsForUser(publicId: string): Promise<void> {
     await this.authSessionService.revokeAllSessionsForUser(publicId);
+  }
+
+  extractSessionIdFromRefreshToken(refreshToken: string): string | undefined {
+    return (
+      this.authSessionService.extractSessionIdFromRefreshToken(refreshToken) ??
+      undefined
+    );
   }
 
   /**

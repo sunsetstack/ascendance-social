@@ -1,4 +1,5 @@
 import React from "react";
+import { Box, Button, Stack } from "@mui/material";
 
 interface SidebarProps {
 	setView: (view: string) => void;
@@ -6,19 +7,26 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ setView }) => {
 	return (
-		<div className="sidebar navbar bg-transparent bg-opacity-60">
-			<div className="navbar-start"></div>
-			<div className="navbar-center">
-				<ul className="menu menu-horizontal px-1">
-					<li className="text-lg">
-						<button onClick={() => setView("gallery")}>Gallery</button>
-					</li>
-					<li className="text-lg">
-						<button onClick={() => setView("editProfile")}>Update Profile</button>
-					</li>
-				</ul>
-			</div>
-		</div>
+		<Box component="nav" sx={{ display: "flex", justifyContent: "center" }}>
+			<Stack direction="row" spacing={1} sx={{ px: 1 }}>
+				<Button
+					variant="text"
+					color="inherit"
+					onClick={() => setView("gallery")}
+					sx={{ fontSize: "1.125rem" }}
+				>
+					Gallery
+				</Button>
+				<Button
+					variant="text"
+					color="inherit"
+					onClick={() => setView("editProfile")}
+					sx={{ fontSize: "1.125rem" }}
+				>
+					Update Profile
+				</Button>
+			</Stack>
+		</Box>
 	);
 };
 

@@ -29,7 +29,7 @@ export class SearchAllQueryHandler implements IQueryHandler<
 > {
   constructor(
     @inject(TOKENS.Repositories.PostRead)
-    private readonly postRepository: IPostReadRepository,
+    private readonly postReadRepository: IPostReadRepository,
     @inject(TOKENS.Repositories.UserRead)
     private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.Tag)
@@ -47,12 +47,12 @@ export class SearchAllQueryHandler implements IQueryHandler<
         this.userReadRepository.getAll({ search: searchTerms }),
         this.communityRepository.search(searchTerms),
         this.tagRepository.searchTags(searchTerms),
-        this.postRepository.searchByText(searchTerms),
+        this.postReadRepository.searchByText(searchTerms),
       ]);
 
       // Search for posts by tag IDs (dependent on tags result)
       const tagIds = tags.map((tag) => tag._id);
-      const tagPostsResult = await this.postRepository.findByTags(
+      const tagPostsResult = await this.postReadRepository.findByTags(
         tagIds as string[],
       );
       const tagPosts = tagPostsResult?.data ?? [];

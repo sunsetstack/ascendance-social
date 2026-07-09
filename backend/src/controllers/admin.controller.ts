@@ -14,6 +14,7 @@ import { GetAllUsersAdminQuery } from "@/application/queries/admin/getAllUsersAd
 import { GetAdminUserProfileQuery } from "@/application/queries/admin/getAdminUserProfile/getAdminUserProfile.query";
 import { GetUserStatsQuery } from "@/application/queries/admin/getUserStats/getUserStats.query";
 import { GetRecentActivityQuery } from "@/application/queries/admin/getRecentActivity/getRecentActivity.query";
+import { GetAuthActivityLogsQuery } from "@/application/queries/admin/getAuthActivityLogs/getAuthActivityLogs.query";
 import { GetRequestLogsQuery } from "@/application/queries/admin/getRequestLogs/getRequestLogs.query";
 import { BanUserCommand } from "@/application/commands/admin/banUser/banUser.command";
 import { UnbanUserCommand } from "@/application/commands/admin/unbanUser/unbanUser.command";
@@ -31,6 +32,7 @@ import type {
   AdminFavoriteParams,
   AdminImagesQuery,
   AdminUsersQuery,
+  AuthActivityLogsQuery,
   BanUserBody,
   CacheClearQuery,
   RecentActivityQuery,
@@ -301,12 +303,35 @@ export class AdminUserController {
     req: TypedRequest<EmptyParams, EmptyBody, RequestLogsQuery>,
     res: Response,
   ) => {
-    const { page, limit, userId, statusCode, startDate, endDate, search } =
-      req.query;
+    const {
+      page,
+      limit,
+      userId,
+      sessionId,
+      tokenFamilyId,
+      clientRequestId,
+      clientBootId,
+      previousClientRequestId,
+      causedByClientRequestId,
+      authState,
+      authSource,
+      statusCode,
+      startDate,
+      endDate,
+      search,
+    } = req.query;
     const options = {
       page,
       limit,
       userId,
+      sessionId,
+      tokenFamilyId,
+      clientRequestId,
+      clientBootId,
+      previousClientRequestId,
+      causedByClientRequestId,
+      authState,
+      authSource,
       statusCode,
       startDate,
       endDate,
@@ -315,6 +340,61 @@ export class AdminUserController {
     const query = new GetRequestLogsQuery(options);
     const result =
       await this.queryBus.execute<PaginationResult<unknown>>(query);
+
+    if (Array.isArray(result.data) && result.data.length >= STREAM_THRESHOLD) {
+      streamPaginatedResponse(res, result.data, {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
+      });
+    } else {
+      res.status(200).json(result);
+    }
+  };
+
+  getAuthActivityLogs = async (
+    req: TypedRequest<EmptyParams, EmptyBody, AuthActivityLogsQuery>,
+    res: Response,
+  ) => {
+    const {
+      page,
+      limit,
+      userId,
+      sessionId,
+      tokenFamilyId,
+      clientRequestId,
+      clientBootId,
+      previousClientRequestId,
+      causedByClientRequestId,
+      authState,
+      authSource,
+      action,
+      statusCode,
+      startDate,
+      endDate,
+      search,
+    } = req.query;
+    const options = {
+      page,
+      limit,
+      userId,
+      sessionId,
+      tokenFamilyId,
+      clientRequestId,
+      clientBootId,
+      previousClientRequestId,
+      causedByClientRequestId,
+      authState,
+      authSource,
+      action,
+      statusCode,
+      startDate,
+      endDate,
+      search,
+    };
+    const query = new GetAuthActivityLogsQuery(options);
+    const result = await this.queryBus.execute<PaginationResult<unknown>>(query);
 
     if (Array.isArray(result.data) && result.data.length >= STREAM_THRESHOLD) {
       streamPaginatedResponse(res, result.data, {

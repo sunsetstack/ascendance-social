@@ -55,10 +55,16 @@ function resolvePort(): number {
 
 async function bootstrap(): Promise<void> {
   try {
+    logger.info("Backend startup started", {
+      event: "backend.startup.started",
+      enableApi: process.env.ENABLE_API !== "false",
+      enableWorkers: process.env.ENABLE_WORKERS !== "false",
+    });
+
     await initializeBackendRuntime();
     const metricsService = container.resolve<MetricsService>("MetricsService");
 
-    // Start workers in-process (same event loop - I/O bound, no need for threads)
+    // Start workers in-process, same event loop, I/O bound, no need for threads
     await startInProcessWorkers(metricsService);
 
     if (process.env.ENABLE_API !== "false") {
@@ -72,18 +78,25 @@ async function bootstrap(): Promise<void> {
         container.resolve<WebSocketServer>("WebSocketServer");
       webSocketServer.initialize(server);
 
-      // Initialize real-time feed service
+      // Initialize realtime feed service
       container.resolve<RealTimeFeedService>("RealTimeFeedService");
-      logger.info("Real-time feed service initialized");
+      logger.info("Real-time feed service initialized", {
+        event: "realtime_feed.initialized",
+      });
 
-      // Start the HTTP server last
+      // Start the HTTP server
       const port = resolvePort();
       expressServer.start(server, port);
     } else {
-      logger.info("API server disabled via ENABLE_API=false");
+      logger.info("API server disabled via ENABLE_API=false", {
+        event: "backend.api.disabled",
+      });
     }
   } catch (error) {
-    logger.error("Startup failed", { error });
+    logger.error("Startup failed", {
+      event: "backend.startup.failed",
+      error,
+    });
     process.exit(1);
   }
 }
@@ -95,11 +108,17 @@ async function startWorker(
   try {
     await start();
     metricsService.markWorkerRunning(metricName);
-    logger.info(`Started in-process worker: ${displayName}`);
+    logger.info("Started in-process worker", {
+      event: "worker.in_process.started",
+      worker: metricName,
+      displayName,
+    });
   } catch (error) {
     metricsService.markWorkerStopped(metricName);
-    logger.error(`Failed to start ${critical ? "critical" : "optional"} worker`, {
+    logger.error("Failed to start in-process worker", {
+      event: "worker.in_process.start_failed",
       worker: metricName,
+      critical,
       error,
     });
 
@@ -108,6 +127,7 @@ async function startWorker(
     }
 
     logger.warn("Continuing startup without optional worker", {
+      event: "worker.in_process.optional_skipped",
       worker: metricName,
     });
   }
@@ -117,7 +137,9 @@ async function startInProcessWorkers(
   metricsService: MetricsService,
 ): Promise<void> {
   if (process.env.ENABLE_WORKERS === "false") {
-    logger.info("Workers disabled via ENABLE_WORKERS=false");
+    logger.info("Workers disabled via ENABLE_WORKERS=false", {
+      event: "backend.workers.disabled",
+    });
     return;
   }
 
@@ -149,7 +171,9 @@ async function startInProcessWorkers(
         metricName: "newFeedWarmCache.worker",
         displayName: "newFeedWarmCache",
         start: async () => {
-          const newFeedWarmCacheWorker = container.resolve(NewFeedWarmCacheWorker);
+          const newFeedWarmCacheWorker = container.resolve(
+            NewFeedWarmCacheWorker,
+          );
           await newFeedWarmCacheWorker.init();
           await newFeedWarmCacheWorker.start();
         },
@@ -157,6 +181,7 @@ async function startInProcessWorkers(
     } else {
       logger.info(
         "Scheduled in-process workers disabled via ENABLE_SCHEDULED_WORKERS=false",
+        { event: "backend.scheduled_workers.disabled" },
       );
     }
 
@@ -179,9 +204,14 @@ async function startInProcessWorkers(
       },
     });
 
-    logger.info("All in-process workers started successfully");
+    logger.info("All in-process workers started successfully", {
+      event: "worker.in_process.all_started",
+    });
   } catch (error) {
-    logger.error("Failed to start in-process workers", { error });
+    logger.error("Failed to start in-process workers", {
+      event: "worker.in_process.startup_failed",
+      error,
+    });
     throw error;
   }
 }

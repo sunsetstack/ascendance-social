@@ -33,6 +33,7 @@ export class TagService {
    */
   async ensureTagsExist(
     tagNames: string[],
+    _session?: unknown,
   ): Promise<ITag[]> {
     if (!tagNames.length) {
       return [];
@@ -43,25 +44,9 @@ export class TagService {
     ).filter(Boolean);
     if (unique.length === 0) return [];
 
-    const existing = await this.tagRepository.findByTags(unique);
-    const existingMap = new Map(existing.map((t) => [t.tag, t]));
-
-    const tagDocs: ITag[] = [...existing];
-    const missingTags = unique.filter((tag) => !existingMap.has(tag));
-
-    if (missingTags.length > 0) {
-      const created = await Promise.all(
-        missingTags.map((tag) =>
-          this.tagRepository.create(
-            {
-              tag,
-              count: 0,
-              modifiedAt: new Date(),
-            } as Partial<ITag>,
-          ),
-        ),
-      );
-      tagDocs.push(...created);
+    const tagDocs: ITag[] = [];
+    for (const tag of unique) {
+      tagDocs.push(await this.tagRepository.upsertByTag(tag));
     }
 
     return tagDocs;
@@ -87,22 +72,28 @@ export class TagService {
    */
   async incrementUsage(
     tagIds: mongoose.Types.ObjectId[],
+    options?: { trackActivity?: boolean } | unknown,
   ): Promise<void> {
     if (!tagIds.length) return;
 
     const now = new Date();
-    await Promise.all(
-      tagIds.map((tagId) =>
-        this.tagRepository.findOneAndUpdate(
-          { _id: tagId },
-          { $inc: { count: 1 }, $set: { modifiedAt: now } },
-        ),
-      ),
-    );
+    for (const tagId of tagIds) {
+      await this.tagRepository.findOneAndUpdate(
+        { _id: tagId },
+        { $inc: { count: 1 }, $set: { modifiedAt: now } },
+      );
+    }
 
-    // track activity for dynamic TTL (fire and forget, don't block post creation)
-    this.trackTagActivity(tagIds.length).catch((err) => {
-      logger.warn("[TagService] Failed to track tag activity", err);
+    const shouldTrack =
+      !this.isIncrementOptions(options) || options.trackActivity !== false;
+    if (!shouldTrack) return;
+
+    this.trackUsageActivity(tagIds.length).catch((err) => {
+      logger.warn("Failed to track tag activity", {
+        event: "tag_activity.track_failed",
+        tagCount: tagIds.length,
+        error: err,
+      });
     });
   }
 
@@ -110,7 +101,7 @@ export class TagService {
    * tracks tag usage activity for dynamic cache TTL calculation
    * uses exponential decay to weight recent activity more heavily
    */
-  private async trackTagActivity(tagCount: number): Promise<void> {
+  async trackUsageActivity(tagCount: number): Promise<void> {
     const now = Date.now();
     const oneHourMs = 3600000;
 
@@ -163,10 +154,17 @@ export class TagService {
         );
       }
 
-      logger.debug(`[TagService] Tracked ${tagCount} tag usages`);
+      logger.debug("Tracked tag activity", {
+        event: "tag_activity.tracked",
+        tagCount,
+      });
     } catch (error) {
       // non-critical, just log
-      logger.warn("[TagService] Error tracking tag activity", error);
+      logger.warn("Error tracking tag activity", {
+        event: "tag_activity.track_failed",
+        tagCount,
+        error,
+      });
     }
   }
 
@@ -175,18 +173,17 @@ export class TagService {
    */
   async decrementUsage(
     tagIds: mongoose.Types.ObjectId[],
+    _session?: unknown,
   ): Promise<void> {
     if (!tagIds.length) return;
 
     const now = new Date();
-    await Promise.all(
-      tagIds.map((tagId) =>
-        this.tagRepository.findOneAndUpdate(
-          { _id: tagId },
-          { $inc: { count: -1 }, $set: { modifiedAt: now } },
-        ),
-      ),
-    );
+    for (const tagId of tagIds) {
+      await this.tagRepository.findOneAndUpdate(
+        { _id: tagId },
+        { $inc: { count: -1 }, $set: { modifiedAt: now } },
+      );
+    }
   }
 
   /**
@@ -213,5 +210,15 @@ export class TagService {
   private normalize(tag?: string): string {
     if (!tag) return "";
     return tag.replace(/^#+/, "").trim().toLowerCase();
+  }
+
+  private isIncrementOptions(
+    options: { trackActivity?: boolean } | unknown,
+  ): options is { trackActivity?: boolean } {
+    return (
+      typeof options === "object" &&
+      options !== null &&
+      "trackActivity" in options
+    );
   }
 }

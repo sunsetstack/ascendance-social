@@ -62,7 +62,9 @@ const makeStubs = () => ({
     logAction: sinon.stub().resolves(),
   },
   unitOfWork: {
-    executeInTransaction: sinon.stub().callsFake(async (fn: () => Promise<void>) => fn()),
+    executeInTransaction: sinon
+      .stub()
+      .callsFake(async (fn: () => Promise<void>) => fn()),
   },
   redisService: {
     invalidateByTags: sinon.stub().resolves(),
@@ -110,8 +112,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("returns 'followed' and queues a notification when following a new user", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(false);
 
     const result = await bus.dispatch<{ action: string }>(
@@ -127,8 +131,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("adds a follow record when following a new user", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(false);
 
     await bus.dispatch(
@@ -145,8 +151,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("increments follower/following counts when following a new user", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(false);
 
     await bus.dispatch(
@@ -158,17 +166,26 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
     );
 
     expect(
-      stubs.userWriteRepo.updateFollowingCount.calledWith(asMongoId(FOLLOWER_MID), 1),
+      stubs.userWriteRepo.updateFollowingCount.calledWith(
+        asMongoId(FOLLOWER_MID),
+        1,
+      ),
     ).to.be.true;
     expect(
-      stubs.userWriteRepo.updateFollowerCount.calledWith(asMongoId(FOLLOWEE_MID), 1),
+      stubs.userWriteRepo.updateFollowerCount.calledWith(
+        asMongoId(FOLLOWEE_MID),
+        1,
+      ),
     ).to.be.true;
+    expect(stubs.userWriteRepo.update.called).to.be.false;
   });
 
   it("queues a NotificationRequestedEvent when following a new user", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(false);
 
     await bus.dispatch(
@@ -192,8 +209,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("returns 'unfollowed' and removes the follow record when already following", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(true);
 
     const result = await bus.dispatch<{ action: string }>(
@@ -211,8 +230,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("does not queue a notification event when unfollowing", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(true);
 
     await bus.dispatch(
@@ -228,8 +249,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("decrements follower/following counts when unfollowing", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(true);
 
     await bus.dispatch(
@@ -241,11 +264,18 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
     );
 
     expect(
-      stubs.userWriteRepo.updateFollowingCount.calledWith(asMongoId(FOLLOWER_MID), -1),
+      stubs.userWriteRepo.updateFollowingCount.calledWith(
+        asMongoId(FOLLOWER_MID),
+        -1,
+      ),
     ).to.be.true;
     expect(
-      stubs.userWriteRepo.updateFollowerCount.calledWith(asMongoId(FOLLOWEE_MID), -1),
+      stubs.userWriteRepo.updateFollowerCount.calledWith(
+        asMongoId(FOLLOWEE_MID),
+        -1,
+      ),
     ).to.be.true;
+    expect(stubs.userWriteRepo.update.called).to.be.false;
   });
 
   // -------------------------------------------------------------------------
@@ -254,8 +284,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("returns 'followed' without side effects when already following", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(true);
 
     const result = await bus.dispatch<{ action: string }>(
@@ -275,8 +307,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("returns 'unfollowed' without side effects when already unfollowed", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(false);
 
     const result = await bus.dispatch<{ action: string }>(
@@ -300,8 +334,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("treats a duplicate follow write as a successful no-op when another request already followed", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(false);
     stubs.followRepo.addFollow.rejects(
       Errors.duplicate("Already following this user"),
@@ -322,8 +358,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("treats a missing follow on unfollow as a successful no-op when another request already removed it", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(true);
     stubs.followRepo.removeFollow.rejects(
       createError("NotFoundError", "Not following this user"),
@@ -347,7 +385,9 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
   // -------------------------------------------------------------------------
 
   it("throws ValidationError (400) when follower and followee are the same user", async () => {
-    stubs.userReadRepo.findByPublicId.resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID));
+    stubs.userReadRepo.findByPublicId.resolves(
+      makeUserDoc(FOLLOWER_PID, FOLLOWER_MID),
+    );
 
     const err = await bus
       .dispatch(
@@ -367,8 +407,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("throws NotFoundError (404) when either user does not exist", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(null);
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(null);
 
     const err = await bus
       .dispatch(
@@ -387,8 +429,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("throws DatabaseError (500) when the transaction throws a non-AppError", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(false);
     stubs.unitOfWork.executeInTransaction.rejects(new Error("connection lost"));
 
@@ -403,8 +447,9 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
       .catch((e) => e);
 
     expect(err).to.be.instanceOf(AppError);
-    expect((err as AppError).statusCode).to.equal(500);
-    expect(err.name).to.equal("DatabaseError");
+    const appError = err as AppError;
+    expect(appError.statusCode).to.equal(500);
+    expect(appError.name).to.equal("DatabaseError");
   });
 
   // -------------------------------------------------------------------------
@@ -413,8 +458,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("invalidates feed caches after the transaction completes", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(false);
 
     await bus.dispatch(
@@ -430,8 +477,10 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
 
   it("still returns a result when cache invalidation fails (non-critical path)", async () => {
     stubs.userReadRepo.findByPublicId
-      .withArgs(asUserPublicId(FOLLOWER_PID)).resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
-      .withArgs(asUserPublicId(FOLLOWEE_PID)).resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
+      .withArgs(asUserPublicId(FOLLOWER_PID))
+      .resolves(makeUserDoc(FOLLOWER_PID, FOLLOWER_MID))
+      .withArgs(asUserPublicId(FOLLOWEE_PID))
+      .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(false);
     stubs.redisService.invalidateByTags.rejects(new Error("redis down"));
 

@@ -15,6 +15,9 @@ export class MetricsService {
 	private readonly workerRestarts: client.Counter<string>;
 	private readonly redisUp: client.Gauge<string>;
 	private readonly optionalAuthFailuresTotal: client.Counter<string>;
+	private readonly domainEventsPublishedTotal: client.Counter<string>;
+	private readonly realtimeEventsPublishedTotal: client.Counter<string>;
+	private readonly socketEventsEmittedTotal: client.Counter<string>;
 	private readonly outboxPendingEvents: client.Gauge<string>;
 	private readonly outboxEventsTotal: client.Counter<string>;
 	private readonly outboxBatchSize: client.Histogram<string>;
@@ -72,6 +75,27 @@ export class MetricsService {
 			name: "auth_optional_failures_total",
 			help: "Optional-auth failures by reason and route",
 			labelNames: ["reason", "route"],
+			registers: [this.registry],
+		});
+
+		this.domainEventsPublishedTotal = new client.Counter({
+			name: "domain_events_published_total",
+			help: "Domain events published by delivery mode",
+			labelNames: ["event_type", "mode"],
+			registers: [this.registry],
+		});
+
+		this.realtimeEventsPublishedTotal = new client.Counter({
+			name: "realtime_events_published_total",
+			help: "Realtime messages published to internal channels",
+			labelNames: ["channel", "status"],
+			registers: [this.registry],
+		});
+
+		this.socketEventsEmittedTotal = new client.Counter({
+			name: "socket_events_emitted_total",
+			help: "Socket.IO events emitted to clients",
+			labelNames: ["event_name", "target"],
 			registers: [this.registry],
 		});
 
@@ -144,6 +168,22 @@ export class MetricsService {
 
 	public recordOptionalAuthFailure(reason: string, route: string): void {
 		this.optionalAuthFailuresTotal.labels(reason || "unknown", route || "unknown").inc();
+	}
+
+	public recordDomainEventPublished(eventType: string, mode: string): void {
+		this.domainEventsPublishedTotal
+			.labels(eventType || "unknown", mode || "unknown")
+			.inc();
+	}
+
+	public recordRealtimeEventPublished(channel: string, status: "published" | "failed"): void {
+		this.realtimeEventsPublishedTotal
+			.labels(channel || "unknown", status)
+			.inc();
+	}
+
+	public recordSocketEventEmitted(eventName: string, target: "broadcast" | "room" | "socket"): void {
+		this.socketEventsEmittedTotal.labels(eventName || "unknown", target).inc();
 	}
 
 	public setOutboxPendingCount(count: number): void {

@@ -20,7 +20,10 @@ import {
   mapPostError,
 } from "@/application/errors/post.errors";
 import { logger } from "@/utils/winston";
-import { IPost, IUser } from "@/types";
+import {
+  canPostBeViewedBy,
+  isPostOwnedBy,
+} from "@/application/common/policies/post-visibility.policy";
 import {
   getPostViewBloomKey,
   POST_VIEW_BLOOM_OPTIONS,
@@ -97,25 +100,12 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
 
       const userId = user._id as mongoose.Types.ObjectId;
 
-      const isOwner =
-        typeof (post as IPost).isOwnedBy === "function"
-          ? (post as IPost).isOwnedBy(userId)
-          : post.user.toString() === userId.toString();
+      const isOwner = isPostOwnedBy(post, userId);
       if (isOwner) {
         return false;
       }
 
-      if (
-        typeof (user as IUser).canViewPost === "function" &&
-        !(user as IUser).canViewPost(post)
-      ) {
-        throw new PostAuthorizationError("User cannot view this post");
-      }
-
-      if (
-        typeof (post as IPost).canBeViewedBy === "function" &&
-        !(post as IPost).canBeViewedBy(user)
-      ) {
+      if (!canPostBeViewedBy(post, user)) {
         throw new PostAuthorizationError("User cannot view this post");
       }
 
@@ -133,11 +123,13 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
         return false;
       }
 
-      let isNewView = false;
-      isNewView = await this.postViewRepository.recordView(postId, userId);
-      if (isNewView) {
-        await this.postWriteRepository.incrementViewCount(postId);
-      }
+      const isNewView = await this.unitOfWork.executeInTransaction(async () => {
+        const recorded = await this.postViewRepository.recordView(postId, userId);
+        if (recorded) {
+          await this.postWriteRepository.incrementViewCount(postId);
+        }
+        return recorded;
+      });
 
       await this.markViewSeenInBloom(bloomKey, bloomItem);
 

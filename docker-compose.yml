@@ -102,6 +102,7 @@ services:
       JWT_SECRET: YourProductionJWTSecretGoesHere
       ALLOWED_ORIGINS: http://localhost,http://localhost:80,http://localhost:5173,http://localhost:8000,http://192.168.1.10:80
       COOKIE_SECURE: "false" # true in real production environment with HTTPS
+      ALLOW_INSECURE_COOKIES: "true"
       # Cloudinary credentials go here for production
       # CLOUDINARY_CLOUD_NAME: ...
       # CLOUDINARY_API_KEY: ...
@@ -167,6 +168,46 @@ services:
     mem_limit: 256m
     cpu_shares: 256
 
+  loki:
+    image: grafana/loki:3.7.2
+    container_name: loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    networks:
+      - app-network
+    mem_limit: 256m
+    cpu_shares: 256
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    restart: unless-stopped
+    ports:
+      - "12345:12345"
+    command:
+      [
+        "run",
+        "--server.http.listen-addr=0.0.0.0:12345",
+        "--storage.path=/var/lib/alloy/data",
+        "/etc/alloy/config.alloy",
+      ]
+    volumes:
+      - ./monitoring/alloy.config:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    depends_on:
+      loki:
+        condition: service_started
+    networks:
+      - app-network
+    mem_limit: 128m
+    cpu_shares: 128
+
   grafana:
     image: grafana/grafana:11.1.0
     container_name: grafana
@@ -176,8 +217,12 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_SECURITY_ADMIN_USER: admin
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:
       prometheus:
+        condition: service_started
+      loki:
         condition: service_started
     networks:
       - app-network
@@ -215,3 +260,5 @@ volumes:
   redis_data:
   mongo_data:
   mongo_keyfile:
+  loki_data:
+  alloy_data:

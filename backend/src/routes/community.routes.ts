@@ -14,7 +14,7 @@ import {
   kickMemberSchema,
   communitySearchSchema,
 } from "@/utils/schemas/community.schemas";
-import upload from "@/config/multer";
+import upload, { validateImageUpload } from "@/config/multer";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
@@ -48,6 +48,7 @@ export class CommunityRoutes {
       "/",
       this.auth,
       upload.single("avatar"),
+      validateImageUpload,
       new ValidationMiddleware({ body: createCommunitySchema }).validate(),
       asyncHandler(this.communityController.createCommunity),
     );
@@ -116,6 +117,7 @@ export class CommunityRoutes {
         { name: "avatar", maxCount: 1 },
         { name: "coverPhoto", maxCount: 1 },
       ]),
+      validateImageUpload,
       new ValidationMiddleware({
         params: communityPublicIdSchema,
         body: updateCommunitySchema,

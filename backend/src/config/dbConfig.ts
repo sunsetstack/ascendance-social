@@ -1,7 +1,7 @@
 import mongoose, { ConnectOptions } from "mongoose";
 import { singleton } from "tsyringe";
 import { z } from "zod";
-import pino from "pino";
+import { logger } from "@/utils/winston";
 
 const envSchema = z.object({
   MONGODB_URI: z.string().url(),
@@ -12,11 +12,6 @@ const envSchema = z.object({
 function readDatabaseEnv() {
   return envSchema.parse(process.env);
 }
-
-// Central logger
-const logger = pino({
-  level: process.env.LOG_LEVEL || "info",
-});
 
 @singleton()
 export class DatabaseConfig {
@@ -41,16 +36,29 @@ export class DatabaseConfig {
 
     try {
       await mongoose.connect(this.uri, opts);
-      logger.info("Database connected");
+      logger.info("Database connected", {
+        event: "database.connected",
+      });
       this.registerConnectionEvents();
     } catch (err: unknown) {
-      logger.error({ err, attempt }, `Connection attempt ${attempt} failed`);
+      logger.error("Database connection attempt failed", {
+        event: "database.connection_failed",
+        attempt,
+        error: err,
+      });
       if (attempt < this.maxRetries) {
-        logger.info(`Retrying in ${this.retryInterval}ms…`);
+        logger.info("Retrying database connection", {
+          event: "database.connection_retry_scheduled",
+          attempt,
+          retryIntervalMs: this.retryInterval,
+        });
         await new Promise((r) => setTimeout(r, this.retryInterval));
         return this.tryConnect(attempt + 1);
       } else {
-        logger.fatal("Exceeded max DB connection attempts, exiting");
+        logger.error("Exceeded max DB connection attempts, exiting", {
+          event: "database.connection_retries_exhausted",
+          maxRetries: this.maxRetries,
+        });
         process.exit(1);
       }
     }
@@ -62,25 +70,38 @@ export class DatabaseConfig {
 
   public async disconnect(): Promise<void> {
     await mongoose.disconnect();
-    logger.info("Database disconnected");
+    logger.info("Database disconnected", {
+      event: "database.disconnected",
+    });
   }
 
-  // 3. Log disconnects, errors, re-connects
+  // disconnects, errors, re-connects
   private registerConnectionEvents() {
     mongoose.connection.on("disconnected", () =>
-      logger.warn("MongoDB disconnected"),
+      logger.warn("MongoDB disconnected", {
+        event: "database.connection.disconnected",
+      }),
     );
     mongoose.connection.on("reconnected", () =>
-      logger.info("MongoDB reconnected"),
+      logger.info("MongoDB reconnected", {
+        event: "database.connection.reconnected",
+      }),
     );
     mongoose.connection.on("error", (err) =>
-      logger.error({ err }, "MongoDB error"),
+      logger.error("MongoDB connection error", {
+        event: "database.connection.error",
+        error: err,
+      }),
     );
   }
 
-  // Graceful shutdown
+  // graceful shutdown
   private handleProcessSignals() {
-    const shutdown = async () => {
+    const shutdown = async (signal: NodeJS.Signals) => {
+      logger.info("Database shutdown signal received", {
+        event: "database.shutdown_signal",
+        signal,
+      });
       await this.disconnect();
       process.exit(0);
     };

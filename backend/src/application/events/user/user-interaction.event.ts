@@ -1,8 +1,9 @@
 import { UserPublicId, PostPublicId, MongoId } from "@/types/branded";
 import { IEvent } from "@/application/common/interfaces/event.interface";
+import { EventRegistry } from "@/application/common/events/event-registry";
 
 export class UserInteractedWithPostEvent implements IEvent {
-  readonly type = "UserInteractedWithPostEvent";
+  readonly type = EventRegistry.domain.UserInteractedWithPost;
   readonly timestamp: Date = new Date();
 
   constructor(
@@ -19,7 +20,7 @@ export class UserInteractedWithPostEvent implements IEvent {
 }
 
 export class UserAvatarChangedEvent implements IEvent {
-  readonly type = "UserAvatarChangedEvent";
+  readonly type = EventRegistry.domain.UserAvatarChanged;
   readonly timestamp: Date = new Date();
 
   constructor(
@@ -30,7 +31,7 @@ export class UserAvatarChangedEvent implements IEvent {
 }
 
 export class UserUsernameChangedEvent implements IEvent {
-  readonly type = "UserUsernameChangedEvent";
+  readonly type = EventRegistry.domain.UserUsernameChanged;
   readonly timestamp: Date = new Date();
 
   constructor(
@@ -41,7 +42,7 @@ export class UserUsernameChangedEvent implements IEvent {
 }
 
 export class UserCoverChangedEvent implements IEvent {
-  readonly type = "UserCoverChangedEvent";
+  readonly type = EventRegistry.domain.UserCoverChanged;
   readonly timestamp: Date = new Date();
 
   constructor(
@@ -52,7 +53,7 @@ export class UserCoverChangedEvent implements IEvent {
 }
 
 export class UserDeletedEvent implements IEvent {
-  readonly type = "UserDeletedEvent";
+  readonly type = EventRegistry.domain.UserDeleted;
   readonly timestamp: Date = new Date();
 
   constructor(

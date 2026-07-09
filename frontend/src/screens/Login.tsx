@@ -3,6 +3,7 @@ import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { useLogin } from "../hooks/user/useUserLogin";
 import AuthForm from "../components/AuthForm";
 import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import { Box, Container, Link, Typography } from "@mui/material";
 
 const Login: React.FC = () => {

@@ -31,7 +31,11 @@ export abstract class BasePollingWorker implements IWorker {
   start(): void {
     if (this.isRunning) return;
     this.isRunning = true;
-    logger.info(`[${this.workerName}] Starting (interval=${this.intervalMs}ms)`);
+    logger.info("Polling worker started", {
+      event: "worker.polling.started",
+      worker: this.workerName,
+      intervalMs: this.intervalMs,
+    });
     this.schedule();
   }
 
@@ -46,7 +50,10 @@ export abstract class BasePollingWorker implements IWorker {
       await this.currentTick;
       this.currentTick = null;
     }
-    logger.info(`[${this.workerName}] Stopped`);
+    logger.info("Polling worker stopped", {
+      event: "worker.polling.stopped",
+      worker: this.workerName,
+    });
   }
 
   /** The actual work performed each cycle. Implement in subclass. */
@@ -62,7 +69,12 @@ export abstract class BasePollingWorker implements IWorker {
       await this.tick();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error(`[${this.workerName}] Tick error: ${message}`);
+      logger.error("Polling worker tick failed", {
+        event: "worker.polling.tick_failed",
+        worker: this.workerName,
+        message,
+        error,
+      });
     } finally {
       if (this.isRunning) {
         this.timer = setTimeout(() => this.schedule(), this.intervalMs);

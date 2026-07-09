@@ -4,9 +4,10 @@ import {
   UserPublicId,
 } from "@/types/branded";
 import { IEvent } from "@/application/common/interfaces/event.interface";
+import { EventRegistry } from "@/application/common/events/event-registry";
 
 export class MessageSentEvent implements IEvent {
-  public readonly type = "MessageSentEvent";
+  public readonly type = EventRegistry.domain.MessageSent;
   public readonly timestamp = new Date();
 
   constructor(
@@ -14,11 +15,17 @@ export class MessageSentEvent implements IEvent {
     public readonly senderPublicId: UserPublicId,
     public readonly recipientPublicIds: UserPublicId[],
     public readonly messagePublicId: MessagePublicId,
+    public readonly notification?: {
+      actorUsername?: string;
+      actorHandle?: string;
+      actorAvatar?: string;
+      targetPreview?: string;
+    },
   ) {}
 }
 
 export class MessageStatusUpdatedEvent implements IEvent {
-  public readonly type = "MessageStatusUpdatedEvent";
+  public readonly type = EventRegistry.domain.MessageStatusUpdated;
   public readonly timestamp = new Date();
 
   constructor(
@@ -29,7 +36,7 @@ export class MessageStatusUpdatedEvent implements IEvent {
 }
 
 export class MessageAttachmentsDeletedEvent implements IEvent {
-  public readonly type = "MessageAttachmentsDeletedEvent";
+  public readonly type = EventRegistry.domain.MessageAttachmentsDeleted;
   public readonly timestamp = new Date();
 
   constructor(public readonly attachmentPublicIds: string[]) {}

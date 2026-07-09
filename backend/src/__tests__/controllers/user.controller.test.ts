@@ -2,16 +2,12 @@ import { afterEach, beforeEach, describe, it } from "mocha";
 import { expect } from "chai";
 import sinon from "sinon";
 import type { Request, Response } from "express";
-import { UserController } from "@/controllers/user.controller";
+import { SocialController } from "@/controllers/social.controller";
 import { SetFollowStateCommand } from "@/application/commands/users/setFollowState/setFollowState.command";
 import { asUserPublicId } from "@/types/branded";
 
-describe("UserController follow routes", () => {
-  let controller: UserController;
-  let authService: {
-    revokeSessionByRefreshToken: sinon.SinonStub;
-    revokeSessionByAccessToken: sinon.SinonStub;
-  };
+describe("SocialController follow routes", () => {
+  let controller: SocialController;
   let commandBus: { dispatch: sinon.SinonStub };
   let queryBus: { execute: sinon.SinonStub };
   let res: Partial<Response>;
@@ -24,18 +20,13 @@ describe("UserController follow routes", () => {
   };
 
   beforeEach(() => {
-    authService = {
-      revokeSessionByRefreshToken: sinon.stub(),
-      revokeSessionByAccessToken: sinon.stub(),
-    };
     commandBus = {
       dispatch: sinon.stub(),
     };
     queryBus = {
       execute: sinon.stub(),
     };
-    controller = new UserController(
-      authService as unknown as never,
+    controller = new SocialController(
       commandBus as unknown as never,
       queryBus as unknown as never,
     );

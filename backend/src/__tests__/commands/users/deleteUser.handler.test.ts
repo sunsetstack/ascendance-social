@@ -50,8 +50,7 @@ describe("DeleteUserCommandHandler", () => {
 		mocks.unitOfWork = {
 			executeInTransaction: sinon.stub().callsFake(async (fn) => await fn("session")),
 		};
-		mocks.eventBus = { publish: sinon.stub().resolves() };
-		mocks.redisService = { invalidateByTags: sinon.stub().resolves() };
+		mocks.eventBus = { queueTransactional: sinon.stub().resolves() };
 		mocks.userModel = { findOne: sinon.stub() };
 
 		handler = new DeleteUserCommandHandler(
@@ -74,7 +73,6 @@ describe("DeleteUserCommandHandler", () => {
 			mocks.imageStorageService,
 			mocks.unitOfWork,
 			mocks.eventBus,
-			mocks.redisService,
 			mocks.userModel
 		);
 	});

@@ -178,10 +178,27 @@ export interface RequestLog {
   method: string;
   route: string;
   ip: string;
+  origin?: string;
+  referer?: string;
   statusCode: number;
   responseTimeMs: number;
   userId?: string;
   userAgent?: string;
+  authState?: string;
+  authSource?: string;
+  authAction?: string;
+  authEmail?: string;
+  authUsername?: string;
+  authHandle?: string;
+  sessionId?: string;
+  tokenFamilyId?: string;
+  clientRequestId?: string;
+  clientBootId?: string;
+  clientRequestAttempt?: number;
+  axiosRetry?: boolean;
+  previousClientRequestId?: string;
+  causedByClientRequestId?: string;
+  refreshRotated?: boolean;
 }
 
 export interface RequestLogsResponse {
@@ -192,16 +209,83 @@ export interface RequestLogsResponse {
   totalPages: number;
 }
 
+export interface AuthActivityLog {
+  timestamp: Date;
+  action: string;
+  ip: string;
+  origin?: string;
+  referer?: string;
+  route?: string;
+  statusCode?: number;
+  responseTimeMs?: number;
+  userId?: string;
+  authEmail?: string;
+  authUsername?: string;
+  authHandle?: string;
+  clientRequestId?: string;
+  clientBootId?: string;
+  clientRequestAttempt?: number;
+  axiosRetry?: boolean;
+  previousClientRequestId?: string;
+  causedByClientRequestId?: string;
+  sessionId?: string;
+  tokenFamilyId?: string;
+  correlationId?: string;
+  authState?: string;
+  authSource?: string;
+  refreshRotated?: boolean;
+}
+
+export interface AuthActivityLogsResponse {
+  data: AuthActivityLog[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export const fetchRequestLogs = async (params: {
   page?: number;
   limit?: number;
   userId?: string;
+  sessionId?: string;
+  tokenFamilyId?: string;
+  clientRequestId?: string;
+  clientBootId?: string;
+  previousClientRequestId?: string;
+  causedByClientRequestId?: string;
+  authState?: string;
+  authSource?: string;
   statusCode?: number;
   startDate?: string;
   endDate?: string;
   search?: string;
 }): Promise<RequestLogsResponse> => {
   const { data } = await axiosClient.get("/api/admin/dashboard/request-logs", {
+    params,
+  });
+  return data;
+};
+
+export const fetchAuthActivityLogs = async (params: {
+  page?: number;
+  limit?: number;
+  userId?: string;
+  sessionId?: string;
+  tokenFamilyId?: string;
+  clientRequestId?: string;
+  clientBootId?: string;
+  previousClientRequestId?: string;
+  causedByClientRequestId?: string;
+  authState?: string;
+  authSource?: string;
+  action?: string;
+  statusCode?: number;
+  startDate?: string;
+  endDate?: string;
+  search?: string;
+}): Promise<AuthActivityLogsResponse> => {
+  const { data } = await axiosClient.get("/api/admin/dashboard/auth-activity", {
     params,
   });
   return data;

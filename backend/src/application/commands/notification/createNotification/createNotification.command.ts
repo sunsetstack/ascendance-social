@@ -13,6 +13,7 @@ export class CreateNotificationCommand implements ICommand {
       actorUsername?: string;
       actorHandle?: string;
       actorAvatar?: string;
+      idempotencyKey?: string;
     }
   ) {}
 }

@@ -23,10 +23,12 @@ export class NotificationRequestedHandler implements IEventHandler<NotificationR
           targetId: event.payload.targetId,
           targetType: event.payload.targetType,
           targetPreview: event.payload.targetPreview,
+          idempotencyKey: event.payload.idempotencyKey,
         })
       );
     } catch (error) {
       logger.error("[NotificationRequestedHandler] Failed to create notification", { error });
+      throw error;
     }
   }
 }

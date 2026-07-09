@@ -9,9 +9,12 @@ import type {
 } from "@/repositories/interfaces";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry } from "@/application/common/events/event-registry";
 
 interface ProfileSnapshotMessage {
-  type: "avatar_changed" | "username_changed";
+  type:
+    | typeof EventRegistry.realtimeMessageTypes.avatarChanged
+    | typeof EventRegistry.socketPayloadTypes.usernameChanged;
   userPublicId: UserPublicId;
   avatarUrl?: string;
   username?: string;
@@ -57,7 +60,7 @@ export class ProfileSyncWorker {
     // subscribe to profile_snapshot_updates channel
     const subscribed =
       await this.redisService.subscribe<ProfileSnapshotMessage>(
-        ["profile_snapshot_updates"],
+        [EventRegistry.redisChannels.profileSnapshotUpdates],
         (channel, message) => {
           this.handleMessage(message).catch((err) => {
             logger.error("[profile-sync] error handling message", {
@@ -120,10 +123,16 @@ export class ProfileSyncWorker {
       lastSeen: Date.now(),
     };
 
-    if (type === "avatar_changed" && avatarUrl !== undefined) {
+    if (
+      type === EventRegistry.realtimeMessageTypes.avatarChanged &&
+      avatarUrl !== undefined
+    ) {
       existing.avatarUrl = avatarUrl;
     }
-    if (type === "username_changed" && username !== undefined) {
+    if (
+      type === EventRegistry.socketPayloadTypes.usernameChanged &&
+      username !== undefined
+    ) {
       existing.username = username;
     }
     if (handle !== undefined) {

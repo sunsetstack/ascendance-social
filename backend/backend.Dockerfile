@@ -40,8 +40,8 @@ RUN npm ci --omit=dev
 COPY --from=builder --chown=nodejs:nodejs /app/backend/dist ./backend/dist
 
 # Create uploads directory and give nodejs user ownership of necessary directories
-RUN mkdir -p /app/uploads && \
-  chown -R nodejs:nodejs /app/uploads /app/backend
+RUN mkdir -p /app/uploads /app/audit/logs /app/audit/archives && \
+  chown -R nodejs:nodejs /app/uploads /app/audit /app/backend
 
 # Switch to non-root user
 USER nodejs

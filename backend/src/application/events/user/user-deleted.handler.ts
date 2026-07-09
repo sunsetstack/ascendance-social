@@ -5,6 +5,7 @@ import { RedisService } from "@/services/redis.service";
 import { logger } from "@/utils/winston";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
 
 /**
  * Handles cache cleanup when a user is deleted
@@ -32,6 +33,8 @@ export class UserDeletedHandler implements IEventHandler<UserDeletedEvent> {
       );
       tagsToInvalidate.push(`user_post_count:${event.userPublicId}`);
       tagsToInvalidate.push(`user_profile:${event.userPublicId}`);
+      tagsToInvalidate.push("who_to_follow");
+      tagsToInvalidate.push(`user:${event.userPublicId}`);
 
       // user's cache patterns
       patternsToDelete.push(
@@ -67,6 +70,7 @@ export class UserDeletedHandler implements IEventHandler<UserDeletedEvent> {
 
       // invalidate global feeds that might contain user's posts
       tagsToInvalidate.push(CacheKeyBuilder.getTrendingFeedTag());
+      tagsToInvalidate.push(CacheKeyBuilder.getNewFeedTag());
       patternsToDelete.push(CacheKeyBuilder.getTrendingFeedPattern());
       patternsToDelete.push(`${CacheKeyBuilder.PREFIXES.NEW_FEED}:*`);
 
@@ -83,9 +87,13 @@ export class UserDeletedHandler implements IEventHandler<UserDeletedEvent> {
 
       // publish event for real-time updates
       await this.redis.publish(
-        "feed_updates",
+        EventRegistry.redisChannels.feedUpdates,
         JSON.stringify({
-          type: "user_deleted",
+          eventId: buildRealtimeEventId(
+            EventRegistry.realtimeMessageTypes.userDeleted,
+            event.userPublicId,
+          ),
+          type: EventRegistry.realtimeMessageTypes.userDeleted,
           userPublicId: event.userPublicId,
           timestamp: event.timestamp.toISOString(),
         }),
@@ -113,6 +121,7 @@ export class UserDeletedHandler implements IEventHandler<UserDeletedEvent> {
           fallbackError,
         });
       }
+      throw error;
     }
   }
 }

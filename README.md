@@ -171,6 +171,8 @@ REDIS_URL=redis://localhost:6379
 JWT_SECRET=replace-me
 PORT=8000
 FRONTEND_URL=http://localhost:5173
+ALLOWED_ORIGINS=http://localhost,http://localhost:80,http://localhost:5173,http://localhost:5174,http://localhost:8000
+ALLOW_INSECURE_COOKIES=false
 MONGO_INITDB_ROOT_USERNAME=replace-me
 MONGO_INITDB_ROOT_PASSWORD=replace-me
 

@@ -12,7 +12,7 @@ chai.use(chaiAsPromised);
 describe("GetForYouFeedQueryHandler", () => {
 	let handler: GetForYouFeedQueryHandler;
 
-	let mockFeedReadDao: { getRankedFeedWithCursor: SinonStub, getRankedFeed: SinonStub };
+	let mockFeedReadDao: { getRankedFeedWithCursor: SinonStub };
 	let mockPostReadRepository: {
 		findPostsByPublicIds: SinonStub;
 		getRankedFeedWithCursor: SinonStub;
@@ -20,11 +20,10 @@ describe("GetForYouFeedQueryHandler", () => {
 	let mockUserReadRepository: { findByPublicId: SinonStub };
 	let mockUserPreferenceRepository: { getTopUserTags: SinonStub };
 	let mockRedisService: { getFeedWithCursor: SinonStub; addToFeed: SinonStub };
-	let mockEventBus: { publish: SinonStub };
 	let mockFeedEnrichmentService: { enrichFeedWithCurrentData: SinonStub };
 
 	beforeEach(() => {
-		mockFeedReadDao = { getRankedFeedWithCursor: sinon.stub(), getRankedFeed: sinon.stub() };
+		mockFeedReadDao = { getRankedFeedWithCursor: sinon.stub() };
 		mockPostReadRepository = {
 			findPostsByPublicIds: sinon.stub(),
 			getRankedFeedWithCursor: sinon.stub(),
@@ -35,7 +34,6 @@ describe("GetForYouFeedQueryHandler", () => {
 			getFeedWithCursor: sinon.stub(),
 			addToFeed: sinon.stub().resolves(),
 		};
-		mockEventBus = { publish: sinon.stub() };
 		mockFeedEnrichmentService = { enrichFeedWithCurrentData: sinon.stub() };
 
 		handler = new GetForYouFeedQueryHandler(
@@ -44,7 +42,6 @@ describe("GetForYouFeedQueryHandler", () => {
 			mockUserReadRepository as any,
 			mockUserPreferenceRepository as any,
 			mockRedisService as any,
-			mockEventBus as any,
 			mockFeedEnrichmentService as any,
 		);
 	});

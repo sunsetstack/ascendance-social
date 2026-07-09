@@ -3,6 +3,7 @@ import { expect } from "chai";
 import sinon from "sinon";
 import { RedisFeedModule } from "@/services/redis/redis-feed.module";
 import { encodeCursor } from "@/utils/cursorCodec";
+import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 
 describe("RedisFeedModule", () => {
   afterEach(() => {
@@ -37,5 +38,74 @@ describe("RedisFeedModule", () => {
       REV: true,
       LIMIT: { offset: 40, count: 40 },
     });
+  });
+
+  it("adds posts to many feeds in de-duped Redis batches", async () => {
+    const pipelines: Array<{
+      zAdd: sinon.SinonSpy;
+      expire: sinon.SinonSpy;
+      exec: sinon.SinonStub;
+    }> = [];
+
+    const client = {
+      multi: sinon.stub().callsFake(() => {
+        const pipeline = {
+          zAdd: sinon.spy(),
+          expire: sinon.spy(),
+          exec: sinon.stub().resolves([]),
+        };
+        pipelines.push(pipeline);
+        return pipeline;
+      }),
+    };
+
+    const module = new RedisFeedModule(client as any);
+    const userIds = [
+      ...Array.from({ length: 1001 }, (_, index) => `user-${index}`),
+      "user-0",
+    ];
+
+    await module.addToFeedsBatch(userIds, "post-1", 123, "for_you");
+
+    expect(client.multi.callCount).to.equal(3);
+    expect(pipelines.reduce((total, pipeline) => total + pipeline.zAdd.callCount, 0)).to.equal(1001);
+    expect(pipelines.reduce((total, pipeline) => total + pipeline.expire.callCount, 0)).to.equal(1001);
+    expect(pipelines[0].zAdd.firstCall.args).to.deep.equal([
+      CacheKeyBuilder.getRedisFeedKey("for_you", "user-0"),
+      { score: 123, value: "post-1" },
+    ]);
+  });
+
+  it("removes posts from many feeds in de-duped Redis batches", async () => {
+    const pipelines: Array<{
+      zRem: sinon.SinonSpy;
+      exec: sinon.SinonStub;
+    }> = [];
+
+    const client = {
+      multi: sinon.stub().callsFake(() => {
+        const pipeline = {
+          zRem: sinon.spy(),
+          exec: sinon.stub().resolves([]),
+        };
+        pipelines.push(pipeline);
+        return pipeline;
+      }),
+    };
+
+    const module = new RedisFeedModule(client as any);
+    const userIds = [
+      ...Array.from({ length: 1001 }, (_, index) => `user-${index}`),
+      "user-0",
+    ];
+
+    await module.removeFromFeedsBatch(userIds, "post-1", "for_you");
+
+    expect(client.multi.callCount).to.equal(3);
+    expect(pipelines.reduce((total, pipeline) => total + pipeline.zRem.callCount, 0)).to.equal(1001);
+    expect(pipelines[0].zRem.firstCall.args).to.deep.equal([
+      CacheKeyBuilder.getRedisFeedKey("for_you", "user-0"),
+      "post-1",
+    ]);
   });
 });

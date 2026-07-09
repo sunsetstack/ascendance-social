@@ -104,8 +104,9 @@ describe("CommandBus integration", () => {
     const err = await bus.dispatch(new PingCommand("x")).catch((e) => e);
 
     expect(err).to.be.instanceOf(AppError);
-    expect((err as AppError).statusCode).to.equal(500);
-    expect(err.message).to.include("PingCommand");
+    const appError = err as AppError;
+    expect(appError.statusCode).to.equal(500);
+    expect(appError.message).to.include("PingCommand");
   });
 
   it("propagates AppError from handler unchanged, preserving statusCode and message", async () => {
@@ -116,8 +117,9 @@ describe("CommandBus integration", () => {
 
     const thrown = await bus.dispatch(new PingCommand("x")).catch((e) => e);
     expect(thrown).to.equal(notFoundErr);
-    expect((thrown as AppError).statusCode).to.equal(404);
-    expect(thrown.message).to.include("Post");
+    const appError = thrown as AppError;
+    expect(appError.statusCode).to.equal(404);
+    expect(appError.message).to.include("Post");
   });
 
   it("dispatches using the .type property so minified constructor names still route correctly", async () => {
@@ -201,8 +203,9 @@ describe("QueryBus integration", () => {
     const err = await bus.execute(new EchoQuery("x")).catch((e) => e);
 
     expect(err).to.be.instanceOf(AppError);
-    expect((err as AppError).statusCode).to.equal(500);
-    expect(err.message).to.include("EchoQuery");
+    const appError = err as AppError;
+    expect(appError.statusCode).to.equal(500);
+    expect(appError.message).to.include("EchoQuery");
   });
 
   it("propagates AppError from handler unchanged, preserving statusCode and message", async () => {
@@ -213,7 +216,8 @@ describe("QueryBus integration", () => {
 
     const thrown = await bus.execute(new EchoQuery("x")).catch((e) => e);
     expect(thrown).to.equal(notFoundErr);
-    expect((thrown as AppError).statusCode).to.equal(404);
+    const appError = thrown as AppError;
+    expect(appError.statusCode).to.equal(404);
   });
 
   it("dispatches using the .type property so minified constructor names still route correctly", async () => {

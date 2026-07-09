@@ -9,6 +9,7 @@ import { UserActivityService } from "@/services/user-activity.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
 
 @injectable()
 export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
@@ -82,6 +83,21 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
         `[POST_UPLOAD_HANDLER] Total affected users: ${affectedUsers.length}`,
       );
 
+      const feedRecipients = [
+        ...new Set([event.authorPublicId, ...affectedUsers]),
+      ];
+      if (feedRecipients.length > 0) {
+        await this.redis.addToFeedsBatch(
+          feedRecipients,
+          event.postId,
+          event.timestamp.getTime(),
+          "for_you",
+        );
+        logger.info(
+          `[POST_UPLOAD_HANDLER] Materialized for_you feed for ${feedRecipients.length} users`,
+        );
+      }
+
       if (affectedUsers.length > 0) {
         // invalidate affected users' feeds using tags
         affectedUsers.forEach((userId) => {
@@ -113,14 +129,18 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
       // Publish real-time feed update for WebSocket notifications
       if (affectedUsers.length > 0) {
         await this.redis.publish(
-          "feed_updates",
+          EventRegistry.redisChannels.feedUpdates,
           JSON.stringify({
-            type: "new_post",
+            eventId: buildRealtimeEventId(
+              EventRegistry.realtimeMessageTypes.newPost,
+              event.postId,
+            ),
+            type: EventRegistry.realtimeMessageTypes.newPost,
             authorId: event.authorPublicId,
             postId: event.postId,
             tags: event.tags,
             affectedUsers,
-            timestamp: new Date().toISOString(),
+            timestamp: event.timestamp.toISOString(),
           }),
         );
       }

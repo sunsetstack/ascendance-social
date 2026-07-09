@@ -114,7 +114,7 @@ export class FeedReadService {
     const isCacheHit = !!cached;
     if (!cached) {
       const skip = (safePage - 1) * safeLimit;
-      const core = await this.feedReadDao.getTrendingFeedWithFacet(
+      const core = await this.feedReadDao.getTrendingFeed(
         safeLimit,
         skip,
         {

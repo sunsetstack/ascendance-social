@@ -17,6 +17,7 @@ import {
 	clearCache,
 	fetchTelemetryMetrics,
 	fetchRequestLogs,
+	fetchAuthActivityLogs,
 } from "../../api/adminApi";
 import { toast } from "react-toastify";
 
@@ -223,6 +224,14 @@ export const useRequestLogs = (params: {
 	page?: number;
 	limit?: number;
 	userId?: string;
+	sessionId?: string;
+	tokenFamilyId?: string;
+	clientRequestId?: string;
+	clientBootId?: string;
+	previousClientRequestId?: string;
+	causedByClientRequestId?: string;
+	authState?: string;
+	authSource?: string;
 	statusCode?: number;
 	startDate?: string;
 	endDate?: string;
@@ -231,6 +240,31 @@ export const useRequestLogs = (params: {
 	return useQuery({
 		queryKey: ["admin", "requestLogs", params],
 		queryFn: () => fetchRequestLogs(params),
+		staleTime: 10000,
+	});
+};
+
+export const useAuthActivityLogs = (params: {
+	page?: number;
+	limit?: number;
+	userId?: string;
+	sessionId?: string;
+	tokenFamilyId?: string;
+	clientRequestId?: string;
+	clientBootId?: string;
+	previousClientRequestId?: string;
+	causedByClientRequestId?: string;
+	authState?: string;
+	authSource?: string;
+	action?: string;
+	statusCode?: number;
+	startDate?: string;
+	endDate?: string;
+	search?: string;
+}) => {
+	return useQuery({
+		queryKey: ["admin", "authActivityLogs", params],
+		queryFn: () => fetchAuthActivityLogs(params),
 		staleTime: 10000,
 	});
 };

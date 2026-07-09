@@ -49,7 +49,11 @@ export class GetHandleSuggestionsQueryHandler implements IQueryHandler<
 
       return this.getSearchSuggestions(handleRegex, limit);
     } catch (error) {
-      logger.error("[HandleSuggestions] Failed to fetch suggestions", error);
+      logger.error("Failed to fetch handle suggestions", {
+        event: "handle_suggestions.fetch_failed",
+        context: query.context,
+        error,
+      });
       if (error instanceof Error) {
         throw wrapError(error);
       }
@@ -85,8 +89,6 @@ export class GetHandleSuggestionsQueryHandler implements IQueryHandler<
       }
     }
 
-    // Requirement: "If nothing is found there, show the most trending/hot users...
-    // after the users writes the first 3 letters"
     if (queryLength >= 3) {
       const trendingMatches = await this.getPopularMatches(
         handleRegex,
@@ -107,7 +109,6 @@ export class GetHandleSuggestionsQueryHandler implements IQueryHandler<
     handleRegex: RegExp,
     limit: number,
   ): Promise<HandleSuggestionDTO[]> {
-    // Requirement: "in the search bar, start with most popular handles"
     const popularMatches = await this.getPopularMatches(
       handleRegex,
       TRENDING_FALLBACK_LIMIT,

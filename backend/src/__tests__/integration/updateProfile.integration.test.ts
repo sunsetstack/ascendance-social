@@ -11,8 +11,8 @@
  *   - Username same as current (no-op): treated as no update → ValidationError
  *   - Username taken by another user: ValidationError (400)
  *   - Username taken by same user (re-confirming own name): no error when bio also provided
- *   - Username change: UserUsernameChangedEvent is published via eventBus.publish
- *   - Bio-only change: no event is published
+ *   - Username change: UserUsernameChangedEvent is queued through the transactional outbox
+ *   - Bio-only change: no event is queued
  *   - Happy path: calls userWriteRepository.update and userActionRepository.logAction
  *   - Returns DTO from dtoService.toPublicDTO
  *
@@ -96,7 +96,7 @@ const makeStubs = () => ({
     toPublicDTO: sinon.stub().returns(makePublicDTO()),
   },
   eventBus: {
-    publish: sinon.stub().resolves(),
+    queueTransactional: sinon.stub().resolves(),
   },
 });
 
@@ -231,7 +231,7 @@ describe("UpdateProfileCommandHandler integration (via CommandBus)", () => {
   // Username change event
   // -------------------------------------------------------------------------
 
-  it("publishes UserUsernameChangedEvent when the username changes", async () => {
+  it("queues UserUsernameChangedEvent when the username changes", async () => {
     stubs.userReadRepo.findByPublicId.resolves(makeUserDoc());
     stubs.userReadRepo.findByUsername.resolves(null);
 
@@ -239,23 +239,23 @@ describe("UpdateProfileCommandHandler integration (via CommandBus)", () => {
       new UpdateProfileCommand(USER_PID, { username: "brand_new_name" }),
     );
 
-    expect(stubs.eventBus.publish.calledOnce).to.be.true;
-    const event = stubs.eventBus.publish.getCall(0).args[0];
+    expect(stubs.eventBus.queueTransactional.calledOnce).to.be.true;
+    const event = stubs.eventBus.queueTransactional.getCall(0).args[0];
     expect(event).to.be.instanceOf(UserUsernameChangedEvent);
     expect(event.userPublicId).to.equal(USER_PID);
     expect(event.oldUsername).to.equal("original_username");
     expect(event.newUsername).to.equal("brand_new_name");
   });
 
-  it("does not publish an event when only bio changes", async () => {
+  it("does not queue an event when only bio changes", async () => {
     stubs.userReadRepo.findByPublicId.resolves(makeUserDoc());
 
     await bus.dispatch(new UpdateProfileCommand(USER_PID, { bio: "new bio" }));
 
-    expect(stubs.eventBus.publish.called).to.be.false;
+    expect(stubs.eventBus.queueTransactional.called).to.be.false;
   });
 
-  it("does not publish an event when username provided equals current username (no-change path is blocked by validation)", async () => {
+  it("does not queue an event when username provided equals current username (no-change path is blocked by validation)", async () => {
     // Same username alone is rejected before reaching the event logic
     stubs.userReadRepo.findByPublicId.resolves(makeUserDoc());
 
@@ -264,6 +264,6 @@ describe("UpdateProfileCommandHandler integration (via CommandBus)", () => {
       .catch((e) => e);
 
     expect(err).to.be.instanceOf(AppError);
-    expect(stubs.eventBus.publish.called).to.be.false;
+    expect(stubs.eventBus.queueTransactional.called).to.be.false;
   });
 });

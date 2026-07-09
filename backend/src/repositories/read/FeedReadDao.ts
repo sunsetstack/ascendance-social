@@ -14,23 +14,18 @@ import {
 import { decodeCursor, encodeCursor } from "@/utils/cursorCodec";
 import { TOKENS } from "@/types/tokens";
 import { Errors } from "@/utils/errors";
+import { logger } from "@/utils/winston";
 import {
   ACTIVE_POST_FILTER,
+  getStandardLookups,
+  getStandardProjectionFields,
+  normalizeObjectId,
   withActivePostFilter,
 } from "@/repositories/post-pipeline.helpers";
 
 type ProjectedFeedPost = FeedPost & {
   _id?: mongoose.Types.ObjectId;
   isPersonalized?: boolean;
-};
-
-type TotalFacetResult = {
-  total: number;
-};
-
-type MetadataFacetResult<T> = {
-  data: T[];
-  metadata: TotalFacetResult[];
 };
 
 @injectable()
@@ -43,26 +38,6 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
     super(model);
   }
 
-  protected normalizeObjectId(
-    id: unknown,
-    field: string,
-  ): mongoose.Types.ObjectId {
-    if (id instanceof mongoose.Types.ObjectId) {
-      return id;
-    }
-
-    if (typeof id !== "string" || id.length === 0) {
-      throw Errors.validation(`${field} is not a valid ObjectId`);
-    }
-
-    try {
-      return new mongoose.Types.ObjectId(id);
-    } catch {
-      throw Errors.validation(`${field} is not a valid ObjectId`);
-    }
-  }
-
-  // Extracted logic starts here
   private readonly tagIdCacheStore = new Map<
     string,
     { ids: mongoose.Types.ObjectId[]; expiresAt: number }
@@ -123,7 +98,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       let results: ProjectedFeedPost[] = [];
 
       const feedProjection = {
-        ...this.getStandardProjectionFields(),
+        ...getStandardProjectionFields(),
         _id: 1,
       };
 
@@ -139,7 +114,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         pipeline.push(
           { $sort: { createdAt: -1, _id: -1 } },
           { $limit: limit + 1 },
-          ...this.getStandardLookups(),
+          ...getStandardLookups(),
           {
             $addFields: {
               tagNames: {
@@ -174,7 +149,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
           // If we ALREADY fetched some personalized posts on this CURRENT page, we should theoretically offset the backfill.
           // However, to keep it simple, we just start backfill from scratch and cursor tracking will remember where we are based on the Last Backfill Post.
           { $limit: needed },
-          ...this.getStandardLookups(),
+          ...getStandardLookups(),
           { $addFields: { isPersonalized: false } },
           { $project: feedProjection },
         ];
@@ -207,7 +182,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         backfillPipeline.push(
           { $sort: { createdAt: -1, _id: -1 } },
           { $limit: limit + 1 },
-          ...this.getStandardLookups(),
+          ...getStandardLookups(),
           { $addFields: { isPersonalized: false } },
           { $project: feedProjection },
         );
@@ -248,115 +223,8 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
   }
 
   /**
-   * Generates a ranked feed using weighted scoring (recency + popularity + tag match)
-   * @deprecated Use getRankedFeedWithCursor for better deep pagination performance
-   * The cursor-based variant avoids skip() overhead and scales better for infinite scroll
-   * @pattern Weighted Ranking Algorithm
-   * @strategy Time-decay scoring with logarithmic dampening for engagement metrics
-   * @complexity O(N log N) aggregation + O(skip) scan cost on skip-based pagination
-   * @note Limited to recent posts (90 days) to optimize performance and relevance
-   * @param favoriteTags - Array of tag names for tag-match scoring
-   * @param limit - Number of posts per page
-   * @param skip - Number of posts to skip (use cursor pagination for deep pages)
-   * @returns {Promise<PaginationResult<FeedPost>>} Ranked posts with computed scores
-   * @throws {DatabaseError} if score computation or aggregation fails
-   */
-
-  async getRankedFeed(
-    favoriteTags: string[],
-    limit: number,
-    skip: number,
-  ): Promise<PaginationResult<FeedPost>> {
-    try {
-      const weights = { recency: 0.5, popularity: 0.3, tagMatch: 0.2 };
-      const favoriteTagIds = await this.loadFavoriteTagIds(favoriteTags);
-      const hasTagPreferences = favoriteTagIds.length > 0;
-
-      // filter to recent posts to avoid full collection scan
-      const recentThresholdDays = 90;
-      const sinceDate = new Date(
-        Date.now() - recentThresholdDays * 24 * 60 * 60 * 1000,
-      );
-
-      const pipeline: PipelineStage[] = [
-        { $match: withActivePostFilter({ createdAt: { $gte: sinceDate } }) },
-        // compute ranking scores before $lookup to sort/paginate early
-        {
-          $addFields: {
-            recencyScore: {
-              $divide: [
-                1,
-                {
-                  $add: [
-                    1,
-                    {
-                      $divide: [
-                        { $subtract: [new Date(), "$createdAt"] },
-                        1000 * 60 * 60 * 24,
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
-            popularityScore: {
-              $ln: {
-                $add: [{ $max: [0, { $ifNull: ["$likesCount", 0] }] }, 1],
-              },
-            },
-            tagMatchScore: hasTagPreferences
-              ? { $size: { $setIntersection: ["$tags", favoriteTagIds] } }
-              : 0,
-          },
-        },
-        {
-          $addFields: {
-            rankScore: {
-              $add: [
-                { $multiply: ["$recencyScore", weights.recency] },
-                { $multiply: ["$popularityScore", weights.popularity] },
-                { $multiply: ["$tagMatchScore", weights.tagMatch] },
-              ],
-            },
-          },
-        },
-        { $sort: { rankScore: -1, _id: -1 } },
-        { $skip: skip },
-        { $limit: limit },
-        // now do expensive $lookups only on the paginated result set
-        ...this.getStandardLookups(),
-        {
-          $project: {
-            ...this.getStandardProjectionFields(),
-            viewsCount: { $ifNull: ["$viewsCount", 0] },
-            rankScore: 1,
-          },
-        },
-      ];
-      const [results, total] = await Promise.all([
-        this.model.aggregate(pipeline).exec(),
-        this.model.countDocuments(
-          withActivePostFilter({ createdAt: { $gte: sinceDate } }),
-        ),
-      ]);
-
-      console.info(`Ranked feed generated with ${results.length} results`);
-
-      const totalPages = Math.ceil(total / limit);
-      const currentPage = Math.floor(skip / limit) + 1;
-      return { data: results, total, page: currentPage, limit, totalPages };
-    } catch (error: unknown) {
-      throw Errors.database(
-        (error instanceof Error ? error.message : String(error)) ??
-          "failed to build ranked feed",
-      );
-    }
-  }
-
-  /**
    * Generates a trending feed using multi-factor trend scoring
-   * @deprecated Use getTrendingFeedWithCursor or getTrendingFeedWithFacet for better performance
-   * Cursor variant for deep pagination; facet variant for single-query combined count
+   * @deprecated Use getTrendingFeedWithCursor for deep pagination
    * @pattern Multi-Factor Trending Algorithm
    * @strategy Recency + Log(Popularity) + Log(Comments) with configurable weights
    * @complexity O(N log N) aggregation + O(skip) scan cost on skip-based pagination
@@ -444,10 +312,10 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         { $skip: skip },
         { $limit: limit },
         // now do expensive $lookups only on the paginated result set
-        ...this.getStandardLookups(),
+        ...getStandardLookups(),
         {
           $project: {
-            ...this.getStandardProjectionFields(),
+            ...getStandardProjectionFields(),
             viewsCount: { $ifNull: ["$viewsCount", 0] },
             trendScore: 1,
           },
@@ -463,7 +331,6 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         }),
       ]);
 
-      // console.info(`Trending feed generated with results: ${JSON.stringify(results)} `);
       const totalPages = Math.ceil(total / limit);
       const currentPage = Math.floor(skip / limit) + 1;
 
@@ -478,8 +345,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
   /**
    * Generates a chronological feed of newest posts
-   * @deprecated Use getNewFeedWithCursor or getNewFeedWithFacet for better performance
-   * Cursor variant for efficient infinite scroll; facet variant for single query
+   * @deprecated Use getNewFeedWithCursor for deep pagination
    * @pattern Chronological Feed
    * @strategy Simple reverse-chronological sorting by creation date
    * @complexity O(N log N) sort + O(skip) scan cost on skip-based pagination
@@ -500,10 +366,10 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         { $sort: { createdAt: -1, _id: -1 } },
         { $skip: skip },
         { $limit: limit },
-        ...this.getStandardLookups(),
+        ...getStandardLookups(),
         {
           $project: {
-            ...this.getStandardProjectionFields(),
+            ...getStandardProjectionFields(),
             viewsCount: { $ifNull: ["$viewsCount", 0] },
           },
         },
@@ -515,7 +381,12 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       ]);
       const totalPages = Math.ceil(total / limit);
       const currentPage = Math.floor(skip / limit) + 1;
-      console.info(`New feed generated with ${results.length} results`);
+      logger.debug("New feed generated", {
+        event: "feed.new.generated",
+        resultCount: results.length,
+        limit,
+        skip,
+      });
       return { data: results, total, page: currentPage, limit, totalPages };
     } catch (error: unknown) {
       throw Errors.database(
@@ -681,10 +552,10 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
           : []),
         { $sort: { createdAt: sortDirection, _id: sortDirection } },
         { $limit: limit + 1 },
-        ...this.getStandardLookups(),
+        ...getStandardLookups(),
         {
           $project: {
-            ...this.getStandardProjectionFields(),
+            ...getStandardProjectionFields(),
             _id: 1,
             createdAt: 1,
             viewsCount: { $ifNull: ["$viewsCount", 0] },
@@ -806,7 +677,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       }
 
       const sortDirection = direction === "forward" ? -1 : 1;
-      const feedProjection = this.getStandardProjectionFields();
+      const feedProjection = getStandardProjectionFields();
 
       const pipeline: PipelineStage[] = [
         {
@@ -864,7 +735,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         { $sort: { trendScore: sortDirection, _id: sortDirection } },
         { $limit: limit + 1 },
         // populate relationships only on paginated results
-        ...this.getStandardLookups(),
+        ...getStandardLookups(),
         {
           $project: {
             ...feedProjection,
@@ -920,14 +791,8 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
   /**
    * Cursor-based pagination for ranked feed
-   * @description optimized for deep pagination on ranked posts
-   * @pattern Cursor Pagination - uses (rankScore, _id) compound key
-   */
-  /**
-   * Cursor-based pagination for ranked feed
-   * @recommended Preferred over getRankedFeed for production infinite scroll
    * @pattern Cursor Pagination with Weighted Scoring
-   * @complexity O(1) cursor lookup vs O(skip) scan; scores computed once before cursor filtering
+   * @complexity scores computed once before cursor filtering
    * @performance Handles deep pagination efficiently without O(skip) overhead
    * @param favoriteTags - Tag names for tag-match scoring component
    * @param options - Cursor navigation with custom score weights
@@ -989,7 +854,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       }
 
       const sortDirection = direction === "forward" ? -1 : 1;
-      const feedProjection = this.getStandardProjectionFields();
+      const feedProjection = getStandardProjectionFields();
 
       const pipeline: PipelineStage[] = [
         { $match: withActivePostFilter({ createdAt: { $gte: sinceDate } }) },
@@ -1040,7 +905,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         { $sort: { rankScore: sortDirection, _id: sortDirection } },
         { $limit: limit + 1 },
         // populate relationships only on paginated results
-        ...this.getStandardLookups(),
+        ...getStandardLookups(),
         {
           $project: {
             ...feedProjection,
@@ -1094,375 +959,6 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
     }
   }
 
-  /**
-   * Fetch posts with single aggregation query combining count and data
-   * @description uses $facet to get both paginated results and total count in one query
-   * @note $facet has 16MB memory limit, suitable for most feeds but avoid for very large result sets
-   * @pattern Facet Optimization - reduces two DB round-trips to one
-   */
-  /**
-   * Fetches new feed with combined count and data in single aggregation query
-   * @recommended Use for first page or when total count is needed (replaces countDocuments + aggregate)
-   * @pattern Facet Aggregation Optimization
-   * @complexity O(N log N) single query vs two separate queries (countDocuments + aggregate)
-   * @performance ~2x faster than skip-based pagination for first/early pages due to single roundtrip
-   * @limitation $facet has 16MB memory limit; use cursor pagination for very large result sets
-   * @param limit - Number of posts per page
-   * @param skip - Number of posts to skip
-   * @returns {Promise<PaginationResult<FeedPost>>} Posts with total count computed in same query
-   * @throws {DatabaseError} if facet aggregation fails
-   */
-
-  async getNewFeedWithFacet(
-    limit: number,
-    skip: number,
-  ): Promise<PaginationResult<FeedPost>> {
-    try {
-      const lookups = this.getStandardLookups();
-      const pipeline: PipelineStage[] = [
-        { $match: ACTIVE_POST_FILTER },
-        { $sort: { createdAt: -1, _id: -1 } },
-        {
-          $facet: {
-            // metadata facet for count
-            metadata: this.buildFacetPipeline({ $count: "total" }),
-            // data facet for paginated results
-            data: this.buildFacetPipeline(
-              { $skip: skip },
-              { $limit: limit },
-              ...lookups,
-              {
-                $project: {
-                  ...this.getStandardProjectionFields(),
-                  viewsCount: { $ifNull: ["$viewsCount", 0] },
-                },
-              },
-            ),
-          },
-        },
-      ];
-
-      const [result] = await this.model
-        .aggregate<MetadataFacetResult<FeedPost>>(pipeline)
-        .exec();
-
-      const total = result?.metadata[0]?.total ?? 0;
-      const data = result?.data ?? [];
-      const page = Math.floor(skip / limit) + 1;
-      const totalPages = Math.ceil(total / limit);
-
-      return { data, total, page, limit, totalPages };
-    } catch (error: unknown) {
-      throw Errors.database(
-        (error instanceof Error ? error.message : String(error)) ??
-          "failed to fetch feed with facet",
-      );
-    }
-  }
-
-  /**
-   * Trending feed with facet optimization
-   * @description combines count + data in single aggregation pipeline for better performance
-   */
-  /**
-   * Trending feed with combined count and data in single aggregation query
-   * @recommended Use for first page or when you need both data and total count
-   * @pattern Facet Aggregation for Multi-Output Pipelines
-   * @complexity Single aggregation computing both metadata and data in parallel facets
-   * @performance ~2x faster than getTrendingFeed for pages where count is needed
-   * @limitation $facet has 16MB memory limit; suitable for most use cases but avoid very large windows
-   * @param limit - Number of posts per page
-   * @param skip - Number of posts to skip
-   * @param options - Time window, minimum likes, and score weights configuration
-   * @returns {Promise<PaginationResult<FeedPost>>} Trending posts with total count and pagination metadata
-   * @throws {DatabaseError} if facet aggregation fails
-   */
-
-  async getTrendingFeedWithFacet(
-    limit: number,
-    skip: number,
-    options?: {
-      timeWindowDays?: number;
-      minLikes?: number;
-      weights?: { recency?: number; popularity?: number; comments?: number };
-    },
-  ): Promise<PaginationResult<FeedPost>> {
-    try {
-      const timeWindowDays = options?.timeWindowDays ?? 14;
-      const minLikes = options?.minLikes ?? 0;
-      const weights = {
-        recency: options?.weights?.recency ?? 0.4,
-        popularity: options?.weights?.popularity ?? 0.5,
-        comments: options?.weights?.comments ?? 0.1,
-      };
-
-      const sinceDate = new Date(
-        Date.now() - timeWindowDays * 24 * 60 * 60 * 1000,
-      );
-      const lookups = this.getStandardLookups();
-
-      const pipeline: PipelineStage[] = [
-        {
-          $match: withActivePostFilter({
-            createdAt: { $gte: sinceDate },
-            likesCount: { $gte: minLikes },
-          }),
-        },
-        // compute trend scores early
-        {
-          $addFields: {
-            recencyScore: {
-              $divide: [
-                1,
-                {
-                  $add: [
-                    1,
-                    {
-                      $divide: [
-                        { $subtract: [new Date(), "$createdAt"] },
-                        1000 * 60 * 60 * 24,
-                      ],
-                    },
-                  ],
-                },
-              ],
-            },
-            popularityScore: {
-              $ln: {
-                $add: [{ $max: [0, { $ifNull: ["$likesCount", 0] }] }, 1],
-              },
-            },
-            commentsScore: {
-              $ln: {
-                $add: [{ $max: [0, { $ifNull: ["$commentsCount", 0] }] }, 1],
-              },
-            },
-          },
-        },
-        {
-          $addFields: {
-            trendScore: {
-              $add: [
-                { $multiply: [weights.recency, "$recencyScore"] },
-                { $multiply: [weights.popularity, "$popularityScore"] },
-                { $multiply: [weights.comments, "$commentsScore"] },
-              ],
-            },
-          },
-        },
-        {
-          $facet: {
-            // metadata facet
-            metadata: this.buildFacetPipeline({ $count: "total" }),
-            // data facet
-            data: this.buildFacetPipeline(
-              { $sort: { trendScore: -1, _id: -1 } },
-              { $skip: skip },
-              { $limit: limit },
-              ...lookups,
-              {
-                $project: {
-                  ...this.getStandardProjectionFields(),
-                  viewsCount: { $ifNull: ["$viewsCount", 0] },
-                  trendScore: 1,
-                },
-              },
-            ),
-          },
-        },
-      ];
-
-      const [result] = await this.model
-        .aggregate<MetadataFacetResult<FeedPost>>(pipeline)
-        .exec();
-
-      const total = result?.metadata[0]?.total ?? 0;
-      const data = result?.data ?? [];
-      const page = Math.floor(skip / limit) + 1;
-      const totalPages = Math.ceil(total / limit);
-
-      return { data, total, page, limit, totalPages };
-    } catch (error: unknown) {
-      throw Errors.database(
-        (error instanceof Error ? error.message : String(error)) ??
-          "failed to fetch trending feed with facet",
-      );
-    }
-  }
-
-  /**
-   * returns standard $lookup stages for populating post relationships
-   */
-
-  private getStandardLookups(): PipelineStage.FacetPipelineStage[] {
-    return [
-      {
-        $lookup: {
-          from: "tags",
-          localField: "tags",
-          foreignField: "_id",
-          as: "tagObjects",
-        },
-      },
-      {
-        $lookup: {
-          from: "images",
-          localField: "image",
-          foreignField: "_id",
-          as: "imageDoc",
-        },
-      },
-      { $unwind: { path: "$imageDoc", preserveNullAndEmptyArrays: true } },
-
-      // lookup community for community posts
-      {
-        $lookup: {
-          from: "communities",
-          localField: "communityId",
-          foreignField: "_id",
-          as: "communityDoc",
-        },
-      },
-      { $unwind: { path: "$communityDoc", preserveNullAndEmptyArrays: true } },
-
-      {
-        $lookup: {
-          from: "posts",
-          let: { repostId: "$repostOf" },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $eq: ["$_id", "$$repostId"] },
-                ...ACTIVE_POST_FILTER,
-              },
-            },
-
-            {
-              $lookup: {
-                from: "images",
-                localField: "image",
-                foreignField: "_id",
-                as: "repostImageDoc",
-              },
-            },
-            {
-              $unwind: {
-                path: "$repostImageDoc",
-                preserveNullAndEmptyArrays: true,
-              },
-            },
-          ],
-          as: "repostDoc",
-        },
-      },
-      { $unwind: { path: "$repostDoc", preserveNullAndEmptyArrays: true } },
-    ];
-  }
-
-  /**
-   * returns standard projection fields for shaping post output
-   */
-
-  private getStandardProjectionFields(): Record<string, unknown> {
-    return {
-      _id: 0,
-      publicId: 1,
-      body: 1,
-      slug: 1,
-      type: 1,
-      repostCount: 1,
-      createdAt: 1,
-      likes: "$likesCount",
-      viewsCount: { $ifNull: ["$viewsCount", 0] },
-      commentsCount: 1,
-
-      // Map the root userPublicId directly to the author snapshot
-      userPublicId: "$author.publicId",
-
-      tags: {
-        $map: {
-          input: { $ifNull: ["$tagObjects", []] },
-          as: "tag",
-          in: { tag: "$$tag.tag", publicId: "$$tag.publicId" },
-        },
-      },
-
-      // Construct the User object from the Snapshot
-      user: {
-        publicId: "$author.publicId",
-        handle: "$author.handle",
-        username: "$author.username",
-        avatar: "$author.avatarUrl",
-        displayName: "$author.displayName",
-      },
-
-      image: {
-        $cond: {
-          if: { $ne: ["$imageDoc", null] },
-          then: {
-            publicId: "$imageDoc.publicId",
-            url: "$imageDoc.url",
-            slug: "$imageDoc.slug",
-          },
-          else: {},
-        },
-      },
-
-      repostOf: {
-        $cond: {
-          if: { $ne: ["$repostDoc", null] },
-          then: {
-            publicId: "$repostDoc.publicId",
-            body: "$repostDoc.body",
-            slug: "$repostDoc.slug",
-            likesCount: "$repostDoc.likesCount",
-            commentsCount: "$repostDoc.commentsCount",
-            repostCount: "$repostDoc.repostCount",
-
-            user: {
-              publicId: "$repostDoc.author.publicId",
-              handle: "$repostDoc.author.handle",
-              username: "$repostDoc.author.username",
-              avatar: "$repostDoc.author.avatarUrl",
-            },
-
-            image: {
-              $cond: {
-                if: { $ne: ["$repostDoc.repostImageDoc", null] },
-                then: {
-                  publicId: "$repostDoc.repostImageDoc.publicId",
-                  url: "$repostDoc.repostImageDoc.url",
-                },
-                else: null,
-              },
-            },
-          },
-          else: null,
-        },
-      },
-
-      // community info for community posts
-      community: {
-        $cond: {
-          if: { $ne: ["$communityDoc", null] },
-          then: {
-            publicId: "$communityDoc.publicId",
-            name: "$communityDoc.name",
-            slug: "$communityDoc.slug",
-            avatar: "$communityDoc.avatar",
-          },
-          else: null,
-        },
-      },
-    };
-  }
-
-  private buildFacetPipeline(
-    ...stages: PipelineStage.FacetPipelineStage[]
-  ): PipelineStage.FacetPipelineStage[] {
-    return stages;
-  }
-
   private async loadFavoriteTagIds(
     tagNames: string[],
   ): Promise<mongoose.Types.ObjectId[]> {
@@ -1484,7 +980,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
     const fetchPromise = this.tagRepository
       .findByTags(tagNames)
       .then((tagDocs) =>
-        tagDocs.map((doc) => this.normalizeObjectId(doc._id, "tag._id")),
+        tagDocs.map((doc) => normalizeObjectId(doc._id, "tag._id")),
       )
       .then((ids) => {
         this.tagIdCacheStore.set(cacheKey, {

@@ -1,6 +1,12 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSocket } from "../context/useSocket";
+import {
+  removePostDetailAndCommentCaches,
+  removePostFromFeedCaches,
+  updatePostLikesInFeedCaches,
+} from "../posts/postCache";
+import { useRecentEventIds } from "../socket/useRecentEventIds";
 
 /**
  * Hook to handle real-time feed updates via WebSocket
@@ -9,70 +15,10 @@ import { useSocket } from "../context/useSocket";
 export const useFeedSocketIntegration = () => {
   const socket = useSocket();
   const queryClient = useQueryClient();
+  const shouldHandleEvent = useRecentEventIds();
 
   useEffect(() => {
     if (!socket) return;
-
-    /**
-     * Remove a deleted post from all cached feed/post queries.
-     */
-    const removePostFromCaches = (postId: string) => {
-      const filterPost = (oldData: unknown): unknown => {
-        if (!oldData || typeof oldData !== "object") return oldData;
-
-        if ("pages" in oldData) {
-          const inf = oldData as {
-            pages: { data: { publicId: string }[] }[];
-            pageParams: unknown[];
-          };
-          return {
-            ...inf,
-            pages: inf.pages.map((page) => ({
-              ...page,
-              data: Array.isArray(page.data)
-                ? page.data.filter((item) => item.publicId !== postId)
-                : page.data,
-            })),
-          };
-        }
-
-        if ("data" in oldData) {
-          const reg = oldData as { data: { publicId: string }[] };
-          if (Array.isArray(reg.data)) {
-            return {
-              ...reg,
-              data: reg.data.filter((item) => item.publicId !== postId),
-            };
-          }
-        }
-
-        return oldData;
-      };
-
-      for (const key of [
-        "personalizedFeed",
-        "forYouFeed",
-        "trendingFeed",
-        "newFeed",
-        "images",
-        "userImages",
-        "posts",
-        "userPosts",
-      ]) {
-        queryClient.setQueriesData({ queryKey: [key] }, filterPost);
-      }
-
-      // Drop the post detail and its comments so nothing tries to refetch a deleted post
-      queryClient.removeQueries({
-        predicate: (query) => {
-          const key = query.queryKey as unknown[];
-          return (
-            (key[0] === "post" && key.includes(postId)) ||
-            (key[0] === "comments" && key[1] === "post" && key[2] === postId)
-          );
-        },
-      });
-    };
 
     /**
      * Handle new post uploads (targeted to specific users)
@@ -107,7 +53,8 @@ export const useFeedSocketIntegration = () => {
       authorId: string;
       timestamp: string;
     }) => {
-      removePostFromCaches(data.postId);
+      removePostFromFeedCaches(queryClient, data.postId);
+      removePostDetailAndCommentCaches(queryClient, data.postId);
 
       // Invalidate author profile stats (post count changed)
       queryClient.invalidateQueries({
@@ -120,8 +67,11 @@ export const useFeedSocketIntegration = () => {
      */
     const handleFeedUpdate = (data: {
       type: string;
+      eventId?: string;
       [key: string]: unknown;
     }) => {
+      if (!shouldHandleEvent(data.eventId)) return;
+
       if (data.type === "new_post") {
         handleNewPost(data as Parameters<typeof handleNewPost>[0]);
       } else if (data.type === "post_deleted") {
@@ -135,79 +85,14 @@ export const useFeedSocketIntegration = () => {
      */
     const handleLikeUpdate = (data: {
       type: "like_count_changed";
+      eventId?: string;
       imageId: string;
       newLikes: number;
       timestamp: string;
     }) => {
-      // Update image data optimistically in all queries
-      const updateImageLikes = (queryKey: unknown[]) => {
-        queryClient.setQueriesData({ queryKey }, (oldData: unknown) => {
-          if (!oldData) return oldData;
+      if (!shouldHandleEvent(data.eventId)) return;
 
-          // Handle infinite query structure
-          if (
-            typeof oldData === "object" &&
-            oldData !== null &&
-            "pages" in oldData
-          ) {
-            const infiniteData = oldData as {
-              pages: { data: { publicId: string; likes: number }[] }[];
-            };
-            return {
-              ...infiniteData,
-              pages: infiniteData.pages.map((page) => ({
-                ...page,
-                data: page.data.map((image) =>
-                  image.publicId === data.imageId
-                    ? { ...image, likes: data.newLikes }
-                    : image,
-                ),
-              })),
-            };
-          }
-
-          // Handle regular query structure
-          if (
-            typeof oldData === "object" &&
-            oldData !== null &&
-            "data" in oldData
-          ) {
-            const regularData = oldData as {
-              data: { publicId: string; likes: number }[];
-            };
-            return {
-              ...regularData,
-              data: regularData.data.map((image) =>
-                image.publicId === data.imageId
-                  ? { ...image, likes: data.newLikes }
-                  : image,
-              ),
-            };
-          }
-
-          // Handle single image
-          if (
-            typeof oldData === "object" &&
-            oldData !== null &&
-            "publicId" in oldData
-          ) {
-            const imageData = oldData as { publicId: string; likes: number };
-            if (imageData.publicId === data.imageId) {
-              return { ...imageData, likes: data.newLikes };
-            }
-          }
-
-          return oldData;
-        });
-      };
-
-      // Update all feed queries
-      updateImageLikes(["personalizedFeed"]);
-      updateImageLikes(["forYouFeed"]);
-      updateImageLikes(["trendingFeed"]);
-      updateImageLikes(["newFeed"]);
-      updateImageLikes(["images"]);
-      updateImageLikes(["userImages"]);
+      updatePostLikesInFeedCaches(queryClient, data.imageId, data.newLikes);
 
       // Update specific image queries
       queryClient.invalidateQueries({ queryKey: ["image", data.imageId] });
@@ -219,11 +104,14 @@ export const useFeedSocketIntegration = () => {
      */
     const handleAvatarUpdate = (data: {
       type: "user_avatar_changed";
+      eventId?: string;
       userId: string;
       oldAvatar?: string;
       newAvatar?: string;
       timestamp: string;
     }) => {
+      if (!shouldHandleEvent(data.eventId)) return;
+
       // Invalidate user data and any feed that shows avatars
       const currentUser = queryClient.getQueryData<{ publicId?: string }>([
         "currentUser",
@@ -252,12 +140,15 @@ export const useFeedSocketIntegration = () => {
      */
     const handleFeedInteraction = (data: {
       type: "user_interaction";
+      eventId?: string;
       userId: string;
       actionType: string;
       targetId: string;
       tags?: string[];
       timestamp: string;
     }) => {
+      if (!shouldHandleEvent(data.eventId)) return;
+
       // For comments and other interactions that affect counts
       if (
         data.actionType === "comment" ||
@@ -287,5 +178,5 @@ export const useFeedSocketIntegration = () => {
       socket.off("avatar_update", handleAvatarUpdate);
       socket.off("feed_interaction", handleFeedInteraction);
     };
-  }, [socket, queryClient]);
+  }, [socket, queryClient, shouldHandleEvent]);
 };

@@ -26,6 +26,8 @@ export * from "./customCommunities/community.type";
 export * from "./customCommunities/communityMember.type";
 export * from "./customCommunities/communityCacheItem.types";
 export * from "./customRequestLog/requestLog.types";
+export * from "./customAuthActivityLog/authActivityLog.types";
+export * from "./customSecurityAudit/securityAudit.types";
 export * from "./customCore/mongo.types";
 export * from "./tokens";
 export * from "./branded";

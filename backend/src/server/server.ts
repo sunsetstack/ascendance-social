@@ -35,6 +35,7 @@ import { TOKENS } from "@/types/tokens";
 import { buildCorsOptions } from "@/config/corsConfig";
 import { getClientIp } from "@/utils/request-ip";
 import { getRateLimitStoreOptions } from "@/config/rateLimit";
+import { csrfOriginMiddleware } from "@/middleware/csrf-origin.middleware";
 
 @injectable()
 export class Server {
@@ -85,6 +86,7 @@ export class Server {
   private initializeMiddlewares(): void {
     this.app.set("trust proxy", this.resolveTrustProxySetting());
     this.app.use(correlationIdMiddleware);
+    this.app.use(requestLogger); // Logs requests to database for admin panel
     this.app.use(helmet());
 
     const corsOptions = buildCorsOptions();
@@ -109,13 +111,13 @@ export class Server {
     this.app.use(this.metricsService.httpMetricsMiddleware());
 
     this.app.use(cookieParser()); // Parsing cookies
+    this.app.use(csrfOriginMiddleware);
     this.app.use(express.json({ limit: "1mb" })); // Parsing JSON request bodies
     this.app.use(express.urlencoded({ extended: true, limit: "1mb" })); // Handling URL-encoded payloads
 
     // Loggers
     this.app.use(logBehaviour); // Logs basic request/response info
     this.app.use(detailedRequestLogging); // Logs detailed request info
-    this.app.use(requestLogger); // Logs requests to database for admin panel
   }
 
   /**
@@ -123,7 +125,10 @@ export class Server {
    */
   private initializeRoutes() {
     const uploadsPath = path.join(process.cwd(), "uploads");
-    logger.info("Serving static uploads", { uploadsPath });
+    logger.info("Serving static uploads", {
+      event: "static_uploads.enabled",
+      uploadsPath,
+    });
     this.app.use("/uploads", express.static(uploadsPath));
 
     this.app.use("/metrics", this.metricsRoutes.getRouter());
@@ -202,14 +207,17 @@ export class Server {
     server.keepAliveTimeout = 65000;
 
     server.listen(port, () => {
-      logger.info(`[Server] Server running on port ${port}`);
+      logger.info("HTTP server started", {
+        event: "http.server.started",
+        port,
+      });
     });
   }
 
   private resolveTrustProxySetting(): boolean | number | string {
     const configuredValue = process.env.TRUST_PROXY;
     if (!configuredValue) {
-      return 1;
+      return false;
     }
 
     if (configuredValue === "true") {

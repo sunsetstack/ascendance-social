@@ -11,6 +11,8 @@ import { createAdapter } from "@socket.io/redis-adapter";
 import { RedisService } from "@/services/redis.service";
 import { getAllowedOrigins } from "@/config/corsConfig";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry } from "@/application/common/events/event-registry";
+import { MetricsService } from "@/metrics/metrics.service";
 
 let ioInstance: SocketIOServer | null = null;
 let viewingStateRedisService: RedisService | null = null;
@@ -53,6 +55,8 @@ export class WebSocketServer {
     @inject(RedisService) private readonly redisService: RedisService,
     @inject(TOKENS.Services.AuthMiddleware)
     authMiddlewareService: AuthMiddlewareService,
+    @inject(TOKENS.Services.Metrics)
+    private readonly metricsService: MetricsService,
   ) {
     this.socketAuthHandler = authMiddlewareService.required();
     viewingStateRedisService = this.redisService;
@@ -108,18 +112,24 @@ export class WebSocketServer {
           req.headers.authorization = `Bearer ${handshakeAuth.token}`;
           logger.info(
             "[Socket][Auth] Applied bearer token from handshake auth",
+            { event: "websocket.auth.handshake_token_applied" },
           );
         }
 
         // Handle authentication using the bearer token strategy
         this.socketAuthHandler(req, {} as any, (error?: any) => {
           if (error) {
-            logger.error("Auth error:", error);
+            logger.error("WebSocket authentication failed", {
+              event: "websocket.auth.failed",
+              error,
+            });
             return next(Errors.authentication(error.message));
           }
 
           if (!req.decodedUser) {
-            logger.error("Missing decoded user after authentication");
+            logger.error("Missing decoded user after authentication", {
+              event: "websocket.auth.missing_decoded_user",
+            });
             return next(Errors.authentication("Unauthorized"));
           }
 
@@ -128,7 +138,10 @@ export class WebSocketServer {
           next();
         });
       } catch (error) {
-        logger.error("WebSocket auth error:", error);
+        logger.error("WebSocket authentication error", {
+          event: "websocket.auth.error",
+          error,
+        });
         next(Errors.authentication("Socket authentication failed"));
       }
     });
@@ -137,45 +150,72 @@ export class WebSocketServer {
      * Handles new client connections to the WebSocket server.
      */
     this.io.on("connection", (socket) => {
-      logger.info("New client connected:", socket.id);
+      logger.info("WebSocket client connected", {
+        event: "websocket.client.connected",
+        socketId: socket.id,
+      });
 
       // Join the user to their own private room
 
       const userPublicId = socket.data.user?.publicId || socket.data.user?.id;
       if (userPublicId) {
         socket.join(userPublicId);
-        logger.info(`User ${userPublicId} joined their room automatically`);
+        logger.info("WebSocket user joined own room", {
+          event: "websocket.room.auto_joined",
+          socketId: socket.id,
+          userId: userPublicId,
+        });
 
         // Send confirmation to client
-        socket.emit("join_response", {
+        socket.emit(EventRegistry.socketServerEvents.joinResponse, {
           success: true,
           userId: userPublicId,
           message: "Automatically joined user room",
         });
+        this.metricsService.recordSocketEventEmitted(
+          EventRegistry.socketServerEvents.joinResponse,
+          "socket",
+        );
       } else {
-        logger.warn("Socket connected without user data:", socket.id);
+        logger.warn("Socket connected without user data", {
+          event: "websocket.client.missing_user",
+          socketId: socket.id,
+        });
       }
 
       /**
        * Event listener for users manually joining a room.
        * This ensures the user is authenticated before joining.
        */
-      socket.on("join", (userId: string) => {
+      socket.on(EventRegistry.socketClientEvents.join, (userId: string) => {
         if (!socket.data.user) {
-          logger.warn("Unauthorized join attempt. Disconnecting socket.");
+          logger.warn("Unauthorized socket room join attempt", {
+            event: "websocket.room.join_unauthorized",
+            socketId: socket.id,
+          });
           return socket.disconnect(); // Disconnect unauthorized users
         }
 
         if (!userId || typeof userId !== "string") {
-          logger.warn("Invalid userId in join event:", userId);
-          socket.emit("join_response", {
+          logger.warn("Invalid userId in socket join event", {
+            event: "websocket.room.join_invalid_user_id",
+            socketId: socket.id,
+          });
+          socket.emit(EventRegistry.socketServerEvents.joinResponse, {
             success: false,
             error: "Invalid userId",
           });
+          this.metricsService.recordSocketEventEmitted(
+            EventRegistry.socketServerEvents.joinResponse,
+            "socket",
+          );
           return;
         }
 
-        logger.info(`User join room request received`);
+        logger.info("WebSocket room join requested", {
+          event: "websocket.room.join_requested",
+          socketId: socket.id,
+        });
         const trimmedUserId = userId.trim();
         const authenticatedUserId =
           socket.data.user?.publicId || socket.data.user?.id;
@@ -186,42 +226,58 @@ export class WebSocketServer {
             authenticatedUserId,
             socketId: socket.id,
           });
-          socket.emit("join_response", {
+          socket.emit(EventRegistry.socketServerEvents.joinResponse, {
             success: false,
             error: "Forbidden room join",
           });
+          this.metricsService.recordSocketEventEmitted(
+            EventRegistry.socketServerEvents.joinResponse,
+            "socket",
+          );
           return;
         }
 
-        logger.info(`Received a join event with data: ${trimmedUserId}`);
         socket.join(trimmedUserId);
-        logger.info(`User ${trimmedUserId} joined their room`);
-        logger.info(`Socket rooms:`, Array.from(socket.rooms));
+        logger.info("WebSocket user joined room", {
+          event: "websocket.room.joined",
+          socketId: socket.id,
+          userId: trimmedUserId,
+          rooms: Array.from(socket.rooms),
+        });
 
         // Emit success message
-        socket.emit("join_response", {
+        socket.emit(EventRegistry.socketServerEvents.joinResponse, {
           success: true,
           userId: trimmedUserId,
         });
+        this.metricsService.recordSocketEventEmitted(
+          EventRegistry.socketServerEvents.joinResponse,
+          "socket",
+        );
       });
 
       // track when user opens a conversation (for suppressing notifications)
-      socket.on("conversation_opened", (conversationId: string) => {
+      socket.on(EventRegistry.socketClientEvents.conversationOpened, (conversationId: string) => {
         void this.handleConversationOpened(socket, conversationId);
       });
 
       // track when user closes/leaves a conversation
-      socket.on("conversation_closed", (conversationId?: string) => {
+      socket.on(EventRegistry.socketClientEvents.conversationClosed, (conversationId?: string) => {
         void this.handleConversationClosed(socket, conversationId);
       });
 
       socket.on("disconnect", () => {
         void this.handleConversationClosed(socket);
-        logger.info("Client disconnected:", socket.id);
+        logger.info("WebSocket client disconnected", {
+          event: "websocket.client.disconnected",
+          socketId: socket.id,
+        });
       });
     });
 
-    logger.info("WebSocket server initialized.");
+    logger.info("WebSocket server initialized", {
+      event: "websocket.server.initialized",
+    });
   }
 
   private async configureRedisAdapter(): Promise<void> {
@@ -229,6 +285,7 @@ export class WebSocketServer {
     if (!ready) {
       logger.warn(
         "[Websocket][Config] Redis unavailable; running Socket.io without Redis adapter.",
+        { event: "websocket.redis_adapter.unavailable" },
       );
       return;
     }
@@ -242,6 +299,7 @@ export class WebSocketServer {
         this.io.adapter(createAdapter(pubClient, subClient));
         logger.info(
           "[Websocket][Config] Redis adapter for Socket.io configured successfully.",
+          { event: "websocket.redis_adapter.configured" },
         );
       }
     } catch (error) {
@@ -295,7 +353,13 @@ export class WebSocketServer {
         socket.id,
         ttlSeconds,
       );
-      logger.info(`User ${userId} opened conversation ${conversationId}`);
+      logger.info("WebSocket conversation opened", {
+        event: "websocket.conversation.opened",
+        userId,
+        conversationId,
+        socketId: socket.id,
+        ttlSeconds,
+      });
     } catch (error) {
       logger.warn("[Socket] Failed to store conversation presence", {
         error,
@@ -332,6 +396,12 @@ export class WebSocketServer {
       conversationId
         ? `User ${userId} closed conversation ${conversationId}`
         : `User ${userId} closed conversation`,
+      {
+        event: "websocket.conversation.closed",
+        userId,
+        conversationId,
+        socketId: socket.id,
+      },
     );
   }
 

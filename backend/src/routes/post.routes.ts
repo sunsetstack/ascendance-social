@@ -16,7 +16,7 @@ import {
   userPostsQuerySchema,
 } from "@/utils/schemas/post.schemas";
 import { handleSchema } from "@/utils/schemas/user.schemas";
-import upload from "@/config/multer";
+import upload, { validateImageUpload } from "@/config/multer";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
@@ -90,6 +90,7 @@ export class PostRoutes {
     this.router.post(
       "/",
       upload.single("image"),
+      validateImageUpload,
       new ValidationMiddleware({ body: createPostSchema }).validate(),
       asyncHandler(this.postController.createPost),
     );
