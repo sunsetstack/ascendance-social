@@ -67,6 +67,8 @@ import {
   MessageStatusUpdatedEvent,
   MessageAttachmentsDeletedEvent,
 } from "@/application/events/message/message.event";
+import { LogAuthActivityCommandHandler } from "@/application/commands/admin/logAuthActivity/logAuthActivity.handler";
+import { LogSecurityAuditCommandHandler } from "@/application/commands/admin/logSecurityAudit/logSecurityAudit.handler";
 import { NotificationRequestedEvent } from "@/application/events/notification/notification.event";
 import { NotificationRequestedHandler } from "@/application/events/notification/notification-requested.handler";
 import { CreatePostCommand } from "@/application/commands/post/createPost/createPost.command";
@@ -219,8 +221,12 @@ import { GetCommunityMembersQuery } from "@/application/queries/community/getCom
 import { GetCommunityMembersQueryHandler } from "@/application/queries/community/getCommunityMembers/getCommunityMembers.handler";
 import { LogRequestCommand } from "@/application/commands/admin/logRequest/logRequest.command";
 import { LogRequestCommandHandler } from "@/application/commands/admin/logRequest/logRequest.handler";
+import { LogAuthActivityCommand } from "@/application/commands/admin/logAuthActivity/logAuthActivity.command";
+import { LogSecurityAuditCommand } from "@/application/commands/admin/logSecurityAudit/logSecurityAudit.command";
 import { GetRequestLogsQuery } from "@/application/queries/admin/getRequestLogs/getRequestLogs.query";
 import { GetRequestLogsQueryHandler } from "@/application/queries/admin/getRequestLogs/getRequestLogs.handler";
+import { GetAuthActivityLogsQuery } from "@/application/queries/admin/getAuthActivityLogs/getAuthActivityLogs.query";
+import { GetAuthActivityLogsQueryHandler } from "@/application/queries/admin/getAuthActivityLogs/getAuthActivityLogs.handler";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 
@@ -243,7 +249,10 @@ const commandHandlerRegistrations: readonly ContainerRegistration[] = [
   [TOKENS.CQRS.Commands.ChangePassword, ChangePasswordCommandHandler],
   [TOKENS.CQRS.Commands.ClearCache, ClearCacheCommandHandler],
   [TOKENS.CQRS.Commands.LikeAction, LikeActionCommandHandler],
-  [TOKENS.CQRS.Commands.LikeActionByPublicId, LikeActionByPublicIdCommandHandler],
+  [
+    TOKENS.CQRS.Commands.LikeActionByPublicId,
+    LikeActionByPublicIdCommandHandler,
+  ],
   [TOKENS.CQRS.Commands.CreateComment, CreateCommentCommandHandler],
   [TOKENS.CQRS.Commands.UpdateComment, UpdateCommentCommandHandler],
   [TOKENS.CQRS.Commands.DeleteComment, DeleteCommentCommandHandler],
@@ -262,13 +271,21 @@ const commandHandlerRegistrations: readonly ContainerRegistration[] = [
   [TOKENS.CQRS.Commands.SendMessage, SendMessageCommandHandler],
   [TOKENS.CQRS.Commands.EditMessage, EditMessageCommandHandler],
   [TOKENS.CQRS.Commands.DeleteMessage, DeleteMessageCommandHandler],
-  [TOKENS.CQRS.Commands.InitiateConversation, InitiateConversationCommandHandler],
-  [TOKENS.CQRS.Commands.MarkConversationRead, MarkConversationReadCommandHandler],
+  [
+    TOKENS.CQRS.Commands.InitiateConversation,
+    InitiateConversationCommandHandler,
+  ],
+  [
+    TOKENS.CQRS.Commands.MarkConversationRead,
+    MarkConversationReadCommandHandler,
+  ],
   [TOKENS.CQRS.Commands.BanUser, BanUserCommandHandler],
   [TOKENS.CQRS.Commands.UnbanUser, UnbanUserCommandHandler],
   [TOKENS.CQRS.Commands.PromoteToAdmin, PromoteToAdminCommandHandler],
   [TOKENS.CQRS.Commands.DemoteFromAdmin, DemoteFromAdminCommandHandler],
   [TOKENS.CQRS.Commands.LogRequest, LogRequestCommandHandler],
+  [TOKENS.CQRS.Commands.LogAuthActivity, LogAuthActivityCommandHandler],
+  [TOKENS.CQRS.Commands.LogSecurityAudit, LogSecurityAuditCommandHandler],
   [TOKENS.CQRS.Commands.CreateCommunity, CreateCommunityCommandHandler],
   [TOKENS.CQRS.Commands.JoinCommunity, JoinCommunityCommandHandler],
   [TOKENS.CQRS.Commands.LeaveCommunity, LeaveCommunityCommandHandler],
@@ -295,6 +312,7 @@ const queryHandlerRegistrations: readonly ContainerRegistration[] = [
   [TOKENS.CQRS.Queries.GetUserStats, GetUserStatsQueryHandler],
   [TOKENS.CQRS.Queries.GetRecentActivity, GetRecentActivityQueryHandler],
   [TOKENS.CQRS.Queries.GetRequestLogs, GetRequestLogsQueryHandler],
+  [TOKENS.CQRS.Queries.GetAuthActivityLogs, GetAuthActivityLogsQueryHandler],
   [TOKENS.CQRS.Queries.GetWhoToFollow, GetWhoToFollowQueryHandler],
   [TOKENS.CQRS.Queries.GetHandleSuggestions, GetHandleSuggestionsQueryHandler],
   [TOKENS.CQRS.Queries.GetTrendingTags, GetTrendingTagsQueryHandler],
@@ -319,7 +337,10 @@ const queryHandlerRegistrations: readonly ContainerRegistration[] = [
   [TOKENS.CQRS.Queries.GetNotifications, GetNotificationsQueryHandler],
   [TOKENS.CQRS.Queries.GetUnreadCount, GetUnreadCountQueryHandler],
   [TOKENS.CQRS.Queries.ListConversations, ListConversationsQueryHandler],
-  [TOKENS.CQRS.Queries.GetConversationMessages, GetConversationMessagesQueryHandler],
+  [
+    TOKENS.CQRS.Queries.GetConversationMessages,
+    GetConversationMessagesQueryHandler,
+  ],
   [TOKENS.CQRS.Queries.GetCommunityDetails, GetCommunityDetailsQueryHandler],
   [TOKENS.CQRS.Queries.GetUserCommunities, GetUserCommunitiesQueryHandler],
   [TOKENS.CQRS.Queries.GetCommunityFeed, GetCommunityFeedQueryHandler],
@@ -392,6 +413,8 @@ const commandBusRegistrations: readonly CommandBusRegistration[] = [
   [PromoteToAdminCommand, TOKENS.CQRS.Commands.PromoteToAdmin],
   [DemoteFromAdminCommand, TOKENS.CQRS.Commands.DemoteFromAdmin],
   [LogRequestCommand, TOKENS.CQRS.Commands.LogRequest],
+  [LogAuthActivityCommand, TOKENS.CQRS.Commands.LogAuthActivity],
+  [LogSecurityAuditCommand, TOKENS.CQRS.Commands.LogSecurityAudit],
   [CreateCommunityCommand, TOKENS.CQRS.Commands.CreateCommunity],
   [JoinCommunityCommand, TOKENS.CQRS.Commands.JoinCommunity],
   [LeaveCommunityCommand, TOKENS.CQRS.Commands.LeaveCommunity],
@@ -415,6 +438,7 @@ const queryBusRegistrations: readonly QueryBusRegistration[] = [
   [GetUserStatsQuery, TOKENS.CQRS.Queries.GetUserStats],
   [GetRecentActivityQuery, TOKENS.CQRS.Queries.GetRecentActivity],
   [GetRequestLogsQuery, TOKENS.CQRS.Queries.GetRequestLogs],
+  [GetAuthActivityLogsQuery, TOKENS.CQRS.Queries.GetAuthActivityLogs],
   [GetWhoToFollowQuery, TOKENS.CQRS.Queries.GetWhoToFollow],
   [GetHandleSuggestionsQuery, TOKENS.CQRS.Queries.GetHandleSuggestions],
   [GetTrendingTagsQuery, TOKENS.CQRS.Queries.GetTrendingTags],

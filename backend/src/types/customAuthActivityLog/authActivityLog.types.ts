@@ -1,9 +1,9 @@
 import { Document } from "mongoose";
 
-export interface IRequestLog extends Document {
+export interface IAuthActivityLog extends Document {
   timestamp: Date;
   metadata: {
-    userId?: string;
+    action: string;
     correlationId?: string;
     clientRequestId?: string;
     clientBootId?: string;
@@ -13,20 +13,19 @@ export interface IRequestLog extends Document {
     causedByClientRequestId?: string;
     sessionId?: string;
     tokenFamilyId?: string;
-    method: string;
-    route: string;
+    userId?: string;
+    authEmail?: string;
+    authUsername?: string;
+    authHandle?: string;
     ip: string;
     origin?: string;
     referer?: string;
     userAgent?: string;
-    statusCode: number;
-    responseTimeMs: number;
+    route?: string;
+    statusCode?: number;
+    responseTimeMs?: number;
     authState?: string;
     authSource?: string;
-    authAction?: string;
-    authEmail?: string;
-    authUsername?: string;
-    authHandle?: string;
     refreshRotated?: boolean;
   };
 }

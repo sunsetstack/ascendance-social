@@ -21,7 +21,9 @@ import { PostWriteRepository } from "@/repositories/write/PostWriteRepository";
 import { UserWriteRepository } from "@/repositories/write/UserWriteRepository";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
+import { AuthActivityLogRepository } from "@/repositories/authActivityLog.repository";
 import { RequestLogRepository } from "@/repositories/requestLog.repository";
+import { SecurityAuditEventRepository } from "@/repositories/securityAuditEvent.repository";
 import { OutboxRepository } from "@/repositories/outbox.repository";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
@@ -67,6 +69,14 @@ export function registerRepositories(): void {
   container.registerSingleton(
     TOKENS.Repositories.RequestLog,
     RequestLogRepository,
+  );
+  container.registerSingleton(
+    TOKENS.Repositories.AuthActivityLog,
+    AuthActivityLogRepository,
+  );
+  container.registerSingleton(
+    TOKENS.Repositories.SecurityAuditEvent,
+    SecurityAuditEventRepository,
   );
   container.registerSingleton(TOKENS.Repositories.Outbox, OutboxRepository);
 

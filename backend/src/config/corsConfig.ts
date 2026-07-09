@@ -43,8 +43,20 @@ export function buildCorsOptions(): CorsOptions {
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-    exposedHeaders: ["Set-Cookie"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "X-Request-ID",
+      "X-Correlation-ID",
+      "X-Client-Request-ID",
+      "X-Client-Boot-ID",
+      "X-Client-Request-Attempt",
+      "X-Axios-Retry",
+      "X-Previous-Client-Request-ID",
+      "X-Caused-By-Client-Request-ID",
+    ],
+    exposedHeaders: ["Set-Cookie", "X-Request-ID"],
     maxAge: 86400,
   };
 }

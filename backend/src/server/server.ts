@@ -86,6 +86,7 @@ export class Server {
   private initializeMiddlewares(): void {
     this.app.set("trust proxy", this.resolveTrustProxySetting());
     this.app.use(correlationIdMiddleware);
+    this.app.use(requestLogger); // Logs requests to database for admin panel
     this.app.use(helmet());
 
     const corsOptions = buildCorsOptions();
@@ -117,7 +118,6 @@ export class Server {
     // Loggers
     this.app.use(logBehaviour); // Logs basic request/response info
     this.app.use(detailedRequestLogging); // Logs detailed request info
-    this.app.use(requestLogger); // Logs requests to database for admin panel
   }
 
   /**
