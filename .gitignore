@@ -24,4 +24,7 @@ tsconfig.tsbuildinfo
 backend/src/scripts/stress-test.ts
 notes.md
 tsconfig.test.tsbuildinfo
-
+docs/
+backend/audit/
+audit-logs/
+*pull-audit-archives.ps1

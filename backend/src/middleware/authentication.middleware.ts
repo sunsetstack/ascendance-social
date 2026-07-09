@@ -235,9 +235,23 @@ export class AuthenticationMiddleware {
       try {
         req.decodedUser = await this.strategy.authenticate(req);
         await this.enforceActiveUser(req.decodedUser);
+        req.authSource = "access_token";
+        req.authLogMetadata = {
+          ...req.authLogMetadata,
+          authState: "authenticated",
+          authSource: "access_token",
+          sessionId: req.decodedUser.sid,
+          tokenFamilyId: req.decodedUser.sid,
+        };
         setRequestContextUserId(req.decodedUser.publicId);
         next();
       } catch (error) {
+        const reason = this.getOptionalAuthFailureReason(error);
+        req.authLogMetadata = {
+          ...req.authLogMetadata,
+          authState: "auth_failed",
+          authSource: reason === "missing_token" ? "none" : "access_token",
+        };
         // Preserve original AppError Wwith statusCode
         if (isErrorWithStatusCode(error)) {
           return next(error);
@@ -260,9 +274,25 @@ export class AuthenticationMiddleware {
       try {
         req.decodedUser = await this.strategy.authenticate(req);
         await this.enforceActiveUser(req.decodedUser);
+        req.authSource = "access_token";
+        req.authLogMetadata = {
+          ...req.authLogMetadata,
+          authState: "authenticated",
+          authSource: "access_token",
+          sessionId: req.decodedUser.sid,
+          tokenFamilyId: req.decodedUser.sid,
+        };
         setRequestContextUserId(req.decodedUser.publicId);
       } catch (error) {
         req.decodedUser = undefined;
+        const reason = this.getOptionalAuthFailureReason(error);
+        if (reason !== "missing_token") {
+          req.authLogMetadata = {
+            ...req.authLogMetadata,
+            authState: "auth_failed",
+            authSource: "access_token",
+          };
+        }
         this.recordOptionalAuthFailure(req, error);
       }
       next();

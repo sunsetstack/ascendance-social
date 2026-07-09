@@ -190,6 +190,13 @@ export class AuthService {
     await this.authSessionService.revokeAllSessionsForUser(publicId);
   }
 
+  extractSessionIdFromRefreshToken(refreshToken: string): string | undefined {
+    return (
+      this.authSessionService.extractSessionIdFromRefreshToken(refreshToken) ??
+      undefined
+    );
+  }
+
   /**
    * Signs an access token for a user and session
    * - embeds identity, sid and token metadata

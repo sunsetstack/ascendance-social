@@ -3,7 +3,7 @@ x-logging: &default-logging
   options:
     max-size: "10m"
     max-file: "5"
-
+name: ascendance-social
 services:
   # --- CACHE ---
   redis:
@@ -41,6 +41,11 @@ services:
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
       RESEND_API_KEY: ${RESEND_API_KEY}
+      SECURITY_AUDIT_MONGO_TTL_DAYS: ${SECURITY_AUDIT_MONGO_TTL_DAYS:-90}
+      AUDIT_LOG_DIR: /app/audit/logs
+      AUDIT_ARCHIVE_DIR: /app/audit/archives
+      AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64: ${AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64:-}
+      AUDIT_ARCHIVE_DELETE_SOURCE: ${AUDIT_ARCHIVE_DELETE_SOURCE:-true}
     depends_on:
       redis:
         condition: service_healthy
@@ -48,6 +53,8 @@ services:
       - app-network
     volumes:
       - ./backend/uploads:/app/uploads
+      - ./backend/audit/logs:/app/audit/logs
+      - ./backend/audit/archives:/app/audit/archives
     healthcheck:
       test: ["CMD", "wget", "--spider", "http://localhost:3000/health"]
       interval: 30s
@@ -67,6 +74,7 @@ services:
   # --- INFRA LAYER ---
   caddy:
     image: caddy:2-alpine
+    container_name: caddy
     restart: always
     logging: *default-logging
     ports:
@@ -123,6 +131,8 @@ services:
       - app-network
     volumes:
       - ./backend/uploads:/app/uploads
+      - ./backend/audit/logs:/app/audit/logs
+      - ./backend/audit/archives:/app/audit/archives
 
 networks:
   app-network:

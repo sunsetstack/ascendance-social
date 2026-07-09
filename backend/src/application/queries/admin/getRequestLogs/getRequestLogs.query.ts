@@ -4,6 +4,14 @@ export interface GetRequestLogsOptions {
 	page?: number;
 	limit?: number;
 	userId?: string;
+	sessionId?: string;
+	tokenFamilyId?: string;
+	clientRequestId?: string;
+	clientBootId?: string;
+	previousClientRequestId?: string;
+	causedByClientRequestId?: string;
+	authState?: string;
+	authSource?: string;
 	statusCode?: number;
 	startDate?: Date;
 	endDate?: Date;

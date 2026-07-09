@@ -29,6 +29,7 @@
     "explain:feed": "ts-node -r tsconfig-paths/register ./src/scripts/explain-feed-pipelines.ts",
     "migrate:atlas": "ts-node -r tsconfig-paths/register ./src/scripts/migrate-atlas-to-local.ts",
     "stress-test": "ts-node -r tsconfig-paths/register ./src/scripts/stress-test.ts",
+    "audit:seal": "ts-node -r tsconfig-paths/register ./src/scripts/seal-audit-archive.ts",
     "build": "tsc && tsc-alias"
   },
   "author": "",
