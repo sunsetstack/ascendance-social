@@ -71,6 +71,10 @@ jobs:
             }
 
             cd /opt/ascendance-social
+            echo "Deploying $DEPLOY_SHA as $(whoami) in $(pwd)"
+            ls -ld . .git
+            test -w .
+            test -w .git
 
             touch .env
             if grep -q '^REDIS_PASSWORD=' .env; then
