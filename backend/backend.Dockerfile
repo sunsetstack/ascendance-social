@@ -1,5 +1,5 @@
 # -- Build stage
-FROM node:23.11.0-alpine AS builder
+FROM node:24.13.0-alpine AS builder
 WORKDIR /app
 
 # Copy root package files and each workspace package.json so npm knows the workspaces
@@ -19,7 +19,7 @@ COPY tsconfig.base.json ./
 RUN cd backend && npm run build
 
 # -- Production stage
-FROM node:23.11.0-alpine
+FROM node:24.13.0-alpine
 WORKDIR /app
 
 # Create a non-root user
