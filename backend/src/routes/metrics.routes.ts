@@ -32,15 +32,15 @@ export class MetricsRoutes {
   }
 
   private initializeRoutes(): void {
-    this.router.use(this.auth);
-    this.router.use(adminRateLimit);
-    this.router.use(this.adminOnly);
-
     this.router.get("/", async (_req, res) => {
       const metrics = await this.metricsService.getMetrics();
       res.setHeader("Content-Type", this.metricsService.getContentType());
       res.send(metrics);
     });
+
+    this.router.use(this.auth);
+    this.router.use(adminRateLimit);
+    this.router.use(this.adminOnly);
 
     // transaction health endpoint for monitoring high-concurrency scenarios
     this.router.get("/transactions", async (_req, res) => {
