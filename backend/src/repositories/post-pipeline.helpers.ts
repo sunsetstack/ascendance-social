@@ -109,18 +109,22 @@ export function getStandardProjectionFields(): Record<string, unknown> {
     },
     image: {
       $cond: {
-        if: { $ne: ["$imageDoc", null] },
+        if: {
+          $ne: [{ $ifNull: ["$imageDoc.publicId", null] }, null],
+        },
         then: {
           publicId: "$imageDoc.publicId",
           url: "$imageDoc.url",
           slug: "$imageDoc.slug",
         },
-        else: {},
+        else: null,
       },
     },
     repostOf: {
       $cond: {
-        if: { $ne: ["$repostDoc", null] },
+        if: {
+          $ne: [{ $ifNull: ["$repostDoc.publicId", null] }, null],
+        },
         then: {
           publicId: "$repostDoc.publicId",
           body: "$repostDoc.body",
@@ -150,7 +154,9 @@ export function getStandardProjectionFields(): Record<string, unknown> {
     },
     community: {
       $cond: {
-        if: { $ne: ["$communityDoc", null] },
+        if: {
+          $ne: [{ $ifNull: ["$communityDoc.publicId", null] }, null],
+        },
         then: {
           publicId: "$communityDoc.publicId",
           name: "$communityDoc.name",

@@ -1,8 +1,33 @@
 import { UserPublicId } from "@/types/branded";
+
+export interface FeedPostRepost {
+  publicId: string;
+  body?: string;
+  slug?: string;
+  likes?: number;
+  likesCount?: number;
+  repostCount?: number;
+  commentsCount?: number;
+  user: {
+    publicId: string;
+    handle: string;
+    username: string;
+    avatar: string;
+  };
+  image?: {
+    publicId: string;
+    url: string;
+    slug?: string;
+  } | null;
+}
+
 export interface FeedPost {
   publicId: string;
   body: string;
   slug: string;
+  type?: "original" | "repost";
+  repostCount?: number;
+  repostOf?: FeedPostRepost | null;
   createdAt: Date;
   likes: number;
   commentsCount: number;

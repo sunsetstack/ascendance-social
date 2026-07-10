@@ -188,7 +188,7 @@ export interface CommentsPaginationResponse {
 export type PageParam = number;
 
 export type ImagePageData = {
-  data: IImage[];
+  data: IPost[];
   total: number;
   page: number;
   limit: number;

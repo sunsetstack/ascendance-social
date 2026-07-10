@@ -29,7 +29,7 @@ export const DesktopAppShell: React.FC<DesktopAppShellProps> = ({
 				height: isMessagesPage ? "100vh" : "auto",
 				minHeight: "100vh",
 				display: "flex",
-				bgcolor: "background.default",
+				bgcolor: "transparent",
 				justifyContent: "center",
 				overflow: isMessagesPage ? "hidden" : "visible",
 			}}
@@ -38,14 +38,14 @@ export const DesktopAppShell: React.FC<DesktopAppShellProps> = ({
 				sx={{
 					display: "flex",
 					width: "100%",
-					maxWidth: "1280px",
+					maxWidth: "1340px",
 					height: isMessagesPage ? "100%" : "auto",
 				}}
 			>
 				<Box
 					component="header"
 					sx={{
-						width: { md: 88, lg: 275 },
+						width: { md: 88, lg: 260 },
 						flexShrink: 0,
 						display: "flex",
 						flexDirection: "column",
@@ -56,9 +56,8 @@ export const DesktopAppShell: React.FC<DesktopAppShellProps> = ({
 						sx={{
 							position: "fixed",
 							height: "100vh",
-							width: { md: 88, lg: 275 },
+							width: { md: 88, lg: 260 },
 							zIndex: 10,
-							borderRight: `1px solid ${theme.palette.divider}`,
 						}}
 					>
 						<LeftSidebar onPostClick={onOpenUploadModal} />
@@ -74,11 +73,17 @@ export const DesktopAppShell: React.FC<DesktopAppShellProps> = ({
 						flexDirection: "column",
 						minWidth: 0,
 						minHeight: 0,
+						bgcolor: "rgba(7, 9, 13, 0.72)",
+						backdropFilter: "blur(18px)",
+						borderLeft:
+							!isMessagesPage && !isAdminPage && !isSettingsPage
+								? `1px solid ${theme.palette.divider}`
+								: "none",
 						borderRight:
 							!isMessagesPage && !isAdminPage && !isSettingsPage
 								? `1px solid ${theme.palette.divider}`
 								: "none",
-						maxWidth: isMessagesPage || isAdminPage ? "100%" : isSettingsPage ? 900 : 600,
+						maxWidth: isMessagesPage || isAdminPage ? "100%" : isSettingsPage ? 900 : 640,
 						width: "100%",
 						height: isMessagesPage ? "100%" : "auto",
 						overflow: isMessagesPage ? "hidden" : "visible",
@@ -90,8 +95,8 @@ export const DesktopAppShell: React.FC<DesktopAppShellProps> = ({
 				{!isMessagesPage && !isAdminPage && !isSettingsPage && (
 					<Box
 						sx={{
-							marginLeft: 3,
-							width: 350,
+							marginLeft: 3.5,
+							width: 360,
 							flexShrink: 0,
 							display: { xs: "none", md: "none", lg: "block" },
 						}}
@@ -100,7 +105,7 @@ export const DesktopAppShell: React.FC<DesktopAppShellProps> = ({
 							sx={{
 								position: "fixed",
 								height: "100vh",
-								width: 350,
+								width: 360,
 								zIndex: 10,
 								overflowY: "auto",
 							}}

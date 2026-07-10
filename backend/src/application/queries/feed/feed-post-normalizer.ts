@@ -67,7 +67,7 @@ function getUserSnapshot(post: Record<string, unknown>): UserSnapshot {
   return author && typeof author === "object" ? (author as UserSnapshot) : {};
 }
 
-function normalizeRepostOf(repostOf: unknown): Partial<FeedPost> | undefined {
+function normalizeRepostOf(repostOf: unknown): FeedPost["repostOf"] {
   if (!repostOf || typeof repostOf !== "object") {
     return undefined;
   }
@@ -79,10 +79,9 @@ function normalizeRepostOf(repostOf: unknown): Partial<FeedPost> | undefined {
     publicId: repost.publicId as string,
     body: (repost.body as string) ?? "",
     slug: (repost.slug as string) ?? "",
-    createdAt: repost.createdAt as Date,
     likes: ((repost.likesCount ?? repost.likes) as number) ?? 0,
+    repostCount: (repost.repostCount as number) ?? 0,
     commentsCount: (repost.commentsCount as number) ?? 0,
-    tags: normalizeTags(repost.tags),
     user: {
       publicId: originalUser.publicId as string,
       handle: originalUser.handle ?? "",
@@ -96,11 +95,16 @@ function normalizeRepostOf(repostOf: unknown): Partial<FeedPost> | undefined {
 export function normalizeFeedPost(post: FeedPostSource): FeedPost {
   const plainPost = toPlainRecord(post);
   const user = getUserSnapshot(plainPost);
+  const repostOf = normalizeRepostOf(plainPost.repostOf);
 
   return {
     publicId: plainPost.publicId as string,
     body: (plainPost.body as string) ?? "",
     slug: (plainPost.slug as string) ?? "",
+    type:
+      plainPost.type === "repost" || repostOf ? "repost" : "original",
+    repostCount: (plainPost.repostCount as number) ?? 0,
+    repostOf,
     createdAt: plainPost.createdAt as Date,
     likes: ((plainPost.likesCount ?? plainPost.likes) as number) ?? 0,
     commentsCount: (plainPost.commentsCount as number) ?? 0,
@@ -115,11 +119,10 @@ export function normalizeFeedPost(post: FeedPostSource): FeedPost {
     },
     image: normalizeImage(plainPost.image),
     community: (plainPost.community as FeedPost["community"]) ?? undefined,
-    repostOf: normalizeRepostOf(plainPost.repostOf),
     rankScore: plainPost.rankScore as number | undefined,
     trendScore: plainPost.trendScore as number | undefined,
     isPersonalized: plainPost.isPersonalized as boolean | undefined,
-  } as FeedPost;
+  };
 }
 
 export function normalizeFeedPosts(posts: FeedPostSource[]): FeedPost[] {

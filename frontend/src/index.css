@@ -25,15 +25,19 @@ html {
 
 body {
 	margin: 0;
-	background: #000000;
+	background:
+		radial-gradient(circle at 18% -10%, rgba(56, 189, 248, 0.1), transparent 30rem),
+		radial-gradient(circle at 88% 0%, rgba(139, 92, 246, 0.08), transparent 26rem),
+		#07090d;
+	background-attachment: fixed;
 	color: #e7e9ea;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 	overflow-y: scroll;
 	min-height: 100%;
 	min-height: -webkit-fill-available;
-	/* prevent pull-to-refresh on mobile */
-	overscroll-behavior-y: contain;
+	/* allow the browser's native pull-to-refresh gesture */
+	overscroll-behavior-y: auto;
 }
 
 /* prevent overscroll/bounce on iOS */
@@ -59,10 +63,10 @@ body {
 	width: 10px;
 }
 ::-webkit-scrollbar-track {
-	background: #000000;
+	background: #07090d;
 }
 ::-webkit-scrollbar-thumb {
-	background: #2f3336;
+	background: #26313d;
 	border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {

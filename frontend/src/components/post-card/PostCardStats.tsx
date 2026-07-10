@@ -23,16 +23,21 @@ export const PostCardStats: React.FC<PostCardStatsProps> = ({
 				display: "flex",
 				justifyContent: "space-between",
 				maxWidth: 520,
-				mt: 1.5,
+				mt: 1.75,
+				mx: -0.75,
 			}}
 		>
 			<Box
 				sx={{
 					display: "flex",
 					alignItems: "center",
-					gap: 0.5,
+					gap: 0.75,
+					minWidth: 48,
+					px: 0.75,
+					py: 0.5,
+					borderRadius: 999,
 					color: "text.secondary",
-					"&:hover": { color: "#0ea5e9" },
+					"&:hover": { color: "#f43f5e", bgcolor: "rgba(244, 63, 94, 0.1)" },
 				}}
 			>
 				<FavoriteIcon fontSize="small" sx={{ fontSize: 18 }} />
@@ -42,9 +47,13 @@ export const PostCardStats: React.FC<PostCardStatsProps> = ({
 				sx={{
 					display: "flex",
 					alignItems: "center",
-					gap: 0.5,
+					gap: 0.75,
+					minWidth: 48,
+					px: 0.75,
+					py: 0.5,
+					borderRadius: 999,
 					color: hasReposted ? "#22c55e" : "text.secondary",
-					"&:hover": { color: "#22c55e" },
+					"&:hover": { color: "#22c55e", bgcolor: "rgba(34, 197, 94, 0.1)" },
 					cursor: "pointer",
 				}}
 				onClick={onRepostClick}
@@ -56,9 +65,13 @@ export const PostCardStats: React.FC<PostCardStatsProps> = ({
 				sx={{
 					display: "flex",
 					alignItems: "center",
-					gap: 0.5,
+					gap: 0.75,
+					minWidth: 48,
+					px: 0.75,
+					py: 0.5,
+					borderRadius: 999,
 					color: "text.secondary",
-					"&:hover": { color: "#3b82f6" },
+					"&:hover": { color: "#38bdf8", bgcolor: "rgba(56, 189, 248, 0.1)" },
 				}}
 			>
 				<CommentIcon fontSize="small" sx={{ fontSize: 18 }} />
@@ -68,9 +81,13 @@ export const PostCardStats: React.FC<PostCardStatsProps> = ({
 				sx={{
 					display: "flex",
 					alignItems: "center",
-					gap: 0.5,
+					gap: 0.75,
+					minWidth: 48,
+					px: 0.75,
+					py: 0.5,
+					borderRadius: 999,
 					color: "text.secondary",
-					"&:hover": { color: "#0ea5e9" },
+					"&:hover": { color: "#a78bfa", bgcolor: "rgba(139, 92, 246, 0.1)" },
 				}}
 			>
 				<VisibilityIcon fontSize="small" sx={{ fontSize: 18 }} />

@@ -12,6 +12,7 @@ import {
 } from "../types";
 import axios, { AxiosError } from "axios";
 import { devError } from "@/lib/devLogger";
+import { mapPost } from "@/lib/mappers";
 
 /** Wraps an async API call, logging any error in development before re-throwing. */
 async function withDevError<T>(label: string, fn: () => Promise<T>): Promise<T> {
@@ -116,7 +117,10 @@ export const fetchUserPosts = (
   withDevError("Error fetching user posts:", () =>
     axiosClient
       .get<ImagePageData>(`/api/posts/user/${userPublicId}?page=${page}&limit=${limit}&sortBy=${sortBy}&sortOrder=${sortOrder}`)
-      .then((r) => r.data),
+      .then((r) => ({
+        ...r.data,
+        data: r.data.data.map(mapPost),
+      })),
   );
 
 export const fetchUserLikedPosts = (
@@ -129,7 +133,10 @@ export const fetchUserLikedPosts = (
   withDevError("Error fetching user liked posts:", () =>
     axiosClient
       .get<ImagePageData>(`/api/posts/user/${userPublicId}/likes?page=${page}&limit=${limit}&sortBy=${sortBy}&sortOrder=${sortOrder}`)
-      .then((r) => r.data),
+      .then((r) => ({
+        ...r.data,
+        data: r.data.data.map(mapPost),
+      })),
   );
 
 export const fetchUserComments = (

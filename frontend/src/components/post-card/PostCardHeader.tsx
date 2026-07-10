@@ -36,16 +36,16 @@ export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
 	return (
 		<Box
 			sx={{
-				px: 2,
-				pt: hasCommunity ? 0.5 : 1.5,
-				pb: 1,
+				px: { xs: 2, sm: 2.25 },
+				pt: hasCommunity ? 0.5 : 2,
+				pb: 1.25,
 				display: "flex",
 				alignItems: "flex-start",
 				gap: 1.5,
 			}}
 		>
 			<Avatar
-				sx={{ width: 40, height: 40, cursor: "pointer" }}
+				sx={{ width: 42, height: 42, cursor: "pointer", border: "1px solid", borderColor: "divider" }}
 				onClick={(event) => {
 					event.stopPropagation();
 					navigate(`/profile/${post.user?.handle || post.user?.publicId}`);
@@ -74,7 +74,7 @@ export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
 						})}
 					</Typography>
 				)}
-				<Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
+				<Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 0.75, minWidth: 0 }}>
 					<Typography
 						variant="body1"
 						sx={{
@@ -89,6 +89,11 @@ export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
 					>
 						{post.user?.username || t("post.unknown_user")}
 					</Typography>
+					{post.user?.handle && (
+						<Typography variant="body2" color="text.secondary" noWrap sx={{ minWidth: 0 }}>
+							@{post.user.handle}
+						</Typography>
+					)}
 					{post.authorCommunityRole === "admin" && (
 						<Chip
 							icon={<AdminPanelSettingsIcon sx={{ fontSize: 14 }} />}
@@ -112,8 +117,8 @@ export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
 							sx={{ height: 18, fontSize: "0.65rem" }}
 						/>
 					)}
-					<Typography variant="body2" color="text.secondary">
-						{new Date(post.createdAt).toLocaleDateString(undefined, {
+					<Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+						· {new Date(post.createdAt).toLocaleDateString(undefined, {
 							month: "short",
 							day: "numeric",
 						})}
