@@ -10,6 +10,10 @@ const resources = {
         subtitle: "See what's happening right now.",
         new_to_ascendance: "New to Ascendance?",
         sign_up_timeline: "Sign up now to get your own personalized timeline!",
+        guest_feed_title: "Discover what moves people",
+        guest_feed_subtitle: "Fresh perspectives, creative work, and communities worth joining.",
+        welcome_label: "Welcome",
+        guest_cta_eyebrow: "Your feed, your people",
       },
       auth: {
         login: "Login",
@@ -40,6 +44,9 @@ const resources = {
         who_to_follow: "Who to follow",
         no_suggestions_right_now: "Check back later for new people to follow",
         trends_for_you: "Trending now",
+        trending_label: "Trending",
+        post_count_one: "{{count}} post",
+        post_count_other: "{{count}} posts",
         language: "Language",
         show_more: "Show more",
         follow: "Follow",
@@ -111,6 +118,10 @@ const resources = {
         new_to_ascendance: "Нови сте в Ascendance?",
         sign_up_timeline:
           "Регистрирайте се сега, за да получите своя персонализирана времева линия!",
+        guest_feed_title: "Открийте какво вдъхновява хората",
+        guest_feed_subtitle: "Нови гледни точки, творчески идеи и общности, към които си струва да се присъедините.",
+        welcome_label: "Добре дошли",
+        guest_cta_eyebrow: "Вашата емисия, вашите хора",
       },
       auth: {
         login: "Вход",
@@ -142,6 +153,9 @@ const resources = {
         no_suggestions_right_now:
           "Проверете по-късно за нови хора за последване",
         trends_for_you: "Актуално сега",
+        trending_label: "Актуално",
+        post_count_one: "{{count}} публикация",
+        post_count_other: "{{count}} публикации",
         language: "Език",
         show_more: "Виж повече",
         follow: "Последвай",

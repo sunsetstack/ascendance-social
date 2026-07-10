@@ -4,23 +4,23 @@ export const theme = createTheme({
 	palette: {
 		mode: "dark", // switches MUI internal logic to dark mode
 		primary: {
-			main: "#0ea5e9",
-			light: "#38bdf8",
-			dark: "#0284c7",
+			main: "#38bdf8",
+			light: "#7dd3fc",
+			dark: "#0ea5e9",
 			contrastText: "#ffffff",
 		},
 		secondary: {
-			main: "#71767b",
+			main: "#8b5cf6",
 		},
 		background: {
-			default: "#000000",
-			paper: "#16181c",
+			default: "#07090d",
+			paper: "#0e131a",
 		},
 		text: {
-			primary: "#e7e9ea",
-			secondary: "#71767b",
+			primary: "#f1f5f9",
+			secondary: "#8b98a7",
 		},
-		divider: "#2f3336",
+		divider: "rgba(148, 163, 184, 0.18)",
 	},
 	typography: {
 		fontFamily: '"Open Sans", "Inter", "system-ui", "-apple-system", "BlinkMacSystemFont", "sans-serif"',
@@ -62,7 +62,7 @@ export const theme = createTheme({
 		MuiCssBaseline: {
 			styleOverrides: {
 				body: {
-					backgroundColor: "#000000",
+					backgroundColor: "#07090d",
 					scrollbarWidth: "thin",
 				},
 			},
@@ -160,10 +160,10 @@ export const theme = createTheme({
 		MuiIconButton: {
 			styleOverrides: {
 				root: {
-					color: "#71767b",
+					color: "#8b98a7",
 					"&:hover": {
-						backgroundColor: "white",
-						color: "#0ea5e9",
+						backgroundColor: "rgba(56, 189, 248, 0.12)",
+						color: "#38bdf8",
 					},
 				},
 			},

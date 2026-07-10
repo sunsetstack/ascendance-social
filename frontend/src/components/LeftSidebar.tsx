@@ -179,34 +179,53 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({ onPostClick }) => {
 				height: "100%",
 				display: "flex",
 				flexDirection: "column",
-				px: 2,
+				px: { md: 1.5, lg: 2 },
+				py: 1,
 			}}
 		>
 			{/* Logo Section */}
 			<Box
+				component={RouterLink}
+				to="/"
 				sx={{
-					py: 2,
-					px: 1,
+					py: 1.5,
+					px: { md: 0, lg: 1 },
 					display: "flex",
 					alignItems: "center",
+					justifyContent: { md: "center", lg: "flex-start" },
+					gap: 1.5,
+					textDecoration: "none",
 				}}
 			>
-				<Avatar
-					component={RouterLink}
-					to="/"
+				<Box
 					sx={{
-						bgcolor: "transparent",
-						width: 50,
-						height: 50,
-						cursor: "pointer",
+						width: 44,
+						height: 44,
+						borderRadius: 3,
+						display: "grid",
+						placeItems: "center",
+						background: "linear-gradient(145deg, #38bdf8 0%, #8b5cf6 100%)",
+						boxShadow: "0 10px 30px rgba(56, 189, 248, 0.18)",
+						transition: "transform 0.2s ease, box-shadow 0.2s ease",
 						"&:hover": {
-							bgcolor: alpha(theme.palette.primary.main, 0.1),
+							transform: "translateY(-1px)",
+							boxShadow: "0 12px 34px rgba(139, 92, 246, 0.24)",
 						},
-						transition: "background-color 0.2s ease",
 					}}
 				>
-					<CameraAltIcon sx={{ fontSize: 30, color: theme.palette.primary.main }} />
-				</Avatar>
+					<CameraAltIcon sx={{ fontSize: 25, color: "#ffffff" }} />
+				</Box>
+				<Box sx={{ display: { md: "none", lg: "block" }, minWidth: 0 }}>
+					<Typography
+						variant="h6"
+						sx={{ fontWeight: 800, lineHeight: 1.1, letterSpacing: "-0.03em" }}
+					>
+						Ascendance
+					</Typography>
+					<Typography variant="caption" color="text.secondary">
+						{t("marketing.subtitle")}
+					</Typography>
+				</Box>
 			</Box>
 
 			{/* Navigation Section */}
@@ -294,21 +313,37 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({ onPostClick }) => {
 				) : (
 					<Box
 						sx={{
-							p: 3,
-							textAlign: "center",
-							display: "flex",
+							p: 2.5,
+							mt: 3,
+							textAlign: "left",
+							display: { md: "none", lg: "flex" },
 							flexDirection: "column",
-							gap: 2,
+							gap: 1.5,
+							border: `1px solid ${theme.palette.divider}`,
+							borderRadius: 4,
+							background: `linear-gradient(145deg, ${alpha(theme.palette.primary.main, 0.11)}, ${alpha(theme.palette.secondary.main, 0.07)} 65%, transparent)`,
 						}}
 					>
-						<Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+						<Typography
+							variant="overline"
+							sx={{ color: "primary.light", fontWeight: 800, letterSpacing: "0.14em", lineHeight: 1.2 }}
+						>
+							{t("marketing.welcome_label")}
+						</Typography>
+						<Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6, mb: 0.5 }}>
 							{t("auth.sign_in_prompt")}
 						</Typography>
-						<Button component={RouterLink} to="/login" variant="outlined" fullWidth sx={{ borderRadius: 9999 }}>
-							{t("auth.login")}
-						</Button>
-						<Button component={RouterLink} to="/register" variant="contained" fullWidth sx={{ borderRadius: 9999 }}>
+						<Button
+							component={RouterLink}
+							to="/register"
+							variant="contained"
+							fullWidth
+							sx={{ py: 1.15, background: "linear-gradient(90deg, #0ea5e9, #7c3aed)" }}
+						>
 							{t("auth.join")}
+						</Button>
+						<Button component={RouterLink} to="/login" variant="text" fullWidth sx={{ color: "text.primary" }}>
+							{t("auth.login")}
 						</Button>
 					</Box>
 				)}

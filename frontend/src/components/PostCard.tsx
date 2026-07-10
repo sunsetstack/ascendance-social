@@ -1,5 +1,5 @@
 import React from "react";
-import { Box } from "@mui/material";
+import { Box, alpha, useTheme } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { IPost } from "../types";
@@ -25,6 +25,7 @@ interface PostCardProps {
 const PostCard: React.FC<PostCardProps> = ({ post, prioritizeImage = false }) => {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
+	const theme = useTheme();
 	const { isLoggedIn, user } = useAuth();
 	const { mutate: triggerRepost } = useRepostPost();
 	const { mutate: triggerUnrepost } = useUnrepostPost();
@@ -71,13 +72,21 @@ const PostCard: React.FC<PostCardProps> = ({ post, prioritizeImage = false }) =>
 	return (
 		<Box
 			sx={{
-				width: "100%",
-				borderBottom: "1px solid",
-				borderColor: "divider",
+				width: { xs: "100%", sm: "calc(100% - 24px)" },
+				mx: { xs: 0, sm: 1.5 },
+				mt: { xs: 0, sm: 1.5 },
+				border: { xs: "none", sm: `1px solid ${theme.palette.divider}` },
+				borderBottom: { xs: `1px solid ${theme.palette.divider}`, sm: undefined },
+				borderRadius: { xs: 0, sm: 4 },
+				overflow: "hidden",
+				bgcolor: alpha(theme.palette.background.paper, 0.58),
+				boxShadow: { xs: "none", sm: "0 16px 45px rgba(0, 0, 0, 0.12)" },
 				cursor: "pointer",
-				transition: "background-color 0.2s",
+				transition: "background-color 0.2s, border-color 0.2s, transform 0.2s",
 				"&:hover": {
-					bgcolor: "rgba(255, 255, 255, 0.03)",
+					bgcolor: alpha(theme.palette.background.paper, 0.82),
+					borderColor: alpha(theme.palette.primary.main, 0.28),
+					transform: { xs: "none", sm: "translateY(-1px)" },
 				},
 			}}
 			onClick={() => navigate(`/posts/${post.publicId}`)}

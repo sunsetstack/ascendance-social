@@ -61,8 +61,9 @@ const TrendingTags: React.FC = () => {
               px: 2,
               py: 1.5,
               display: "block",
+              borderTop: `1px solid ${alpha(theme.palette.divider, 0.55)}`,
               "&:hover": {
-                backgroundColor: alpha(theme.palette.text.primary, 0.03),
+                backgroundColor: alpha(theme.palette.primary.main, 0.06),
               },
             }}
           >
@@ -71,7 +72,7 @@ const TrendingTags: React.FC = () => {
               color="text.secondary"
               display="block"
             >
-              Trending
+              {t("common.trending_label")}
             </Typography>
             <Typography variant="body1" fontWeight={700} display="block">
               #{trendingTag.tag}
@@ -81,7 +82,7 @@ const TrendingTags: React.FC = () => {
               color="text.secondary"
               display="block"
             >
-              {trendingTag.count} posts
+              {t("common.post_count", { count: trendingTag.count })}
             </Typography>
           </ListItemButton>
         ))}

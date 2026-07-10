@@ -60,4 +60,70 @@ describe("DTOService.toPostDTO", () => {
 			avatar: "snap.png",
 		});
 	});
+
+	it("preserves repost content for aggregated feed posts", () => {
+		const dto = service.toPostDTO({
+			...basePost,
+			publicId: "repost-1",
+			type: "repost",
+			repostCount: 2,
+			userPublicId: "user-1",
+			likes: 1,
+			user: {
+				publicId: "user-1",
+				handle: "sharer",
+				username: "Sharer",
+				avatar: "sharer.png",
+			},
+			repostOf: {
+				publicId: "original-1",
+				body: "Original post",
+				slug: "original-post",
+				likes: 4,
+				repostCount: 3,
+				commentsCount: 2,
+				user: {
+					publicId: "user-2",
+					handle: "author",
+					username: "Author",
+					avatar: "author.png",
+				},
+				image: null,
+			},
+		} as any);
+
+		expect(dto.type).to.equal("repost");
+		expect(dto.repostCount).to.equal(2);
+		expect(dto.repostOf).to.deep.include({
+			publicId: "original-1",
+			body: "Original post",
+			likes: 4,
+			repostCount: 3,
+			commentsCount: 2,
+		});
+		expect(dto.repostOf?.user).to.deep.equal({
+			publicId: "user-2",
+			handle: "author",
+			username: "Author",
+			avatar: "author.png",
+		});
+	});
+
+	it("drops empty aggregated community placeholders", () => {
+		const dto = service.toPostDTO({
+			...basePost,
+			publicId: "post-without-community",
+			userPublicId: "user-1",
+			likes: 0,
+			user: {
+				publicId: "user-1",
+				handle: "author",
+				username: "Author",
+				avatar: "author.png",
+			},
+			community: {},
+		} as any);
+
+		expect(dto.community).to.equal(null);
+	});
 });

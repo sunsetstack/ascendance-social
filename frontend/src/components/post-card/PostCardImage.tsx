@@ -21,7 +21,7 @@ export const PostCardImage: React.FC<PostCardImageProps> = ({
 		<Box
 			sx={{
 				mt: 1.5,
-				borderRadius: 3,
+				borderRadius: 3.5,
 				overflow: "hidden",
 				border: "1px solid",
 				borderColor: "divider",
@@ -29,7 +29,7 @@ export const PostCardImage: React.FC<PostCardImageProps> = ({
 				maxHeight: "600px",
 				display: "flex",
 				justifyContent: "center",
-				bgcolor: "black",
+				bgcolor: "#05070a",
 			}}
 		>
 			<img

@@ -13,8 +13,9 @@ export const PostCardCommunityBadge: React.FC<PostCardCommunityBadgeProps> = ({
 	communityAvatarUrl,
 }) => {
 	const navigate = useNavigate();
+	const community = post.community;
 
-	if (!post.community) {
+	if (!community?.publicId || !community.name || !community.slug) {
 		return null;
 	}
 
@@ -30,12 +31,10 @@ export const PostCardCommunityBadge: React.FC<PostCardCommunityBadgeProps> = ({
 			}}
 			onClick={(event) => {
 				event.stopPropagation();
-				if (post.community?.slug) {
-					navigate(`/communities/${post.community.slug}`);
-				}
+				navigate(`/communities/${community.slug}`);
 			}}
 		>
-			{post.community.avatar ? (
+			{community.avatar ? (
 				<Avatar src={communityAvatarUrl ?? undefined} sx={{ width: 16, height: 16 }} />
 			) : (
 				<GroupsIcon sx={{ fontSize: 16, color: "primary.main" }} />
@@ -49,7 +48,7 @@ export const PostCardCommunityBadge: React.FC<PostCardCommunityBadgeProps> = ({
 					"&:hover": { textDecoration: "underline" },
 				}}
 			>
-				{post.community.name}
+				{community.name}
 			</Typography>
 		</Box>
 	);

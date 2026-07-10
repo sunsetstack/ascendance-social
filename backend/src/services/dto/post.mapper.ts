@@ -20,6 +20,7 @@ function isFeedPost(post: IPost | FeedPost): post is FeedPost {
 
 function feedPostToDTO(post: FeedPost): PostDTO {
   const tags = post.tags.map((tag) => tag.tag).filter(Boolean);
+  const repostOf = buildFeedPostRepostOf(post.repostOf);
 
   const image =
     post.image?.url && post.image?.publicId
@@ -38,9 +39,9 @@ function feedPostToDTO(post: FeedPost): PostDTO {
     publicId: asPostPublicId(post.publicId),
     body: post.body,
     slug: post.slug,
-    type: "original",
-    repostCount: 0,
-    repostOf: undefined,
+    type: post.type === "repost" || repostOf ? "repost" : "original",
+    repostCount: post.repostCount ?? 0,
+    repostOf,
     image,
     url,
     imagePublicId,
@@ -127,12 +128,42 @@ function iPostToDTO(post: IPost): PostDTO {
 function buildFeedPostCommunity(
   community: FeedPost["community"],
 ): PostDTO["community"] {
-  if (!community) return null;
+  if (!community?.publicId || !community.name || !community.slug) return null;
   return {
     publicId: asCommunityPublicId(community.publicId),
     name: community.name,
     slug: community.slug,
     avatar: community.avatar,
+  };
+}
+
+function buildFeedPostRepostOf(
+  repost: FeedPost["repostOf"],
+): PostDTO["repostOf"] {
+  if (!repost?.publicId) return undefined;
+
+  const image =
+    repost.image?.url && repost.image?.publicId
+      ? {
+          url: repost.image.url,
+          publicId: asImagePublicId(repost.image.publicId),
+        }
+      : null;
+
+  return {
+    publicId: asPostPublicId(repost.publicId),
+    user: {
+      publicId: asUserPublicId(repost.user?.publicId ?? ""),
+      handle: repost.user?.handle ?? "",
+      username: repost.user?.username ?? "",
+      avatar: repost.user?.avatar ?? "",
+    },
+    body: repost.body,
+    slug: repost.slug,
+    image,
+    likes: repost.likes ?? repost.likesCount ?? 0,
+    repostCount: repost.repostCount ?? 0,
+    commentsCount: repost.commentsCount ?? 0,
   };
 }
 

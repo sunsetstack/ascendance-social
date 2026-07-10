@@ -59,7 +59,7 @@ const MobileLayout: React.FC = () => {
 		<Box
 			sx={{
 				minHeight: "100dvh",
-				height: "100dvh",
+				height: isMessagesPage ? "100dvh" : "auto",
 				display: "flex",
 				flexDirection: "column",
 				bgcolor: "background.default",
@@ -67,7 +67,7 @@ const MobileLayout: React.FC = () => {
 				overflowX: "hidden",
 				"@supports not (min-height: 100dvh)": {
 					minHeight: "100vh",
-					height: "100vh",
+					height: isMessagesPage ? "100vh" : "auto",
 				},
 			}}
 		>
@@ -94,7 +94,7 @@ const MobileLayout: React.FC = () => {
 					minWidth: 0,
 					minHeight: 0,
 					// messages page handles its own scroll, others can overflow
-					overflow: isMessagesPage ? "hidden" : "auto",
+					overflow: isMessagesPage ? "hidden" : "visible",
 					// padding for FAB (only when not on messages page)
 					pb: showFAB ? "80px" : "env(safe-area-inset-bottom)",
 				}}
