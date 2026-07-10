@@ -94,7 +94,10 @@ services:
   prometheus:
     image: prom/prometheus:v3.0.0
     container_name: prometheus
+    restart: always
     logging: *default-logging
+    ports:
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     networks:
@@ -104,7 +107,10 @@ services:
   grafana:
     image: grafana/grafana:11.1.0
     container_name: grafana
+    restart: always
     logging: *default-logging
+    ports:
+      - "127.0.0.1:3001:3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
     networks:

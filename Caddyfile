@@ -20,27 +20,3 @@
                 header_up X-Real-IP {client_ip}
         }
 }
-
-prometheus.{$DOMAIN_NAME} {
-        tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
-
-        reverse_proxy prometheus:9090 {
-                header_up Host {http.request.host}
-                header_up X-Forwarded-Proto {http.request.scheme}
-                header_up X-Forwarded-For {client_ip}
-                header_up CF-Connecting-IP {client_ip}
-                header_up X-Real-IP {client_ip}
-        }
-}
-
-grafana.{$DOMAIN_NAME} {
-        tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
-
-        reverse_proxy grafana:3000 {
-                header_up Host {http.request.host}
-                header_up X-Forwarded-Proto {http.request.scheme}
-                header_up X-Forwarded-For {client_ip}
-                header_up CF-Connecting-IP {client_ip}
-                header_up X-Real-IP {client_ip}
-        }
-}

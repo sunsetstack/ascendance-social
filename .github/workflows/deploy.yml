@@ -72,6 +72,7 @@ jobs:
 
             cd /opt/ascendance-social
             echo "Deploying $DEPLOY_SHA as $(whoami) in $(pwd)"
+            sudo -n chown -R "$(whoami):$(id -gn)" /opt/ascendance-social
             ls -ld . .git
             test -w .
             test -w .git
