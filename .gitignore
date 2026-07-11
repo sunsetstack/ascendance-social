@@ -25,6 +25,5 @@ backend/src/scripts/stress-test.ts
 notes.md
 tsconfig.test.tsbuildinfo
 docs/
-backend/audit/
-audit-logs/
+docker-compose-dev.yml
 *pull-audit-archives.ps1
