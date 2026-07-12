@@ -104,4 +104,3 @@ jobs:
             compose -f docker-compose-prod.yml restart caddy
             compose -f docker-compose-prod.yml ps
 
-            docker system prune -f
