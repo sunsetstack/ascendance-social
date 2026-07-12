@@ -6,6 +6,7 @@ import sinon, { SinonStub } from "sinon";
 import { ClientSession, Model, Types } from "mongoose";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
 import { IFavorite, IPost } from "@/types";
+import { asPostPublicId } from "@/types/branded";
 
 chai.use(chaiAsPromised);
 
@@ -132,7 +133,7 @@ describe("FavoriteRepository", () => {
 		const mockPosts: Partial<IPost>[] = [
 			{
 				_id: new Types.ObjectId(),
-				publicId: "post-1",
+				publicId: asPostPublicId("post-1"),
 				body: "Test post 1",
 				slug: "test-post-1",
 				user: {
@@ -145,7 +146,7 @@ describe("FavoriteRepository", () => {
 			},
 			{
 				_id: new Types.ObjectId(),
-				publicId: "post-2",
+				publicId: asPostPublicId("post-2"),
 				body: "Test post 2",
 				slug: "test-post-2",
 				user: {

@@ -12,12 +12,16 @@ services:
     restart: always
     logging: *default-logging
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+
     volumes:
       - redis_data:/data
+
     networks:
       - app-network
+
     healthcheck:
       test: ["CMD", "sh", "-c", 'redis-cli -a "$$REDIS_PASSWORD" ping']
       interval: 5s
@@ -41,20 +45,24 @@ services:
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
       RESEND_API_KEY: ${RESEND_API_KEY}
-      SECURITY_AUDIT_MONGO_TTL_DAYS: ${SECURITY_AUDIT_MONGO_TTL_DAYS:-90}
+      SECURITY_AUDIT_MONGO_TTL_DAYS: ${SECURITY_AUDIT_MONGO_TTL_DAYS:-}
       AUDIT_LOG_DIR: /app/audit/logs
       AUDIT_ARCHIVE_DIR: /app/audit/archives
       AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64: ${AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64:-}
       AUDIT_ARCHIVE_DELETE_SOURCE: ${AUDIT_ARCHIVE_DELETE_SOURCE:-true}
+
     depends_on:
       redis:
         condition: service_healthy
+
     networks:
       - app-network
+
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/audit/logs:/app/audit/logs
       - ./backend/audit/archives:/app/audit/archives
+
     healthcheck:
       test: ["CMD", "wget", "--spider", "http://localhost:3000/health"]
       interval: 30s
@@ -65,9 +73,11 @@ services:
     container_name: frontend
     restart: always
     logging: *default-logging
+
     depends_on:
       backend:
         condition: service_healthy
+
     networks:
       - app-network
 
@@ -77,6 +87,7 @@ services:
     container_name: caddy
     restart: always
     logging: *default-logging
+
     ports:
       - "80:80"
       - "443:443"
@@ -85,39 +96,93 @@ services:
       - ./certs:/etc/caddy/certs
       - caddy_data:/data
       - caddy_config:/config
+
     networks:
       - app-network
+
     environment:
       DOMAIN_NAME: ${DOMAIN_NAME}
       ACME_EMAIL: ${ACME_EMAIL}
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:v1.12.0
+    container_name: node-exporter
+    restart: unless-stopped
+    logging: *default-logging
+    profiles: ["monitoring"]
+
+    pid: host
+
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.processes"
+      - "--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run/credentials/.+|var/lib/docker/.+)($$|/)"
+
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro,rslave
+
+    expose:
+      - "9100"
+
+    networks:
+      - app-network
 
   prometheus:
     image: prom/prometheus:v3.0.0
     container_name: prometheus
     restart: always
     logging: *default-logging
+    profiles: ["monitoring"]
+
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+
     ports:
       - "127.0.0.1:9090:9090"
+
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
     networks:
       - app-network
-    mem_limit: 256mb
+
+    depends_on:
+      node-exporter:
+        condition: service_started
+
+    mem_limit: 256m
 
   grafana:
     image: grafana/grafana:11.1.0
     container_name: grafana
     restart: always
     logging: *default-logging
+    profiles: ["monitoring"]
+
     ports:
       - "127.0.0.1:3001:3000"
+
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
+      GF_SECURITY_ADMIN_PASSWORD: admin
+
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+
     networks:
       - app-network
+
     depends_on:
       prometheus:
         condition: service_started
+
     mem_limit: 256m
 
   # Dedicated worker container
@@ -126,15 +191,19 @@ services:
     container_name: backend-worker
     restart: always
     logging: *default-logging
+
     environment:
       <<: *backend-environment
       ENABLE_API: "false"
       ENABLE_WORKERS: "true"
+
     depends_on:
       redis:
         condition: service_healthy
+
     networks:
       - app-network
+
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/audit/logs:/app/audit/logs
@@ -145,6 +214,8 @@ networks:
     driver: bridge
 
 volumes:
+  mongo_data:
+  mongo_keyfile:
   redis_data:
-  caddy_data:
-  caddy_config:
+  prometheus_data:
+  grafana_data:

@@ -5,6 +5,7 @@ import chaiAsPromised from "chai-as-promised";
 import sinon, { SinonStub } from "sinon";
 import { ClientSession, Model, Types, Document } from "mongoose";
 import { BaseRepository } from "@/repositories/base.repository";
+import { asMongoId } from "@/types/branded";
 
 chai.use(chaiAsPromised);
 
@@ -135,7 +136,7 @@ describe("BaseRepository", () => {
 	});
 
 	describe("update", () => {
-		const docId = new Types.ObjectId().toString();
+		const docId = asMongoId(new Types.ObjectId().toString());
 		const updateData = { name: "updated document" };
 		const updatedDoc = createMockDocInstance({ _id: new Types.ObjectId(docId), ...updateData });
 
@@ -173,7 +174,7 @@ describe("BaseRepository", () => {
 	});
 
 	describe("delete", () => {
-		const docId = new Types.ObjectId().toString();
+		const docId = asMongoId(new Types.ObjectId().toString());
 		const deletedDoc = createMockDocInstance({ _id: new Types.ObjectId(docId), name: "deleted doc" });
 
 		it("should delete a document successfully", async () => {
@@ -210,7 +211,7 @@ describe("BaseRepository", () => {
 	});
 
 	describe("findById", () => {
-		const docId = new Types.ObjectId().toString();
+		const docId = asMongoId(new Types.ObjectId().toString());
 		const foundDoc = createMockDocInstance({ _id: new Types.ObjectId(docId), name: "found doc" });
 
 		it("should find a document by ID successfully", async () => {

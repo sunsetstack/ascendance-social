@@ -65,7 +65,7 @@ const Discovery: React.FC = () => {
 	const newFeedQuery = useNewFeed({ enabled: activeTab === 0 });
 	const forYouFeedQuery = useForYouFeed({ enabled: activeTab === 2 });
 
-	const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+	const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
 		setActiveTab(newValue);
 	};
 

@@ -11,11 +11,12 @@ import { RemoveFavoriteCommand } from "@/application/commands/favorite/removeFav
 import { GetFavoritesQuery } from "@/application/queries/favorite/getFavorites/getFavorites.query";
 import { FavoriteController } from "@/controllers/favorite.controller";
 import { DecodedUser, PaginationResult, PostDTO } from "@/types";
+import { asUserPublicId } from "@/types/branded";
 
 chai.use(chaiAsPromised);
 
 const createDecodedUser = (publicId: string): DecodedUser => ({
-	publicId,
+	publicId: asUserPublicId(publicId),
 	email: "test@example.com",
 	handle: "test-handle",
 	username: "test-user",
@@ -58,7 +59,7 @@ describe("FavoriteController", () => {
 			};
 			commandBus.dispatch.resolves(undefined);
 
-			await controller.addFavorite(req as Request, res as Response);
+			await controller.addFavorite(req as any, res as Response);
 
 			expect(commandBus.dispatch.calledOnce).to.be.true;
 			const command = commandBus.dispatch.firstCall.args[0] as AddFavoriteCommand;
@@ -74,7 +75,7 @@ describe("FavoriteController", () => {
 
 			let caught: Error | null = null;
 			try {
-				await controller.addFavorite(req as Request, res as Response);
+				await controller.addFavorite(req as any, res as Response);
 				throw new Error("Expected addFavorite to throw");
 			} catch (e: any) {
 				caught = e;
@@ -93,7 +94,7 @@ describe("FavoriteController", () => {
 			};
 			commandBus.dispatch.resolves(undefined);
 
-			await controller.removeFavorite(req as Request, res as Response);
+			await controller.removeFavorite(req as any, res as Response);
 
 			expect(commandBus.dispatch.calledOnce).to.be.true;
 			const command = commandBus.dispatch.firstCall.args[0] as RemoveFavoriteCommand;
@@ -109,7 +110,7 @@ describe("FavoriteController", () => {
 
 			let caught: Error | null = null;
 			try {
-				await controller.removeFavorite(req as Request, res as Response);
+				await controller.removeFavorite(req as any, res as Response);
 				throw new Error("Expected removeFavorite to throw");
 			} catch (e: any) {
 				caught = e;
@@ -136,7 +137,7 @@ describe("FavoriteController", () => {
 				query: {},
 			};
 
-			await controller.getFavorites(req as Request, res as Response);
+			await controller.getFavorites(req as any, res as Response);
 
 			expect(queryBus.execute.calledOnce).to.be.true;
 			const query = queryBus.execute.firstCall.args[0] as GetFavoritesQuery;
@@ -162,7 +163,7 @@ describe("FavoriteController", () => {
 				query: { page: "2", limit: "10" },
 			};
 
-			await controller.getFavorites(req as Request, res as Response);
+			await controller.getFavorites(req as any, res as Response);
 
 			const query = queryBus.execute.firstCall.args[0] as GetFavoritesQuery;
 			expect(query.viewerPublicId).to.equal("user-1");
@@ -175,7 +176,7 @@ describe("FavoriteController", () => {
 
 			let caught: Error | null = null;
 			try {
-				await controller.getFavorites(req as Request, res as Response);
+				await controller.getFavorites(req as any, res as Response);
 				throw new Error("Expected getFavorites to throw");
 			} catch (e: any) {
 				caught = e;

@@ -66,7 +66,7 @@ export const useCreateComment = () => {
 
 	return useMutation<IComment, Error, { imagePublicId: string; commentData: CommentCreateDto }>({
 		mutationFn: ({ imagePublicId, commentData }) => createComment(imagePublicId, commentData),
-		onSuccess: (newComment, { imagePublicId, commentData }) => {
+		onSuccess: (_newComment, { imagePublicId, commentData }) => {
 			// Invalidate and refetch comments for this post
 			queryClient.invalidateQueries({
 				queryKey: ["comments", "post", imagePublicId],

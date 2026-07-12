@@ -7,11 +7,12 @@ import { Types } from "mongoose";
 
 import { RepostPostCommand } from "@/application/commands/post/repostPost/repostPost.command";
 import { RepostPostCommandHandler } from "@/application/commands/post/repostPost/repostPost.handler";
+import { asPostPublicId, asUserPublicId } from "@/types/branded";
 
 chai.use(chaiAsPromised);
 
-const VALID_USER_PUBLIC_ID = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
-const VALID_TARGET_POST_PUBLIC_ID = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e";
+const VALID_USER_PUBLIC_ID = asUserPublicId("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d");
+const VALID_TARGET_POST_PUBLIC_ID = asPostPublicId("b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e");
 
 describe("RepostPostCommandHandler", () => {
 	let handler: RepostPostCommandHandler;
@@ -61,7 +62,7 @@ describe("RepostPostCommandHandler", () => {
 	});
 
 	it("throws when userPublicId is invalid", async () => {
-		const invalid = new RepostPostCommand("not-a-uuid", VALID_TARGET_POST_PUBLIC_ID);
+		const invalid = new RepostPostCommand(asUserPublicId("not-a-uuid"), VALID_TARGET_POST_PUBLIC_ID);
 		await expect(handler.execute(invalid)).to.be.rejectedWith("Invalid userPublicId format");
 	});
 

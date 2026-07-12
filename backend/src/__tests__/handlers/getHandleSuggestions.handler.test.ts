@@ -7,6 +7,9 @@ import type { IUserReadRepository } from "../../repositories/interfaces";
 import { DTOService } from "../../services/dto.service";
 import { FollowRepository } from "../../repositories/follow.repository";
 import { IUser } from "../../types";
+import { asMongoId, asUserPublicId } from "../../types/branded";
+
+const VIEWER_PUBLIC_ID = asUserPublicId("viewer123");
 
 describe("GetHandleSuggestionsQueryHandler", () => {
   let handler: GetHandleSuggestionsQueryHandler;
@@ -50,7 +53,7 @@ describe("GetHandleSuggestionsQueryHandler", () => {
       "test",
       "mention",
       5,
-      "viewer123",
+      VIEWER_PUBLIC_ID,
     );
     const viewer = { _id: "viewerObjectId" };
     const relatedUser = {
@@ -60,10 +63,10 @@ describe("GetHandleSuggestionsQueryHandler", () => {
     } as IUser;
 
     userReadRepository.findByPublicId
-      .withArgs("viewer123")
+      .withArgs(VIEWER_PUBLIC_ID)
       .resolves(viewer as any);
-    followRepository.getFollowerObjectIds.resolves(["id1"]);
-    followRepository.getFollowingObjectIds.resolves(["id2"]);
+    followRepository.getFollowerObjectIds.resolves([asMongoId("id1")]);
+    followRepository.getFollowingObjectIds.resolves([asMongoId("id2")]);
     userReadRepository.findWithPagination.resolves({
       data: [relatedUser],
       total: 1,
@@ -84,7 +87,7 @@ describe("GetHandleSuggestionsQueryHandler", () => {
       "popular",
       "mention",
       5,
-      "viewer123",
+      VIEWER_PUBLIC_ID,
     );
     const viewer = { _id: "viewerObjectId" };
     const popularUser = {
@@ -94,7 +97,7 @@ describe("GetHandleSuggestionsQueryHandler", () => {
     } as IUser;
 
     userReadRepository.findByPublicId
-      .withArgs("viewer123")
+      .withArgs(VIEWER_PUBLIC_ID)
       .resolves(viewer as any);
     followRepository.getFollowerObjectIds.resolves([]);
     followRepository.getFollowingObjectIds.resolves([]);
@@ -121,12 +124,12 @@ describe("GetHandleSuggestionsQueryHandler", () => {
       "ab",
       "mention",
       5,
-      "viewer123",
+      VIEWER_PUBLIC_ID,
     );
     const viewer = { _id: "viewerObjectId" };
 
     userReadRepository.findByPublicId
-      .withArgs("viewer123")
+      .withArgs(VIEWER_PUBLIC_ID)
       .resolves(viewer as any);
     followRepository.getFollowerObjectIds.resolves([]);
     followRepository.getFollowingObjectIds.resolves([]);

@@ -6,13 +6,14 @@ import sinon, { SinonStub } from "sinon";
 import { ClientSession, Types } from "mongoose";
 import { CreatePostCommand } from "@/application/commands/post/createPost/createPost.command";
 import { CreatePostCommandHandler } from "@/application/commands/post/createPost/createPost.handler";
+import { asImagePublicId, asPostPublicId, asUserPublicId } from "@/types/branded";
 
 chai.use(chaiAsPromised);
 
 // valid UUID v4 for testing
-const VALID_USER_PUBLIC_ID = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
-const VALID_POST_PUBLIC_ID = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e";
-const VALID_IMAGE_PUBLIC_ID = "c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f";
+const VALID_USER_PUBLIC_ID = asUserPublicId("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d");
+const VALID_POST_PUBLIC_ID = asPostPublicId("b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e");
+const VALID_IMAGE_PUBLIC_ID = asImagePublicId("c3d4e5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f");
 
 describe("CreatePostCommandHandler", () => {
 	let handler: CreatePostCommandHandler;
@@ -44,6 +45,7 @@ describe("CreatePostCommandHandler", () => {
 	let mockTagService: {
 		ensureTagsExist: SinonStub;
 		incrementUsage: SinonStub;
+		trackUsageActivity: SinonStub;
 		collectTagNames: SinonStub;
 	};
 	let mockImageService: {
@@ -51,6 +53,7 @@ describe("CreatePostCommandHandler", () => {
 		deleteImage: SinonStub;
 		rollbackUpload: SinonStub;
 		uploadImage: SinonStub;
+		uploadImageStream: SinonStub;
 		createImageRecord: SinonStub;
 	};
 	let mockRedisService: {
@@ -173,7 +176,13 @@ describe("CreatePostCommandHandler", () => {
 
 	describe("Execute Method", () => {
 		it("should throw error when userPublicId format is invalid", async () => {
-			const invalidCommand = new CreatePostCommand("invalid-user-id", "Test post", [], "/uploads/test.jpg", "test.jpg");
+			const invalidCommand = new CreatePostCommand(
+				asUserPublicId("invalid-user-id"),
+				"Test post",
+				[],
+				"/uploads/test.jpg",
+				"test.jpg",
+			);
 
 			await expect(handler.execute(invalidCommand)).to.be.rejectedWith("Invalid userPublicId format");
 		});

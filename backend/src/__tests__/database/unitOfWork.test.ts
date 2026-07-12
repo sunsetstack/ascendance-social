@@ -8,12 +8,12 @@ describe("UnitOfWork", () => {
   let unitOfWork: UnitOfWork;
 
   beforeEach(() => {
-    mongoose.connection.readyState = 1;
+    (mongoose.connection as any).readyState = 1;
     unitOfWork = new UnitOfWork();
   });
 
   afterEach(() => {
-    mongoose.connection.readyState = 0;
+    (mongoose.connection as any).readyState = 0;
     delete process.env.MAX_CONCURRENT_TRANSACTIONS;
     delete process.env.MAX_CONCURRENT_READS;
     sinon.restore();
@@ -56,7 +56,7 @@ describe("UnitOfWork", () => {
 
   describe("constructor", () => {
     it("throws when the database is not fully connected", () => {
-      mongoose.connection.readyState = 2;
+      (mongoose.connection as any).readyState = 2;
 
       expect(() => new UnitOfWork()).to.throw(
         "Database connection not established",
@@ -193,7 +193,7 @@ describe("Semaphore", () => {
   let unitOfWork: UnitOfWork;
 
   beforeEach(() => {
-    mongoose.connection.readyState = 1;
+    (mongoose.connection as any).readyState = 1;
 
     // create with small concurrency limit for testing
     process.env.MAX_CONCURRENT_TRANSACTIONS = "2";
@@ -203,7 +203,7 @@ describe("Semaphore", () => {
   afterEach(() => {
     delete process.env.MAX_CONCURRENT_TRANSACTIONS;
     delete process.env.MAX_CONCURRENT_READS;
-    mongoose.connection.readyState = 0;
+    (mongoose.connection as any).readyState = 0;
     sinon.restore();
   });
 

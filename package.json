@@ -11,14 +11,20 @@
     "update:backend": "cd backend && npm update --no-workspaces",
     "update:frontend": "cd frontend && npm update --no-workspaces",
     "update:all": "npm run update:backend && npm run update:frontend",
-    "build": "tsc -b backend frontend",
-    "build:backend": "tsc -b backend",
+    "build": "npm run build:ts7",
+    "build:backend": "npm run build --workspace=backend",
     "build:frontend": "npm run build --workspace=frontend",
+    "build:ts6": "npm run build:ts6 --workspace=backend && npm run build:ts6 --workspace=frontend",
+    "build:ts7": "npm run build:ts7 --workspace=backend && npm run build:ts7 --workspace=frontend",
+    "typecheck": "npm run typecheck:ts6 && npm run typecheck:ts7",
+    "typecheck:ts6": "tsc6 -p backend/tsconfig.json --noEmit --pretty false && tsc6 -b frontend/tsconfig.json --pretty false && tsc6 -p backend/tsconfig.test.json --noEmit --pretty false && tsc6 -p frontend/cypress/tsconfig.json --pretty false",
+    "typecheck:ts6:stable": "tsc6 -p backend/tsconfig.json --noEmit --pretty false --stableTypeOrdering && tsc6 -p frontend/tsconfig.app.json --pretty false --stableTypeOrdering && tsc6 -p frontend/tsconfig.node.json --pretty false --stableTypeOrdering && tsc6 -p backend/tsconfig.test.json --noEmit --pretty false --stableTypeOrdering && tsc6 -p frontend/cypress/tsconfig.json --pretty false --stableTypeOrdering",
+    "typecheck:ts7": "tsc -p backend/tsconfig.json --noEmit --pretty false && tsc -b frontend/tsconfig.json --pretty false && tsc -p backend/tsconfig.test.json --noEmit --pretty false && tsc -p frontend/cypress/tsconfig.json --pretty false",
     "install-all": "npm install",
     "test-backend": "npm run test --workspace=backend",
     "lint:backend": "eslint \"backend/src/**/*.ts\"",
     "test-integration": "npm run test:integration:unit --workspace=backend",
-    "build-all": "npm run build --workspace=backend && npm run build --workspace=frontend",
+    "build-all": "npm run build:ts7",
     "clean": "rimraf node_modules frontend/node_modules backend/node_modules package-lock.json",
     "start-backend": "npm run start:api-only:dev --workspace=backend",
     "start-frontend": "npm run dev --workspace=frontend",
@@ -34,6 +40,7 @@
     "concurrently": "^9.1.0"
   },
   "devDependencies": {
+    "@typescript/native": "npm:typescript@7.0.2",
     "@eslint/js": "^9.39.2",
     "@types/node": "^22.10.2",
     "cypress-file-upload": "^5.0.8",
@@ -47,6 +54,6 @@
     "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
     "typescript-eslint": "^8.58.2",
-    "typescript": "^6.0.3"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }

@@ -6,7 +6,9 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite --host",
-    "build": "tsc -b && vite build",
+    "build": "npm run build:ts7",
+    "build:ts6": "tsc6 -b && vite build",
+    "build:ts7": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "cypress:open": "cypress open",
@@ -46,7 +48,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
-    "@types/cypress": "^0.1.6",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@types/react-modal": "^3.16.3",
@@ -58,7 +59,7 @@
     "eslint-plugin-react-refresh": "^0.4.16",
     "globals": "^15.14.0",
     "postcss": "^8.4.49",
-    "typescript": "^6.0.0",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "^8.58.2",
     "vite": "^6.0.5"
   }

@@ -2,6 +2,7 @@ node_modules/
 .env
 .env.local
 .env.*
+*.env
 certs/
 *.pem
 *.key
@@ -15,7 +16,6 @@ backend/src/NOTES.txt
 backend/errors.log
 backend/redis.log
 backend/uploads
-frontend/.env
 /uploads
 dist
 migrate-atlas-to-local.ts
@@ -25,6 +25,11 @@ backend/src/scripts/stress-test.ts
 notes.md
 tsconfig.test.tsbuildinfo
 docs/
-backend/audit/
-audit-logs/
+docker-compose-dev.yml
 *pull-audit-archives.ps1
+.vscode
+backend/audit/logs/*
+backend/audit/archives/*
+backend/audit-logs/*
+*ascendance-audit-seal.service
+*ascendance-audit-seal.timer

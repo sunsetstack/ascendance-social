@@ -3,6 +3,9 @@ import { expect } from "chai";
 import sinon from "sinon";
 import { MarkAllAsReadCommandHandler } from "@/application/commands/notification/markAllAsRead/markAllAsRead.handler";
 import { MarkAllAsReadCommand } from "@/application/commands/notification/markAllAsRead/markAllAsRead.command";
+import { asUserPublicId } from "@/types/branded";
+
+const USER_PUBLIC_ID = asUserPublicId("user-123");
 
 describe("MarkAllAsReadCommandHandler", () => {
 	let handler: MarkAllAsReadCommandHandler;
@@ -56,7 +59,7 @@ describe("MarkAllAsReadCommandHandler", () => {
 		redisService.getUserNotificationIds.resolves(["notif-1", "notif-2"]);
 
 		const result = await handler.execute(
-			new MarkAllAsReadCommand("user-123"),
+			new MarkAllAsReadCommand(USER_PUBLIC_ID),
 		);
 
 		expect(result).to.equal(2);
@@ -71,7 +74,7 @@ describe("MarkAllAsReadCommandHandler", () => {
 		notificationRepository.markAllAsRead.resolves(0);
 
 		const result = await handler.execute(
-			new MarkAllAsReadCommand("user-123"),
+			new MarkAllAsReadCommand(USER_PUBLIC_ID),
 		);
 
 		expect(result).to.equal(0);
