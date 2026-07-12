@@ -93,11 +93,10 @@ jobs:
             test -s docker-compose-prod.yml
             test -s frontend/nginx.conf
 
-            # Validate the committed file after git reset.
-            compose -f docker-compose-prod.yml config --quiet
-
-            # Keep this only when using profiles: ["monitoring"].
             export COMPOSE_PROFILES=monitoring
+
+            # Validate the committed file with the same profiles used below.
+            compose -f docker-compose-prod.yml config --quiet
 
             compose -f docker-compose-prod.yml pull
             compose -f docker-compose-prod.yml up -d --remove-orphans

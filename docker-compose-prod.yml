@@ -214,8 +214,8 @@ networks:
     driver: bridge
 
 volumes:
-  mongo_data:
-  mongo_keyfile:
   redis_data:
+  caddy_data:
+  caddy_config:
   prometheus_data:
   grafana_data:
