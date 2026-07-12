@@ -8,6 +8,7 @@ import sinon, { SinonStub } from "sinon";
 import { ImageRepository } from "@/repositories/image.repository";
 import { ClientSession, Model, Types } from "mongoose";
 import { IImage } from "@/types";
+import { asImagePublicId, asMongoId } from "@/types/branded";
 
 chai.use(chaiAsPromised);
 
@@ -32,7 +33,7 @@ function generateMockData(index: number, overrides?: Partial<IImage>): Partial<I
 	const defaults: Partial<IImage> = {
 		_id: generateRandomObjectId(),
 		url: `image-${index}.jpg`,
-		publicId: `pid-${index}`,
+		publicId: asImagePublicId(`pid-${index}`),
 		user: { id: `user-${index}`, username: `user${index}` } as any,
 		createdAt: new Date(),
 	};
@@ -43,7 +44,7 @@ function createMockImage(partial: Partial<IImage>): Partial<IImage> {
 	return {
 		_id: partial._id || generateRandomObjectId(),
 		url: partial.url || "default.jpg",
-		publicId: partial.publicId || "default-public-id",
+		publicId: partial.publicId || asImagePublicId("default-public-id"),
 		user: partial.user || {
 			id: generateRandomObjectId(),
 			username: "defaultuser",
@@ -81,7 +82,7 @@ describe("ImageRepository", () => {
 
 	describe("findById", () => {
 		it("should throw ValidationError for invalid ObjectId", async () => {
-			const invalidId = "invalid-id";
+			const invalidId = asMongoId("invalid-id");
 
 			try {
 				await repository.findById(invalidId);
@@ -94,7 +95,7 @@ describe("ImageRepository", () => {
 		});
 
 		it("should throw DatabaseError on underlying model failure", async () => {
-			const validId = generateRandomObjectId().toString();
+			const validId = asMongoId(generateRandomObjectId().toString());
 			const dbError = new Error("Database connection failed");
 
 			const mockQuery = {
@@ -111,7 +112,7 @@ describe("ImageRepository", () => {
 
 		it("should return an image with populated fields for valid ID", async () => {
 			const mockImage = createMockImage(generateMockData(1)) as IImage;
-			const mockId = mockImage._id.toString();
+			const mockId = asMongoId(mockImage._id.toString());
 
 			const mockQuery = {
 				populate: sinon.stub().returnsThis(),
@@ -131,7 +132,7 @@ describe("ImageRepository", () => {
 		});
 
 		it("should return null if image not found", async () => {
-			const validId = generateRandomObjectId().toString();
+			const validId = asMongoId(generateRandomObjectId().toString());
 
 			const mockQuery = {
 				populate: sinon.stub().returnsThis(),

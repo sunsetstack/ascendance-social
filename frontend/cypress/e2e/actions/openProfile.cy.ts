@@ -1,7 +1,7 @@
 describe("Open profile page", () => {
   beforeEach(() => {
     cy.readFile("cypress/fixtures/cookies.json").then((cookies) => {
-      cookies.forEach((cookie) => {
+      cookies.forEach((cookie: Cypress.Cookie) => {
         cy.setCookie(cookie.name, cookie.value);
       });
     });

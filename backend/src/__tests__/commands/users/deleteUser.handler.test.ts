@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import sinon from "sinon";
 import { DeleteUserCommandHandler } from "@/application/commands/users/deleteUser/deleteUser.handler";
+import { asUserPublicId } from "@/types/branded";
 import { DeleteUserCommand } from "@/application/commands/users/deleteUser/deleteUser.command";
 import { Types } from "mongoose";
 
@@ -81,7 +82,7 @@ describe("DeleteUserCommandHandler", () => {
 		const userId = new Types.ObjectId();
 		const communityId1 = new Types.ObjectId();
 		const communityId2 = new Types.ObjectId();
-		const userPublicId = "user-123";
+		const userPublicId = asUserPublicId("user-123");
 
 		const mockUser = {
 			id: userId.toString(),

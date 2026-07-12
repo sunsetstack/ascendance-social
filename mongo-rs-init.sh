@@ -5,14 +5,21 @@ HOST="${MONGO_HOST:-mongo}"
 ROOT_USER="${MONGO_INITDB_ROOT_USERNAME:-root}"
 ROOT_PWD="${MONGO_INITDB_ROOT_PASSWORD:-secret}"
 RS_NAME="${MONGO_REPLICA_SET_NAME:-rs0}"
+APP_DB="${MONGO_APP_DATABASE:-}"
+APP_USER="${MONGO_APP_USERNAME:-}"
+APP_PWD="${MONGO_APP_PASSWORD:-}"
 
 echo "[rs-init] Waiting for mongod on $HOST:27017 to have replication enabled"
 ATTEMPTS=0
 MAX_ATTEMPTS=120
+ALREADY_INITIALIZED=false
 while true; do
   ATTEMPTS=$((ATTEMPTS+1))
   if mongosh --quiet --host "$HOST" -u "$ROOT_USER" -p "$ROOT_PWD" --authenticationDatabase admin --eval 'db.hello().setName' 2>/dev/null | grep -q "$RS_NAME"; then
-    echo "[rs-init] mongod reports setName=$RS_NAME (already initiated)"; exit 0; fi
+    echo "[rs-init] mongod reports setName=$RS_NAME (already initiated)"
+    ALREADY_INITIALIZED=true
+    break
+  fi
   # Check if rs.status gives NotYetInitialized (code 94) or node is reachable
   if mongosh --quiet --host "$HOST" -u "$ROOT_USER" -p "$ROOT_PWD" --authenticationDatabase admin --eval 'try { st=rs.status(); printjson(st); } catch(e){ printjson(e); }' | grep -q 'NotYetInitialized'; then
     echo "[rs-init] Replica set not yet initialized, proceeding"; break
@@ -22,18 +29,17 @@ while true; do
   sleep 1
 done
 
-echo "[rs-init] Running rs.initiate({_id: \"$RS_NAME\", members:[{_id:0, host: \"$HOST:27017\"}]})"
-set +e
-INIT_OUTPUT=$(mongosh --quiet --host "$HOST" -u "$ROOT_USER" -p "$ROOT_PWD" --authenticationDatabase admin --eval "try { rs.initiate({_id:'$RS_NAME',members:[{_id:0,host:'$HOST:27017'}]}) } catch(e){ printjson(e); }")
-RC=$?
-set -e
+if [ "$ALREADY_INITIALIZED" = false ]; then
+  echo "[rs-init] Running rs.initiate({_id: \"$RS_NAME\", members:[{_id:0, host: \"$HOST:27017\"}]})"
+  set +e
+  INIT_OUTPUT=$(mongosh --quiet --host "$HOST" -u "$ROOT_USER" -p "$ROOT_PWD" --authenticationDatabase admin --eval "try { rs.initiate({_id:'$RS_NAME',members:[{_id:0,host:'$HOST:27017'}]}) } catch(e){ printjson(e); }")
+  RC=$?
+  set -e
 
-echo "$INIT_OUTPUT"
-if echo "$INIT_OUTPUT" | grep -q 'already initialized'; then
-  echo "[rs-init] Replica set already initialized"; exit 0; fi
-if [ $RC -ne 0 ]; then
-  echo "[rs-init] rs.initiate returned non-zero exit code $RC" >&2
-  # Still continue to check status below
+  echo "$INIT_OUTPUT"
+  if [ $RC -ne 0 ]; then
+    echo "[rs-init] rs.initiate returned non-zero exit code $RC" >&2
+  fi
 fi
 
 sleep 3
@@ -52,5 +58,22 @@ while true; do
   echo "[rs-init] Waiting for PRIMARY (current state=$STATE)"
 
 done
+
+if [ -n "$APP_DB" ] && [ -n "$APP_USER" ] && [ -n "$APP_PWD" ]; then
+  echo "[rs-init] Ensuring local application user exists in $APP_DB"
+  mongosh --quiet --host "$HOST" -u "$ROOT_USER" -p "$ROOT_PWD" --authenticationDatabase admin --eval '
+    const appDb = db.getSiblingDB(process.env.MONGO_APP_DATABASE);
+    const username = process.env.MONGO_APP_USERNAME;
+    const password = process.env.MONGO_APP_PASSWORD;
+    const roles = [{ role: "readWrite", db: process.env.MONGO_APP_DATABASE }];
+    if (appDb.getUser(username)) {
+      appDb.updateUser(username, { pwd: password, roles });
+      print("[rs-init] Local application user updated");
+    } else {
+      appDb.createUser({ user: username, pwd: password, roles });
+      print("[rs-init] Local application user created");
+    }
+  '
+fi
 
 echo "[rs-init] Replica set initialization completed successfully"

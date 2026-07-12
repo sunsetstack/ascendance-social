@@ -9,6 +9,11 @@ import { FollowRepository } from "@/repositories/follow.repository";
 import { ClientSession, Model, Types } from "mongoose";
 import { IFollow } from "@/types";
 import { sessionALS } from "@/database/UnitOfWork";
+import {
+	asMongoId,
+	asUserPublicId,
+	type MongoId,
+} from "@/types/branded";
 
 chai.use(chaiAsPromised);
 
@@ -26,8 +31,8 @@ interface MockUsersCollection {
 	findOne: SinonStub;
 }
 
-function generateRandomObjectId() {
-	return new Types.ObjectId();
+function generateRandomObjectId(): Types.ObjectId & { toString(): MongoId } {
+	return new Types.ObjectId() as Types.ObjectId & { toString(): MongoId };
 }
 
 function generateMockFollow(overrides?: Partial<IFollow>): Partial<IFollow> {
@@ -75,8 +80,8 @@ describe("FollowRepository", () => {
 
 	describe("isFollowing", () => {
 		it("should return true when follow relationship exists", async () => {
-			const followerId = generateRandomObjectId().toString();
-			const followeeId = generateRandomObjectId().toString();
+			const followerId = asMongoId(generateRandomObjectId().toString());
+			const followeeId = asMongoId(generateRandomObjectId().toString());
 			const mockFollow = generateMockFollow({
 				followerId: new Types.ObjectId(followerId),
 				followeeId: new Types.ObjectId(followeeId),
@@ -91,8 +96,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should return false when follow relationship does not exist", async () => {
-			const followerId = generateRandomObjectId().toString();
-			const followeeId = generateRandomObjectId().toString();
+			const followerId = asMongoId(generateRandomObjectId().toString());
+			const followeeId = asMongoId(generateRandomObjectId().toString());
 
 			mockModel.findOne.resolves(null);
 
@@ -105,8 +110,8 @@ describe("FollowRepository", () => {
 
 	describe("isFollowingByPublicId", () => {
 		it("should return true when follow relationship exists using publicIds", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("followee-public-456");
 			const followerId = generateRandomObjectId();
 			const followeeId = generateRandomObjectId();
 
@@ -131,8 +136,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should return false when follower user does not exist", async () => {
-			const followerPublicId = "nonexistent-follower";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("nonexistent-follower");
+			const followeePublicId = asUserPublicId("followee-public-456");
 			const followeeId = generateRandomObjectId();
 
 			const mockFolloweeUser = { _id: followeeId };
@@ -150,8 +155,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should return false when followee user does not exist", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "nonexistent-followee";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("nonexistent-followee");
 			const followerId = generateRandomObjectId();
 
 			const mockFollowerUser = { _id: followerId };
@@ -169,8 +174,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should return false when follow relationship does not exist", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("followee-public-456");
 			const followerId = generateRandomObjectId();
 			const followeeId = generateRandomObjectId();
 
@@ -194,8 +199,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should throw DatabaseError when database operation fails", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("followee-public-456");
 
 			const dbError = new Error("Database connection failed");
 			mockUsersCollection.findOne.rejects(dbError);
@@ -208,8 +213,8 @@ describe("FollowRepository", () => {
 
 	describe("addFollow", () => {
 		it("should create a new follow relationship successfully", async () => {
-			const followerId = generateRandomObjectId().toString();
-			const followeeId = generateRandomObjectId().toString();
+			const followerId = asMongoId(generateRandomObjectId().toString());
+			const followeeId = asMongoId(generateRandomObjectId().toString());
 			const mockFollow = generateMockFollow({
 				followerId: new Types.ObjectId(followerId),
 				followeeId: new Types.ObjectId(followeeId),
@@ -227,8 +232,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should create a new follow relationship with session", async () => {
-			const followerId = generateRandomObjectId().toString();
-			const followeeId = generateRandomObjectId().toString();
+			const followerId = asMongoId(generateRandomObjectId().toString());
+			const followeeId = asMongoId(generateRandomObjectId().toString());
 			const mockFollow = generateMockFollow({
 				followerId: new Types.ObjectId(followerId),
 				followeeId: new Types.ObjectId(followeeId),
@@ -248,8 +253,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should throw DuplicateError when follow relationship already exists", async () => {
-			const followerId = generateRandomObjectId().toString();
-			const followeeId = generateRandomObjectId().toString();
+			const followerId = asMongoId(generateRandomObjectId().toString());
+			const followeeId = asMongoId(generateRandomObjectId().toString());
 			const existingFollow = generateMockFollow({
 				followerId: new Types.ObjectId(followerId),
 				followeeId: new Types.ObjectId(followeeId),
@@ -267,8 +272,8 @@ describe("FollowRepository", () => {
 
 	describe("addFollowByPublicId", () => {
 		it("should create a new follow relationship using publicIds", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("followee-public-456");
 			const followerId = generateRandomObjectId();
 			const followeeId = generateRandomObjectId();
 
@@ -297,8 +302,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should create a new follow relationship using publicIds with session", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("followee-public-456");
 			const followerId = generateRandomObjectId();
 			const followeeId = generateRandomObjectId();
 
@@ -333,8 +338,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should throw NotFoundError when follower user does not exist", async () => {
-			const followerPublicId = "nonexistent-follower";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("nonexistent-follower");
+			const followeePublicId = asUserPublicId("followee-public-456");
 			const followeeId = generateRandomObjectId();
 
 			const mockFolloweeUser = { _id: followeeId };
@@ -354,8 +359,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should throw NotFoundError when followee user does not exist", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "nonexistent-followee";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("nonexistent-followee");
 			const followerId = generateRandomObjectId();
 
 			const mockFollowerUser = { _id: followerId };
@@ -375,8 +380,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should throw DuplicateError when follow relationship already exists", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("followee-public-456");
 			const followerId = generateRandomObjectId();
 			const followeeId = generateRandomObjectId();
 
@@ -405,8 +410,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should preserve the DuplicateError type when follow relationship already exists", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("followee-public-456");
 			const followerId = generateRandomObjectId();
 			const followeeId = generateRandomObjectId();
 
@@ -428,8 +433,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should throw DatabaseError when database operation fails", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("followee-public-456");
 
 			const dbError = new Error("Database connection failed");
 			mockUsersCollection.findOne.rejects(dbError);
@@ -442,8 +447,8 @@ describe("FollowRepository", () => {
 
 	describe("removeFollow", () => {
 		it("should remove follow relationship successfully", async () => {
-			const followerId = generateRandomObjectId().toString();
-			const followeeId = generateRandomObjectId().toString();
+			const followerId = asMongoId(generateRandomObjectId().toString());
+			const followeeId = asMongoId(generateRandomObjectId().toString());
 			const existingFollow = generateMockFollow({
 				followerId: new Types.ObjectId(followerId),
 				followeeId: new Types.ObjectId(followeeId),
@@ -460,8 +465,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should remove follow relationship with session", async () => {
-			const followerId = generateRandomObjectId().toString();
-			const followeeId = generateRandomObjectId().toString();
+			const followerId = asMongoId(generateRandomObjectId().toString());
+			const followeeId = asMongoId(generateRandomObjectId().toString());
 			const existingFollow = generateMockFollow({
 				followerId: new Types.ObjectId(followerId),
 				followeeId: new Types.ObjectId(followeeId),
@@ -478,8 +483,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should throw NotFoundError when follow relationship does not exist", async () => {
-			const followerId = generateRandomObjectId().toString();
-			const followeeId = generateRandomObjectId().toString();
+			const followerId = asMongoId(generateRandomObjectId().toString());
+			const followeeId = asMongoId(generateRandomObjectId().toString());
 
 			// Mock that follow relationship does not exist
 			mockModel.findOne.resolves(null);
@@ -493,8 +498,8 @@ describe("FollowRepository", () => {
 
 	describe("removeFollowByPublicId", () => {
 		it("should remove follow relationship using publicIds", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("followee-public-456");
 			const followerId = generateRandomObjectId();
 			const followeeId = generateRandomObjectId();
 
@@ -527,8 +532,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should remove follow relationship using publicIds with session", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("followee-public-456");
 			const followerId = generateRandomObjectId();
 			const followeeId = generateRandomObjectId();
 
@@ -563,8 +568,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should throw NotFoundError when follower user does not exist", async () => {
-			const followerPublicId = "nonexistent-follower";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("nonexistent-follower");
+			const followeePublicId = asUserPublicId("followee-public-456");
 			const followeeId = generateRandomObjectId();
 
 			const mockFolloweeUser = { _id: followeeId };
@@ -584,8 +589,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should throw NotFoundError when followee user does not exist", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "nonexistent-followee";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("nonexistent-followee");
 			const followerId = generateRandomObjectId();
 
 			const mockFollowerUser = { _id: followerId };
@@ -605,8 +610,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should throw NotFoundError when follow relationship does not exist", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("followee-public-456");
 			const followerId = generateRandomObjectId();
 			const followeeId = generateRandomObjectId();
 
@@ -634,8 +639,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should preserve the NotFoundError type when follow relationship does not exist", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("followee-public-456");
 			const followerId = generateRandomObjectId();
 			const followeeId = generateRandomObjectId();
 
@@ -657,8 +662,8 @@ describe("FollowRepository", () => {
 		});
 
 		it("should throw DatabaseError when database operation fails", async () => {
-			const followerPublicId = "follower-public-123";
-			const followeePublicId = "followee-public-456";
+			const followerPublicId = asUserPublicId("follower-public-123");
+			const followeePublicId = asUserPublicId("followee-public-456");
 
 			const dbError = new Error("Database connection failed");
 			mockUsersCollection.findOne.rejects(dbError);

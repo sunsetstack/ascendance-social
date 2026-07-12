@@ -1,6 +1,8 @@
 import { describe, it } from "mocha";
 import { expect } from "chai";
 import { DTOService } from "@/services/dto.service";
+import { asPostPublicId, asUserPublicId } from "@/types/branded";
+import { Types } from "mongoose";
 
 const basePost = {
 	body: "",
@@ -18,19 +20,22 @@ describe("DTOService.toPostDTO", () => {
 	it("prefers populated user snapshot when available", () => {
 		const dto = service.toPostDTO({
 			...basePost,
-			publicId: "post-1",
+			publicId: asPostPublicId("post-1"),
 			likesCount: 3,
 			user: {
-				publicId: "user-123",
+				publicId: asUserPublicId("user-123"),
+				handle: "",
 				username: "photoFan",
 				avatar: "avatar.png",
 			},
-			author: {
-				publicId: "user-legacy",
+				author: {
+				_id: new Types.ObjectId(),
+				publicId: asUserPublicId("user-legacy"),
+				handle: "",
 				username: "legacyName",
-				avatarUrl: "legacy.png",
-			},
-		});
+					avatarUrl: "legacy.png",
+				},
+		} as any);
 
 		expect(dto.user).to.deep.equal({
 			publicId: "user-123",
@@ -44,14 +49,16 @@ describe("DTOService.toPostDTO", () => {
 	it("falls back to embedded author snapshot when user is missing", () => {
 		const dto = service.toPostDTO({
 			...basePost,
-			publicId: "post-2",
+			publicId: asPostPublicId("post-2"),
 			likesCount: 0,
-			author: {
-				publicId: "author-456",
+				author: {
+				_id: new Types.ObjectId(),
+				publicId: asUserPublicId("author-456"),
+				handle: "",
 				username: "snapName",
-				avatarUrl: "snap.png",
-			},
-		});
+					avatarUrl: "snap.png",
+				},
+		} as any);
 
 		expect(dto.user).to.deep.equal({
 			publicId: "author-456",
@@ -100,7 +107,7 @@ describe("DTOService.toPostDTO", () => {
 			likes: 4,
 			repostCount: 3,
 			commentsCount: 2,
-		});
+		} as any);
 		expect(dto.repostOf?.user).to.deep.equal({
 			publicId: "user-2",
 			handle: "author",

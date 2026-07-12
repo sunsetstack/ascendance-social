@@ -6,12 +6,13 @@ import sinon, { SinonStub } from "sinon";
 import { ClientSession, Types } from "mongoose";
 import { DeletePostCommand } from "@/application/commands/post/deletePost/deletePost.command";
 import { DeletePostCommandHandler } from "@/application/commands/post/deletePost/deletePost.handler";
+import { asPostPublicId, asUserPublicId } from "@/types/branded";
 
 chai.use(chaiAsPromised);
 
 // valid UUID v4 for testing
-const VALID_USER_PUBLIC_ID = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
-const VALID_POST_PUBLIC_ID = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e";
+const VALID_USER_PUBLIC_ID = asUserPublicId("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d");
+const VALID_POST_PUBLIC_ID = asPostPublicId("b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e");
 
 describe("DeletePostCommandHandler", () => {
 	let handler: DeletePostCommandHandler;

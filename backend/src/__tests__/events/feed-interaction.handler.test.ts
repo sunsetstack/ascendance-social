@@ -13,6 +13,11 @@ import type {
   IPostReadRepository,
   IUserReadRepository,
 } from "@/repositories/interfaces";
+import { asPostPublicId, asUserPublicId } from "@/types/branded";
+
+const ACTOR_PUBLIC_ID = asUserPublicId("user123");
+const POST_PUBLIC_ID = asPostPublicId("postABC");
+const OWNER_PUBLIC_ID = asUserPublicId("owner456");
 
 describe("FeedInteractionHandler", () => {
   let handler: FeedInteractionHandler;
@@ -60,7 +65,7 @@ describe("FeedInteractionHandler", () => {
 
   it("should handle a 'like' event by updating meta and invalidating only the actor's feed", async () => {
     // Arrange
-    const event = new UserInteractedWithPostEvent("user123", "like", "postABC", ["tag1"], "owner456");
+    const event = new UserInteractedWithPostEvent(ACTOR_PUBLIC_ID, "like", POST_PUBLIC_ID, ["tag1"], OWNER_PUBLIC_ID);
     const mockPost = { publicId: "postABC", likesCount: 10 } as IPost;
 
     postRepositoryMock.findByPublicId.resolves(mockPost);
@@ -91,7 +96,7 @@ describe("FeedInteractionHandler", () => {
 
   it("should handle a 'comment' event by performing broader feed invalidation", async () => {
     // Arrange
-    const event = new UserInteractedWithPostEvent("user123", "comment", "postABC", ["tag1"], "owner456");
+    const event = new UserInteractedWithPostEvent(ACTOR_PUBLIC_ID, "comment", POST_PUBLIC_ID, ["tag1"], OWNER_PUBLIC_ID);
 
     // Mock affected user lookups
     userRepositoryMock.findUsersFollowing
@@ -133,7 +138,7 @@ describe("FeedInteractionHandler", () => {
 
   it("should throw an error if recordInteraction fails", async () => {
     // Arrange
-    const event = new UserInteractedWithPostEvent("user123", "like", "postABC", [], "owner456");
+    const event = new UserInteractedWithPostEvent(ACTOR_PUBLIC_ID, "like", POST_PUBLIC_ID, [], OWNER_PUBLIC_ID);
     const testError = new Error("Database connection lost");
     feedServiceMock.recordInteraction.rejects(testError);
 

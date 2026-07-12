@@ -106,7 +106,7 @@ export default [
 			globals: globals.browser,
 			parser: tseslint.parser,
 			parserOptions: {
-				project: path.resolve(__dirname, "./frontend/tsconfig.json"),
+				project: path.resolve(__dirname, "./frontend/tsconfig.app.json"),
 			},
 		},
 		plugins: {

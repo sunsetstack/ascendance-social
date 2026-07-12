@@ -357,7 +357,7 @@ export const useLikePost = () => {
 
       return { previousFeed, previousImage, previousPost, postPublicId };
     },
-    onError: (error, postPublicId, context) => {
+    onError: (_error, postPublicId, context) => {
       // Rollback optimistic updates on error
       if (context?.previousFeed) {
         queryClient.setQueryData(["personalizedFeed"], context.previousFeed);
