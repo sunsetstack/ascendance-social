@@ -8,15 +8,12 @@ import BottomNav from "../BottomNav";
 import UploadForm from "../UploadForm";
 import { useSwipeDrawer } from "../../hooks/useSwipeDrawer";
 import { useAuth } from "../../hooks/context/useAuth";
-import { useEmailVerificationLock } from "../../hooks/layout/useEmailVerificationLock";
-import { EmailVerificationGate } from "../auth/EmailVerificationGate";
 import { BottomNavProvider } from "../../context/BottomNav/BottomNavProvider";
 
 const MobileLayout: React.FC = () => {
 	const location = useLocation();
 	const navigate = useNavigate();
 	const { user, isLoggedIn } = useAuth();
-	const { shouldLockToVerification } = useEmailVerificationLock();
 	const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
 	const {
@@ -43,19 +40,6 @@ const MobileLayout: React.FC = () => {
 	};
 
 	const handleCloseUploadModal = () => setIsUploadModalOpen(false);
-
-	if (shouldLockToVerification) {
-		return (
-			<EmailVerificationGate
-				sx={{
-					minHeight: "100dvh",
-					"@supports not (min-height: 100dvh)": {
-						minHeight: "100vh",
-					},
-				}}
-			/>
-		);
-	}
 
 	return (
 		<BottomNavProvider>

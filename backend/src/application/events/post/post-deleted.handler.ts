@@ -55,16 +55,15 @@ export class PostDeleteHandler implements IEventHandler<PostDeletedEvent> {
       await this.redis.invalidateByTags(tagsToInvalidate);
 
       const patterns = [
+        ...CacheKeyBuilder.getGlobalFeedPatterns(true),
         ...CacheKeyBuilder.getUserFeedPatterns(event.authorPublicId),
-        CacheKeyBuilder.getTrendingFeedPattern(),
-        // do NOT clear new_feed - lazy refresh only
       ];
 
       followers.forEach((publicId) => {
         patterns.push(...CacheKeyBuilder.getUserFeedPatterns(publicId));
       });
 
-      await this.redis.deletePatterns(patterns);
+      await this.redis.deletePatterns([...new Set(patterns)]);
       await this.redis.zrem("trending:posts", event.postId);
 
       await this.redis.publish(
@@ -85,7 +84,12 @@ export class PostDeleteHandler implements IEventHandler<PostDeletedEvent> {
     } catch (error) {
       logger.error("Error handling post deletion", { error });
       const fallbackPatterns = CacheKeyBuilder.getGlobalFeedPatterns();
-      await this.redis.deletePatterns(fallbackPatterns);
+      await this.redis.deletePatterns(fallbackPatterns).catch((fallbackError) => {
+        logger.error("Post deletion fallback invalidation failed", {
+          fallbackError,
+        });
+      });
+      throw error;
     }
   }
 
@@ -100,7 +104,7 @@ export class PostDeleteHandler implements IEventHandler<PostDeletedEvent> {
       logger.error(`Error getting followers for user ${userPublicId}`, {
         error,
       });
-      return [];
+      throw error;
     }
   }
 }

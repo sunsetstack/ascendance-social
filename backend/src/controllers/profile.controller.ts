@@ -121,10 +121,14 @@ export class ProfileController {
     res: Response,
   ): Promise<void> => {
     const userPublicId = this.requireAuthenticatedUserPublicId(req);
-    const { password } = req.body;
-    const command = new DeleteUserCommand(userPublicId, password);
+    const { password, reason } = req.body;
+    const command = new DeleteUserCommand(
+      userPublicId,
+      password,
+      false,
+      reason,
+    );
     await this.commandBus.dispatch(command);
-    await this.authService.revokeAllSessionsForUser(userPublicId);
     clearAuthCookies(res);
     res.status(200).json({ message: "Account deleted successfully" });
   };

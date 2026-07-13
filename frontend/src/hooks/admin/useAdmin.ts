@@ -112,7 +112,8 @@ export const useDemoteFromAdmin = () => {
 export const useDeleteUserAdmin = () => {
 	const queryClient = useQueryClient();
 	return useMutation({
-		mutationFn: (publicId: string) => deleteUserAdmin(publicId),
+		mutationFn: ({ publicId, reason }: { publicId: string; reason: string }) =>
+			deleteUserAdmin(publicId, reason),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
 			toast.success("user deleted successfully");

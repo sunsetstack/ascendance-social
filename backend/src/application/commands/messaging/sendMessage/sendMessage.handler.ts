@@ -115,6 +115,11 @@ export class SendMessageCommandHandler implements ICommandHandler<
 
       let recipientInternalId: string | null = null;
       if (targetConversation) {
+        if (targetConversation.isClosed) {
+          throw Errors.validation(
+            "This conversation is closed because a participant is unavailable",
+          );
+        }
         const existingParticipantIds = getParticipantIds(
           targetConversation.participants,
         );

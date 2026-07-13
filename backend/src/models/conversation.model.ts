@@ -21,6 +21,24 @@ const conversationSchema = new Schema<IConversation>(
         required: true,
       },
     ],
+    departedParticipants: {
+      type: [
+        {
+          _id: false,
+          publicId: { type: String, required: true },
+          handle: { type: String, default: "" },
+          username: { type: String, required: true },
+          avatar: { type: String, default: "" },
+          reason: {
+            type: String,
+            enum: ["banned", "deleted", "unknown"],
+            required: true,
+          },
+          unavailableAt: { type: Date, required: true },
+        },
+      ],
+      default: [],
+    },
     lastMessage: {
       type: Schema.Types.ObjectId,
       ref: "Message",
@@ -37,6 +55,14 @@ const conversationSchema = new Schema<IConversation>(
       type: Boolean,
       default: false,
     },
+    isClosed: {
+      type: Boolean,
+      default: false,
+    },
+    closedReason: {
+      type: String,
+      enum: ["banned", "deleted", "unknown"],
+    },
     title: {
       type: String,
     },
@@ -45,6 +71,10 @@ const conversationSchema = new Schema<IConversation>(
 );
 
 conversationSchema.index({ participants: 1, lastMessageAt: -1, _id: -1 });
+conversationSchema.index(
+  { "departedParticipants.publicId": 1 },
+  { sparse: true },
+);
 conversationSchema.index({ participantHash: 1 }, { unique: true });
 
 conversationSchema.set("toJSON", {

@@ -1,6 +1,6 @@
 import { inject, injectable } from "tsyringe";
 import { IEventHandler } from "@/application/common/interfaces/event-handler.interface";
-import { UserDeletedEvent } from "./user-interaction.event";
+import { UserBannedEvent, UserDeletedEvent } from "./user-interaction.event";
 import { RedisService } from "@/services/redis.service";
 import { logger } from "@/utils/winston";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
@@ -12,14 +12,21 @@ import { EventRegistry, buildRealtimeEventId } from "@/application/common/events
  * clears all user-related cache entries including feeds, notifications, posts, etc
  */
 @injectable()
-export class UserDeletedHandler implements IEventHandler<UserDeletedEvent> {
+export class UserDeletedHandler
+  implements IEventHandler<UserDeletedEvent | UserBannedEvent>
+{
   constructor(
     @inject(TOKENS.Services.Redis) private readonly redis: RedisService,
   ) {}
 
-  async handle(event: UserDeletedEvent): Promise<void> {
+  async handle(event: UserDeletedEvent | UserBannedEvent): Promise<void> {
+    const isBan = event.type === EventRegistry.domain.UserBanned;
+    const lifecycleAction = isBan ? "banned" : "deleted";
+    const realtimeType = isBan
+      ? EventRegistry.realtimeMessageTypes.userBanned
+      : EventRegistry.realtimeMessageTypes.userDeleted;
     logger.info(
-      `[UserDeletedHandler] User deleted: ${event.userPublicId}, clearing cache entries`,
+      `[UserDeletedHandler] User ${lifecycleAction}: ${event.userPublicId}, clearing cache entries`,
     );
 
     try {
@@ -35,6 +42,7 @@ export class UserDeletedHandler implements IEventHandler<UserDeletedEvent> {
       tagsToInvalidate.push(`user_profile:${event.userPublicId}`);
       tagsToInvalidate.push("who_to_follow");
       tagsToInvalidate.push(`user:${event.userPublicId}`);
+      tagsToInvalidate.push(`user_data:${event.userPublicId}`);
 
       // user's cache patterns
       patternsToDelete.push(
@@ -49,6 +57,12 @@ export class UserDeletedHandler implements IEventHandler<UserDeletedEvent> {
       patternsToDelete.push(`user_favorites:${event.userPublicId}:*`);
       patternsToDelete.push(`user_followers:${event.userPublicId}`);
       patternsToDelete.push(`user_following:${event.userPublicId}`);
+      patternsToDelete.push(
+        CacheKeyBuilder.getUserDataKey(event.userPublicId),
+      );
+      patternsToDelete.push(
+        CacheKeyBuilder.getFollowingIdsKey(event.userPublicId),
+      );
 
       // clear followers' feeds since they followed this user
       if (event.followerPublicIds.length > 0) {
@@ -68,6 +82,35 @@ export class UserDeletedHandler implements IEventHandler<UserDeletedEvent> {
         }
       }
 
+      const deletedPostPublicIds = event.deletedPostPublicIds ?? [];
+      if (deletedPostPublicIds.length > 0) {
+        await this.redis.removePostsFromFeedsBatch(
+          [event.userPublicId, ...event.followerPublicIds],
+          deletedPostPublicIds,
+          "for_you",
+        );
+      }
+
+      const affectedRelationshipPublicIds = [
+        ...new Set(
+          event.affectedRelationshipPublicIds ?? event.followerPublicIds,
+        ),
+      ];
+      for (const affectedPublicId of affectedRelationshipPublicIds) {
+        tagsToInvalidate.push(`user_profile:${affectedPublicId}`);
+        tagsToInvalidate.push(`user:${affectedPublicId}`);
+        tagsToInvalidate.push(`user_data:${affectedPublicId}`);
+        patternsToDelete.push(`user:${affectedPublicId}:*`);
+        patternsToDelete.push(`user_followers:${affectedPublicId}`);
+        patternsToDelete.push(`user_following:${affectedPublicId}`);
+        patternsToDelete.push(
+          CacheKeyBuilder.getUserDataKey(affectedPublicId),
+        );
+        patternsToDelete.push(
+          CacheKeyBuilder.getFollowingIdsKey(affectedPublicId),
+        );
+      }
+
       // invalidate global feeds that might contain user's posts
       tagsToInvalidate.push(CacheKeyBuilder.getTrendingFeedTag());
       tagsToInvalidate.push(CacheKeyBuilder.getNewFeedTag());
@@ -75,25 +118,27 @@ export class UserDeletedHandler implements IEventHandler<UserDeletedEvent> {
       patternsToDelete.push(`${CacheKeyBuilder.PREFIXES.NEW_FEED}:*`);
 
       // perform cache invalidation
+      const uniqueTagsToInvalidate = [...new Set(tagsToInvalidate)];
+      const uniquePatternsToDelete = [...new Set(patternsToDelete)];
       logger.info(
-        `[UserDeletedHandler] Invalidating ${tagsToInvalidate.length} tags`,
+        `[UserDeletedHandler] Invalidating ${uniqueTagsToInvalidate.length} tags`,
       );
-      await this.redis.invalidateByTags(tagsToInvalidate);
+      await this.redis.invalidateByTags(uniqueTagsToInvalidate);
 
       logger.info(
-        `[UserDeletedHandler] Deleting ${patternsToDelete.length} patterns`,
+        `[UserDeletedHandler] Deleting ${uniquePatternsToDelete.length} patterns`,
       );
-      await this.redis.deletePatterns(patternsToDelete);
+      await this.redis.deletePatterns(uniquePatternsToDelete);
 
       // publish event for real-time updates
       await this.redis.publish(
         EventRegistry.redisChannels.feedUpdates,
         JSON.stringify({
           eventId: buildRealtimeEventId(
-            EventRegistry.realtimeMessageTypes.userDeleted,
+            realtimeType,
             event.userPublicId,
           ),
-          type: EventRegistry.realtimeMessageTypes.userDeleted,
+          type: realtimeType,
           userPublicId: event.userPublicId,
           timestamp: event.timestamp.toISOString(),
         }),

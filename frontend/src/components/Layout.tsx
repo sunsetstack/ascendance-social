@@ -1,11 +1,10 @@
 import React, { useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useTheme, useMediaQuery } from "@mui/material";
 import { MobileLayout } from "./mobile";
 import { useAuth } from "../hooks/context/useAuth";
 import { useEmailVerificationLock } from "../hooks/layout/useEmailVerificationLock";
 import { DesktopAppShell } from "./layout/DesktopAppShell";
-import { EmailVerificationGate } from "./auth/EmailVerificationGate";
 
 const Layout: React.FC = () => {
 	const theme = useTheme();
@@ -29,13 +28,15 @@ const Layout: React.FC = () => {
 	};
 	const handleCloseUploadModal = () => setIsUploadModalOpen(false);
 
+	if (shouldLockToVerification) {
+		const email = user && "email" in user ? user.email : "";
+		const search = email ? `?email=${encodeURIComponent(email)}` : "";
+		return <Navigate to={`/verify-email${search}`} replace />;
+	}
+
 	// use dedicated mobile layout for mobile devices
 	if (isMobile) {
 		return <MobileLayout />;
-	}
-
-	if (shouldLockToVerification) {
-		return <EmailVerificationGate />;
 	}
 
 	return (

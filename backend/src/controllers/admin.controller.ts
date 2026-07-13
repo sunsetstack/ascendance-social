@@ -17,6 +17,7 @@ import { GetRecentActivityQuery } from "@/application/queries/admin/getRecentAct
 import { GetAuthActivityLogsQuery } from "@/application/queries/admin/getAuthActivityLogs/getAuthActivityLogs.query";
 import { GetRequestLogsQuery } from "@/application/queries/admin/getRequestLogs/getRequestLogs.query";
 import { BanUserCommand } from "@/application/commands/admin/banUser/banUser.command";
+import type { BanUserResult } from "@/application/commands/admin/banUser/banUser.handler";
 import { UnbanUserCommand } from "@/application/commands/admin/unbanUser/unbanUser.command";
 import { PromoteToAdminCommand } from "@/application/commands/admin/promoteToAdmin/promoteToAdmin.command";
 import { DemoteFromAdminCommand } from "@/application/commands/admin/demoteFromAdmin/demoteFromAdmin.command";
@@ -30,6 +31,7 @@ import { ClearCacheResult } from "@/application/commands/admin/clearCache/clearC
 import { asPostPublicId, asUserPublicId } from "@/types/branded";
 import type {
   AdminFavoriteParams,
+  AdminDeleteUserBody,
   AdminImagesQuery,
   AdminUsersQuery,
   AuthActivityLogsQuery,
@@ -123,13 +125,21 @@ export class AdminUserController {
     res.status(200).json(stats);
   };
 
-  deleteUser = async (req: TypedRequest<UserPublicIdParams>, res: Response) => {
+  deleteUser = async (
+    req: TypedRequest<UserPublicIdParams, AdminDeleteUserBody>,
+    res: Response,
+  ) => {
     const { publicId } = req.params;
-    // admin deletion bypasses password verification
+    const { decodedUser } = req;
+    if (!decodedUser?.publicId) {
+      throw Errors.authentication("Admin user not found");
+    }
     const command = new DeleteUserCommand(
       asUserPublicId(publicId),
       undefined,
       true,
+      req.body.reason,
+      decodedUser.publicId,
     );
     await this.commandBus.dispatch(command);
     res.status(204).send();
@@ -154,7 +164,7 @@ export class AdminUserController {
       decodedUser.publicId,
       reason,
     );
-    const result = await this.commandBus.dispatch<AdminUserDTO>(command);
+    const result = await this.commandBus.dispatch<BanUserResult>(command);
     res.status(200).json(result);
   };
 

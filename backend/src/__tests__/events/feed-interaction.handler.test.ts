@@ -24,6 +24,7 @@ describe("FeedInteractionHandler", () => {
   let feedServiceMock: sinon.SinonStubbedInstance<FeedService>;
   let redisServiceMock: sinon.SinonStubbedInstance<RedisService>;
   let userRepositoryMock: {
+    findByPublicId: sinon.SinonStub;
     findUsersFollowing: sinon.SinonStub;
   };
   let userPreferenceRepositoryMock: sinon.SinonStubbedInstance<UserPreferenceRepository>;
@@ -36,11 +37,15 @@ describe("FeedInteractionHandler", () => {
     feedServiceMock = sinon.createStubInstance(FeedService);
     redisServiceMock = sinon.createStubInstance(RedisService);
     userRepositoryMock = {
+      findByPublicId: sinon.stub().resolves({ isBanned: false }),
       findUsersFollowing: sinon.stub(),
     };
     userPreferenceRepositoryMock = sinon.createStubInstance(UserPreferenceRepository);
     postRepositoryMock = {
-      findByPublicId: sinon.stub(),
+      findByPublicId: sinon.stub().resolves({
+        publicId: POST_PUBLIC_ID,
+        likesCount: 0,
+      }),
     };
 
     // Register mocks in the DI container
@@ -154,5 +159,21 @@ describe("FeedInteractionHandler", () => {
 
     // Ensure it doesn't proceed to invalidation steps on failure
     expect(redisServiceMock.invalidateByTags.called).to.be.false;
+  });
+
+  it("skips a delayed interaction after the actor is unavailable", async () => {
+    userRepositoryMock.findByPublicId.resolves(null);
+    const event = new UserInteractedWithPostEvent(
+      ACTOR_PUBLIC_ID,
+      "like",
+      POST_PUBLIC_ID,
+      [],
+      OWNER_PUBLIC_ID,
+    );
+
+    await handler.handle(event);
+
+    expect(feedServiceMock.recordInteraction.called).to.be.false;
+    expect(redisServiceMock.pushToStream.called).to.be.false;
   });
 });

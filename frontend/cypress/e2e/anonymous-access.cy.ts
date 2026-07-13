@@ -18,8 +18,8 @@ describe("Anonymous public access", () => {
       statusCode: 401,
       body: { message: "Authentication required" },
     });
-    cy.intercept("GET", "/api/feed/new*", emptyPage);
-    cy.intercept("GET", "/api/feed/trending*", emptyPage);
+		cy.intercept({ method: "GET", pathname: "/api/feed/new" }, emptyPage);
+		cy.intercept({ method: "GET", pathname: "/api/feed/trending" }, emptyPage);
     cy.intercept("GET", "/api/communities?*", emptyPage);
   });
 

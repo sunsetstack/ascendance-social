@@ -19,7 +19,7 @@ export class GetUserByHandleQueryHandler implements IQueryHandler<
 
   async execute(query: GetUserByHandleQuery): Promise<PublicUserDTO> {
     const user = await this.userReadRepository.findByHandle(query.handle);
-    if (!user) {
+    if (!user || user.isBanned) {
       throw Errors.notFound("User");
     }
 

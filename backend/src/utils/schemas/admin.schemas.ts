@@ -86,7 +86,24 @@ export const banUserBodySchema = z
       .trim()
       .min(1, "Ban reason is required")
       .max(500)
-      .transform(sanitize),
+      .transform(sanitize)
+      .refine((value) => value.trim().length > 0, "Ban reason is required"),
+  })
+  .strict()
+  .transform(sanitizeForMongo);
+
+export const adminDeleteUserBodySchema = z
+  .object({
+    reason: z
+      .string()
+      .trim()
+      .min(1, "Account deletion reason is required")
+      .max(500)
+      .transform(sanitize)
+      .refine(
+        (value) => value.trim().length > 0,
+        "Account deletion reason is required",
+      ),
   })
   .strict()
   .transform(sanitizeForMongo);
@@ -105,4 +122,5 @@ export type RequestLogsQuery = z.infer<typeof requestLogsQuerySchema>;
 export type AuthActivityLogsQuery = z.infer<typeof authActivityLogsQuerySchema>;
 export type CacheClearQuery = z.infer<typeof cacheClearQuerySchema>;
 export type BanUserBody = z.infer<typeof banUserBodySchema>;
+export type AdminDeleteUserBody = z.infer<typeof adminDeleteUserBodySchema>;
 export type AdminFavoriteParams = z.infer<typeof adminFavoriteParamsSchema>;

@@ -281,6 +281,7 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({ onPostClick }) => {
 						<ListItem sx={{ px: 0, mt: 2 }}>
 							{/* Post Button */}
 							<Button
+								data-testid="post-button"
 								onClick={onPostClick}
 								variant="contained"
 								fullWidth
@@ -299,6 +300,7 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({ onPostClick }) => {
 								{t("nav.post")}
 							</Button>
 							<Button
+								aria-label="Create new post"
 								onClick={onPostClick}
 								variant="contained"
 								sx={{

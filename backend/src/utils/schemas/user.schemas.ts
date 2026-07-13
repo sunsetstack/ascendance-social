@@ -126,6 +126,12 @@ export const changePasswordSchema = z
 export const deleteAccountSchema = z
   .object({
     password: z.string().min(1, "Password is required"),
+    reason: z
+      .string()
+      .trim()
+      .min(1, "Account deletion reason is required")
+      .max(500)
+      .transform((value) => sanitizeTextInput(value, 500)),
   })
   .strict()
   .transform(sanitizeForMongo);

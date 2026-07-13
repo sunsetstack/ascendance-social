@@ -14,10 +14,22 @@ export interface IMessageAttachment {
   thumbnailUrl?: string;
 }
 
+export type UnavailableParticipantReason = "banned" | "deleted" | "unknown";
+
+export interface UnavailableParticipantSnapshot {
+  publicId: UserPublicId | string;
+  handle: string;
+  username: string;
+  avatar: string;
+  reason: UnavailableParticipantReason;
+  unavailableAt: Date;
+}
+
 export interface IMessage extends Document {
   publicId: MessagePublicId;
   conversation: mongoose.Types.ObjectId;
-  sender: mongoose.Types.ObjectId;
+  sender: mongoose.Types.ObjectId | null;
+  senderSnapshot?: UnavailableParticipantSnapshot;
   body: string;
   attachments?: IMessageAttachment[];
   status: MessageStatus;
@@ -31,10 +43,13 @@ export interface IConversation extends Document {
   publicId: ConversationPublicId;
   participantHash: string;
   participants: mongoose.Types.ObjectId[];
+  departedParticipants: UnavailableParticipantSnapshot[];
   lastMessage?: mongoose.Types.ObjectId;
   lastMessageAt?: Date;
   unreadCounts: Map<string, number>;
   isGroup: boolean;
+  isClosed: boolean;
+  closedReason?: UnavailableParticipantReason;
   title?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -63,6 +78,8 @@ export interface MessageDTO {
     handle: string;
     username: string;
     avatar: string;
+    isUnavailable?: boolean;
+    unavailableReason?: UnavailableParticipantReason;
   };
   attachments: IMessageAttachment[];
   status: MessageStatus;
@@ -75,6 +92,8 @@ export interface ConversationParticipantDTO {
   handle: string;
   username: string;
   avatar: string;
+  isUnavailable?: boolean;
+  unavailableReason?: UnavailableParticipantReason;
 }
 
 export interface ConversationSummaryDTO {
@@ -84,6 +103,8 @@ export interface ConversationSummaryDTO {
   lastMessageAt?: string | null;
   unreadCount: number;
   isGroup: boolean;
+  isClosed?: boolean;
+  closedReason?: UnavailableParticipantReason;
   title?: string;
 }
 
@@ -113,7 +134,7 @@ export interface PopulatedSender {
 
 // message where sender is populated
 export interface IMessagePopulated extends Omit<IMessage, "sender" | "readBy"> {
-  sender?: PopulatedSender;
+  sender?: PopulatedSender | null;
   readBy?: Array<
     | string
     | mongoose.Types.ObjectId
@@ -122,7 +143,7 @@ export interface IMessagePopulated extends Omit<IMessage, "sender" | "readBy"> {
 }
 
 export interface IMessageWithPopulatedSender extends Omit<IMessage, "sender"> {
-  sender: PopulatedSender;
+  sender: PopulatedSender | null;
 }
 
 export interface MaybePopulatedParticipant {
@@ -140,10 +161,13 @@ export interface MaybePopulatedParticipant {
 export interface HydratedConversation {
   publicId: ConversationPublicId;
   participants: Array<mongoose.Types.ObjectId | MaybePopulatedParticipant>;
+  departedParticipants?: UnavailableParticipantSnapshot[];
   lastMessage?: IMessage | null;
   lastMessageAt?: Date;
   unreadCounts: Map<string, number> | Record<string, number>;
   isGroup: boolean;
+  isClosed?: boolean;
+  closedReason?: UnavailableParticipantReason;
   title?: string;
   _id: mongoose.Types.ObjectId;
   updatedAt: Date;

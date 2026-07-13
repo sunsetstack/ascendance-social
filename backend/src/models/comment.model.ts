@@ -56,6 +56,14 @@ const commentSchema = new Schema<IComment>(
 			enum: ["user", "admin", null],
 			default: null,
 		},
+		deletionReason: {
+			type: String,
+			enum: ["comment_removed", "account_deleted", "account_banned", null],
+			default: null,
+		},
+		departedUserKey: {
+			type: String,
+		},
 	},
 	{
 		timestamps: true,
@@ -67,6 +75,7 @@ commentSchema.index({ postId: 1, createdAt: -1 });
 
 // Index for user's comments
 commentSchema.index({ userId: 1, createdAt: -1 });
+commentSchema.index({ departedUserKey: 1 }, { sparse: true });
 
 // Index for fetching replies efficiently
 commentSchema.index({ parentId: 1, createdAt: -1 });

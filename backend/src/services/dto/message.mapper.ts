@@ -11,7 +11,8 @@ export function toPublicMessageDTO(
   conversationPublicId: ConversationPublicId,
 ): MessageDTO {
   const populatedMessage = message as IMessagePopulated;
-  const sender = populatedMessage.sender || {};
+  const sender = populatedMessage.sender || populatedMessage.senderSnapshot || {};
+  const isUnavailable = !populatedMessage.sender && Boolean(populatedMessage.senderSnapshot);
 
   const readBy = Array.isArray(populatedMessage.readBy)
     ? populatedMessage.readBy.map((entry) => {
@@ -50,6 +51,10 @@ export function toPublicMessageDTO(
       handle: sender?.handle ?? "",
       username: sender?.username ?? "",
       avatar: sender?.avatar ?? "",
+      isUnavailable: isUnavailable || undefined,
+      unavailableReason: isUnavailable
+        ? populatedMessage.senderSnapshot?.reason
+        : undefined,
     },
     attachments,
     status: message.status,

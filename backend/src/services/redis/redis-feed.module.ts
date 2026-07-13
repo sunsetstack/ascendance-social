@@ -153,6 +153,28 @@ export class RedisFeedModule {
     }
   }
 
+  async removePostsFromFeedsBatch(
+    userIds: string[],
+    postIds: string[],
+    feedType: RedisFeedType = "for_you",
+  ): Promise<void> {
+    if (userIds.length === 0 || postIds.length === 0) return;
+
+    const uniqueUserIds = [...new Set(userIds)];
+    const uniquePostIds = [...new Set(postIds)];
+    for (let index = 0; index < uniqueUserIds.length; index += FEED_WRITE_BATCH_SIZE) {
+      const batch = uniqueUserIds.slice(index, index + FEED_WRITE_BATCH_SIZE);
+      const pipeline = this.client.multi();
+      for (const userId of batch) {
+        pipeline.zRem(
+          CacheKeyBuilder.getRedisFeedKey(feedType, userId),
+          uniquePostIds,
+        );
+      }
+      await pipeline.exec();
+    }
+  }
+
   async invalidateFeed(userId: string, feedType: RedisFeedType = "for_you"): Promise<void> {
     await this.client.del(CacheKeyBuilder.getRedisFeedKey(feedType, userId));
   }

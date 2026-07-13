@@ -11,6 +11,7 @@ import { logger } from "@/utils/winston";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
 import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
+import { IPost } from "@/types";
 @injectable()
 export class FeedInteractionHandler implements IEventHandler<UserInteractedWithPostEvent> {
   constructor(
@@ -26,6 +27,18 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
 
   async handle(event: UserInteractedWithPostEvent): Promise<void> {
     try {
+      const [actor, post] = await Promise.all([
+        this.userRepository.findByPublicId(event.userId),
+        this.postRepository.findByPublicId(event.postId),
+      ]);
+      if (!actor || actor.isBanned || !post) {
+        logger.info("Skipping interaction from an unavailable account or post", {
+          userPublicId: event.userId,
+          postPublicId: event.postId,
+        });
+        return;
+      }
+
       await this.feedService.recordInteraction(
         event.userId,
         event.interactionType,
@@ -40,7 +53,7 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
         timestamp: Date.now().toString(),
         tags: event.tags ? JSON.stringify(event.tags) : undefined,
       });
-      await this.invalidateRelevantFeeds(event);
+      await this.invalidateRelevantFeeds(event, post);
 
       // Publish real-time interaction event for WebSocket notifications
       await this.publishInteractionEvent(event);
@@ -55,6 +68,7 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
    */
   private async invalidateRelevantFeeds(
     event: UserInteractedWithPostEvent,
+    post: IPost,
   ): Promise<void> {
     logger.info(
       `Smart cache handling for interaction: ${event.interactionType} on post ${event.postId}`,
@@ -65,21 +79,10 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
 
     if (isLikeEvent) {
       // Update per-image meta so all users see new like count without structural invalidation
-      try {
-        logger.info(`event.postId in invalidateRelevantFeeds: ${event.postId}`);
-        const post = await this.postRepository.findByPublicId(event.postId);
-        if (post && post.publicId) {
-          await this.feedService.updatePostLikeMeta(
-            post.publicId,
-            post.likesCount || 0,
-          );
-        }
-      } catch (e) {
-        logger.warn(
-          "Failed to update post like meta during like/unlike event",
-          {
-            error: e,
-          },
+      if (post.publicId) {
+        await this.feedService.updatePostLikeMeta(
+          post.publicId,
+          post.likesCount || 0,
         );
       }
       // Invalidate only actor's structural feed using tags
@@ -141,7 +144,7 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
       logger.error("Error determining affected users", { error });
       // Fallback: invalidate global feeds using tags (except new_feed - lazy refresh)
       await this.redis.invalidateByTags([CacheKeyBuilder.getTrendingFeedTag()]);
-      return [];
+      throw error;
     }
   }
 
@@ -156,7 +159,7 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
       logger.error(`Error getting followers for user ${userPublicId}`, {
         error,
       });
-      return [];
+      throw error;
     }
   }
 
@@ -172,7 +175,7 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
           error,
         },
       );
-      return [];
+      throw error;
     }
   }
 

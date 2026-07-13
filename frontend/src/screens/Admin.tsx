@@ -29,6 +29,7 @@ import {
   CircularProgress,
   useTheme,
   Stack,
+  Alert,
 } from "@mui/material";
 import {
   Dashboard as DashboardIcon,
@@ -140,6 +141,8 @@ export const AdminDashboard: React.FC = () => {
   const [banDialogOpen, setBanDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUserDTO | null>(null);
   const [banReason, setBanReason] = useState("");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
 
   // Image Tab State
   const [imagePage, setImagePage] = useState(0);
@@ -216,7 +219,7 @@ export const AdminDashboard: React.FC = () => {
   const handleBanUser = () => {
     if (selectedUser && banReason.trim()) {
       banUserMutation.mutate(
-        { publicId: selectedUser.publicId, reason: banReason },
+        { publicId: selectedUser.publicId, reason: banReason.trim() },
         {
           onSuccess: () => {
             setBanDialogOpen(false);
@@ -231,6 +234,26 @@ export const AdminDashboard: React.FC = () => {
   const openBanDialog = (user: AdminUserDTO) => {
     setSelectedUser(user);
     setBanDialogOpen(true);
+  };
+
+  const openDeleteDialog = (user: AdminUserDTO) => {
+    setSelectedUser(user);
+    setDeleteReason("");
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteUser = () => {
+    if (!selectedUser || !deleteReason.trim()) return;
+    deleteUserMutation.mutate(
+      { publicId: selectedUser.publicId, reason: deleteReason.trim() },
+      {
+        onSuccess: () => {
+          setDeleteDialogOpen(false);
+          setDeleteReason("");
+          setSelectedUser(null);
+        },
+      },
+    );
   };
 
   return (
@@ -557,15 +580,7 @@ export const AdminDashboard: React.FC = () => {
                           <IconButton
                             size="small"
                             color="error"
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  `delete user ${user.username}? this cannot be undone.`,
-                                )
-                              ) {
-                                deleteUserMutation.mutate(user.publicId);
-                              }
-                            }}
+                            onClick={() => openDeleteDialog(user)}
                             title="delete user"
                           >
                             <DeleteIcon />
@@ -1635,6 +1650,10 @@ export const AdminDashboard: React.FC = () => {
       >
         <DialogTitle>ban user: {selectedUser?.username}</DialogTitle>
         <DialogContent>
+          <Alert severity="warning" sx={{ mt: 1, mb: 2 }}>
+            Banning is destructive: posts and social data are removed, while
+            comments and message history are anonymized for other users.
+          </Alert>
           <TextField
             autoFocus
             margin="dense"
@@ -1656,6 +1675,44 @@ export const AdminDashboard: React.FC = () => {
             disabled={!banReason.trim() || banUserMutation.isPending}
           >
             {banUserMutation.isPending ? "banning..." : "ban user"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>permanently delete user: {selectedUser?.username}</DialogTitle>
+        <DialogContent>
+          <Alert severity="error" sx={{ mt: 1, mb: 2 }}>
+            This permanently removes the account and all owned content. The
+            reason and a 30-day evidence snapshot are retained in the audit
+            trail.
+          </Alert>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="deletion reason"
+            fullWidth
+            multiline
+            rows={3}
+            value={deleteReason}
+            onChange={(event) => setDeleteReason(event.target.value)}
+            inputProps={{ maxLength: 500 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>cancel</Button>
+          <Button
+            onClick={handleDeleteUser}
+            variant="contained"
+            color="error"
+            disabled={!deleteReason.trim() || deleteUserMutation.isPending}
+          >
+            {deleteUserMutation.isPending ? "deleting..." : "delete permanently"}
           </Button>
         </DialogActions>
       </Dialog>

@@ -12,10 +12,12 @@ import type {
 import type { NotificationRequestedEvent } from "@/application/events/notification/notification.event";
 import type {
   PostDeletedEvent,
+  PostLikeCountReconciledEvent,
   PostUploadedEvent,
 } from "@/application/events/post/post.event";
 import type {
   UserAvatarChangedEvent,
+  UserBannedEvent,
   UserCoverChangedEvent,
   UserDeletedEvent,
   UserInteractedWithPostEvent,
@@ -33,8 +35,10 @@ export const EventRegistry = {
     MessageStatusUpdated: "MessageStatusUpdatedEvent",
     NotificationRequested: "NotificationRequestedEvent",
     PostDeleted: "PostDeletedEvent",
+    PostLikeCountReconciled: "PostLikeCountReconciledEvent",
     PostUploaded: "PostUploadedEvent",
     UserAvatarChanged: "UserAvatarChangedEvent",
+    UserBanned: "UserBannedEvent",
     UserCoverChanged: "UserCoverChangedEvent",
     UserDeleted: "UserDeletedEvent",
     UserInteractedWithPost: "UserInteractedWithPostEvent",
@@ -43,6 +47,7 @@ export const EventRegistry = {
   redisChannels: {
     feedUpdates: "feed_updates",
     messagingUpdates: "messaging_updates",
+    notificationUpdates: "notification_updates",
     profileSnapshotUpdates: "profile_snapshot_updates",
   },
   socketClientEvents: {
@@ -72,13 +77,16 @@ export const EventRegistry = {
     avatarChanged: "avatar_changed",
     messageSent: "message_sent",
     messageStatusUpdated: "message_status_updated",
+    newNotification: "new_notification",
     userDeleted: "user_deleted",
+    userBanned: "user_banned",
   },
   socketPayloadTypes: {
     likeCountChanged: "like_count_changed",
     postPublished: "post_published",
     userAvatarChanged: "user_avatar_changed",
     userDeleted: "user_deleted",
+    userBanned: "user_banned",
     userInteraction: "user_interaction",
     usernameChanged: "username_changed",
   },
@@ -103,8 +111,10 @@ export interface EventPayloadRegistry {
   MessageStatusUpdatedEvent: MessageStatusUpdatedEvent;
   NotificationRequestedEvent: NotificationRequestedEvent;
   PostDeletedEvent: PostDeletedEvent;
+  PostLikeCountReconciledEvent: PostLikeCountReconciledEvent;
   PostUploadedEvent: PostUploadedEvent;
   UserAvatarChangedEvent: UserAvatarChangedEvent;
+  UserBannedEvent: UserBannedEvent;
   UserCoverChangedEvent: UserCoverChangedEvent;
   UserDeletedEvent: UserDeletedEvent;
   UserInteractedWithPostEvent: UserInteractedWithPostEvent;

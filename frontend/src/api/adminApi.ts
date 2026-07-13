@@ -89,8 +89,13 @@ export const demoteFromAdmin = async (
   return data;
 };
 
-export const deleteUserAdmin = async (publicId: string): Promise<void> => {
-  await axiosClient.delete(`/api/admin/user/${publicId}`);
+export const deleteUserAdmin = async (
+  publicId: string,
+  reason: string,
+): Promise<void> => {
+  await axiosClient.delete(`/api/admin/user/${publicId}`, {
+    data: { reason },
+  });
 };
 
 export const fetchAllImagesAdmin = async (params: {

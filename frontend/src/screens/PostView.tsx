@@ -586,18 +586,23 @@ const PostView = () => {
             }}
           >
             <IconButton
+              aria-label={isLiked ? "Unlike post" : "Like post"}
               onClick={handleLikePost}
               color={isLiked ? "primary" : "default"}
             >
               {isLiked ? <FavoriteIcon /> : <FavoriteBorderIcon />}
             </IconButton>
             <IconButton
+              aria-label={hasReposted ? "Undo repost" : "Repost post"}
               onClick={handleRepostClick}
               sx={{ color: hasReposted ? "#22c55e" : "default" }}
             >
               <RepeatIcon />
             </IconButton>
             <IconButton
+              aria-label={
+                isFavorited ? "Remove from favorites" : "Add to favorites"
+              }
               onClick={handleToggleFavorite}
               color={isFavorited ? "primary" : "default"}
             >

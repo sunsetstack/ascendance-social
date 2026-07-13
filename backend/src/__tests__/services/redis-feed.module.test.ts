@@ -108,4 +108,29 @@ describe("RedisFeedModule", () => {
       "post-1",
     ]);
   });
+
+  it("removes all deleted account posts from each affected feed", async () => {
+    const pipeline = {
+      zRem: sinon.spy(),
+      exec: sinon.stub().resolves([]),
+    };
+    const client = { multi: sinon.stub().returns(pipeline) };
+    const module = new RedisFeedModule(client as any);
+
+    await module.removePostsFromFeedsBatch(
+      ["departed", "follower", "follower"],
+      ["post-1", "post-2", "post-1"],
+      "for_you",
+    );
+
+    expect(pipeline.zRem.callCount).to.equal(2);
+    expect(pipeline.zRem.firstCall.args).to.deep.equal([
+      CacheKeyBuilder.getRedisFeedKey("for_you", "departed"),
+      ["post-1", "post-2"],
+    ]);
+    expect(pipeline.zRem.secondCall.args).to.deep.equal([
+      CacheKeyBuilder.getRedisFeedKey("for_you", "follower"),
+      ["post-1", "post-2"],
+    ]);
+  });
 });

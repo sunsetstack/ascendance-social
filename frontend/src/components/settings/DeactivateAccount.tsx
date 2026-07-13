@@ -25,6 +25,7 @@ interface DeactivateAccountProps {
 const DeactivateAccount = ({ onBack }: DeactivateAccountProps) => {
 	const theme = useTheme();
 	const [password, setPassword] = useState("");
+	const [reason, setReason] = useState("");
 	const [confirmOpen, setConfirmOpen] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -34,11 +35,11 @@ const DeactivateAccount = ({ onBack }: DeactivateAccountProps) => {
 		setError(null);
 
 		try {
-			await deactivateAccount.mutateAsync({ password });
+			await deactivateAccount.mutateAsync({ password, reason: reason.trim() });
 		} catch (err: unknown) {
 			const message = isAxiosError<{ error?: string }>(err)
-				? (err.response?.data?.error ?? "Failed to deactivate account")
-				: "Failed to deactivate account";
+				? (err.response?.data?.error ?? "Failed to delete account")
+				: "Failed to delete account";
 			setError(message);
 			setConfirmOpen(false);
 		}
@@ -52,7 +53,7 @@ const DeactivateAccount = ({ onBack }: DeactivateAccountProps) => {
 					<ArrowBackIcon />
 				</IconButton>
 				<Typography variant="h6" fontWeight={700}>
-					Deactivate Account
+					Delete Account
 				</Typography>
 			</Box>
 
@@ -73,13 +74,14 @@ const DeactivateAccount = ({ onBack }: DeactivateAccountProps) => {
 							This action is permanent
 						</Typography>
 						<Typography variant="body2" color="text.secondary">
-							Deactivating your account will permanently delete all your data including:
+							Deleting your account permanently removes your profile and social data. The following rules apply:
 						</Typography>
 						<Box component="ul" sx={{ mt: 1, pl: 2, color: "text.secondary" }}>
 							<Typography component="li" variant="body2">Your profile and account information</Typography>
 							<Typography component="li" variant="body2">All your posts and images</Typography>
-							<Typography component="li" variant="body2">Your comments and likes</Typography>
-							<Typography component="li" variant="body2">Your messages and conversations</Typography>
+							<Typography component="li" variant="body2">Your likes, favorites, follows, and other interactions are removed</Typography>
+							<Typography component="li" variant="body2">Your comments remain only as an anonymous account-deleted notice</Typography>
+							<Typography component="li" variant="body2">Messages and conversations remain for the other participants, without your identity</Typography>
 							<Typography component="li" variant="body2">Your followers and following lists</Typography>
 						</Box>
 					</Box>
@@ -93,7 +95,7 @@ const DeactivateAccount = ({ onBack }: DeactivateAccountProps) => {
 			)}
 
 			<Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-				To confirm account deactivation, enter your password:
+				To confirm account deletion, enter your password:
 			</Typography>
 
 			<TextField
@@ -105,15 +107,27 @@ const DeactivateAccount = ({ onBack }: DeactivateAccountProps) => {
 				sx={{ mb: 3 }}
 			/>
 
+			<TextField
+				fullWidth
+				multiline
+				minRows={3}
+				label="Why are you deleting your account?"
+				value={reason}
+				onChange={(e) => setReason(e.target.value)}
+				inputProps={{ maxLength: 500 }}
+				helperText="Required. This reason is retained in the security audit trail."
+				sx={{ mb: 3 }}
+			/>
+
 			<Button
 				variant="contained"
 				color="error"
 				fullWidth
-				disabled={!password}
+				disabled={!password || !reason.trim()}
 				onClick={() => setConfirmOpen(true)}
 				sx={{ borderRadius: 9999, py: 1.5 }}
 			>
-				Deactivate Account
+				Delete Account
 			</Button>
 
 			{/* confirmation dialog */}
@@ -121,7 +135,7 @@ const DeactivateAccount = ({ onBack }: DeactivateAccountProps) => {
 				<DialogTitle>Are you absolutely sure?</DialogTitle>
 				<DialogContent>
 					<DialogContentText>
-						This action cannot be undone. Your account and all associated data will be permanently deleted.
+						This action cannot be undone. Your account and owned content will be removed; comments and conversations remain only in their anonymized forms for other participants.
 					</DialogContentText>
 				</DialogContent>
 				<DialogActions>

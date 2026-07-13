@@ -22,6 +22,7 @@ describe("RepostPostCommandHandler", () => {
 	let mockPostReadRepository: { findByPublicId: SinonStub; countDocuments: SinonStub };
 	let mockPostWriteRepository: { create: SinonStub; updateRepostCount: SinonStub };
 	let mockUserReadRepository: { findByPublicId: SinonStub };
+	let mockUserWriteRepository: { update: SinonStub };
 	let mockDTOService: { toPostDTO: SinonStub };
 	let mockEventBus: { queueTransactional: SinonStub };
 
@@ -38,6 +39,7 @@ describe("RepostPostCommandHandler", () => {
 		mockUserReadRepository = {
 			findByPublicId: sinon.stub(),
 		};
+		mockUserWriteRepository = { update: sinon.stub().resolves() };
 		mockDTOService = {
 			toPostDTO: sinon.stub(),
 		};
@@ -50,6 +52,7 @@ describe("RepostPostCommandHandler", () => {
 			mockPostReadRepository as any,
 			mockPostWriteRepository as any,
 			mockUserReadRepository as any,
+			mockUserWriteRepository as any,
 			mockDTOService as any,
 			mockEventBus as any,
 		);
@@ -124,6 +127,7 @@ describe("RepostPostCommandHandler", () => {
 		expect(mockUnitOfWork.executeInTransaction.calledOnce).to.be.true;
 		expect(mockPostWriteRepository.create.calledOnce).to.be.true;
 		expect(mockPostWriteRepository.updateRepostCount.calledWith(targetPostId.toString(), 1)).to.be.true;
+		expect(mockUserWriteRepository.update.calledOnce).to.be.true;
 		// notification + post uploaded
 		expect(mockEventBus.queueTransactional.callCount).to.equal(2);
 		expect(mockDTOService.toPostDTO.calledWith(hydrated)).to.be.true;

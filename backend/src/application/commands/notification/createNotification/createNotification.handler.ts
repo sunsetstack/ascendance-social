@@ -3,7 +3,6 @@ import { CreateNotificationCommand } from "./createNotification.command";
 import { NotificationRepository } from "@/repositories/notification.repository";
 import type { IUserReadRepository } from "@/repositories/interfaces";
 import { RedisService } from "@/services/redis.service";
-import { WebSocketServer } from "@/server/socketServer";
 import { INotification, NotificationPlain } from "@/types";
 import { Errors, wrapError } from "@/utils/errors";
 import { normalizeNotificationPlain } from "@/utils/notification-plain";
@@ -12,7 +11,6 @@ import { logger } from "@/utils/winston";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
-import { MetricsService } from "@/metrics/metrics.service";
 import {
   asUserPublicId,
   PostPublicId,
@@ -28,16 +26,12 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
   private readonly MAX_NOTIFICATIONS_PER_USER = 200;
 
   constructor(
-    @inject(TOKENS.Models.WebSocketServer)
-    private readonly webSocketServer: WebSocketServer,
     @inject(TOKENS.Repositories.Notification)
     private readonly notificationRepository: NotificationRepository,
     @inject(TOKENS.Repositories.UserRead)
     private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Services.Redis)
     private readonly redisService: RedisService,
-    @inject(TOKENS.Services.Metrics)
-    private readonly metricsService: MetricsService,
   ) {}
 
   private toPlainNotification(
@@ -121,37 +115,32 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
           )
         : await this.notificationRepository.create(notificationData);
 
-      try {
-        const plain = this.toPlainNotification(notification);
-        const notificationId = plain.id ?? plain._id ?? String(notification._id);
-        const payload = {
-          ...plain,
-          eventId: buildRealtimeEventId(
-            EventRegistry.socketServerEvents.newNotification,
-            notificationId,
-          ),
-        };
-        logger.info(`Sending new_notification to user ${userPublicId}:`, {
-          notification: payload,
-        });
-        this.webSocketServer
-          .getIO()
-          .to(userPublicId)
-          .emit(EventRegistry.socketServerEvents.newNotification, payload);
-        this.metricsService.recordSocketEventEmitted(
-          EventRegistry.socketServerEvents.newNotification,
-          "room",
-        );
-        logger.info("Notification sent successfully");
-      } catch (error) {
-        logger.error("Error sending notification:", { error });
-      }
-
       await this.redisService.pushNotification(
         userPublicId,
         notification,
         this.MAX_NOTIFICATIONS_PER_USER,
       );
+
+      const plain = this.toPlainNotification(notification);
+      const notificationId = plain.id ?? plain._id ?? String(notification._id);
+      const eventId = buildRealtimeEventId(
+        EventRegistry.socketServerEvents.newNotification,
+        notificationId,
+      );
+      await this.redisService.publish(
+        EventRegistry.redisChannels.notificationUpdates,
+        {
+          type: EventRegistry.realtimeMessageTypes.newNotification,
+          eventId,
+          userId: userPublicId,
+          notification: plain,
+          timestamp: new Date().toISOString(),
+        },
+      );
+      logger.info("Notification queued for realtime delivery", {
+        eventId,
+        userPublicId,
+      });
 
       return notification as any;
     } catch (error) {

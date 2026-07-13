@@ -6,7 +6,8 @@ import { useAuth } from "../hooks/context/useAuth";
 
 const VerifyEmail = () => {
 	const [searchParams] = useSearchParams();
-	const [token, setToken] = useState(searchParams.get("token") ?? "");
+	const tokenFromUrl = searchParams.get("token") ?? "";
+	const [token, setToken] = useState(tokenFromUrl);
 	const [autoSubmitted, setAutoSubmitted] = useState(false);
 	const { user } = useAuth();
 
@@ -16,11 +17,11 @@ const VerifyEmail = () => {
 	const { mutate, isPending, isSuccess, error } = useVerifyEmail();
 
 	useEffect(() => {
-		if (resolvedEmail && token && !autoSubmitted) {
+		if (resolvedEmail && tokenFromUrl && !autoSubmitted) {
 			setAutoSubmitted(true);
-			mutate({ email: resolvedEmail, token });
+			mutate({ email: resolvedEmail, token: tokenFromUrl });
 		}
-	}, [resolvedEmail, token, autoSubmitted, mutate]);
+	}, [resolvedEmail, tokenFromUrl, autoSubmitted, mutate]);
 
 	const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
 		event.preventDefault();

@@ -35,6 +35,7 @@ import { FeedInteractionHandler } from "@/application/events/user/feed-interacti
 import { UserInteractedWithPostEvent } from "@/application/events/user/user-interaction.event";
 import {
   PostDeletedEvent,
+  PostLikeCountReconciledEvent,
   PostUploadedEvent,
 } from "@/application/events/post/post.event";
 import { ImageAssetCleanupRequestedEvent } from "@/application/events/image/image.event";
@@ -44,6 +45,7 @@ import { LikeActionByPublicIdCommand } from "@/application/commands/users/likeAc
 import { LikeActionByPublicIdCommandHandler } from "@/application/commands/users/likeActionByPublicId/likeActionByPublicId.handler";
 import { PostUploadHandler } from "@/application/events/post/post-uploaded.handler";
 import { PostDeleteHandler } from "@/application/events/post/post-deleted.handler";
+import { PostLikeCountReconciledHandler } from "@/application/events/post/post-like-count-reconciled.handler";
 import { ImageAssetCleanupRequestedHandler } from "@/application/events/image/image-asset-cleanup-requested.handler";
 import {
   UserAvatarChangedEvent,
@@ -154,6 +156,7 @@ import { UpdateAvatarCommandHandler } from "@/application/commands/users/updateA
 import { UpdateCoverCommand } from "@/application/commands/users/updateCover/updateCover.command";
 import { UpdateCoverCommandHandler } from "@/application/commands/users/updateCover/updateCover.handler";
 import {
+  UserBannedEvent,
   UserCoverChangedEvent,
   UserDeletedEvent,
 } from "@/application/events/user/user-interaction.event";
@@ -352,6 +355,10 @@ const eventHandlerRegistrations: readonly ContainerRegistration[] = [
   [TOKENS.CQRS.Handlers.PostUpload, PostUploadHandler],
   [TOKENS.CQRS.Handlers.PostDelete, PostDeleteHandler],
   [
+    TOKENS.CQRS.Handlers.PostLikeCountReconciled,
+    PostLikeCountReconciledHandler,
+  ],
+  [
     TOKENS.CQRS.Handlers.ImageAssetCleanupRequested,
     ImageAssetCleanupRequestedHandler,
   ],
@@ -476,6 +483,10 @@ const eventSubscriptions: readonly EventSubscription[] = [
   [PostUploadedEvent, TOKENS.CQRS.Handlers.PostUpload],
   [PostDeletedEvent, TOKENS.CQRS.Handlers.PostDelete],
   [
+    PostLikeCountReconciledEvent,
+    TOKENS.CQRS.Handlers.PostLikeCountReconciled,
+  ],
+  [
     ImageAssetCleanupRequestedEvent,
     TOKENS.CQRS.Handlers.ImageAssetCleanupRequested,
   ],
@@ -483,6 +494,7 @@ const eventSubscriptions: readonly EventSubscription[] = [
   [UserUsernameChangedEvent, TOKENS.CQRS.Handlers.UserUsernameChanged],
   [UserCoverChangedEvent, TOKENS.CQRS.Handlers.UserCoverChanged],
   [UserDeletedEvent, TOKENS.CQRS.Handlers.UserDeleted],
+  [UserBannedEvent, TOKENS.CQRS.Handlers.UserDeleted],
   [MessageSentEvent, TOKENS.CQRS.Handlers.MessageSent],
   [MessageStatusUpdatedEvent, TOKENS.CQRS.Handlers.MessageStatusUpdatedEvent],
   [

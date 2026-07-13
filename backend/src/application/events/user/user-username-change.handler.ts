@@ -6,14 +6,22 @@ import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 import { EventRegistry } from "@/application/common/events/event-registry";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 
 @injectable()
 export class UserUsernameChangedHandler implements IEventHandler<UserUsernameChangedEvent> {
   constructor(
     @inject(TOKENS.Services.Redis) private readonly redis: RedisService,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
   ) {}
 
   async handle(event: UserUsernameChangedEvent): Promise<void> {
+    const user = await this.userReadRepository.findByPublicId(
+      event.userPublicId,
+    );
+    if (!user || user.isBanned) return;
+
     logger.info(
       `User ${event.userPublicId} changed username from "${event.oldUsername}" to "${event.newUsername}"`,
     );
