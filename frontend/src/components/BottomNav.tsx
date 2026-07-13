@@ -8,10 +8,12 @@ import {
 	Notifications as NotificationsIcon,
 	MailOutline as MailIcon,
 	Groups as GroupsIcon,
+	Login as LoginIcon,
 } from "@mui/icons-material";
 import { useTheme } from "@mui/material/styles";
 import { useNotifications } from "../hooks/notifications/useNotification";
 import { useTranslation } from "react-i18next";
+import { useAuth } from "../hooks/context/useAuth";
 
 const BottomNav: React.FC = () => {
 	const { t } = useTranslation();
@@ -19,14 +21,16 @@ const BottomNav: React.FC = () => {
 	const location = useLocation();
 	const theme = useTheme();
 	const { isVisible } = useBottomNav();
+	const { isLoggedIn } = useAuth();
 
 	const unreadCount = notifications.filter((n) => !n.isRead).length;
 
 	const getValue = () => {
 		const path = location.pathname;
 		if (path === "/") return 0;
-		if (path === "/discover") return 1;
-		if (path === "/communities") return 2;
+		if (path.startsWith("/discover")) return 1;
+		if (path.startsWith("/communities")) return 2;
+		if (!isLoggedIn && (path === "/login" || path === "/register")) return 3;
 		if (path === "/notifications") return 3;
 		if (path === "/messages") return 4;
 		return 0;
@@ -34,6 +38,7 @@ const BottomNav: React.FC = () => {
 
 	return (
 		<Box
+			data-testid="bottom-navigation"
 			sx={{
 				position: "fixed",
 				bottom: 0,
@@ -46,7 +51,7 @@ const BottomNav: React.FC = () => {
 				backfaceVisibility: "hidden",
 			}}
 		>
-			<Paper elevation={3}>
+			<Paper elevation={3} sx={{ pb: "env(safe-area-inset-bottom)" }}>
 				<BottomNavigation
 					showLabels={false}
 					value={getValue()}
@@ -88,30 +93,45 @@ const BottomNav: React.FC = () => {
 						}}
 					/>
 
-					<BottomNavigationAction
-						component={RouterLink}
-						to="/notifications"
-						label={t("nav.notifications")}
-						icon={
-							<Badge badgeContent={unreadCount} color="primary">
-								<NotificationsIcon />
-							</Badge>
-						}
-						sx={{
-							color: "text.secondary",
-							"&.Mui-selected": { color: "primary.main" },
-						}}
-					/>
-					<BottomNavigationAction
-						component={RouterLink}
-						to="/messages"
-						label={t("nav.messages")}
-						icon={<MailIcon />}
-						sx={{
-							color: "text.secondary",
-							"&.Mui-selected": { color: "primary.main" },
-						}}
-					/>
+					{isLoggedIn ? (
+						<>
+							<BottomNavigationAction
+								component={RouterLink}
+								to="/notifications"
+								label={t("nav.notifications")}
+								icon={
+									<Badge badgeContent={unreadCount} color="primary">
+										<NotificationsIcon />
+									</Badge>
+								}
+								sx={{
+									color: "text.secondary",
+									"&.Mui-selected": { color: "primary.main" },
+								}}
+							/>
+							<BottomNavigationAction
+								component={RouterLink}
+								to="/messages"
+								label={t("nav.messages")}
+								icon={<MailIcon />}
+								sx={{
+									color: "text.secondary",
+									"&.Mui-selected": { color: "primary.main" },
+								}}
+							/>
+						</>
+					) : (
+						<BottomNavigationAction
+							component={RouterLink}
+							to="/login"
+							label={t("auth.login")}
+							icon={<LoginIcon />}
+							sx={{
+								color: "text.secondary",
+								"&.Mui-selected": { color: "primary.main" },
+							}}
+						/>
+					)}
 				</BottomNavigation>
 			</Paper>
 		</Box>

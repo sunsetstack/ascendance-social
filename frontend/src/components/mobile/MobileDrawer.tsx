@@ -123,7 +123,7 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
 	};
 
 	// navigation items ordered by thumb zone (bottom = frequent, top = dangerous)
-	const bottomNavItems: NavItem[] = [
+	const publicNavItems: NavItem[] = [
 		{
 			label: t("nav.home"),
 			icon: <HomeIcon />,
@@ -136,7 +136,9 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
 			children: [
 				{ label: "Trending", icon: <TrendingUpIcon />, path: "/discover?feed=trending" },
 				{ label: "Latest", icon: <NewReleasesIcon />, path: "/discover?feed=latest" },
-				{ label: "For You", icon: <WhatshotIcon />, path: "/discover?feed=foryou" },
+				...(isLoggedIn
+					? [{ label: "For You", icon: <WhatshotIcon />, path: "/discover?feed=foryou" }]
+					: []),
 			],
 		},
 		{
@@ -144,6 +146,9 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
 			icon: <GroupsIcon />,
 			path: "/communities",
 		},
+	];
+
+	const authenticatedNavItems: NavItem[] = [
 		{
 			label: t("nav.messages"),
 			icon: <ChatBubbleOutlineIcon />,
@@ -317,6 +322,7 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
 			{/* drawer panel */}
 			<Box
 				ref={drawerRef}
+				data-testid="mobile-drawer"
 				sx={{
 					position: "fixed",
 					top: 0,
@@ -381,49 +387,52 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
 						{renderSection(middleNavItems)}
 
 						{/* frequent actions at bottom (home, explore, communities, messages, notifications) */}
-						{renderSection(bottomNavItems, false)}
+						{renderSection([...publicNavItems, ...authenticatedNavItems], false)}
 					</>
 				) : (
-					<Box sx={{ p: 3, textAlign: "center" }}>
-						<Typography variant="body1" sx={{ mb: 2 }}>
-							{t("auth.sign_in_prompt")}
-						</Typography>
-						<Box
-							component={RouterLink}
-							to="/login"
-							onClick={onClose}
-							sx={{
-								display: "block",
-								py: 1.5,
-								px: 3,
-								bgcolor: theme.palette.primary.main,
-								color: "white",
-								borderRadius: 9999,
-								textDecoration: "none",
-								fontWeight: 700,
-								mb: 1.5,
-							}}
-						>
-							{t("auth.login")}
+					<>
+						{renderSection(publicNavItems)}
+						<Box sx={{ p: 3, textAlign: "center" }}>
+							<Typography variant="body1" sx={{ mb: 2 }}>
+								{t("auth.sign_in_prompt")}
+							</Typography>
+							<Box
+								component={RouterLink}
+								to="/login"
+								onClick={onClose}
+								sx={{
+									display: "block",
+									py: 1.5,
+									px: 3,
+									bgcolor: theme.palette.primary.main,
+									color: "white",
+									borderRadius: 9999,
+									textDecoration: "none",
+									fontWeight: 700,
+									mb: 1.5,
+								}}
+							>
+								{t("auth.login")}
+							</Box>
+							<Box
+								component={RouterLink}
+								to="/register"
+								onClick={onClose}
+								sx={{
+									display: "block",
+									py: 1.5,
+									px: 3,
+									border: `1px solid ${theme.palette.divider}`,
+									color: theme.palette.text.primary,
+									borderRadius: 9999,
+									textDecoration: "none",
+									fontWeight: 700,
+								}}
+							>
+								{t("auth.join")}
+							</Box>
 						</Box>
-						<Box
-							component={RouterLink}
-							to="/register"
-							onClick={onClose}
-							sx={{
-								display: "block",
-								py: 1.5,
-								px: 3,
-								border: `1px solid ${theme.palette.divider}`,
-								color: theme.palette.text.primary,
-								borderRadius: 9999,
-								textDecoration: "none",
-								fontWeight: 700,
-							}}
-						>
-							{t("auth.join")}
-						</Box>
-					</Box>
+					</>
 				)}
 			</Box>
 		</>

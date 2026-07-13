@@ -173,8 +173,15 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({ onPostClick }) => {
 		});
 	}
 
+	const visibleNavigationItems = isLoggedIn
+		? navigationItems
+		: navigationItems.filter((item) =>
+			["/", "/discover", "/communities"].includes(item.path ?? ""),
+		);
+
 	return (
 		<Box
+			data-testid="left-sidebar"
 			sx={{
 				height: "100%",
 				display: "flex",
@@ -230,49 +237,49 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({ onPostClick }) => {
 
 			{/* Navigation Section */}
 			<Box sx={{ flex: 1 }}>
-				{isLoggedIn ? (
-					<List>
-						{navigationItems.map((item) => (
-							<ListItem key={item.label} disablePadding sx={{ mb: 1 }}>
-								<ListItemButton
-									component={item.path ? RouterLink : "button"}
-									to={item.path}
-									onClick={item.onClick}
+				<List>
+					{visibleNavigationItems.map((item) => (
+						<ListItem key={item.label} disablePadding sx={{ mb: 1 }}>
+							<ListItemButton
+								component={item.path ? RouterLink : "button"}
+								to={item.path}
+								onClick={item.onClick}
+								sx={{
+									borderRadius: 9999,
+									py: 1.5,
+									px: 2,
+									"&:hover": {
+										backgroundColor: alpha(theme.palette.text.primary, 0.1),
+									},
+								}}
+							>
+								<ListItemIcon
 									sx={{
-										borderRadius: 9999,
-										py: 1.5,
-										px: 2,
-										"&:hover": {
-											backgroundColor: alpha(theme.palette.text.primary, 0.1),
-										},
+										color: isRouteActive(item.path) ? theme.palette.primary.main : theme.palette.text.primary,
+										minWidth: 0,
+										mr: 2,
 									}}
 								>
-									<ListItemIcon
-										sx={{
-											color: isRouteActive(item.path) ? theme.palette.primary.main : theme.palette.text.primary,
-											minWidth: 0,
-											mr: 2,
-										}}
-									>
-										{item.icon}
-									</ListItemIcon>
-									<ListItemText
-										primary={item.label}
-										sx={{
-											display: { xs: "none", lg: "block" },
-											"& .MuiListItemText-primary": {
-												fontWeight: isRouteActive(item.path) ? 700 : 400,
-												fontSize: "1.25rem",
-												color: theme.palette.text.primary,
-											},
-										}}
-									/>
-								</ListItemButton>
-							</ListItem>
-						))}
+									{item.icon}
+								</ListItemIcon>
+								<ListItemText
+									primary={item.label}
+									sx={{
+										display: { xs: "none", lg: "block" },
+										"& .MuiListItemText-primary": {
+											fontWeight: isRouteActive(item.path) ? 700 : 400,
+											fontSize: "1.25rem",
+											color: theme.palette.text.primary,
+										},
+									}}
+								/>
+							</ListItemButton>
+						</ListItem>
+					))}
 
-						{/* Post Button */}
+					{isLoggedIn && (
 						<ListItem sx={{ px: 0, mt: 2 }}>
+							{/* Post Button */}
 							<Button
 								onClick={onPostClick}
 								variant="contained"
@@ -309,8 +316,9 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({ onPostClick }) => {
 								<AddIcon />
 							</Button>
 						</ListItem>
-					</List>
-				) : (
+					)}
+				</List>
+				{!isLoggedIn && (
 					<Box
 						sx={{
 							p: 2.5,
