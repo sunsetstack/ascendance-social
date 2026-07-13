@@ -19,7 +19,7 @@ export class GetUserByPublicIdQueryHandler implements IQueryHandler<
 
   async execute(query: GetUserByPublicIdQuery): Promise<PublicUserDTO> {
     const user = await this.userReadRepository.findByPublicId(query.publicId);
-    if (!user) {
+    if (!user || user.isBanned) {
       throw Errors.notFound("User");
     }
 

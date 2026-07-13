@@ -1,112 +1,103 @@
 import { expect } from "chai";
+import chaiAsPromised from "chai-as-promised";
+import * as chai from "chai";
 import sinon from "sinon";
-import { DeleteUserCommandHandler } from "@/application/commands/users/deleteUser/deleteUser.handler";
-import { asUserPublicId } from "@/types/branded";
-import { DeleteUserCommand } from "@/application/commands/users/deleteUser/deleteUser.command";
 import { Types } from "mongoose";
+import { DeleteUserCommand } from "@/application/commands/users/deleteUser/deleteUser.command";
+import { DeleteUserCommandHandler } from "@/application/commands/users/deleteUser/deleteUser.handler";
+import { UserDeletedEvent } from "@/application/events/user/user-interaction.event";
+import { asUserPublicId } from "@/types/branded";
+
+chai.use(chaiAsPromised);
+
+const USER_PUBLIC_ID = asUserPublicId(
+  "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+);
 
 describe("DeleteUserCommandHandler", () => {
-	let handler: DeleteUserCommandHandler;
-	let mocks: any = {};
+  let mocks: any;
+  let handler: DeleteUserCommandHandler;
+  let user: any;
 
-	beforeEach(() => {
-		mocks.userReadRepository = {
-			findUsersFollowing: sinon.stub().resolves([]),
-			findByPublicId: sinon.stub(),
-		};
-		mocks.userWriteRepository = {
-			updateFollowerCount: sinon.stub().resolves(),
-			updateFollowingCount: sinon.stub().resolves(),
-			delete: sinon.stub().resolves(),
-		};
-		mocks.imageRepository = { deleteMany: sinon.stub().resolves() };
-		mocks.postWriteRepository = { deleteManyByUserId: sinon.stub().resolves() };
-		mocks.postLikeRepository = { removeLikesByUser: sinon.stub().resolves() };
-		mocks.commentRepository = { deleteCommentsByUserId: sinon.stub().resolves() };
-		mocks.followRepository = {
-			getFollowingObjectIds: sinon.stub().resolves([]),
-			getFollowerObjectIds: sinon.stub().resolves([]),
-			deleteAllFollowsByUserId: sinon.stub().resolves(),
-		};
-		mocks.favoriteRepository = { deleteManyByUserId: sinon.stub().resolves() };
-		mocks.notificationRepository = {
-			deleteManyByUserId: sinon.stub().resolves(),
-			deleteManyByActorId: sinon.stub().resolves(),
-		};
-		mocks.userActionRepository = { deleteManyByUserId: sinon.stub().resolves() };
-		mocks.userPreferenceRepository = { deleteManyByUserId: sinon.stub().resolves() };
-		mocks.conversationRepository = {
-			findByParticipant: sinon.stub().resolves([]),
-			delete: sinon.stub().resolves(),
-			removeParticipant: sinon.stub().resolves(),
-		};
-		mocks.messageRepository = {
-			deleteManyBySender: sinon.stub().resolves(),
-			removeUserFromReadBy: sinon.stub().resolves(),
-		};
-		mocks.postViewRepository = { deleteManyByUserId: sinon.stub().resolves() };
-		mocks.communityRepository = { decrementMemberCountsByIds: sinon.stub().resolves() };
-		mocks.communityMemberRepository = { deleteManyByUserId: sinon.stub().resolves() };
-		mocks.imageStorageService = { deleteMany: sinon.stub().resolves({ result: "ok" }) };
-		mocks.unitOfWork = {
-			executeInTransaction: sinon.stub().callsFake(async (fn) => await fn("session")),
-		};
-		mocks.eventBus = { queueTransactional: sinon.stub().resolves() };
-		mocks.userModel = { findOne: sinon.stub() };
+  beforeEach(() => {
+    const userId = new Types.ObjectId();
+    user = {
+      _id: userId,
+      id: userId.toHexString(),
+      publicId: USER_PUBLIC_ID,
+      handle: "departing",
+      username: "Departing User",
+      email: "departing@example.test",
+      avatar: "",
+      cover: "",
+    };
+    mocks = {
+      userRead: { findByPublicId: sinon.stub().resolves(user) },
+      unitOfWork: {
+        executeInTransaction: sinon.stub().callsFake(async (work) => work({})),
+      },
+      eventBus: { queueTransactional: sinon.stub().resolves() },
+      lifecycle: {
+        purgeUser: sinon.stub().resolves({
+          deletedPosts: [],
+          imageAssets: [],
+          followerPublicIds: [],
+          affectedRelationshipPublicIds: [],
+          reconciledPostLikes: [],
+          tombstonedCommentCount: 2,
+          preservedConversationCount: 1,
+        }),
+      },
+      audit: { capture: sinon.stub().resolves("snapshot-id") },
+      userModel: { findOne: sinon.stub() },
+      authSession: { revokeAllSessionsForUser: sinon.stub().resolves() },
+    };
+    handler = new DeleteUserCommandHandler(
+      mocks.userRead,
+      mocks.unitOfWork,
+      mocks.eventBus,
+      mocks.lifecycle,
+      mocks.audit,
+      mocks.userModel,
+      mocks.authSession,
+    );
+  });
 
-		handler = new DeleteUserCommandHandler(
-			mocks.userReadRepository,
-			mocks.userWriteRepository,
-			mocks.imageRepository,
-			mocks.postWriteRepository,
-			mocks.postLikeRepository,
-			mocks.commentRepository,
-			mocks.followRepository,
-			mocks.favoriteRepository,
-			mocks.notificationRepository,
-			mocks.userActionRepository,
-			mocks.userPreferenceRepository,
-			mocks.conversationRepository,
-			mocks.messageRepository,
-			mocks.postViewRepository,
-			mocks.communityRepository,
-			mocks.communityMemberRepository,
-			mocks.imageStorageService,
-			mocks.unitOfWork,
-			mocks.eventBus,
-			mocks.userModel
-		);
-	});
+  afterEach(() => sinon.restore());
 
-	it("should remove user from joined communities and update member counts", async () => {
-		const userId = new Types.ObjectId();
-		const communityId1 = new Types.ObjectId();
-		const communityId2 = new Types.ObjectId();
-		const userPublicId = asUserPublicId("user-123");
+  it("captures evidence, revokes sessions, purges, and queues deletion", async () => {
+    await handler.execute(
+      new DeleteUserCommand(
+        USER_PUBLIC_ID,
+        undefined,
+        true,
+        "No longer wants the account",
+      ),
+    );
 
-		const mockUser = {
-			id: userId.toString(),
-			_id: userId,
-			publicId: userPublicId,
-			joinedCommunities: [
-				{ _id: communityId1, name: "Community 1", slug: "c1" },
-				{ _id: communityId2, name: "Community 2", slug: "c2" },
-			],
-		};
+    expect(mocks.audit.capture.calledOnce).to.equal(true);
+    expect(mocks.authSession.revokeAllSessionsForUser.calledWith(USER_PUBLIC_ID))
+      .to.equal(true);
+    expect(mocks.lifecycle.purgeUser.calledOnce).to.equal(true);
+    expect(mocks.eventBus.queueTransactional.calledOnce).to.equal(true);
+    expect(
+      mocks.eventBus.queueTransactional.firstCall.args[0],
+    ).to.be.instanceOf(UserDeletedEvent);
+    expect(mocks.audit.capture.calledBefore(mocks.lifecycle.purgeUser)).to.equal(
+      true,
+    );
+  });
 
-		mocks.userReadRepository.findByPublicId.resolves(mockUser);
-		
-		const command = new DeleteUserCommand(userPublicId, undefined, true);
-		await handler.execute(command);
+  it("does not revoke or destroy anything when evidence capture fails", async () => {
+    mocks.audit.capture.rejects(new Error("audit archive unavailable"));
 
-		// verify community member count updates
-		expect(mocks.communityRepository.decrementMemberCountsByIds.calledOnce).to.be.true;
-		expect(mocks.communityRepository.decrementMemberCountsByIds.firstCall.args[0]).to.deep.equal([
-			communityId1.toString(),
-			communityId2.toString(),
-		]);
-
-		// verify community membership deletion
-		expect(mocks.communityMemberRepository.deleteManyByUserId.calledWith(userId.toString())).to.be.true;
-	});
+    await expect(
+      handler.execute(
+        new DeleteUserCommand(USER_PUBLIC_ID, undefined, true, "requested"),
+      ),
+    ).to.be.rejectedWith("audit archive unavailable");
+    expect(mocks.authSession.revokeAllSessionsForUser.called).to.equal(false);
+    expect(mocks.unitOfWork.executeInTransaction.called).to.equal(false);
+    expect(mocks.lifecycle.purgeUser.called).to.equal(false);
+  });
 });

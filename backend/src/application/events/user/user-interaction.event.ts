@@ -24,7 +24,7 @@ export class UserAvatarChangedEvent implements IEvent {
   readonly timestamp: Date = new Date();
 
   constructor(
-    public readonly userPublicId: UserPublicId, // Use publicId, not ObjectId
+    public readonly userPublicId: UserPublicId,
     public readonly oldAvatarUrl?: string,
     public readonly newAvatarUrl?: string,
   ) {}
@@ -60,5 +60,22 @@ export class UserDeletedEvent implements IEvent {
     public readonly userPublicId: UserPublicId,
     public readonly userId: MongoId,
     public readonly followerPublicIds: UserPublicId[],
+    public readonly affectedRelationshipPublicIds: UserPublicId[] =
+      followerPublicIds,
+    public readonly deletedPostPublicIds: PostPublicId[] = [],
+  ) {}
+}
+
+export class UserBannedEvent implements IEvent {
+  readonly type = EventRegistry.domain.UserBanned;
+  readonly timestamp: Date = new Date();
+
+  constructor(
+    public readonly userPublicId: UserPublicId,
+    public readonly userId: MongoId,
+    public readonly followerPublicIds: UserPublicId[],
+    public readonly affectedRelationshipPublicIds: UserPublicId[] =
+      followerPublicIds,
+    public readonly deletedPostPublicIds: PostPublicId[] = [],
   ) {}
 }

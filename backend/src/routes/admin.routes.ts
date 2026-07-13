@@ -11,6 +11,7 @@ import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 import {
   adminFavoriteParamsSchema,
+  adminDeleteUserBodySchema,
   adminImagesQuerySchema,
   adminUsersQuerySchema,
   authActivityLogsQuerySchema,
@@ -65,7 +66,10 @@ export class AdminUserRoutes {
     //Delete a user by public ID
     this.router.delete(
       "/user/:publicId",
-      new ValidationMiddleware({ params: userPublicIdSchema }).validate(),
+      new ValidationMiddleware({
+        params: userPublicIdSchema,
+        body: adminDeleteUserBodySchema,
+      }).validate(),
       asyncHandler(this.adminUserController.deleteUser),
     );
 

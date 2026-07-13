@@ -4,14 +4,22 @@ import { UserCoverChangedEvent } from "./user-interaction.event";
 import { RedisService } from "@/services/redis.service";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 
 @injectable()
 export class UserCoverChangedHandler implements IEventHandler<UserCoverChangedEvent> {
   constructor(
     @inject(TOKENS.Services.Redis) private readonly redis: RedisService,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
   ) {}
 
   async handle(event: UserCoverChangedEvent): Promise<void> {
+    const user = await this.userReadRepository.findByPublicId(
+      event.userPublicId,
+    );
+    if (!user || user.isBanned) return;
+
     logger.info(
       `User ${event.userPublicId} changed cover from "${event.oldCoverUrl || "none"}" to "${event.newCoverUrl}"`,
     );

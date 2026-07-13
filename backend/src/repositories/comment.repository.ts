@@ -4,6 +4,10 @@ import { IComment, PopulatedCommentLean, TransformedComment } from "@/types";
 import { inject, injectable } from "tsyringe";
 import { handleMongoError } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
+import {
+  BANNED_ACCOUNT_COMMENT,
+  DELETED_ACCOUNT_COMMENT,
+} from "@/application/common/policies/account-lifecycle.policy";
 
 @injectable()
 export class CommentRepository extends BaseRepository<IComment> {
@@ -20,12 +24,17 @@ export class CommentRepository extends BaseRepository<IComment> {
    */
   private transformComment(comment: PopulatedCommentLean): TransformedComment {
     if (comment.isDeleted) {
+      const tombstone =
+        comment.deletionReason === "account_deleted"
+          ? DELETED_ACCOUNT_COMMENT
+          : comment.deletionReason === "account_banned"
+            ? BANNED_ACCOUNT_COMMENT
+            : comment.deletedBy === "admin"
+              ? "[removed by moderator]"
+              : "[deleted by user]";
       return {
         id: comment._id.toString(),
-        content:
-          comment.deletedBy === "admin"
-            ? "[removed by moderator]"
-            : "[deleted by user]",
+        content: tombstone,
         postPublicId: comment.postId?.publicId ?? "",
         parentId: comment.parentId ? comment.parentId.toString() : null,
         replyCount: comment.replyCount,
@@ -295,6 +304,7 @@ export class CommentRepository extends BaseRepository<IComment> {
             $set: {
               isDeleted: true,
               deletedBy: deletedBy,
+              deletionReason: "comment_removed",
               userId: null,
               content:
                 deletedBy === "admin"
@@ -318,9 +328,11 @@ export class CommentRepository extends BaseRepository<IComment> {
    */
   async hasReplies(commentId: string): Promise<boolean> {
     try {
-      const count = await this.model
-        .countDocuments({ parentId: commentId })
-        .exec();
+      const session = this.getSession();
+      const count = await this.model.countDocuments(
+        { parentId: commentId },
+        { session },
+      );
       return count > 0;
     } catch (error) {
       handleMongoError(error);

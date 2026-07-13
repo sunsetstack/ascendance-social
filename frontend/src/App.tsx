@@ -69,6 +69,7 @@ function App() {
 									}
 								>
 									<Routes>
+										<Route path="/verify-email" element={<VerifyEmail />} />
 										<Route path="/" element={<Layout />}>
 											<Route index element={<Home />} />
 											<Route path="discover" element={<Discovery />} />
@@ -78,7 +79,6 @@ function App() {
 											<Route path="login" element={<Login />} />
 											<Route path="forgot-password" element={<ForgotPassword />} />
 											<Route path="reset-password" element={<ResetPassword />} />
-											<Route path="verify-email" element={<VerifyEmail />} />
 											<Route path="register" element={<Register />} />
 											<Route path="profile/:id" element={<Profile />} />
 											<Route path="profile/:id/follow" element={<FollowList />} />

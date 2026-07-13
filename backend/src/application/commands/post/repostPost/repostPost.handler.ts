@@ -7,6 +7,7 @@ import { RepostPostCommand } from "./repostPost.command";
 import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRepository";
 import type { IPostWriteRepository } from "@/repositories/interfaces/IPostWriteRepository";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
+import type { IUserWriteRepository } from "@/repositories/interfaces/IUserWriteRepository";
 import { NotificationRequestedEvent } from "@/application/events/notification/notification.event";
 import { DTOService } from "@/services/dto.service";
 import { UnitOfWork } from "@/database/UnitOfWork";
@@ -43,6 +44,8 @@ export class RepostPostCommandHandler implements ICommandHandler<
     private readonly postWriteRepository: IPostWriteRepository,
     @inject(TOKENS.Repositories.UserRead)
     private readonly userReadRepository: IUserReadRepository,
+    @inject(TOKENS.Repositories.UserWrite)
+    private readonly userWriteRepository: IUserWriteRepository,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
   ) {}
@@ -160,6 +163,9 @@ export class RepostPostCommandHandler implements ICommandHandler<
           asMongoId(targetPost._id!.toString()),
           1,
         );
+        await this.userWriteRepository.update(asMongoId(user.id), {
+          $inc: { postCount: 1 },
+        });
 
         const targetOwner = this.resolvePostOwnerPublicId(targetPost);
         if (targetOwner && targetOwner !== command.userPublicId) {

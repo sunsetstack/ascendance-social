@@ -363,6 +363,18 @@ export class RedisService {
     return this.feedModule.removeFromFeedsBatch(userIds, postId, feedType);
   }
 
+  async removePostsFromFeedsBatch(
+    userIds: string[],
+    postIds: string[],
+    feedType: RedisFeedType = "for_you",
+  ): Promise<void> {
+    return this.feedModule.removePostsFromFeedsBatch(
+      userIds,
+      postIds,
+      feedType,
+    );
+  }
+
   async invalidateFeed(
     userId: string,
     feedType: RedisFeedType = "for_you",

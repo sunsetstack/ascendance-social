@@ -6,14 +6,22 @@ import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
+import type { IUserReadRepository } from "@/repositories/interfaces";
 
 @injectable()
 export class UserAvatarChangedHandler implements IEventHandler<UserAvatarChangedEvent> {
   constructor(
     @inject(TOKENS.Services.Redis) private readonly redis: RedisService,
+    @inject(TOKENS.Repositories.UserRead)
+    private readonly userReadRepository: IUserReadRepository,
   ) {}
 
   async handle(event: UserAvatarChangedEvent): Promise<void> {
+    const user = await this.userReadRepository.findByPublicId(
+      event.userPublicId,
+    );
+    if (!user || user.isBanned) return;
+
     logger.info(
       `User ${event.userPublicId} changed avatar from "${event.oldAvatarUrl || "none"}" to "${event.newAvatarUrl}"`,
     );

@@ -46,6 +46,10 @@ export abstract class AuthStrategy {
   abstract authenticate(req: Request): Promise<DecodedUser>;
 }
 
+export interface RequiredAuthOptions {
+  allowUnverified?: boolean;
+}
+
 export class BearerTokenStrategy extends AuthStrategy {
   constructor(
     private secret: string,
@@ -156,7 +160,10 @@ export class AuthenticationMiddleware {
     private readonly metricsService: MetricsService | null,
   ) {}
 
-  private async enforceActiveUser(decodedUser: DecodedUser): Promise<void> {
+  private async enforceActiveUser(
+    decodedUser: DecodedUser,
+    options: RequiredAuthOptions = {},
+  ): Promise<void> {
     const user = await this.userReadRepository.findByPublicId(
       decodedUser.publicId,
     );
@@ -176,7 +183,7 @@ export class AuthenticationMiddleware {
       });
     }
 
-    if (user.isEmailVerified === false) {
+    if (!options.allowUnverified && user.isEmailVerified === false) {
       throw Errors.forbidden("Email verification required", {
         context: {
           userId: decodedUser.publicId,
@@ -187,7 +194,7 @@ export class AuthenticationMiddleware {
     }
 
     decodedUser.isAdmin = user.isAdmin;
-    decodedUser.isEmailVerified = true;
+    decodedUser.isEmailVerified = user.isEmailVerified !== false;
   }
 
   private getOptionalAuthFailureReason(error: unknown): string {
@@ -230,11 +237,11 @@ export class AuthenticationMiddleware {
     }
   }
 
-  handle(): RequestHandler {
+  handle(options: RequiredAuthOptions = {}): RequestHandler {
     return async (req: Request, _res: Response, next: NextFunction) => {
       try {
         req.decodedUser = await this.strategy.authenticate(req);
-        await this.enforceActiveUser(req.decodedUser);
+        await this.enforceActiveUser(req.decodedUser, options);
         req.authSource = "access_token";
         req.authLogMetadata = {
           ...req.authLogMetadata,
@@ -322,8 +329,8 @@ export class AuthMiddlewareService {
     );
   }
 
-  required(): RequestHandler {
-    return this.authenticationMiddleware.handle();
+  required(options: RequiredAuthOptions = {}): RequestHandler {
+    return this.authenticationMiddleware.handle(options);
   }
 
   optional(): RequestHandler {

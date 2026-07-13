@@ -42,10 +42,10 @@ const UploadForm: React.FC<UploadFormProps> = ({ onClose }) => {
             borderBottom: `1px solid ${theme.palette.divider}`,
           }}
         >
-          <Typography variant="h6" fontWeight={600}>
+          <Typography id="create-post-modal" variant="h6" fontWeight={600}>
             {t("nav.create_post")}
           </Typography>
-          <IconButton onClick={onClose} size="small">
+          <IconButton aria-label="Close create post" onClick={onClose} size="small">
             <CloseIcon />
           </IconButton>
         </Box>

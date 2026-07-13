@@ -7,5 +7,5 @@
 		"noEmit": true,
 		"types": ["cypress", "node"]
 	},
-	"include": ["**/*.ts", "../cypress.config.ts"]
+	"include": ["**/*.ts"]
 }

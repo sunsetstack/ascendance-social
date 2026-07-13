@@ -1,19 +1,18 @@
-import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
-import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
-import { UnrepostPostCommand } from "./unrepostPost.command";
-import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRepository";
-import type { IPostWriteRepository } from "@/repositories/interfaces/IPostWriteRepository";
-import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
-import { CommentRepository } from "@/repositories/comment.repository";
-import { UnitOfWork } from "@/database/UnitOfWork";
+import { inject, injectable } from "tsyringe";
 import { EventBus } from "@/application/common/buses/event.bus";
+import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { PostDeletedEvent } from "@/application/events/post/post.event";
+import { UnitOfWork } from "@/database/UnitOfWork";
+import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRepository";
+import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
+import { ContentCleanupService } from "@/services/lifecycle/content-cleanup.service";
+import { IUser } from "@/types";
+import { asPostPublicId, asUserPublicId } from "@/types/branded";
+import { TOKENS } from "@/types/tokens";
 import { Errors, createError } from "@/utils/errors";
 import { isValidPublicId } from "@/utils/sanitizers";
-import { IUser } from "@/types";
-import { TOKENS } from "@/types/tokens";
-import { asMongoId } from "@/types/branded";
+import { UnrepostPostCommand } from "./unrepostPost.command";
 
 export interface UnrepostResult {
   message: string;
@@ -29,20 +28,18 @@ export class UnrepostPostCommandHandler implements ICommandHandler<
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.Repositories.PostRead)
     private readonly postReadRepository: IPostReadRepository,
-    @inject(TOKENS.Repositories.PostWrite)
-    private readonly postWriteRepository: IPostWriteRepository,
     @inject(TOKENS.Repositories.UserRead)
     private readonly userReadRepository: IUserReadRepository,
-    @inject(TOKENS.Repositories.Comment)
-    private readonly commentRepository: CommentRepository,
-    @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
+    @inject(TOKENS.Services.ContentCleanup)
+    private readonly contentCleanupService: ContentCleanupService,
+    @inject(TOKENS.CQRS.Handlers.EventBus)
+    private readonly eventBus: EventBus,
   ) {}
 
   async execute(command: UnrepostPostCommand): Promise<UnrepostResult> {
     if (!isValidPublicId(command.userPublicId)) {
       throw Errors.validation("Invalid userPublicId format");
     }
-
     const user = await this.userReadRepository.findByPublicId(
       command.userPublicId,
     );
@@ -52,7 +49,6 @@ export class UnrepostPostCommandHandler implements ICommandHandler<
         `User with publicId ${command.userPublicId} not found`,
       );
     }
-
     const targetPost = await this.postReadRepository.findByPublicId(
       command.targetPostPublicId,
     );
@@ -62,33 +58,30 @@ export class UnrepostPostCommandHandler implements ICommandHandler<
         `Post ${command.targetPostPublicId} not found`,
       );
     }
-
-    // Find the user's repost of the target post
-    const userId = (user as IUser)._id as mongoose.Types.ObjectId;
     const repost = await this.postReadRepository.findOneByFilter({
-      user: userId,
+      user: (user as IUser)._id as mongoose.Types.ObjectId,
       repostOf: targetPost._id,
       type: "repost",
     });
-
     if (!repost) {
       throw createError("NotFoundError", "You have not reposted this post");
     }
 
     await this.unitOfWork.executeInTransaction(async () => {
-      const repostInternalId = repost._id!.toString();
-      await this.postWriteRepository.delete(asMongoId(repostInternalId));
-      await this.commentRepository.deleteCommentsByPostId(repostInternalId);
-      await this.postWriteRepository.updateRepostCount(
-        asMongoId(targetPost._id!.toString()),
-        -1,
-      );
+      const cleanup = await this.contentCleanupService.deletePostGraph([
+        new mongoose.Types.ObjectId(repost._id!.toString()),
+      ]);
+      for (const deletedPost of cleanup.posts) {
+        await this.eventBus.queueTransactional(
+          new PostDeletedEvent(
+            asPostPublicId(deletedPost.publicId),
+            asUserPublicId(
+              deletedPost.authorPublicId || command.userPublicId,
+            ),
+          ),
+        );
+      }
     });
-
-    // Fire event for cache invalidation after transaction commits
-    await this.eventBus.publish(
-      new PostDeletedEvent(repost.publicId, command.userPublicId),
-    );
 
     return { message: "Repost removed successfully" };
   }

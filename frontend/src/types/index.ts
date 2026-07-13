@@ -269,6 +269,8 @@ export interface MessageDTO {
     handle: string;
     username: string;
     avatar: string;
+    isUnavailable?: boolean;
+    unavailableReason?: "banned" | "deleted" | "unknown";
   };
   attachments: MessageAttachment[];
   status: "sent" | "delivered" | "read";
@@ -281,6 +283,8 @@ export interface ConversationParticipantDTO {
   handle: string;
   username: string;
   avatar: string;
+  isUnavailable?: boolean;
+  unavailableReason?: "banned" | "deleted" | "unknown";
 }
 
 export interface ConversationSummaryDTO {
@@ -290,6 +294,8 @@ export interface ConversationSummaryDTO {
   lastMessageAt?: string | null;
   unreadCount: number;
   isGroup: boolean;
+  isClosed?: boolean;
+  closedReason?: "banned" | "deleted" | "unknown";
   title?: string;
 }
 

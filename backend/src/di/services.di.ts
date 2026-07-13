@@ -21,6 +21,7 @@ import { LikeUpdateMessageHandler } from "@/application/handlers/realtime/LikeUp
 import { AvatarUpdateMessageHandler } from "@/application/handlers/realtime/AvatarUpdateMessageHandler";
 import { MessageSentHandler as RealtimeMessageSentHandler } from "@/application/handlers/realtime/MessageSentHandler";
 import { MessageStatusUpdatedHandler as RealtimeMessageStatusUpdatedHandler } from "@/application/handlers/realtime/MessageStatusUpdatedHandler";
+import { NotificationMessageHandler } from "@/application/handlers/realtime/NotificationMessageHandler";
 import { logger } from "@/utils/winston";
 import { MetricsService } from "../metrics/metrics.service";
 import { RetryService } from "@/services/retry.service";
@@ -38,6 +39,9 @@ import { FeedMetaService } from "@/services/feed/feed-meta.service";
 import { FeedFanoutService } from "@/services/feed/feed-fanout.service";
 import { AuthMiddlewareService } from "@/middleware/authentication.middleware";
 import { TOKENS } from "@/types/tokens";
+import { AccountAuditSnapshotService } from "@/services/lifecycle/account-audit-snapshot.service";
+import { AccountLifecycleService } from "@/services/lifecycle/account-lifecycle.service";
+import { ContentCleanupService } from "@/services/lifecycle/content-cleanup.service";
 
 export function registerServices(): void {
   const isCloudinaryConfigured =
@@ -55,6 +59,18 @@ export function registerServices(): void {
   }
 
   container.registerSingleton(TOKENS.Services.Metrics, MetricsService);
+  container.registerSingleton(
+    TOKENS.Services.ContentCleanup,
+    ContentCleanupService,
+  );
+  container.registerSingleton(
+    TOKENS.Services.AccountLifecycle,
+    AccountLifecycleService,
+  );
+  container.registerSingleton(
+    TOKENS.Services.AccountAuditSnapshot,
+    AccountAuditSnapshotService,
+  );
   container.registerSingleton(TOKENS.Services.Telemetry, TelemetryService);
   container.registerSingleton(TOKENS.Services.Auth, AuthService);
   container.registerSingleton(
@@ -109,6 +125,7 @@ export function registerServices(): void {
     container.resolve(AvatarUpdateMessageHandler),
     container.resolve(RealtimeMessageSentHandler),
     container.resolve(RealtimeMessageStatusUpdatedHandler),
+    container.resolve(NotificationMessageHandler),
   ];
   container.register(TOKENS.Services.Realtime, { useValue: realtimeHandlers });
 

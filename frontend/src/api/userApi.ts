@@ -42,6 +42,7 @@ export const registerRequest = async (credentials: {
   username: string;
   email: string;
   password: string;
+  confirmPassword: string;
 }): Promise<RegisterResponse> => {
   const response = await axiosClient.post("/api/users/register", credentials);
   return response.data;
@@ -206,8 +207,11 @@ export const fetchAccountInfo = async (): Promise<AccountInfoDTO> => {
   return data;
 };
 
-export const deleteAccountRequest = async (password: string): Promise<void> => {
-  await axiosClient.delete("/api/users/me", { data: { password } });
+export const deleteAccountRequest = async (payload: {
+  password: string;
+  reason: string;
+}): Promise<void> => {
+  await axiosClient.delete("/api/users/me", { data: payload });
 };
 
 export const fetchWhoToFollow = async (

@@ -51,6 +51,9 @@ export class SetFollowStateCommandHandler implements ICommandHandler<
     if (!follower || !followee) {
       throw Errors.notFound("User");
     }
+    if (shouldFollow && followee.isBanned) {
+      throw Errors.notFound("User");
+    }
 
     const followerId = asMongoId(follower._id.toString());
     const followeeId = asMongoId(followee._id.toString());

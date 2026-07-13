@@ -14,6 +14,7 @@ describe("post feed materialization handlers", () => {
   it("materializes uploaded posts into author, follower, and tag-interest feeds", async () => {
     const redis = buildRedisStub();
     const userRepository = {
+      findByPublicId: sinon.stub().resolves({ isBanned: false }),
       findUsersFollowing: sinon.stub().resolves([
         { publicId: "follower-1" },
         { publicId: "shared-user" },
@@ -28,9 +29,13 @@ describe("post feed materialization handlers", () => {
     const userActivityService = {
       trackPostCreated: sinon.stub().resolves(undefined),
     };
+    const postRepository = {
+      findByPublicId: sinon.stub().resolves({ publicId: "post-1" }),
+    };
     const handler = new PostUploadHandler(
       redis as any,
       userRepository as any,
+      postRepository as any,
       userPreferenceRepository as any,
       userActivityService as any,
     );
@@ -73,6 +78,37 @@ describe("post feed materialization handlers", () => {
       "post-1",
       "for_you",
     ]);
+  });
+
+  it("does not rematerialize a post after its account cleanup removed it", async () => {
+    const redis = buildRedisStub();
+    const userRepository = {
+      findByPublicId: sinon.stub().resolves({ isBanned: false }),
+      findUsersFollowing: sinon.stub(),
+    };
+    const postRepository = { findByPublicId: sinon.stub().resolves(null) };
+    const userPreferenceRepository = {
+      getUsersWithTagPreferences: sinon.stub(),
+    };
+    const userActivityService = { trackPostCreated: sinon.stub() };
+    const handler = new PostUploadHandler(
+      redis as any,
+      userRepository as any,
+      postRepository as any,
+      userPreferenceRepository as any,
+      userActivityService as any,
+    );
+
+    await handler.handle(
+      new PostUploadedEvent(
+        "removed-post" as PostPublicId,
+        "departed-user" as UserPublicId,
+        [],
+      ),
+    );
+
+    expect(redis.addToFeedsBatch.called).to.equal(false);
+    expect(userActivityService.trackPostCreated.called).to.equal(false);
   });
 });
 

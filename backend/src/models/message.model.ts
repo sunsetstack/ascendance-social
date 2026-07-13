@@ -19,7 +19,20 @@ const messageSchema = new Schema<IMessage>(
     sender: {
       type: Schema.Types.ObjectId,
       ref: "User",
-      required: true,
+      required: false,
+      default: null,
+      index: true,
+    },
+    senderSnapshot: {
+      publicId: { type: String },
+      handle: { type: String, default: "" },
+      username: { type: String },
+      avatar: { type: String, default: "" },
+      reason: {
+        type: String,
+        enum: ["banned", "deleted", "unknown"],
+      },
+      unavailableAt: { type: Date },
     },
     body: {
       type: String,
@@ -51,6 +64,7 @@ const messageSchema = new Schema<IMessage>(
 );
 
 messageSchema.index({ conversation: 1, createdAt: -1, _id: -1 });
+messageSchema.index({ "senderSnapshot.publicId": 1 }, { sparse: true });
 
 messageSchema.set("toJSON", {
   transform: (_doc, ret: any) => {

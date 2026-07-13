@@ -2,6 +2,11 @@ import { UserPublicId, PostPublicId, MongoId } from "@/types/branded";
 import mongoose, { Document } from "mongoose";
 import { Types } from "mongoose";
 
+export type CommentDeletionReason =
+  | "comment_removed"
+  | "account_deleted"
+  | "account_banned";
+
 export interface IComment extends Document {
   _id: mongoose.Types.ObjectId;
   content: string;
@@ -16,6 +21,8 @@ export interface IComment extends Document {
   isEdited: boolean;
   isDeleted: boolean;
   deletedBy: "user" | "admin" | null;
+  deletionReason?: CommentDeletionReason | null;
+  departedUserKey?: string;
 }
 
 export interface CommentCreateDto {
@@ -73,6 +80,7 @@ export interface TransformedComment {
   isEdited: boolean;
   isDeleted: boolean;
   deletedBy: "user" | "admin" | null;
+  deletionReason?: CommentDeletionReason | null;
 }
 
 // interface for populated comment from lean() query
@@ -95,4 +103,5 @@ export interface PopulatedCommentLean {
   isEdited: boolean;
   isDeleted: boolean;
   deletedBy: "user" | "admin" | null;
+  deletionReason?: CommentDeletionReason | null;
 }

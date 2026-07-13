@@ -8,5 +8,7 @@ export class DeleteUserCommand implements ICommand {
     public readonly userPublicId: UserPublicId,
     public readonly password?: string,
     public readonly skipPasswordVerification: boolean = false,
+    public readonly reason: string = "self_requested_account_deletion",
+    public readonly requestedByPublicId?: UserPublicId,
   ) {}
 }

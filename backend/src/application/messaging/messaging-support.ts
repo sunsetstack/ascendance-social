@@ -6,10 +6,10 @@ import type { IUserReadRepository } from "@/repositories/interfaces";
 import { DTOService } from "@/services/dto.service";
 import type {
   ConversationSummaryDTO,
+  ConversationParticipantDTO,
   HydratedConversation,
   IMessage,
   MaybePopulatedParticipant,
-  UserPublicIdLean,
 } from "@/types";
 import {
   ConversationPublicId,
@@ -105,7 +105,9 @@ export function mapConversationSummary(
   userInternalId: string,
 ): ConversationSummaryDTO {
   const unreadCounts = extractUnreadCounts(conversation.unreadCounts);
-  const participants = Array.isArray(conversation.participants)
+  const participants: ConversationParticipantDTO[] = Array.isArray(
+    conversation.participants,
+  )
     ? conversation.participants
         .map((participant) => {
           if (participant instanceof mongoose.Types.ObjectId) {
@@ -124,6 +126,17 @@ export function mapConversationSummary(
         })
         .filter((participant) => Boolean(participant.publicId))
     : [];
+
+  for (const departed of conversation.departedParticipants ?? []) {
+    participants.push({
+      publicId: departed.publicId,
+      handle: departed.handle,
+      username: departed.username,
+      avatar: departed.avatar,
+      isUnavailable: true,
+      unavailableReason: departed.reason,
+    });
+  }
 
   const hasLastMessage =
     conversation.lastMessage &&
@@ -145,6 +158,8 @@ export function mapConversationSummary(
       : null,
     unreadCount: unreadCounts[userInternalId] || 0,
     isGroup: Boolean(conversation.isGroup),
+    isClosed: Boolean(conversation.isClosed),
+    closedReason: conversation.closedReason,
     title: conversation.title,
   };
 }
@@ -156,6 +171,10 @@ export function assertMessageOwnedByUser(
   failureMessage: string,
 ): void {
   const senderRef: unknown = message.sender;
+
+  if (!senderRef) {
+    throw Errors.forbidden(failureMessage);
+  }
 
   if (isPopulatedSender(senderRef)) {
     if (
@@ -172,7 +191,7 @@ export function assertMessageOwnedByUser(
     return;
   }
 
-  if (message.sender.toString() !== userInternalId) {
+  if (senderRef.toString() !== userInternalId) {
     throw Errors.forbidden(failureMessage);
   }
 }

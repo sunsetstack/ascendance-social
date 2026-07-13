@@ -10,6 +10,7 @@ import {
   SocketServerEventName,
 } from "@/application/common/events/event-registry";
 import { MetricsService } from "@/metrics/metrics.service";
+import type { NotificationPlain } from "@/types";
 
 export interface FeedUpdateMessage {
   type: RealtimeMessageType;
@@ -32,6 +33,7 @@ export interface FeedUpdateMessage {
   recipients?: string[];
   messageId?: string;
   status?: "delivered" | "read";
+  notification?: NotificationPlain;
 }
 
 @injectable()
@@ -75,11 +77,12 @@ export class RealTimeFeedService {
    */
   private async initializePubSubListener(): Promise<void> {
     try {
-      // Subscribe to feed_updates and messaging_updates channels for real time feed updates and message delivery
+      // Subscribe to every cross-process realtime channel owned by the API.
       const subscribed = await this.redisService.subscribe(
         [
           EventRegistry.redisChannels.feedUpdates,
           EventRegistry.redisChannels.messagingUpdates,
+          EventRegistry.redisChannels.notificationUpdates,
         ],
         (channel: string, message: unknown) => {
           // Handle case where message might be a string that needs parsing

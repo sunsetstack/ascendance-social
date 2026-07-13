@@ -4,7 +4,6 @@ import { DeleteCommentCommand } from "./deleteComment.command";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { UserInteractedWithPostEvent } from "@/application/events/user/user-interaction.event";
 import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRepository";
-import type { IPostWriteRepository } from "@/repositories/interfaces/IPostWriteRepository";
 import { CommentRepository } from "@/repositories/comment.repository";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
 import { Errors } from "@/utils/errors";
@@ -13,6 +12,8 @@ import { logger } from "@/utils/winston";
 import { extractTagNames, extractPostOwnerInfo } from "@/utils/post-helpers";
 import { TOKENS } from "@/types/tokens";
 import { asMongoId, asUserPublicId, asPostPublicId } from "@/types/branded";
+import { ContentCleanupService } from "@/services/lifecycle/content-cleanup.service";
+import { Types } from "mongoose";
 
 @injectable()
 export class DeleteCommentCommandHandler implements ICommandHandler<
@@ -24,12 +25,12 @@ export class DeleteCommentCommandHandler implements ICommandHandler<
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.Repositories.PostRead)
     private readonly postReadRepository: IPostReadRepository,
-    @inject(TOKENS.Repositories.PostWrite)
-    private readonly postWriteRepository: IPostWriteRepository,
     @inject(TOKENS.Repositories.Comment)
     private readonly commentRepository: CommentRepository,
     @inject(TOKENS.Repositories.UserRead)
     private readonly userReadRepository: IUserReadRepository,
+    @inject(TOKENS.Services.ContentCleanup)
+    private readonly contentCleanupService: ContentCleanupService,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
   ) {}
 
@@ -97,12 +98,12 @@ export class DeleteCommentCommandHandler implements ICommandHandler<
     }
     const postPublicId = post.publicId ?? comment.postId.toString();
 
-    // Check if the comment has any replies
-    const hasReplies = await this.commentRepository.hasReplies(
-      asMongoId(command.commentId),
-    );
-
     await this.unitOfWork.executeInTransaction(async () => {
+      const commentId = new Types.ObjectId(command.commentId);
+      const hasReplies = await this.commentRepository.hasReplies(
+        asMongoId(command.commentId),
+      );
+      await this.contentCleanupService.removeCommentInteractions([commentId]);
       if (hasReplies) {
         // Soft delete: keep the comment but mark as deleted and clear user association
         await this.commentRepository.softDeleteComment(
@@ -118,18 +119,15 @@ export class DeleteCommentCommandHandler implements ICommandHandler<
           asMongoId(command.commentId),
         );
 
-        // Decrement comment count on post only for hard deletes
-        await this.postWriteRepository.updateCommentCount(
-          asMongoId(comment.postId.toString()),
-          -1,
-        );
+        await this.contentCleanupService.recomputePostCommentCounts([
+          new Types.ObjectId(comment.postId.toString()),
+        ]);
 
         // If this comment had a parent, decrement the parent's reply count
         if (comment.parentId) {
-          await this.commentRepository.updateReplyCount(
-            asMongoId(comment.parentId.toString()),
-            -1,
-          );
+          await this.contentCleanupService.recomputeCommentReplyCounts([
+            new Types.ObjectId(comment.parentId.toString()),
+          ]);
         }
 
         logger.info(

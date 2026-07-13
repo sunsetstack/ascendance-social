@@ -333,6 +333,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 					<Box sx={{ display: "flex", alignItems: "center", gap: 1, color: "primary.main", mb: 1.5, px: 1 }}>
 						<Box sx={{ display: "flex", gap: 0.5 }}>
 							<IconButton
+								aria-label="Add image"
 								onClick={() => fileInputRef.current?.click()}
 								sx={{
 									color: "primary.main",

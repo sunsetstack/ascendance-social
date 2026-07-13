@@ -17,8 +17,8 @@ export const useDeactivateAccount = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (payload: { password: string }) =>
-      deleteAccountRequest(payload.password),
+    mutationFn: (payload: { password: string; reason: string }) =>
+      deleteAccountRequest(payload),
     onSuccess: () => {
       // The DELETE /api/users/me endpoint already clears all auth cookies and revokes
       // sessions server-side, so a separate logout API call is redundant.

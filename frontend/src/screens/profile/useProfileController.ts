@@ -113,6 +113,9 @@ export const useProfileController = () => {
 		if (!reason) {
 			return;
 		}
+		if (!window.confirm("This ban permanently removes the user's posts, reposts, likes, favorites, follows, and profile assets. Their comments and messages are anonymized. Continue?")) {
+			return;
+		}
 
 		banUserMutation.mutate(
 			{ publicId: profileData.publicId, reason },
@@ -130,8 +133,13 @@ export const useProfileController = () => {
 			return;
 		}
 
-		if (window.confirm("Are you sure you want to PERMANENTLY delete this user? This cannot be undone.")) {
-			deleteUserMutation.mutate(profileData.publicId, {
+		const reason = window.prompt("Enter the deletion reason for the audit trail:");
+		if (!reason?.trim()) {
+			return;
+		}
+
+		if (window.confirm("Permanently delete and anonymize this user's account data? This cannot be undone.")) {
+			deleteUserMutation.mutate({ publicId: profileData.publicId, reason: reason.trim() }, {
 				onSuccess: () => {
 					navigate("/admin");
 				},

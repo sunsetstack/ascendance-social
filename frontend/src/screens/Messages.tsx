@@ -33,6 +33,7 @@ import {
   DialogActions,
   Input,
   Badge,
+  Alert,
 } from "@mui/material";
 import SendRoundedIcon from "@mui/icons-material/SendRounded";
 import ArrowBackIosNewRoundedIcon from "@mui/icons-material/ArrowBackIosNewRounded";
@@ -316,7 +317,12 @@ const Messages = () => {
 
   const handleSendMessage = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if ((!draftBody.trim() && !imageFile) || !selectedConversationId) return;
+    if (
+      (!draftBody.trim() && !imageFile) ||
+      !selectedConversationId ||
+      selectedConversation?.isClosed
+    )
+      return;
 
     if (isEditing && selectedMessage) {
       await editMessage.mutateAsync({
@@ -827,6 +833,7 @@ const Messages = () => {
                         selectedConversation,
                         user?.publicId,
                       );
+                      if (otherUser?.isUnavailable) return;
                       if (otherUser?.handle || otherUser?.publicId) {
                         navigate(
                           `/profile/${otherUser?.handle || otherUser?.publicId}`,
@@ -929,6 +936,12 @@ const Messages = () => {
                 bgcolor: "background.default",
               }}
             >
+              {selectedConversation?.isClosed && (
+                <Alert severity="info" sx={{ mb: 1 }}>
+                  This participant is unavailable. The conversation remains
+                  readable, but no new replies can be sent.
+                </Alert>
+              )}
               {/* Image Preview */}
               {imageFile && (
                 <Box
@@ -1011,7 +1024,7 @@ const Messages = () => {
                   size="small"
                   color="primary"
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={isEditing}
+                  disabled={isEditing || selectedConversation?.isClosed}
                 >
                   <ImageIcon />
                 </IconButton>
@@ -1028,6 +1041,7 @@ const Messages = () => {
                   placeholder="Write a message"
                   value={draftBody}
                   onChange={(event) => setDraftBody(event.target.value)}
+                  disabled={selectedConversation?.isClosed}
                   InputProps={{
                     disableUnderline: true,
                     sx: {
@@ -1043,7 +1057,8 @@ const Messages = () => {
                   disabled={
                     (!draftBody.trim() && !imageFile) ||
                     sendMessage.isPending ||
-                    editMessage.isPending
+                    editMessage.isPending ||
+                    selectedConversation?.isClosed
                   }
                   sx={{
                     opacity: draftBody.trim() || imageFile ? 1 : 0.5,

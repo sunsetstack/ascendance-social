@@ -52,6 +52,19 @@ function normalizeForJson(value: unknown): unknown {
     return value.toISOString();
   }
 
+  if (
+    value !== null &&
+    typeof value === "object" &&
+    "toHexString" in value &&
+    typeof (value as { toHexString?: unknown }).toHexString === "function"
+  ) {
+    return (value as { toHexString: () => string }).toHexString();
+  }
+
+  if (Buffer.isBuffer(value)) {
+    return value.toString("base64");
+  }
+
   if (Array.isArray(value)) {
     return value
       .map((item) => normalizeForJson(item))

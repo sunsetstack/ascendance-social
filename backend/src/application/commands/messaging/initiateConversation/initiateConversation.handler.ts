@@ -14,6 +14,7 @@ import {
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { TOKENS } from "@/types/tokens";
+import { asMongoId } from "@/types/branded";
 
 @injectable()
 export class InitiateConversationCommandHandler implements ICommandHandler<
@@ -42,10 +43,17 @@ export class InitiateConversationCommandHandler implements ICommandHandler<
         );
       }
 
-      const [userInternalId, recipientInternalId] = await Promise.all([
-        requireUserInternalId(this.userReadRepository, userPublicId),
-        requireUserInternalId(this.userReadRepository, recipientPublicId),
-      ]);
+      const recipient = await this.userReadRepository.findByPublicId(
+        recipientPublicId,
+      );
+      if (!recipient || recipient.isBanned) {
+        throw Errors.notFound("User");
+      }
+      const userInternalId = await requireUserInternalId(
+        this.userReadRepository,
+        userPublicId,
+      );
+      const recipientInternalId = asMongoId(recipient.id);
 
       const participantIds = [userInternalId, recipientInternalId];
       const participantHash = buildParticipantHash(participantIds);

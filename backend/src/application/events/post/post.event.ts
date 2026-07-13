@@ -28,3 +28,13 @@ export class PostDeletedEvent implements IEvent {
     public readonly authorPublicId: UserPublicId,
   ) {}
 }
+
+export class PostLikeCountReconciledEvent implements IEvent {
+  readonly type = EventRegistry.domain.PostLikeCountReconciled;
+  readonly timestamp: Date = new Date();
+
+  constructor(
+    public readonly postId: PostPublicId,
+    public readonly likesCount: number,
+  ) {}
+}

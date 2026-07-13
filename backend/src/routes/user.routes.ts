@@ -42,6 +42,7 @@ import { TOKENS } from "@/types/tokens";
 export class UserRoutes {
   private router: express.Router;
   private auth: RequestHandler;
+  private authAllowUnverified: RequestHandler;
   private optionalAuth: RequestHandler;
 
   constructor(
@@ -58,6 +59,9 @@ export class UserRoutes {
   ) {
     this.router = express.Router();
     this.auth = authMiddlewareService.required();
+    this.authAllowUnverified = authMiddlewareService.required({
+      allowUnverified: true,
+    });
     this.optionalAuth = authMiddlewareService.optional();
     this.initializeRoutes();
   }
@@ -151,6 +155,15 @@ export class UserRoutes {
       asyncHandler(this.socialController.getFollowing),
     );
 
+    // Account deletion must remain available to authenticated users who have
+    // not completed email verification.
+    this.router.delete(
+      "/me",
+      this.authAllowUnverified,
+      new ValidationMiddleware({ body: deleteAccountSchema }).validate(),
+      asyncHandler(this.profileController.deleteMyAccount),
+    );
+
     // === Protected Routes (authentication required) ===
     this.router.use(this.auth);
 
@@ -212,13 +225,6 @@ export class UserRoutes {
       "/like/post/:publicId",
       new ValidationMiddleware({ params: publicIdSchema }).validate(),
       asyncHandler(this.socialController.likeActionByPublicId),
-    );
-
-    // Account deletion (requires password confirmation)
-    this.router.delete(
-      "/me",
-      new ValidationMiddleware({ body: deleteAccountSchema }).validate(),
-      asyncHandler(this.profileController.deleteMyAccount),
     );
   }
 

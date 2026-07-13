@@ -4,6 +4,7 @@ import { inject, injectable } from "tsyringe";
 import { PostUploadedEvent } from "@/application/events/post/post.event";
 import { RedisService } from "@/services/redis.service";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
+import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRepository";
 import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
 import { UserActivityService } from "@/services/user-activity.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
@@ -17,6 +18,8 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
     @inject(TOKENS.Services.Redis) private readonly redis: RedisService,
     @inject(TOKENS.Repositories.UserRead)
     private readonly userRepository: IUserReadRepository,
+    @inject(TOKENS.Repositories.PostRead)
+    private readonly postRepository: IPostReadRepository,
     @inject(TOKENS.Repositories.UserPreference)
     private readonly userPreferenceRepository: UserPreferenceRepository,
     @inject(TOKENS.Services.UserActivity)
@@ -29,24 +32,20 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
     );
 
     try {
-      // track user activity for who-to-follow adaptive logic (fire and forget)
-      this.userActivityService
-        .trackPostCreated(event.authorPublicId)
-        .catch((err) => {
-          logger.warn(
-            "[POST_UPLOAD_HANDLER] Failed to track user activity",
-            err,
-          );
-        });
-
-      // invalidate who-to-follow cache since we have a new user posting
-      // this ensures the new user appears in suggestions
-      this.redis.invalidateByTags(["who_to_follow"]).catch((err) => {
-        logger.warn(
-          "[POST_UPLOAD_HANDLER] Failed to invalidate who-to-follow cache",
-          err,
+      const [author, post] = await Promise.all([
+        this.userRepository.findByPublicId(event.authorPublicId),
+        this.postRepository.findByPublicId(event.postId),
+      ]);
+      if (!author || author.isBanned || !post) {
+        logger.info(
+          "[POST_UPLOAD_HANDLER] Skipping stale event for an unavailable author or post",
+          {
+            authorPublicId: event.authorPublicId,
+            postPublicId: event.postId,
+          },
         );
-      });
+        return;
+      }
 
       // use tag-based invalidation for efficient cache clearing
       const tagsToInvalidate: string[] = [];
@@ -148,6 +147,18 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
       // do NOT publish global discovery feed update - new feed refreshes on-demand only
       // this prevents the "super fast train" effect where new feed updates constantly
 
+      const auxiliaryResults = await Promise.allSettled([
+        this.userActivityService.trackPostCreated(event.authorPublicId),
+        this.redis.invalidateByTags(["who_to_follow"]),
+      ]);
+      for (const result of auxiliaryResults) {
+        if (result.status === "rejected") {
+          logger.warn("[POST_UPLOAD_HANDLER] Auxiliary update failed", {
+            error: result.reason,
+          });
+        }
+      }
+
       logger.info(
         `[POST_UPLOAD_HANDLER] Cache invalidation complete for new post`,
       );
@@ -157,7 +168,12 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
       });
       // Fallback: invalidate all feed patterns (except new_feed)
       const fallbackPatterns = CacheKeyBuilder.getGlobalFeedPatterns();
-      await this.redis.deletePatterns(fallbackPatterns);
+      await this.redis.deletePatterns(fallbackPatterns).catch((fallbackError) => {
+        logger.error("[POST_UPLOAD_HANDLER] Fallback invalidation failed", {
+          fallbackError,
+        });
+      });
+      throw error;
     }
   }
 
@@ -173,7 +189,7 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
         `[POST_UPLOAD_HANDLER] Error getting followers for user ${userPublicId}`,
         { error },
       );
-      return [];
+      throw error;
     }
   }
 
@@ -188,7 +204,7 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
         `[POST_UPLOAD_HANDLER] Error getting users interested in tags ${tags.join(", ")}`,
         { error },
       );
-      return [];
+      throw error;
     }
   }
 }
