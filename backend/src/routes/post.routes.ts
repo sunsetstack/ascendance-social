@@ -86,9 +86,9 @@ export class PostRoutes {
     );
     this.router.get("/tags", asyncHandler(this.postController.listTags));
 
-    this.router.use(this.auth);
     this.router.post(
       "/",
+      this.auth,
       upload.single("image"),
       validateImageUpload,
       new ValidationMiddleware({ body: createPostSchema }).validate(),
@@ -96,6 +96,7 @@ export class PostRoutes {
     );
     this.router.post(
       "/:publicId/repost",
+      this.auth,
       new ValidationMiddleware({
         params: publicIdSchema,
         body: repostSchema,
@@ -104,11 +105,13 @@ export class PostRoutes {
     );
     this.router.delete(
       "/:publicId/repost",
+      this.auth,
       new ValidationMiddleware({ params: publicIdSchema }).validate(),
       asyncHandler(this.postController.unrepostPost),
     );
     this.router.delete(
       "/:publicId",
+      this.auth,
       new ValidationMiddleware({ params: publicIdSchema }).validate(),
       asyncHandler(this.postController.deletePost),
     );

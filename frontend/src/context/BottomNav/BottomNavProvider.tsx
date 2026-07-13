@@ -67,23 +67,15 @@ export const BottomNavProvider: React.FC<BottomNavProviderProps> = ({ children }
 	}, []);
 
 	useEffect(() => {
-		let rafId: number;
-		let lastTime = 0;
-		const throttleMs = 16;
-
-		const throttledScroll = () => {
-			const now = Date.now();
-			if (now - lastTime >= throttleMs) {
-				lastTime = now;
-				handleScroll();
-			}
-			rafId = requestAnimationFrame(throttledScroll);
-		};
+		let rafId = 0;
 
 		const onScroll = () => {
-			if (!rafId) {
-				rafId = requestAnimationFrame(throttledScroll);
-			}
+			if (rafId) return;
+
+			rafId = requestAnimationFrame(() => {
+				handleScroll();
+				rafId = 0;
+			});
 		};
 
 		window.addEventListener("scroll", onScroll, { passive: true });

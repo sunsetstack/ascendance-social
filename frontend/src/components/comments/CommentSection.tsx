@@ -12,6 +12,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import CommentItem from "./CommentItem";
 import CommentForm from "./CommentForm";
 import { useCommentsByPostId } from "../../hooks/comments/useComments";
+import { useAuth } from "../../hooks/context/useAuth";
 
 interface CommentSectionProps {
   postId: string;
@@ -22,6 +23,7 @@ const CommentSection: React.FC<CommentSectionProps> = ({
   postId,
   commentsCount = 0,
 }) => {
+  const { isLoggedIn } = useAuth();
   const {
     data,
     fetchNextPage,
@@ -44,7 +46,13 @@ const CommentSection: React.FC<CommentSectionProps> = ({
         <Alert severity="error" sx={{ mb: 2 }}>
           Failed to load comments: {error?.message}
         </Alert>
-        <CommentForm postId={postId} />
+        {isLoggedIn ? (
+          <CommentForm postId={postId} />
+        ) : (
+          <Typography variant="body2" color="text.secondary">
+            Sign in to join the conversation.
+          </Typography>
+        )}
       </Box>
     );
   }
@@ -55,7 +63,13 @@ const CommentSection: React.FC<CommentSectionProps> = ({
         Comments ({totalComments})
       </Typography>
 
-      <CommentForm postId={postId} />
+      {isLoggedIn ? (
+        <CommentForm postId={postId} />
+      ) : (
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+          Sign in to join the conversation.
+        </Typography>
+      )}
 
       {totalComments > 0 && (
         <>
@@ -97,7 +111,9 @@ const CommentSection: React.FC<CommentSectionProps> = ({
       {!isLoading && totalComments === 0 && (
         <Box sx={{ textAlign: "center", py: 3 }}>
           <Typography variant="body2" color="text.secondary">
-            No comments yet. Be the first to comment!
+            {isLoggedIn
+              ? "No comments yet. Be the first to comment!"
+              : "No comments yet."}
           </Typography>
         </Box>
       )}

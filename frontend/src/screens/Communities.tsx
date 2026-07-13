@@ -45,19 +45,25 @@ const Communities: React.FC = () => {
     hasNextPage: hasNextMyCommunities,
     isFetchingNextPage: isFetchingNextMyCommunities,
     isLoading: isMyCommunitiesLoading,
-  } = useUserCommunities();
+  } = useUserCommunities(isLoggedIn && tabValue === 1);
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
-  const activeData = tabValue === 0 ? myCommunitiesData : discoveryData;
+  const activeData = tabValue === 0 ? discoveryData : myCommunitiesData;
   const communities = activeData?.pages.flatMap((page) => page.data) || [];
   const isLoading =
-    tabValue === 0 ? isMyCommunitiesLoading : isDiscoveryLoading;
-  const hasNextPage = tabValue === 0 ? hasNextMyCommunities : hasNextDiscovery;
+    tabValue === 0 ? isDiscoveryLoading : isMyCommunitiesLoading;
+  const hasNextPage = tabValue === 0 ? hasNextDiscovery : hasNextMyCommunities;
   const isFetchingNextPage =
-    tabValue === 0 ? isFetchingNextMyCommunities : isFetchingNextDiscovery;
+    tabValue === 0 ? isFetchingNextDiscovery : isFetchingNextMyCommunities;
   const fetchNextPage =
-    tabValue === 0 ? fetchNextMyCommunities : fetchNextDiscovery;
+    tabValue === 0 ? fetchNextDiscovery : fetchNextMyCommunities;
+
+  useEffect(() => {
+    if (!isLoggedIn && tabValue !== 0) {
+      setTabValue(0);
+    }
+  }, [isLoggedIn, tabValue]);
 
   useEffect(() => {
     const currentRef = loadMoreRef.current;
@@ -134,8 +140,8 @@ const Communities: React.FC = () => {
             aria-label="community tabs"
             variant={isMobile ? "fullWidth" : "standard"}
           >
-            <Tab label="My Communities" disabled={!isLoggedIn} />
             <Tab label="Find Communities" />
+            {isLoggedIn && <Tab label="My Communities" />}
           </Tabs>
         </Box>
 
@@ -174,8 +180,8 @@ const Communities: React.FC = () => {
         {communities.length === 0 && !isLoading && (
           <Typography variant="body1" align="center" sx={{ mt: 4 }}>
             {tabValue === 0
-              ? "You haven't joined any communities yet."
-              : "No communities found."}
+              ? "No communities found."
+              : "You haven't joined any communities yet."}
           </Typography>
         )}
 

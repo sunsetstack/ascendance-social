@@ -15,7 +15,7 @@ const MobileFAB: React.FC<MobileFABProps> = ({ onClick }) => {
 			sx={{
 				position: "fixed",
 				// positioned with safe area consideration
-				bottom: "calc(16px + env(safe-area-inset-bottom))",
+				bottom: "calc(72px + env(safe-area-inset-bottom))",
 				right: 16,
 				zIndex: 1100,
 				width: 56,

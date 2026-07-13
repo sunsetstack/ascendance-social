@@ -35,7 +35,7 @@ interface CommentItemProps {
 }
 
 const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
-  const { user } = useAuth();
+  const { user, isLoggedIn } = useAuth();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(comment.content);
@@ -65,6 +65,11 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
   };
 
   const handleReplySubmit = async () => {
+    if (!isLoggedIn) {
+      navigate("/login");
+      return;
+    }
+
     if (!replyContent.trim()) return;
 
     try {
@@ -84,6 +89,12 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
 
   const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation();
+
+    if (!isLoggedIn) {
+      navigate("/login");
+      return;
+    }
+
     try {
       await likeCommentMutation.mutateAsync({
         commentId: comment.id,
@@ -396,6 +407,10 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
             sx={{ cursor: "pointer", fontWeight: 600, color: "text.secondary" }}
             onClick={(e) => {
               e.stopPropagation();
+              if (!isLoggedIn) {
+                navigate("/login");
+                return;
+              }
               setShowReplyForm(!showReplyForm);
             }}
           >

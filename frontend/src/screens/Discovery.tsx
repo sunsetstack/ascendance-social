@@ -42,28 +42,39 @@ const feedToIndex: Record<string, number> = {
 const Discovery: React.FC = () => {
 	const theme = useTheme();
 	const isMobile = useMediaQuery(theme.breakpoints.down("md"));
-	const [searchParams] = useSearchParams();
+	const [searchParams, setSearchParams] = useSearchParams();
 	const { isLoggedIn, loading: authLoading } = useAuth();
 
 	// check if we have a specific feed requested via URL param
 	const requestedFeed = searchParams.get("feed");
-	const isSingleFeedMode = isMobile && !!requestedFeed;
-	const initialTab = requestedFeed ? (feedToIndex[requestedFeed] ?? 0) : 0;
+	const displayedFeed = !isLoggedIn && requestedFeed === "foryou" ? "latest" : requestedFeed;
+	const isSingleFeedMode = isMobile && !!displayedFeed;
+	const initialTab = displayedFeed ? (feedToIndex[displayedFeed] ?? 0) : 0;
 
 	const [activeTab, setActiveTab] = useState<number>(initialTab);
 	const [isRefreshing, setIsRefreshing] = useState(false);
 
 	// sync tab with URL param when it changes
 	useEffect(() => {
-		if (requestedFeed) {
-			const tabIndex = feedToIndex[requestedFeed] ?? 0;
-			setActiveTab(tabIndex);
+		if (authLoading) return;
+
+		if (!isLoggedIn && requestedFeed === "foryou") {
+			setSearchParams(
+				(current) => {
+					const next = new URLSearchParams(current);
+					next.set("feed", "latest");
+					return next;
+				},
+				{ replace: true },
+			);
 		}
-	}, [requestedFeed]);
+
+		setActiveTab(displayedFeed ? (feedToIndex[displayedFeed] ?? 0) : 0);
+	}, [authLoading, displayedFeed, isLoggedIn, requestedFeed, setSearchParams]);
 
 	const trendingFeedQuery = useTrendingFeed({ enabled: activeTab === 1 });
 	const newFeedQuery = useNewFeed({ enabled: activeTab === 0 });
-	const forYouFeedQuery = useForYouFeed({ enabled: activeTab === 2 });
+	const forYouFeedQuery = useForYouFeed({ enabled: isLoggedIn && activeTab === 2 });
 
 	const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
 		setActiveTab(newValue);
@@ -82,7 +93,7 @@ const Discovery: React.FC = () => {
 
 	// get feed title for single feed mode
 	const getFeedTitle = () => {
-		switch (requestedFeed) {
+		switch (displayedFeed) {
 			case "trending": return "Trending";
 			case "latest":
 			case "new": return "Latest";
@@ -96,7 +107,7 @@ const Discovery: React.FC = () => {
 	if (authLoading) {
 		return (
 			<>
-				<PageSeo {...buildDiscoveryMetadata({ feed: requestedFeed })} />
+				<PageSeo {...buildDiscoveryMetadata({ feed: displayedFeed })} />
 				<Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "50vh" }}>
 					<Typography>Loading...</Typography>
 				</Box>
@@ -106,7 +117,7 @@ const Discovery: React.FC = () => {
 
 	return (
 		<>
-			<PageSeo {...buildDiscoveryMetadata({ feed: requestedFeed })} />
+			<PageSeo {...buildDiscoveryMetadata({ feed: displayedFeed })} />
 			<Box
 				sx={{
 					display: "flex",
