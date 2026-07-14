@@ -1,6 +1,7 @@
 import { UserPublicId } from "@/types/branded";
 import type { IImageUploadStrategy } from "./IImageUploadStrategy";
 import type { ImageService } from "@/services/image.service";
+import type { ImageUploadResult } from "@/types";
 
 /**
  * @pattern Strategy (concrete)
@@ -17,7 +18,7 @@ export class FilePathUploadStrategy implements IImageUploadStrategy {
 
   async upload(
     userPublicId: UserPublicId,
-  ): Promise<{ url: string; publicId: string }> {
+  ): Promise<ImageUploadResult> {
     return this.imageService.uploadImage(this.filePath, userPublicId);
   }
 }

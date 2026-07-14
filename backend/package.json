@@ -31,6 +31,7 @@
     "stress-test": "ts-node -r tsconfig-paths/register ./src/scripts/stress-test.ts",
     "audit:seal": "ts-node -r tsconfig-paths/register ./src/scripts/seal-audit-archive.ts",
     "repair:integrity": "ts-node --files -r tsconfig-paths/register ./src/scripts/repair-data-integrity.ts",
+    "backfill:image-dimensions": "ts-node -r tsconfig-paths/register ./src/scripts/backfill-image-dimensions.ts",
     "build": "npm run build:ts7",
     "build:ts6": "tsc6 && tsc-alias",
     "build:ts7": "tsc && tsc-alias"

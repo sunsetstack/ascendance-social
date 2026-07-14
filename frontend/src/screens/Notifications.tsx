@@ -28,8 +28,8 @@ import { useNotifications } from "../hooks/notifications/useNotification";
 import { Notification } from "../types";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
+import { buildAvatarUrl } from "../lib/media";
 
-const BASE_URL = "/api";
 const BOTTOM_NAV_HEIGHT = 56;
 
 const Notifications: React.FC = () => {
@@ -139,13 +139,6 @@ const Notifications: React.FC = () => {
     }
   };
 
-  const getAvatarUrl = (avatar?: string) => {
-    if (!avatar) return undefined;
-    if (avatar.startsWith("http")) return avatar;
-    if (avatar.startsWith("/")) return `${BASE_URL}${avatar}`;
-    return `${BASE_URL}/${avatar}`;
-  };
-
   if (isLoading) {
     return (
       <Box
@@ -212,7 +205,7 @@ const Notifications: React.FC = () => {
       ) : (
         <List sx={{ p: 0 }}>
           {notifications.map((notification) => {
-            const avatarUrl = getAvatarUrl(notification.actorAvatar);
+            const avatarUrl = buildAvatarUrl(notification.actorAvatar, 40);
 
             return (
               <ListItem

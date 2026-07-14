@@ -4,6 +4,8 @@ interface PostCardImageProps {
 	imageUrl: string | null;
 	srcSet?: string;
 	alt: string;
+	width?: number;
+	height?: number;
 	prioritizeImage?: boolean;
 }
 
@@ -11,6 +13,8 @@ export const PostCardImage: React.FC<PostCardImageProps> = ({
 	imageUrl,
 	srcSet,
 	alt,
+	width,
+	height,
 	prioritizeImage = false,
 }) => {
 	if (!imageUrl) {
@@ -35,7 +39,9 @@ export const PostCardImage: React.FC<PostCardImageProps> = ({
 			<img
 				src={imageUrl}
 				srcSet={srcSet}
-				sizes="(max-width: 600px) 100vw, 553px"
+				width={width}
+				height={height}
+				sizes="(max-width: 600px) calc(100vw - 64px), 553px"
 				alt={alt}
 				loading={prioritizeImage ? "eager" : "lazy"}
 				fetchPriority={prioritizeImage ? "high" : "auto"}

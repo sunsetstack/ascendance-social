@@ -26,6 +26,8 @@ export interface PostDTO {
     image?: {
       url: string;
       publicId: ImagePublicId;
+      width?: number;
+      height?: number;
     } | null;
     likes?: number;
     repostCount?: number;
@@ -36,6 +38,8 @@ export interface PostDTO {
   image?: {
     url: string;
     publicId: ImagePublicId;
+    width?: number;
+    height?: number;
   } | null;
 
   // Legacy: Flattened image data for backward compatibility

@@ -10,6 +10,7 @@ import type {
   IImageStorageService,
   ImageDocWithId,
   ImageUploadInput,
+  ImageUploadResult,
   PopulatedUserField,
   RemoveAttachmentRecordInput,
   RemoveAttachmentRecordResult,
@@ -33,7 +34,7 @@ export class ImageService {
   async createPostAttachment(
     input: CreatePostAttachmentInput,
   ): Promise<AttachmentCreationResult> {
-    let uploaded: { url: string; publicId: string } | undefined;
+    let uploaded: ImageUploadResult | undefined;
     try {
       uploaded = await this.imageStorageService.uploadImage(
         input.filePath,
@@ -42,6 +43,8 @@ export class ImageService {
       return await this.createImageRecord({
         url: uploaded.url,
         storagePublicId: uploaded.publicId,
+        width: uploaded.width,
+        height: uploaded.height,
         originalName: input.originalName,
         userInternalId: input.userInternalId,
       });
@@ -59,7 +62,7 @@ export class ImageService {
   async uploadImage(
     filePath: string,
     userPublicId: UserPublicId,
-  ): Promise<{ url: string; publicId: string }> {
+  ): Promise<ImageUploadResult> {
     return this.imageStorageService.uploadImage(filePath, userPublicId);
   }
 
@@ -70,7 +73,7 @@ export class ImageService {
   async uploadImageStream(
     input: ImageUploadInput,
     userPublicId: UserPublicId,
-  ): Promise<{ url: string; publicId: string }> {
+  ): Promise<ImageUploadResult> {
     return this.imageStorageService.uploadImageStream(input, userPublicId);
   }
 
@@ -79,6 +82,8 @@ export class ImageService {
     storagePublicId: string;
     originalName: string;
     userInternalId: string;
+    width?: number;
+    height?: number;
   }): Promise<AttachmentCreationResult> {
     try {
       const slug = `${generateSlug(input.originalName) || "image"}-${Date.now()}`;
@@ -91,6 +96,8 @@ export class ImageService {
         slug,
         user: new mongoose.Types.ObjectId(input.userInternalId),
         createdAt,
+        width: input.width,
+        height: input.height,
       } as unknown as IImage)) as ImageDocWithId;
 
       return {
@@ -101,6 +108,8 @@ export class ImageService {
           publicId: imageDoc.publicId,
           url: imageDoc.url,
           slug: imageDoc.slug,
+          width: imageDoc.width,
+          height: imageDoc.height,
         },
       };
     } catch (error) {

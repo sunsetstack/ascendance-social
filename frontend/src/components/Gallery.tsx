@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { GalleryProps } from "../types";
 import PostCard from "./PostCard";
@@ -58,6 +58,10 @@ const Gallery: React.FC<GalleryProps> = ({
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [visibleIndex, setVisibleIndex] = useState(0);
 
+  const handlePostVisible = useCallback((index: number) => {
+    setVisibleIndex((previous) => Math.max(previous, index + 1));
+  }, []);
+
   // generate a stable feed ID based on current route
   const feedId = `${location.pathname}-${variant}`;
 
@@ -66,8 +70,16 @@ const Gallery: React.FC<GalleryProps> = ({
   // show loading when: explicit loading state OR fetching with no posts to display
   const isLoading = isLoadingAll || (isFetchingAll && postCount === 0);
   const hasPostsToShow = postCount > 0;
-  const firstImageIndex = useMemo(
-    () => uniquePosts.findIndex((post) => Boolean(post.url || post.image?.url)),
+  const prioritizedImageIndices = useMemo(
+    () =>
+      new Set(
+        uniquePosts
+          .map((post, index) =>
+            post.url || post.image?.url ? index : -1,
+          )
+          .filter((index) => index >= 0)
+          .slice(0, 2),
+      ),
     [uniquePosts],
   );
   // show skeleton only when loading/fetching - never show empty state while loading
@@ -189,13 +201,12 @@ const Gallery: React.FC<GalleryProps> = ({
           uniquePosts.map((img, index) => (
             <TrackedPost
               key={img.publicId}
-              onVisible={() =>
-                setVisibleIndex((prev) => Math.max(prev, index + 1))
-              }
+              index={index}
+              onVisible={handlePostVisible}
             >
               <PostCard
                 post={img}
-                prioritizeImage={index === firstImageIndex}
+                prioritizeImage={prioritizedImageIndices.has(index)}
               />
             </TrackedPost>
           ))
@@ -269,11 +280,13 @@ const Gallery: React.FC<GalleryProps> = ({
 
 // wrapper component to track when posts become visible
 interface TrackedPostProps {
-  onVisible: () => void;
+  index: number;
+  onVisible: (index: number) => void;
   children: React.ReactNode;
 }
 
 const TrackedPost: React.FC<TrackedPostProps> = ({
+  index,
   onVisible,
   children,
 }) => {
@@ -285,7 +298,7 @@ const TrackedPost: React.FC<TrackedPostProps> = ({
       (entries) => {
         if (entries[0].isIntersecting && !hasBeenVisible.current) {
           hasBeenVisible.current = true;
-          onVisible();
+          onVisible(index);
         }
       },
       { threshold: 0.5 },
@@ -293,12 +306,16 @@ const TrackedPost: React.FC<TrackedPostProps> = ({
 
     if (ref.current) observer.observe(ref.current);
     return () => observer.disconnect();
-  }, [onVisible]);
+  }, [index, onVisible]);
 
   return (
     <div
       ref={ref}
-      style={{ width: "100%" }}
+      style={{
+        width: "100%",
+        contentVisibility: "auto",
+        containIntrinsicSize: "auto 700px",
+      }}
     >
       {children}
     </div>

@@ -22,8 +22,8 @@ import { useTheme } from "@mui/material/styles";
 import { useAuth } from "../../hooks/context/useAuth";
 import { useNotifications } from "../../hooks/notifications/useNotification";
 import { useTranslation } from "react-i18next";
+import { buildAvatarUrl } from "../../lib/media";
 
-const BASE_URL = "/api";
 const DRAWER_WIDTH = 280;
 
 interface MobileDrawerProps {
@@ -65,14 +65,7 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
 
 	const isAdmin = user && "isAdmin" in user && user.isAdmin === true;
 
-	const avatarUrl = user?.avatar || "";
-	const fullAvatarUrl = avatarUrl.startsWith("http")
-		? avatarUrl
-		: avatarUrl.startsWith("/")
-			? `${BASE_URL}${avatarUrl}`
-			: avatarUrl
-				? `${BASE_URL}/${avatarUrl}`
-				: undefined;
+	const fullAvatarUrl = buildAvatarUrl(user?.avatar, 48);
 
 	const isRouteActive = (targetPath?: string) => {
 		if (!targetPath) return false;

@@ -240,7 +240,12 @@ describe("CreatePostCommandHandler", () => {
 			mockTagService.ensureTagsExist.resolves(mockTagDocs);
 
 			// Mock upload and create record separately
-			mockImageService.uploadImage.resolves({ url: "/uploads/img-456.jpg", publicId: "cloudinary-id-123" });
+			mockImageService.uploadImage.resolves({
+				url: "/uploads/img-456.jpg",
+				publicId: "cloudinary-id-123",
+				width: 1920,
+				height: 1080,
+			});
 			mockImageService.createImageRecord.resolves(mockImageResponse);
 
 			mockPostWriteRepository.create.resolves(mockCreatedPost);
@@ -272,7 +277,12 @@ describe("CreatePostCommandHandler", () => {
 			expect(mockTagService.ensureTagsExist.called).to.be.true;
 
 			expect(mockImageService.uploadImage.called).to.be.true;
-			expect(mockImageService.createImageRecord.called).to.be.true;
+			expect(
+				mockImageService.createImageRecord.calledWithMatch({
+					width: 1920,
+					height: 1080,
+				}),
+			).to.be.true;
 
 			expect(mockPostWriteRepository.create.called).to.be.true;
 			expect(mockPostWriteRepository.activatePendingPost.called).to.be.true;

@@ -1,13 +1,14 @@
-import React, { useMemo } from "react";
+import React, { lazy, Suspense, useMemo } from "react";
 import { usePosts } from "../hooks/posts/usePosts";
 import Gallery from "../components/Gallery";
-import CreatePost from "../components/CreatePost";
 import { Box, Typography, useMediaQuery, useTheme, Card, Skeleton, CardActions, alpha } from "@mui/material";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import { PageSeo } from "../lib/PageSeo";
 import { buildHomeMetadata } from "../lib/seo";
 import { useAuth } from "../hooks/context/useAuth";
 import { useTranslation } from "react-i18next";
+
+const CreatePost = lazy(() => import("../components/CreatePost"));
 
 const Home: React.FC = () => {
 	const theme = useTheme();
@@ -101,7 +102,9 @@ const Home: React.FC = () => {
 				{/* CreatePost decides whether it should render or not - hide on mobile */}
 				{!isMobile && isLoggedIn && (
 					<Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
-						<CreatePost />
+						<Suspense fallback={null}>
+							<CreatePost />
+						</Suspense>
 					</Box>
 				)}
 

@@ -46,10 +46,20 @@ function normalizeImage(image: unknown): FeedPost["image"] {
   }
 
   const imageDoc = image as IImage | Record<string, unknown>;
+  const width = imageDoc.width;
+  const height = imageDoc.height;
   return {
     publicId: imageDoc.publicId as string,
     url: imageDoc.url as string,
     slug: imageDoc.slug as string,
+    width:
+      typeof width === "number" && Number.isFinite(width) && width > 0
+        ? width
+        : undefined,
+    height:
+      typeof height === "number" && Number.isFinite(height) && height > 0
+        ? height
+        : undefined,
   };
 }
 

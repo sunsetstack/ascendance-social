@@ -10,8 +10,8 @@ import {
 import { Menu as MenuIcon, Search as SearchIcon } from "@mui/icons-material";
 import { useTheme } from "@mui/material/styles";
 import { useAuth } from "../../hooks/context/useAuth";
+import { buildAvatarUrl } from "../../lib/media";
 
-const BASE_URL = "/api";
 const HEADER_HEIGHT = 48;
 
 interface MobileHeaderProps {
@@ -25,14 +25,7 @@ const MobileHeader: React.FC<MobileHeaderProps> = ({ onMenuClick }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
 
-  const avatarUrl = user?.avatar || "";
-  const fullAvatarUrl = avatarUrl.startsWith("http")
-    ? avatarUrl
-    : avatarUrl.startsWith("/")
-      ? `${BASE_URL}${avatarUrl}`
-      : avatarUrl
-        ? `${BASE_URL}/${avatarUrl}`
-        : undefined;
+  const fullAvatarUrl = buildAvatarUrl(user?.avatar, 32);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

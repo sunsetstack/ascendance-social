@@ -49,6 +49,8 @@ export interface AttachmentSummary {
   publicId?: string;
   url?: string;
   slug?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface AttachmentCreationResult {

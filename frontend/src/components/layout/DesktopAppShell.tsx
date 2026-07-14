@@ -1,8 +1,10 @@
+import { lazy, Suspense } from "react";
 import { Box, useTheme } from "@mui/material";
 import { Outlet } from "react-router-dom";
 import LeftSidebar from "../LeftSidebar";
-import RightSidebar from "../RightSidebar";
-import UploadForm from "../UploadForm";
+
+const RightSidebar = lazy(() => import("../RightSidebar"));
+const UploadForm = lazy(() => import("../UploadForm"));
 
 interface DesktopAppShellProps {
 	isMessagesPage: boolean;
@@ -110,13 +112,19 @@ export const DesktopAppShell: React.FC<DesktopAppShellProps> = ({
 								overflowY: "auto",
 							}}
 						>
-							<RightSidebar />
+							<Suspense fallback={null}>
+								<RightSidebar />
+							</Suspense>
 						</Box>
 					</Box>
 				)}
 			</Box>
 
-			{isUploadModalOpen && <UploadForm onClose={onCloseUploadModal} />}
+			{isUploadModalOpen && (
+				<Suspense fallback={null}>
+					<UploadForm onClose={onCloseUploadModal} />
+				</Suspense>
+			)}
 		</Box>
 	);
 };

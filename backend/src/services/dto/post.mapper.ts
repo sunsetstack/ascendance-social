@@ -27,6 +27,8 @@ function feedPostToDTO(post: FeedPost): PostDTO {
       ? {
           url: post.image.url,
           publicId: asImagePublicId(post.image.publicId),
+          width: post.image.width,
+          height: post.image.height,
         }
       : null;
 
@@ -79,13 +81,15 @@ function iPostToDTO(post: IPost): PostDTO {
   const imageRef = rawObj.image as unknown;
   const imageData =
     imageRef && typeof imageRef === "object" && !("_bsontype" in imageRef)
-      ? (imageRef as { url?: string; publicId?: string })
+      ? (imageRef as { url?: string; publicId?: string; width?: number; height?: number })
       : null;
   const url = imageData?.url ?? undefined;
   const imagePublicId = imageData?.publicId
     ? asImagePublicId(imageData.publicId)
     : undefined;
-  const image = url && imagePublicId ? { url, publicId: imagePublicId } : null;
+  const image = url && imagePublicId
+    ? { url, publicId: imagePublicId, width: imageData?.width, height: imageData?.height }
+    : null;
 
   const userSnapshot = resolveIPostUserSnapshot(rawObj);
   const repostOf = buildIPostRepostOf(rawObj);
@@ -147,6 +151,8 @@ function buildFeedPostRepostOf(
       ? {
           url: repost.image.url,
           publicId: asImagePublicId(repost.image.publicId),
+          width: repost.image.width,
+          height: repost.image.height,
         }
       : null;
 
@@ -245,7 +251,7 @@ function buildIPostRepostOf(rawObj: Record<string, unknown>): PostDTO["repostOf"
       displayName?: string;
       avatarUrl?: string;
     };
-    image?: { url?: string; publicId?: string } | null;
+    image?: { url?: string; publicId?: string; width?: number; height?: number } | null;
   };
 
   if (!repost.publicId) return undefined;
@@ -255,6 +261,8 @@ function buildIPostRepostOf(rawObj: Record<string, unknown>): PostDTO["repostOf"
       ? {
           url: repost.image.url,
           publicId: asImagePublicId(repost.image.publicId),
+          width: repost.image.width,
+          height: repost.image.height,
         }
       : null;
 

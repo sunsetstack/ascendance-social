@@ -5,6 +5,8 @@ import { generateSlug } from "@/utils/helpers";
 
 const imageSchema = new Schema<IImage>({
 	url: { type: String, required: true },
+	width: { type: Number, min: 1 },
+	height: { type: Number, min: 1 },
 	publicId: {
 		type: String,
 		required: true,

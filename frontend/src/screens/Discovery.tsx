@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { motion } from "framer-motion";
 import { Box, Typography, Tabs, Tab, useTheme, alpha, IconButton, Tooltip, useMediaQuery } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 
@@ -216,7 +215,7 @@ const Discovery: React.FC = () => {
 					<Box sx={{ width: "100%" }}>
 						{/* Tab Panels */}
 						<TabPanel value={activeTab} index={0}>
-							<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+							<Box>
 								{!isSingleFeedMode && isLoggedIn && (
 									<Box sx={{ display: "flex", justifyContent: "flex-end", px: 2, py: 1 }}>
 										<Tooltip title="Refresh for latest posts">
@@ -245,11 +244,11 @@ const Discovery: React.FC = () => {
 									isLoadingAll={newFeedQuery.isLoading || newFeedQuery.isPending}
 									isFetchingAll={newFeedQuery.isFetching}
 								/>
-							</motion.div>
+							</Box>
 						</TabPanel>
 
 						<TabPanel value={activeTab} index={1}>
-							<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+							<Box>
 								<Gallery
 									posts={trendingFeedQuery.data?.pages.flatMap((page) => page.data) || []}
 									fetchNextPage={trendingFeedQuery.fetchNextPage}
@@ -258,12 +257,12 @@ const Discovery: React.FC = () => {
 									isLoadingAll={trendingFeedQuery.isLoading || trendingFeedQuery.isPending}
 									isFetchingAll={trendingFeedQuery.isFetching}
 								/>
-							</motion.div>
+							</Box>
 						</TabPanel>
 
 						{isLoggedIn && (
 							<TabPanel value={activeTab} index={2}>
-								<motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
+								<Box>
 									<Gallery
 										posts={forYouFeedQuery.data?.pages.flatMap((page) => page.data) || []}
 										fetchNextPage={forYouFeedQuery.fetchNextPage}
@@ -272,7 +271,7 @@ const Discovery: React.FC = () => {
 										isLoadingAll={forYouFeedQuery.isLoading || forYouFeedQuery.isPending}
 										isFetchingAll={forYouFeedQuery.isFetching}
 									/>
-								</motion.div>
+								</Box>
 							</TabPanel>
 						)}
 					</Box>

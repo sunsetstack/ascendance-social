@@ -113,23 +113,23 @@ const PostView = () => {
   const hasReposted = isOwnRepost || post.isRepostedByViewer;
 
   const avatarUrl = transformCloudinaryUrl(buildMediaUrl(post.user?.avatar), {
-    width: 80,
-    height: 80,
+    width: 40,
+    height: 40,
     crop: "fill",
   });
   const communityAvatarUrl = transformCloudinaryUrl(
     buildMediaUrl(post.community?.avatar),
     {
-      width: 64,
-      height: 64,
+      width: 32,
+      height: 32,
       crop: "fill",
     },
   );
   const repostAvatarUrl = transformCloudinaryUrl(
     buildMediaUrl(post.repostOf?.user?.avatar),
     {
-      width: 48,
-      height: 48,
+      width: 24,
+      height: 24,
       crop: "fill",
     },
   );
@@ -241,7 +241,7 @@ const PostView = () => {
             gap: 3,
           }}
         >
-          <IconButton onClick={() => navigate(-1)} size="small">
+          <IconButton aria-label="Go back" onClick={() => navigate(-1)} size="small">
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h6" fontWeight={700}>
@@ -296,6 +296,8 @@ const PostView = () => {
                 component={RouterLink}
                 to={profileHref}
                 src={avatarUrl}
+                alt={displayName}
+                aria-label={`Open ${displayName}'s profile`}
                 sx={{ width: 40, height: 40, cursor: "pointer" }}
               >
                 {!avatarUrl && (
@@ -348,6 +350,7 @@ const PostView = () => {
             </Box>
             {(isOwner || post.canDelete) && (
               <IconButton
+                aria-label="Delete post"
                 size="small"
                 color="error"
                 onClick={handleDeletePost}
@@ -394,7 +397,9 @@ const PostView = () => {
               <img
                 src={postImageUrl}
                 srcSet={postImageSrcSet}
-                sizes="(max-width: 600px) 100vw, 553px"
+                width={post.image?.width}
+                height={post.image?.height}
+                sizes="(max-width: 600px) calc(100vw - 34px), 553px"
                 alt="Post content"
                 loading="eager"
                 fetchPriority="high"
@@ -462,6 +467,8 @@ const PostView = () => {
                   <img
                     src={repostImageUrl}
                     srcSet={repostImageSrcSet}
+                    width={post.repostOf.image?.width}
+                    height={post.repostOf.image?.height}
                     sizes="(max-width: 600px) 100vw, 511px"
                     alt="Reposted content"
                     loading="lazy"
@@ -641,6 +648,7 @@ const PostView = () => {
             }}
           >
             <IconButton
+              aria-label="Close image"
               onClick={() => setIsImageModalOpen(false)}
               sx={{
                 position: "absolute",

@@ -9,6 +9,7 @@ import {
   ListItemButton,
   alpha,
 } from "@mui/material";
+import { buildAvatarUrl } from "../lib/media";
 import { Link } from "react-router-dom";
 import { useWhoToFollow } from "../hooks/user/useWhoToFollow";
 import { useFollowUser } from "../hooks/user/useUserAction";
@@ -141,7 +142,7 @@ const WhoToFollow: React.FC<WhoToFollowProps> = ({ limit = 5 }) => {
           }}
         >
           <Avatar
-            src={user.avatar}
+            src={buildAvatarUrl(user.avatar, 40)}
             alt={user.username}
             sx={{
               width: 40,

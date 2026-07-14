@@ -79,6 +79,8 @@ export interface IPost {
     image?: {
       url: string;
       publicId: string;
+      width?: number;
+      height?: number;
     } | null;
     likes?: number;
     repostCount?: number;
@@ -89,6 +91,8 @@ export interface IPost {
   image?: {
     url: string;
     publicId: string;
+    width?: number;
+    height?: number;
   } | null;
 
   // Legacy: Keep url at top level for backward compatibility

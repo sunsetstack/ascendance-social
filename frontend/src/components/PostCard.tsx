@@ -101,28 +101,38 @@ const PostCard: React.FC<PostCardProps> = ({ post, prioritizeImage = false }) =>
 				hasCommunity={!!post.community}
 				isAdmin={isAdmin}
 				onDeleteClick={handleDeletePost}
+				media={
+					media.hasImage ? (
+						<PostCardImage
+							imageUrl={media.postImageUrl}
+							srcSet={media.postImageSrcSet}
+							alt={post.body?.substring(0, 50) || post.publicId}
+							width={post.image?.width}
+							height={post.image?.height}
+							prioritizeImage={prioritizeImage}
+						/>
+					) : undefined
+				}
+				footer={
+					<PostCardStats
+						post={post}
+						hasReposted={hasReposted}
+						onRepostClick={handleRepostClick}
+					/>
+				}
 			>
 				<PostCardBody body={post.body} hasImage={media.hasImage} />
-				<PostCardImage
-					imageUrl={media.postImageUrl}
-					srcSet={media.postImageSrcSet}
-					alt={post.body?.substring(0, 50) || post.publicId}
-					prioritizeImage={prioritizeImage && media.hasImage}
-				/>
 				<PostCardRepostPreview
 					post={post}
 					repostAvatarUrl={media.repostAvatarUrl}
 					repostImageUrl={media.repostImageUrl}
 					repostImageSrcSet={media.repostImageSrcSet}
-				/>
-				<PostCardStats
-					post={post}
-					hasReposted={hasReposted}
-					onRepostClick={handleRepostClick}
+					repostImageWidth={post.repostOf?.image?.width}
+					repostImageHeight={post.repostOf?.image?.height}
 				/>
 			</PostCardHeader>
 		</Box>
 	);
 };
 
-export default PostCard;
+export default React.memo(PostCard);

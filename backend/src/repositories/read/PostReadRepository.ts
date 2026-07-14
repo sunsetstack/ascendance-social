@@ -99,7 +99,7 @@ export class PostReadRepository
       const query = this.model
         .findById(id)
         .populate("tags", "tag")
-        .populate({ path: "image", select: "_id url publicId slug createdAt" });
+        .populate({ path: "image", select: "_id url publicId slug width height createdAt" });
       if (session) query.session(session);
       return await query.exec();
     } catch (error: unknown) {
@@ -118,13 +118,13 @@ export class PostReadRepository
           "publicId user author body slug type repostOf repostCount image tags likesCount commentsCount viewsCount createdAt updatedAt communityId",
         )
         .populate("tags", "tag")
-        .populate({ path: "image", select: "_id url publicId slug createdAt" })
+        .populate({ path: "image", select: "_id url publicId slug width height createdAt" })
         .populate({ path: "communityId", select: "publicId name slug avatar" })
         .populate({
           path: "repostOf",
           select: "publicId body image user author tags",
           populate: [
-            { path: "image", select: "_id url publicId slug createdAt" },
+            { path: "image", select: "_id url publicId slug width height createdAt" },
             { path: "tags", select: "tag" },
             {
               path: "user",
@@ -149,7 +149,7 @@ export class PostReadRepository
         .populate("tags", "tag")
         .populate({
           path: "image",
-          select: "url publicId slug createdAt -_id",
+          select: "url publicId slug width height createdAt -_id",
         });
       if (session) query.session(session);
       return await query.exec();
@@ -340,7 +340,7 @@ export class PostReadRepository
         this.model
           .find(withActivePostFilter({ tags: { $in: tagIds } }))
           .populate("tags", "tag")
-          .populate({ path: "image", select: "url publicId slug -_id" })
+          .populate({ path: "image", select: "url publicId slug width height -_id" })
           .sort(sort)
           .skip(skip)
           .limit(limit)

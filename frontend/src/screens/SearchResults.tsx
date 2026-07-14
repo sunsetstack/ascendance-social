@@ -6,6 +6,7 @@ import Gallery from "../components/Gallery";
 import { Link, useLocation } from "react-router-dom";
 import { PageSeo } from "../lib/PageSeo";
 import { buildSearchMetadata } from "../lib/seo";
+import { buildAvatarUrl } from "../lib/media";
 
 const SearchResults = () => {
 	const location = useLocation();
@@ -94,13 +95,6 @@ const SearchResults = () => {
 	const communities = searchData?.data.communities ?? [];
 	const isLoading = (searchMode === "tags" && isLoadingPosts) || isSearchingUsers;
 
-	const getFullAvatarUrl = (avatar?: string) => {
-		if (!avatar) return undefined;
-		if (avatar.startsWith("http")) return avatar;
-		if (avatar.startsWith("/")) return `/api${avatar}`;
-		return `/api/${avatar}`;
-	};
-
 	return (
 		<>
 			<PageSeo {...buildSearchMetadata(displayQuery, location.search)} />
@@ -161,7 +155,7 @@ const SearchResults = () => {
 												"&:hover": { bgcolor: "rgba(0,0,0,0.02)" },
 											}}
 										>
-											<Avatar src={getFullAvatarUrl(user.avatar)} alt={user.username} sx={{ width: 40, height: 40 }}>
+											<Avatar src={buildAvatarUrl(user.avatar, 40)} alt={user.username} sx={{ width: 40, height: 40 }}>
 												{user.username}
 											</Avatar>
 											<Link

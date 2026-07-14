@@ -1,14 +1,15 @@
-import React, { useState } from "react";
+import React, { lazy, Suspense, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Box } from "@mui/material";
 import MobileHeader from "./MobileHeader";
-import MobileDrawer from "./MobileDrawer";
 import MobileFAB from "./MobileFAB";
 import BottomNav from "../BottomNav";
-import UploadForm from "../UploadForm";
 import { useSwipeDrawer } from "../../hooks/useSwipeDrawer";
 import { useAuth } from "../../hooks/context/useAuth";
 import { BottomNavProvider } from "../../context/BottomNav/BottomNavProvider";
+
+const MobileDrawer = lazy(() => import("./MobileDrawer"));
+const UploadForm = lazy(() => import("../UploadForm"));
 
 const MobileLayout: React.FC = () => {
 	const location = useLocation();
@@ -62,14 +63,18 @@ const MobileLayout: React.FC = () => {
 				<MobileHeader onMenuClick={toggleDrawer} />
 
 				{/* swipeable drawer */}
-				<MobileDrawer
-					isOpen={isDrawerOpen}
-					onClose={closeDrawer}
-					drawerRef={drawerRef}
-					backdropRef={backdropRef}
-					dragOffset={dragOffset}
-					isDragging={isDragging}
-				/>
+				{(isDrawerOpen || isDragging) && (
+					<Suspense fallback={null}>
+						<MobileDrawer
+							isOpen={isDrawerOpen}
+							onClose={closeDrawer}
+							drawerRef={drawerRef}
+							backdropRef={backdropRef}
+							dragOffset={dragOffset}
+							isDragging={isDragging}
+						/>
+					</Suspense>
+				)}
 
 				{/* main content area */}
 				<Box
@@ -98,7 +103,11 @@ const MobileLayout: React.FC = () => {
 				<BottomNav />
 
 				{/* upload modal */}
-				{isUploadModalOpen && <UploadForm onClose={handleCloseUploadModal} />}
+				{isUploadModalOpen && (
+					<Suspense fallback={null}>
+						<UploadForm onClose={handleCloseUploadModal} />
+					</Suspense>
+				)}
 			</Box>
 		</BottomNavProvider>
 	);

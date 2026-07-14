@@ -1,23 +1,25 @@
-import { Route, Routes, BrowserRouter } from "react-router-dom";
+import { Route, Routes, BrowserRouter, useLocation } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import { ThemeProvider } from "@mui/material/styles";
 import { Box, CircularProgress, CssBaseline } from "@mui/material";
 import Home from "./screens/Home";
 import Layout from "./components/Layout";
-import FeedSocketManager from "./components/FeedSocketManager";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { theme } from "./theme/theme";
 import { SocketProvider } from "./context/Socket/SocketProvider";
 import AuthProvider from "./context/Auth/AuthProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AdminRoute } from "./components/AdminRoute";
-import VerifyEmail from "./screens/VerifyEmail";
 import { AppErrorBoundary } from "./components/error/AppErrorBoundary";
+import { useAuth } from "./hooks/context/useAuth";
+import { usePosts } from "./hooks/posts/usePosts";
 
 // initialize telemetry on app load
 import "./lib/telemetry";
 
 const Discovery = lazy(() => import("./screens/Discovery"));
+const FeedSocketManager = lazy(() => import("./components/FeedSocketManager"));
+const VerifyEmail = lazy(() => import("./screens/VerifyEmail"));
 const Communities = lazy(() => import("./screens/Communities"));
 const CommunityDetails = lazy(() => import("./screens/CommunityDetails"));
 const CommunityMembers = lazy(() => import("./screens/CommunityMembers"));
@@ -38,6 +40,25 @@ const AdminDashboard = lazy(() => import("./screens/Admin").then((module) => ({ 
 const CommentThreadView = lazy(() =>
 	import("./components/comments").then((module) => ({ default: module.CommentThreadView })),
 );
+
+const AuthenticatedRealtime = () => {
+	const { isLoggedIn } = useAuth();
+	return isLoggedIn ? (
+		<Suspense fallback={null}>
+			<FeedSocketManager />
+		</Suspense>
+	) : null;
+};
+
+const HomeFeedWarmup = () => {
+	usePosts();
+	return null;
+};
+
+const RouteDataWarmup = () => {
+	const { pathname } = useLocation();
+	return pathname === "/" ? <HomeFeedWarmup /> : null;
+};
 
 const queryClient = new QueryClient({
 	defaultOptions: {
@@ -60,7 +81,8 @@ function App() {
 					<AuthProvider>
 						<SocketProvider>
 							<AppErrorBoundary>
-								<FeedSocketManager />
+								<AuthenticatedRealtime />
+								<RouteDataWarmup />
 								<Suspense
 									fallback={
 										<Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>

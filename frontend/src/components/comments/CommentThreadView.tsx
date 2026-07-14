@@ -36,6 +36,7 @@ import {
 } from "../../hooks/comments/useComments";
 import RichText from "../RichText";
 import { devError } from "@/lib/devLogger";
+import { buildAvatarUrl } from "@/lib/media";
 
 interface ThreadCommentItemProps {
   comment: IComment;
@@ -343,7 +344,10 @@ const ThreadCommentItem: React.FC<ThreadCommentItemProps> = ({
         }}
       >
         <Avatar
-          src={comment.user?.avatar}
+          src={buildAvatarUrl(
+            comment.user?.avatar,
+            isFocused ? (isMobile ? 40 : 48) : isMobile ? 32 : 40,
+          )}
           alt={comment.user?.username || "User"}
           sx={{
             width: isFocused ? (isMobile ? 40 : 48) : isMobile ? 32 : 40,
@@ -359,17 +363,7 @@ const ThreadCommentItem: React.FC<ThreadCommentItemProps> = ({
             }
           }}
         >
-          {comment.user?.avatar ? (
-            <img
-              src={
-                comment.user?.avatar?.startsWith("http")
-                  ? comment.user?.avatar
-                  : `/api/${comment.user?.avatar}`
-              }
-              alt={comment.user?.username || "User"}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
-          ) : (
+          {!comment.user?.avatar && (
             <span>
               {comment.user?.username?.charAt(0).toUpperCase() || "?"}
             </span>
@@ -740,7 +734,7 @@ const CommentThreadView: React.FC = () => {
         >
           <Box sx={{ display: "flex", gap: isMobile ? 1 : 1.5 }}>
             <Avatar
-              src={user?.avatar}
+              src={buildAvatarUrl(user?.avatar, isMobile ? 32 : 40)}
               sx={{
                 width: isMobile ? 32 : 40,
                 height: isMobile ? 32 : 40,
