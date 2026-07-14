@@ -33,3 +33,4 @@ backend/audit/archives/*
 backend/audit-logs/*
 *ascendance-audit-seal.service
 *ascendance-audit-seal.timer
+*/pdfs
