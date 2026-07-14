@@ -6,6 +6,7 @@ import {
   CloudinaryDeleteResponse,
   DeletionResult,
   ImageUploadInput,
+  ImageUploadResult,
 } from "@/types";
 import { injectable, inject } from "tsyringe";
 import type { IImageStorageService } from "@/types/customImageStorage/imageStorage.types";
@@ -85,7 +86,7 @@ export class CloudinaryService implements IImageStorageService {
     input: ImageUploadInput,
     userId: string,
     folder?: string,
-  ): Promise<{ url: string; publicId: string }> {
+  ): Promise<ImageUploadResult> {
     // Get the readable stream from input
     let sourceStream: Readable;
 
@@ -123,6 +124,8 @@ export class CloudinaryService implements IImageStorageService {
               resolve({
                 url: result.secure_url,
                 publicId: result.public_id,
+                width: result.width,
+                height: result.height,
               });
             },
           );
@@ -154,7 +157,7 @@ export class CloudinaryService implements IImageStorageService {
     filePath: string,
     userId: string,
     folder?: string,
-  ): Promise<{ url: string; publicId: string }> {
+  ): Promise<ImageUploadResult> {
     try {
       return await this.retryService.execute(
         () =>
@@ -179,6 +182,8 @@ export class CloudinaryService implements IImageStorageService {
                 resolve({
                   url: result.secure_url,
                   publicId: result.public_id,
+                  width: result.width,
+                  height: result.height,
                 });
               },
             );

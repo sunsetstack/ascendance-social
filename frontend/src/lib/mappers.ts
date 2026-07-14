@@ -71,11 +71,15 @@ export function mapPost(rawInput: unknown): IPost {
 	// Handle image data (may come in different formats)
 	let imageUrl: string | undefined;
 	let imagePublicId: string | undefined;
+	let imageWidth: number | undefined;
+	let imageHeight: number | undefined;
 
 	if (isObject(raw.image)) {
 		// New format: { image: { url, publicId } }
 		imageUrl = String(raw.image.url || "");
 		imagePublicId = String(raw.image.publicId || "");
+		imageWidth = typeof raw.image.width === "number" ? raw.image.width : undefined;
+		imageHeight = typeof raw.image.height === "number" ? raw.image.height : undefined;
 	} else if (raw.url && typeof raw.url === "string") {
 		// Legacy format: { url, imagePublicId }
 		imageUrl = String(raw.url);
@@ -89,11 +93,13 @@ export function mapPost(rawInput: unknown): IPost {
 		const repostUser = resolveSnapshot(isObject(repostSource.user) ? repostSource.user : undefined);
 		const repostImageSource = isObject(repostSource.image) ? repostSource.image : undefined;
 
-		let repostImage: { url: string; publicId: string } | null = null;
+		let repostImage: { url: string; publicId: string; width?: number; height?: number } | null = null;
 		if (repostImageSource && typeof repostImageSource.url === "string") {
 			repostImage = {
 				url: repostImageSource.url,
 				publicId: typeof repostImageSource.publicId === "string" ? repostImageSource.publicId : "",
+				width: typeof repostImageSource.width === "number" ? repostImageSource.width : undefined,
+				height: typeof repostImageSource.height === "number" ? repostImageSource.height : undefined,
 			};
 		}
 
@@ -130,6 +136,8 @@ export function mapPost(rawInput: unknown): IPost {
 			? {
 					url: imageUrl,
 					publicId: imagePublicId || "",
+					width: imageWidth,
+					height: imageHeight,
 				}
 			: null,
 

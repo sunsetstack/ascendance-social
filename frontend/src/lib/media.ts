@@ -35,9 +35,7 @@ export const transformCloudinaryUrl = (url: string | undefined, options: Cloudin
 
 	const [head, tail] = url.split(CLOUDINARY_UPLOAD_SEGMENT);
 	if (!head || !tail) return url;
-
-	const firstSegment = tail.split("/")[0];
-	if (!/^v\d+/.test(firstSegment)) return url;
+	if (tail.startsWith("s--")) return url;
 
 	const width = normalizeSize(options.width);
 	const height = normalizeSize(options.height);
@@ -64,6 +62,14 @@ export const transformCloudinaryUrl = (url: string | undefined, options: Cloudin
 	if (!transforms.length) return url;
 	return `${head}${CLOUDINARY_UPLOAD_SEGMENT}${transforms.join(",")}/${tail}`;
 };
+
+export const buildAvatarUrl = (value: string | undefined, size: number): string | undefined =>
+	transformCloudinaryUrl(buildMediaUrl(value), {
+		width: size,
+		height: size,
+		crop: "fill",
+		quality: "auto:eco",
+	});
 
 export const buildResponsiveCloudinarySrcSet = (
 	url: string | undefined,

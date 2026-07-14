@@ -5,6 +5,7 @@ import { useAuth } from "../../hooks/context/useAuth";
 import { useCreateComment } from "../../hooks/comments/useComments";
 import MentionInput from "../MentionInput";
 import { devError } from "@/lib/devLogger";
+import { buildAvatarUrl } from "@/lib/media";
 
 interface CommentFormProps {
   postId: string;
@@ -50,7 +51,7 @@ const CommentForm: React.FC<CommentFormProps> = ({ postId }) => {
     <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
       <Stack direction="row" spacing={1} alignItems="flex-start">
         <Avatar
-          src={user?.avatar}
+          src={buildAvatarUrl(user?.avatar, 32)}
           alt={user?.username}
           sx={{ width: 32, height: 32, mt: 0.5 }}
         >

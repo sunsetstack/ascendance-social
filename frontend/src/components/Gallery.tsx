@@ -70,8 +70,16 @@ const Gallery: React.FC<GalleryProps> = ({
   // show loading when: explicit loading state OR fetching with no posts to display
   const isLoading = isLoadingAll || (isFetchingAll && postCount === 0);
   const hasPostsToShow = postCount > 0;
-  const firstImageIndex = useMemo(
-    () => uniquePosts.findIndex((post) => Boolean(post.url || post.image?.url)),
+  const prioritizedImageIndices = useMemo(
+    () =>
+      new Set(
+        uniquePosts
+          .map((post, index) =>
+            post.url || post.image?.url ? index : -1,
+          )
+          .filter((index) => index >= 0)
+          .slice(0, 2),
+      ),
     [uniquePosts],
   );
   // show skeleton only when loading/fetching - never show empty state while loading
@@ -198,7 +206,7 @@ const Gallery: React.FC<GalleryProps> = ({
             >
               <PostCard
                 post={img}
-                prioritizeImage={index === firstImageIndex}
+                prioritizeImage={prioritizedImageIndices.has(index)}
               />
             </TrackedPost>
           ))
@@ -303,7 +311,11 @@ const TrackedPost: React.FC<TrackedPostProps> = ({
   return (
     <div
       ref={ref}
-      style={{ width: "100%" }}
+      style={{
+        width: "100%",
+        contentVisibility: "auto",
+        containIntrinsicSize: "auto 700px",
+      }}
     >
       {children}
     </div>

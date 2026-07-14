@@ -1,4 +1,5 @@
 import { UserPublicId } from "@/types/branded";
+import type { ImageUploadResult } from "@/types";
 /**
  * @pattern Strategy
  *
@@ -8,5 +9,5 @@ import { UserPublicId } from "@/types/branded";
 export interface IImageUploadStrategy {
   upload(
     userPublicId: UserPublicId,
-  ): Promise<{ url: string; publicId: string }>;
+  ): Promise<ImageUploadResult>;
 }

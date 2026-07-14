@@ -15,7 +15,6 @@ const vendorChunkGroups: Array<[string, string[]]> = [
       "scheduler",
     ],
   ],
-  ["mui-vendor", ["@mui", "@emotion", "@popperjs"]],
   ["query-vendor", ["@tanstack"]],
   [
     "socket-vendor",
@@ -55,7 +54,7 @@ const resolveManualChunk = (id: string): string | undefined => {
     }
   }
 
-  return "vendor";
+  return undefined;
 };
 
 export default defineConfig(({ mode }) => {

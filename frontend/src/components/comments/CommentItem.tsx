@@ -29,6 +29,7 @@ import {
 import { useNavigate } from "react-router";
 import RichText from "../RichText";
 import { devError } from "@/lib/devLogger";
+import { buildAvatarUrl } from "@/lib/media";
 
 interface CommentItemProps {
   comment: IComment;
@@ -206,11 +207,11 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
             <Typography
               variant="subtitle2"
               component="span"
-              sx={{ fontWeight: 600, color: "text.disabled" }}
+              sx={{ fontWeight: 600, color: "text.secondary" }}
             >
               [deleted]
             </Typography>
-            <Typography variant="caption" color="text.disabled">
+            <Typography variant="caption" color="text.secondary">
               {formatDate(comment.createdAt)}
             </Typography>
           </Box>
@@ -219,7 +220,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
             variant="body2"
             sx={{
               wordBreak: "break-word",
-              color: "text.disabled",
+              color: "text.secondary",
               fontStyle: "italic",
             }}
           >
@@ -233,7 +234,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
             >
               <ChatBubbleOutlineIcon
                 fontSize="small"
-                sx={{ color: "text.disabled" }}
+                sx={{ color: "text.secondary" }}
               />
               <Typography
                 variant="caption"
@@ -272,7 +273,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
       onClick={handleCommentClick}
     >
       <Avatar
-        src={comment.user?.avatar}
+        src={buildAvatarUrl(comment.user?.avatar, 32)}
         alt={comment.user?.username || "User"}
         sx={{ width: 32, height: 32, cursor: "pointer" }}
         onClick={(e) => {
@@ -284,17 +285,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
           }
         }}
       >
-        {comment.user?.avatar ? (
-          <img
-            src={
-              comment.user?.avatar?.startsWith("http")
-                ? comment.user?.avatar
-                : `/api/${comment.user?.avatar}`
-            }
-            alt={comment.user?.username || "User"}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          />
-        ) : (
+        {!comment.user?.avatar && (
           <span>{comment.user?.username?.charAt(0).toUpperCase() || "?"}</span>
         )}
       </Avatar>
@@ -331,6 +322,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
           </Typography>
           {(isOwner || isAdmin) && (
             <IconButton
+              aria-label="Comment actions"
               size="small"
               onClick={handleMenuClick}
               sx={{ ml: "auto", p: 0.5 }}
@@ -389,7 +381,12 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
           onClick={(e) => e.stopPropagation()}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-            <IconButton size="small" onClick={handleLike} sx={{ p: 0.5 }}>
+            <IconButton
+              aria-label={comment.isLikedByViewer ? "Unlike comment" : "Like comment"}
+              size="small"
+              onClick={handleLike}
+              sx={{ p: 0.5 }}
+            >
               {comment.isLikedByViewer ? (
                 <FavoriteIcon fontSize="small" color="primary" />
               ) : (

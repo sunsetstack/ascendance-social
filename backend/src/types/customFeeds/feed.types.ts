@@ -18,6 +18,8 @@ export interface FeedPostRepost {
     publicId: string;
     url: string;
     slug?: string;
+    width?: number;
+    height?: number;
   } | null;
 }
 
@@ -44,6 +46,8 @@ export interface FeedPost {
     publicId: string;
     url: string;
     slug: string;
+    width?: number;
+    height?: number;
   };
   community?: {
     publicId: string;

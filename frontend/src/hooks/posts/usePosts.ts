@@ -28,7 +28,8 @@ import {
 	updatePostInInfiniteFeeds,
 } from "./postCache";
 
-const MAX_FEED_PAGES = 3;
+const MAX_FEED_PAGES = 6;
+const FEED_PAGE_SIZE = 5;
 
 export const usePosts = () => {
   const { user } = useAuth();
@@ -39,8 +40,8 @@ export const usePosts = () => {
     queryKey,
     queryFn: async ({ pageParam = 1 }) => {
       const response = !user
-        ? await fetchNewFeed(pageParam as number | string, 10)
-        : await fetchPersonalizedFeed(pageParam as number | string, 10);
+        ? await fetchNewFeed(pageParam as number | string, FEED_PAGE_SIZE)
+        : await fetchPersonalizedFeed(pageParam as number | string, FEED_PAGE_SIZE);
 
       return {
         ...response,
@@ -60,7 +61,7 @@ export const usePosts = () => {
     maxPages: MAX_FEED_PAGES,
     staleTime: 0,
     gcTime: 0,
-    refetchOnMount: true,
+    refetchOnMount: false,
   });
 };
 

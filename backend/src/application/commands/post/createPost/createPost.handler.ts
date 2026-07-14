@@ -14,7 +14,7 @@ import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRep
 import type { IPostWriteRepository } from "@/repositories/interfaces/IPostWriteRepository";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
 import type { IUserWriteRepository } from "@/repositories/interfaces/IUserWriteRepository";
-import type { AttachmentSummary, IPost, IUser, PostDTO } from "@/types";
+import type { AttachmentSummary, ImageUploadResult, IPost, IUser, PostDTO } from "@/types";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
 import { TagService } from "@/services/tag.service";
@@ -85,7 +85,7 @@ export class CreatePostCommandHandler implements ICommandHandler<
       });
     }
 
-    let uploadResult: { url: string; publicId: string } | null = null;
+    let uploadResult: ImageUploadResult | null = null;
     let pendingPostId: mongoose.Types.ObjectId | null = null;
     let activated = false;
 
@@ -234,7 +234,7 @@ export class CreatePostCommandHandler implements ICommandHandler<
     command: CreatePostCommand,
     user: IUser,
     communityInternalId: Types.ObjectId | null,
-    uploadResult: { url: string; publicId: string } | null,
+    uploadResult: ImageUploadResult | null,
     pendingPost: IPost,
     normalizedBody: string,
   ): Promise<TransactionResult> {
@@ -297,7 +297,7 @@ export class CreatePostCommandHandler implements ICommandHandler<
   private async createImageRecord(
     command: CreatePostCommand,
     internalUserId: mongoose.Types.ObjectId,
-    uploadResult: { url: string; publicId: string } | null,
+    uploadResult: ImageUploadResult | null,
   ): Promise<AttachmentSummary> {
     if (!uploadResult) return { docId: null };
 
@@ -306,6 +306,8 @@ export class CreatePostCommandHandler implements ICommandHandler<
       storagePublicId: uploadResult.publicId,
       originalName: command.imageOriginalName || `post-${Date.now()}`,
       userInternalId: internalUserId.toString(),
+      width: uploadResult.width,
+      height: uploadResult.height,
     });
 
     if (!summary.docId)

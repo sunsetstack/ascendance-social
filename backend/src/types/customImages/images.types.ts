@@ -4,6 +4,8 @@ import { ImagePublicId, UserPublicId } from "@/types/branded";
 export interface IImage extends Document {
   url: string;
   publicId: ImagePublicId;
+  width?: number;
+  height?: number;
   user: {
     publicId: UserPublicId;
     handle: string;

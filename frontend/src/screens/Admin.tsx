@@ -63,6 +63,7 @@ import {
 } from "../hooks/admin/useAdmin";
 import { AdminUserDTO, IPost } from "../types";
 import { formatDistanceToNow } from "date-fns";
+import { buildAvatarUrl, transformCloudinaryUrl } from "../lib/media";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -166,7 +167,7 @@ export const AdminDashboard: React.FC = () => {
   const [authLogsEndDate, setAuthLogsEndDate] = useState("");
 
   // Queries
-  const { data: stats, isLoading: statsLoading } = useDashboardStats();
+  const { data: stats, isLoading: statsLoading } = useDashboardStats(currentTab === 0);
 
   const { data: usersData, isLoading: usersLoading } = useAdminUsers({
     page: userPage + 1,
@@ -174,16 +175,16 @@ export const AdminDashboard: React.FC = () => {
     search: userSearch,
     sortBy,
     sortOrder,
-  });
+  }, currentTab === 1);
 
   const { data: imagesData, isLoading: imagesLoading } = useAdminImages({
     page: imagePage + 1,
     limit: rowsPerPage,
-  });
+  }, currentTab === 2);
 
-  const { data: activityData } = useRecentActivity({ page: 1, limit: 10 });
+  const { data: activityData } = useRecentActivity({ page: 1, limit: 10 }, currentTab === 0);
   const { data: telemetryData, isLoading: telemetryLoading } =
-    useTelemetryMetrics();
+    useTelemetryMetrics(currentTab === 3);
 
   const { data: requestLogsData, isLoading: logsLoading } = useRequestLogs({
     page: logsPage + 1,
@@ -192,7 +193,7 @@ export const AdminDashboard: React.FC = () => {
     search: logsSearch,
     startDate: logsStartDate || undefined,
     endDate: logsEndDate || undefined,
-  });
+  }, currentTab === 4);
 
   const { data: authActivityLogsData, isLoading: authLogsLoading } =
     useAuthActivityLogs({
@@ -205,7 +206,7 @@ export const AdminDashboard: React.FC = () => {
       search: authLogsSearch,
       startDate: authLogsStartDate || undefined,
       endDate: authLogsEndDate || undefined,
-    });
+    }, currentTab === 5);
 
   // Mutations
   const banUserMutation = useBanUser();
@@ -498,7 +499,7 @@ export const AdminDashboard: React.FC = () => {
                           sx={{ display: "flex", alignItems: "center", gap: 1 }}
                         >
                           <Avatar
-                            src={user.avatar}
+                            src={buildAvatarUrl(user.avatar, 32)}
                             sx={{ width: 32, height: 32 }}
                           >
                             {user.username.charAt(0).toUpperCase()}
@@ -651,7 +652,13 @@ export const AdminDashboard: React.FC = () => {
                           {hasImage ? (
                             <Avatar
                               variant="rounded"
-                              src={imageUrl}
+                              src={transformCloudinaryUrl(imageUrl, {
+                                width: 120,
+                                height: 120,
+                                crop: "fill",
+                                quality: "auto:eco",
+                                dpr: false,
+                              })}
                               sx={{ width: 60, height: 60 }}
                             />
                           ) : (

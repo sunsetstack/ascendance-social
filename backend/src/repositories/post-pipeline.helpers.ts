@@ -116,6 +116,8 @@ export function getStandardProjectionFields(): Record<string, unknown> {
           publicId: "$imageDoc.publicId",
           url: "$imageDoc.url",
           slug: "$imageDoc.slug",
+          width: "$imageDoc.width",
+          height: "$imageDoc.height",
         },
         else: null,
       },
@@ -144,6 +146,8 @@ export function getStandardProjectionFields(): Record<string, unknown> {
               then: {
                 publicId: "$repostDoc.repostImageDoc.publicId",
                 url: "$repostDoc.repostImageDoc.url",
+                width: "$repostDoc.repostImageDoc.width",
+                height: "$repostDoc.repostImageDoc.height",
               },
               else: null,
             },

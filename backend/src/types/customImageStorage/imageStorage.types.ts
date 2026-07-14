@@ -18,6 +18,13 @@ export interface ImageUploadInput {
   mimeType?: string;
 }
 
+export interface ImageUploadResult {
+  url: string;
+  publicId: string;
+  width?: number;
+  height?: number;
+}
+
 export interface IImageStorageService {
   /**
    * Upload an image from a file path (legacy method).
@@ -27,7 +34,7 @@ export interface IImageStorageService {
     filePath: string,
     userId: string,
     folder?: string,
-  ): Promise<{ url: string; publicId: string }>;
+  ): Promise<ImageUploadResult>;
 
   /**
    * Upload an image from a Buffer or Stream directly.
@@ -37,7 +44,7 @@ export interface IImageStorageService {
     input: ImageUploadInput,
     userId: string,
     folder?: string,
-  ): Promise<{ url: string; publicId: string }>;
+  ): Promise<ImageUploadResult>;
 
   deleteImage(publicId: string): Promise<void>;
   deleteAssetByUrl(

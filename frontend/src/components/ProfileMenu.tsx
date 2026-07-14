@@ -14,8 +14,7 @@ import UploadForm from "./UploadForm";
 import { useAuth } from "../hooks/context/useAuth";
 import { useCurrentUser } from "../hooks/user/useUsers";
 import { useTranslation } from "react-i18next";
-
-const BASE_URL = "/api";
+import { buildAvatarUrl } from "../lib/media";
 
 const modalStyle = {
   position: "absolute",
@@ -61,14 +60,7 @@ const ProfileMenu = () => {
   }
 
   // Handle undefined avatar safely
-  const avatarUrl = user.avatar || "";
-  const fullAvatarUrl = avatarUrl.startsWith("http")
-    ? avatarUrl
-    : avatarUrl.startsWith("/")
-      ? `${BASE_URL}${avatarUrl}`
-      : avatarUrl
-        ? `${BASE_URL}/${avatarUrl}`
-        : undefined;
+  const fullAvatarUrl = buildAvatarUrl(user.avatar, 32);
 
   return (
     <>

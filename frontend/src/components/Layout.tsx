@@ -1,10 +1,17 @@
-import React, { useState } from "react";
+import React, { lazy, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useTheme, useMediaQuery } from "@mui/material";
-import { MobileLayout } from "./mobile";
 import { useAuth } from "../hooks/context/useAuth";
 import { useEmailVerificationLock } from "../hooks/layout/useEmailVerificationLock";
-import { DesktopAppShell } from "./layout/DesktopAppShell";
+
+const loadMobileLayout = () => import("./mobile/MobileLayout");
+const initialMobileLayout = window.matchMedia("(max-width: 899.95px)").matches
+	? loadMobileLayout()
+	: undefined;
+const MobileLayout = lazy(() => initialMobileLayout ?? loadMobileLayout());
+const DesktopAppShell = lazy(() =>
+	import("./layout/DesktopAppShell").then((module) => ({ default: module.DesktopAppShell })),
+);
 
 const Layout: React.FC = () => {
 	const theme = useTheme();

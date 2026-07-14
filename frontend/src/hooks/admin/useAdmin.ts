@@ -29,11 +29,12 @@ export const useAdminUsers = (params: {
 	search?: string;
 	startDate?: string;
 	endDate?: string;
-}) => {
+}, enabled = true) => {
 	return useQuery({
 		queryKey: ["admin", "users", params],
 		queryFn: () => fetchAllUsersAdmin(params),
 		staleTime: 30000,
+		enabled,
 	});
 };
 
@@ -129,11 +130,12 @@ export const useAdminImages = (params: {
 	limit?: number;
 	sortBy?: string;
 	sortOrder?: "asc" | "desc";
-}) => {
+}, enabled = true) => {
 	return useQuery({
 		queryKey: ["admin", "images", params],
 		queryFn: () => fetchAllImagesAdmin(params),
 		staleTime: 30000,
+		enabled,
 	});
 };
 
@@ -180,19 +182,21 @@ export const useRemoveUserFavoriteAdmin = () => {
 	});
 };
 
-export const useDashboardStats = () => {
+export const useDashboardStats = (enabled = true) => {
 	return useQuery({
 		queryKey: ["admin", "dashboardStats"],
 		queryFn: fetchDashboardStats,
 		staleTime: 60000,
+		enabled,
 	});
 };
 
-export const useRecentActivity = (params: { page?: number; limit?: number }) => {
+export const useRecentActivity = (params: { page?: number; limit?: number }, enabled = true) => {
 	return useQuery({
 		queryKey: ["admin", "recentActivity", params],
 		queryFn: () => fetchRecentActivity(params),
 		staleTime: 30000,
+		enabled,
 	});
 };
 
@@ -212,12 +216,13 @@ export const useClearCache = () => {
 	});
 };
 
-export const useTelemetryMetrics = () => {
+export const useTelemetryMetrics = (enabled = true) => {
 	return useQuery({
 		queryKey: ["admin", "telemetry"],
 		queryFn: fetchTelemetryMetrics,
 		staleTime: 30000,
 		refetchInterval: 60000,
+		enabled,
 	});
 };
 
@@ -237,11 +242,12 @@ export const useRequestLogs = (params: {
 	startDate?: string;
 	endDate?: string;
 	search?: string;
-}) => {
+}, enabled = true) => {
 	return useQuery({
 		queryKey: ["admin", "requestLogs", params],
 		queryFn: () => fetchRequestLogs(params),
 		staleTime: 10000,
+		enabled,
 	});
 };
 
@@ -262,10 +268,11 @@ export const useAuthActivityLogs = (params: {
 	startDate?: string;
 	endDate?: string;
 	search?: string;
-}) => {
+}, enabled = true) => {
 	return useQuery({
 		queryKey: ["admin", "authActivityLogs", params],
 		queryFn: () => fetchAuthActivityLogs(params),
 		staleTime: 10000,
+		enabled,
 	});
 };

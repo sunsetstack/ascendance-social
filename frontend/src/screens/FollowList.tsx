@@ -17,6 +17,7 @@ import { useFollowers, useFollowing, useGetUser } from "../hooks/user/useUsers";
 import { useFollowUser } from "../hooks/user/useUserAction";
 import { useAuth } from "../hooks/context/useAuth";
 import { FollowUserItem } from "../api/userApi";
+import { buildAvatarUrl } from "../lib/media";
 
 const FollowList: React.FC = () => {
 	const theme = useTheme();
@@ -102,13 +103,6 @@ const FollowList: React.FC = () => {
 		});
 	};
 
-	const getFullAvatarUrl = (avatar?: string) => {
-		if (!avatar) return undefined;
-		if (avatar.startsWith("http")) return avatar;
-		if (avatar.startsWith("/")) return `/api${avatar}`;
-		return `/api/${avatar}`;
-	};
-
 	const handleUserClick = (handle: string | undefined, publicId: string) => {
 		const identifier = handle || publicId;
 		navigate(`/profile/${identifier}`);
@@ -156,7 +150,7 @@ const FollowList: React.FC = () => {
 							}}
 							onClick={() => handleUserClick(user.handle, user.publicId)}
 						>
-							<Avatar src={getFullAvatarUrl(user.avatar)} alt={user.username} sx={{ width: 48, height: 48 }}>
+							<Avatar src={buildAvatarUrl(user.avatar, 48)} alt={user.username} sx={{ width: 48, height: 48 }}>
 								{user.username?.charAt(0).toUpperCase()}
 							</Avatar>
 

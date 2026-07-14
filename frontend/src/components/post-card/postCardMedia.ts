@@ -24,14 +24,14 @@ export const buildPostCardMedia = (post: IPost): PostCardMediaAssets => {
 		hasImage: !!fullImageUrl,
 		communityAvatarUrl:
 			transformCloudinaryUrl(buildMediaUrl(post.community?.avatar), {
-				width: 48,
-				height: 48,
+				width: 16,
+				height: 16,
 				crop: "fill",
 			}) ?? null,
 		userAvatarUrl:
 			transformCloudinaryUrl(buildMediaUrl(post.user?.avatar), {
-				width: 80,
-				height: 80,
+				width: 40,
+				height: 40,
 				crop: "fill",
 			}) ?? null,
 		postImageUrl:
@@ -41,14 +41,14 @@ export const buildPostCardMedia = (post: IPost): PostCardMediaAssets => {
 				quality: "auto:eco",
 				dpr: false,
 			}) ?? null,
-		postImageSrcSet: buildResponsiveCloudinarySrcSet(fullImageUrl, [320, 480, 640, 768, 960, 1080], {
+		postImageSrcSet: buildResponsiveCloudinarySrcSet(fullImageUrl, [320, 360, 384, 480, 640, 720, 768, 960, 1080], {
 			crop: "limit",
 			quality: "auto:eco",
 		}),
 		repostAvatarUrl:
 			transformCloudinaryUrl(buildMediaUrl(post.repostOf?.user?.avatar), {
-				width: 48,
-				height: 48,
+				width: 24,
+				height: 24,
 				crop: "fill",
 			}) ?? null,
 		repostImageUrl:

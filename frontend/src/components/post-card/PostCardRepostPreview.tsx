@@ -10,6 +10,8 @@ interface PostCardRepostPreviewProps {
 	repostAvatarUrl: string | null;
 	repostImageUrl: string | null;
 	repostImageSrcSet?: string;
+	repostImageWidth?: number;
+	repostImageHeight?: number;
 }
 
 export const PostCardRepostPreview: React.FC<PostCardRepostPreviewProps> = ({
@@ -17,6 +19,8 @@ export const PostCardRepostPreview: React.FC<PostCardRepostPreviewProps> = ({
 	repostAvatarUrl,
 	repostImageUrl,
 	repostImageSrcSet,
+	repostImageWidth,
+	repostImageHeight,
 }) => {
 	const navigate = useNavigate();
 	const { t } = useTranslation();
@@ -75,6 +79,8 @@ export const PostCardRepostPreview: React.FC<PostCardRepostPreviewProps> = ({
 					<img
 						src={repostImageUrl}
 						srcSet={repostImageSrcSet}
+						width={repostImageWidth}
+						height={repostImageHeight}
 						sizes="(max-width: 600px) 100vw, 511px"
 						alt={t("post.reposted_content")}
 						loading="lazy"

@@ -35,8 +35,7 @@ import {
 import { useAuth } from "../hooks/context/useAuth";
 import { useNotifications } from "../hooks/notifications/useNotification";
 import { useTranslation } from "react-i18next";
-
-const BASE_URL = "/api";
+import { buildAvatarUrl } from "../lib/media";
 
 interface NavigationItem {
 	label: string;
@@ -86,14 +85,7 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({ onPostClick }) => {
 	};
 
 	// Handle undefined avatar safely
-	const avatarUrl = user?.avatar || "";
-	const fullAvatarUrl = avatarUrl.startsWith("http")
-		? avatarUrl
-		: avatarUrl.startsWith("/")
-			? `${BASE_URL}${avatarUrl}`
-			: avatarUrl
-				? `${BASE_URL}/${avatarUrl}`
-				: undefined;
+	const fullAvatarUrl = buildAvatarUrl(user?.avatar, 40);
 
 	const isRouteActive = (targetPath?: string) => {
 		if (!targetPath) return false;
