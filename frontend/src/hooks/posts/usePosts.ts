@@ -28,6 +28,8 @@ import {
 	updatePostInInfiniteFeeds,
 } from "./postCache";
 
+const MAX_FEED_PAGES = 3;
+
 export const usePosts = () => {
   const { user } = useAuth();
 
@@ -55,6 +57,7 @@ export const usePosts = () => {
       return undefined;
     },
     initialPageParam: 1,
+    maxPages: MAX_FEED_PAGES,
     staleTime: 0,
     gcTime: 0,
     refetchOnMount: true,
@@ -143,6 +146,7 @@ export const usePostsByTag = (
     getNextPageParam: (lastPage) =>
       lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined,
     initialPageParam: 1,
+    maxPages: MAX_FEED_PAGES,
     enabled,
     staleTime: 0,
     refetchOnMount: true,
@@ -315,6 +319,7 @@ export const usePersonalizedFeed = (options?: {
       return undefined;
     },
     initialPageParam: 1,
+    maxPages: MAX_FEED_PAGES,
     enabled,
     staleTime: 0,
   });
@@ -345,6 +350,7 @@ export const useTrendingFeed = (options?: {
       return undefined;
     },
     initialPageParam: 1,
+    maxPages: MAX_FEED_PAGES,
     enabled,
     staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -370,6 +376,7 @@ export const useNewFeed = (options?: { enabled?: boolean; limit?: number }) => {
       return undefined;
     },
     initialPageParam: 1,
+    maxPages: MAX_FEED_PAGES,
     enabled,
     staleTime: 5 * 60 * 1000,
   });
@@ -412,6 +419,7 @@ export const useForYouFeed = (options?: {
       return undefined;
     },
     initialPageParam: 1,
+    maxPages: MAX_FEED_PAGES,
     enabled,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
