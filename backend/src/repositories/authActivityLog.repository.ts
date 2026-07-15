@@ -98,4 +98,11 @@ export class AuthActivityLogRepository extends BaseRepository<IAuthActivityLog> 
   async findRecentLogs(limit = 100): Promise<IAuthActivityLog[]> {
     return this.model.find().sort({ timestamp: -1 }).limit(limit).lean<IAuthActivityLog[]>().exec();
   }
+
+  async countFailedAttempts(since: Date): Promise<number> {
+    return this.countDocuments({
+      timestamp: { $gte: since },
+      "metadata.statusCode": 401,
+    });
+  }
 }

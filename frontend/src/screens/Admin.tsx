@@ -1,139 +1,362 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  Alert,
+  Avatar,
   Box,
+  Button,
+  Chip,
+  CircularProgress,
   Container,
-  Typography,
-  Tabs,
-  Tab,
-  Card,
-  CardContent,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
   Grid,
+  IconButton,
+  LinearProgress,
+  Paper,
+  Stack,
+  Tab,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
-  TableRow,
-  Paper,
-  Button,
-  Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  IconButton,
-  Avatar,
   TablePagination,
-  CircularProgress,
+  TableRow,
+  Tabs,
+  TextField,
+  Tooltip,
+  Typography,
   useTheme,
-  Stack,
-  Alert,
 } from "@mui/material";
 import {
-  Dashboard as DashboardIcon,
-  People as PeopleIcon,
-  Image as ImageIcon,
-  Delete as DeleteIcon,
+  AdminPanelSettings as AdminPanelSettingsIcon,
+  ArticleOutlined as ArticleIcon,
   Block as BlockIcon,
   CheckCircle as CheckCircleIcon,
-  AdminPanelSettings as AdminPanelSettingsIcon,
+  ContentCopy as ContentCopyIcon,
+  Dashboard as DashboardIcon,
+  Delete as DeleteIcon,
+  Image as ImageIcon,
+  KeyOutlined as KeyIcon,
+  ManageAccountsOutlined as ManageAccountsIcon,
+  People as PeopleIcon,
+  QueryStatsOutlined as QueryStatsIcon,
+  Refresh as RefreshIcon,
   RemoveCircle as RemoveCircleIcon,
-  Person as PersonIcon,
+  Search as SearchIcon,
+  SecurityOutlined as SecurityIcon,
   Speed as SpeedIcon,
   Storage as StorageIcon,
-  Search as SearchIcon,
+  WarningAmberOutlined as WarningAmberIcon,
 } from "@mui/icons-material";
-import {
-  useAdminUsers,
-  useAdminImages,
-  useDashboardStats,
-  useRecentActivity,
-  useBanUser,
-  useUnbanUser,
-  usePromoteToAdmin,
-  useDemoteFromAdmin,
-  useDeleteUserAdmin,
-  useDeleteImageAdmin,
-  useClearCache,
-  useTelemetryMetrics,
-  useRequestLogs,
-  useAuthActivityLogs,
-} from "../hooks/admin/useAdmin";
-import { AdminUserDTO, IPost } from "../types";
 import { formatDistanceToNow } from "date-fns";
+import {
+  useAdminImages,
+  useAdminUsers,
+  useAuthActivityLogs,
+  useBanUser,
+  useClearCache,
+  useDashboardStats,
+  useDeleteImageAdmin,
+  useDeleteUserAdmin,
+  useDemoteFromAdmin,
+  usePromoteToAdmin,
+  useRecentActivity,
+  useRequestLogs,
+  useTelemetryMetrics,
+  useUnbanUser,
+} from "../hooks/admin/useAdmin";
+import type { AuthActivityLog, RequestLog } from "../api/adminApi";
+import { AdminUserDTO, IPost } from "../types";
 import { buildAvatarUrl, transformCloudinaryUrl } from "../lib/media";
 
+const MIN_TELEMETRY_SAMPLES = 20;
+
+type AdminLog = RequestLog | AuthActivityLog;
+type MetricTone = "primary" | "success" | "warning" | "error";
+
 interface TabPanelProps {
-  children?: React.ReactNode;
+  children: React.ReactNode;
   index: number;
   value: number;
 }
 
-const TabPanel: React.FC<TabPanelProps> = ({ children, value, index }) => (
-  <div hidden={value !== index}>
-    {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
-  </div>
-);
-
-interface StatCardProps {
-  title: string;
+interface MetricCardProps {
+  label: string;
   value: string | number;
-  change?: string;
+  detail: string;
   icon: React.ReactNode;
+  tone?: MetricTone;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ title, value, change, icon }) => {
+interface PanelProps {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+const TabPanel: React.FC<TabPanelProps> = ({ children, index, value }) => (
+  <Box hidden={value !== index}>{value === index ? children : null}</Box>
+);
+
+const formatCompactNumber = (value: number): string =>
+  new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(value);
+
+const formatLatency = (value?: number): string => {
+  if (value === undefined || value === null) return "—";
+  return value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${Math.round(value)}ms`;
+};
+
+const getStatusColor = (
+  statusCode?: number,
+): "success" | "warning" | "error" | "default" => {
+  if (!statusCode) return "default";
+  if (statusCode >= 500) return "error";
+  if (statusCode >= 400) return "warning";
+  if (statusCode >= 300) return "default";
+  return "success";
+};
+
+const getLogIdentity = (log: AdminLog): string =>
+  log.authUsername || log.authHandle || log.authEmail || log.userId || "Anonymous";
+
+const getLogKey = (log: AdminLog, index: number): string =>
+  log.correlationId || log.clientRequestId || `${log.timestamp}-${index}`;
+
+const describeActivity = (action: string, targetType: string): string => {
+  const labels: Record<string, string> = {
+    upload: "uploaded a post",
+    like: "liked a post",
+    comment_like: "liked a comment",
+    comment: "commented on a post",
+    follow: "followed a user",
+    unfollow: "unfollowed a user",
+    favorite: "saved a post",
+    unfavorite: "removed a saved post",
+    profile_update: "updated their profile",
+  };
+
+  if (labels[action]) return labels[action];
+  return targetType === "unknown" ? action.replace(/_/g, " ") : `${action.replace(/_/g, " ")} a ${targetType}`;
+};
+
+const MetricCard: React.FC<MetricCardProps> = ({
+  label,
+  value,
+  detail,
+  icon,
+  tone = "primary",
+}) => {
   const theme = useTheme();
-  const isPositive = change?.startsWith("+");
+  const colors: Record<MetricTone, string> = {
+    primary: theme.palette.primary.main,
+    success: theme.palette.success.main,
+    warning: theme.palette.warning.main,
+    error: theme.palette.error.main,
+  };
+  const color = colors[tone];
 
   return (
-    <Card
+    <Paper
       sx={{
-        background: `linear-gradient(145deg, ${theme.palette.background.paper} 0%, ${theme.palette.background.default} 100%)`,
+        p: 2.5,
+        height: "100%",
         border: `1px solid ${theme.palette.divider}`,
+        borderRadius: 3,
+        background: `linear-gradient(145deg, ${theme.palette.background.paper}, rgba(14, 19, 26, 0.58))`,
       }}
     >
-      <CardContent>
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+        <Box>
+          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700 }}>
+            {label}
+          </Typography>
+          <Typography variant="h4" sx={{ mt: 1.2, fontWeight: 800 }}>
+            {value}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75 }}>
+            {detail}
+          </Typography>
+        </Box>
         <Box
           sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            mb: 2,
+            display: "grid",
+            placeItems: "center",
+            width: 42,
+            height: 42,
+            borderRadius: 2,
+            color,
+            bgcolor: `${color}1c`,
           }}
         >
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ fontWeight: 500 }}
-          >
-            {title}
-          </Typography>
-          <Box sx={{ color: "primary.main", opacity: 0.8 }}>{icon}</Box>
+          {icon}
         </Box>
-        <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5 }}>
-          {value}
+      </Stack>
+    </Paper>
+  );
+};
+
+const Panel: React.FC<PanelProps> = ({ title, description, action, children }) => {
+  const theme = useTheme();
+
+  return (
+    <Paper
+      sx={{
+        height: "100%",
+        overflow: "hidden",
+        border: `1px solid ${theme.palette.divider}`,
+        borderRadius: 3,
+        backgroundColor: "rgba(14, 19, 26, 0.76)",
+      }}
+    >
+      <Box sx={{ px: 2.5, py: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
+        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={2}>
+          <Box>
+            <Typography variant="h6">{title}</Typography>
+            {description ? (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.35 }}>
+                {description}
+              </Typography>
+            ) : null}
+          </Box>
+          {action}
+        </Stack>
+      </Box>
+      {children}
+    </Paper>
+  );
+};
+
+const DetailValue: React.FC<{ label: string; value?: string | number | boolean }> = ({
+  label,
+  value,
+}) => {
+  if (value === undefined || value === null || value === "") return null;
+  const displayValue = typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
+
+  return (
+    <Box sx={{ minWidth: 0 }}>
+      <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.4 }}>
+        {label}
+      </Typography>
+      <Stack direction="row" spacing={0.5} alignItems="center">
+        <Typography
+          variant="body2"
+          sx={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", overflowWrap: "anywhere" }}
+        >
+          {displayValue}
         </Typography>
-        {change && (
-          <Typography
-            variant="body2"
-            sx={{ color: isPositive ? "success.main" : "error.main" }}
-          >
-            {change}
-          </Typography>
-        )}
-      </CardContent>
-    </Card>
+        {displayValue.length > 12 ? (
+          <Tooltip title="Copy value">
+            <IconButton
+              aria-label={`Copy ${label}`}
+              size="small"
+              onClick={() => void navigator.clipboard?.writeText(displayValue)}
+            >
+              <ContentCopyIcon fontSize="inherit" />
+            </IconButton>
+          </Tooltip>
+        ) : null}
+      </Stack>
+    </Box>
+  );
+};
+
+const LogDetailsDialog: React.FC<{ log: AdminLog | null; onClose: () => void }> = ({
+  log,
+  onClose,
+}) => {
+  if (!log) return null;
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>Request details</DialogTitle>
+      <DialogContent dividers>
+        <Grid container spacing={2.5}>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Timestamp" value={new Date(log.timestamp).toLocaleString()} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Actor" value={getLogIdentity(log)} />
+          </Grid>
+          {"method" in log ? (
+            <Grid item xs={12} sm={6}>
+              <DetailValue label="Method" value={log.method} />
+            </Grid>
+          ) : (
+            <Grid item xs={12} sm={6}>
+              <DetailValue label="Auth event" value={log.action} />
+            </Grid>
+          )}
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Route" value={log.route} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Status" value={log.statusCode} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Response time" value={formatLatency(log.responseTimeMs)} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Authentication state" value={log.authState} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Authentication source" value={log.authSource} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="IP address" value={log.ip} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Correlation ID" value={log.correlationId} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Session ID" value={log.sessionId} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Token family" value={log.tokenFamilyId} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Client request ID" value={log.clientRequestId} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Client boot ID" value={log.clientBootId} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Retry attempt" value={log.clientRequestAttempt} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Retried" value={log.axiosRetry} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Refresh token rotated" value={log.refreshRotated} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Origin" value={log.origin} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Referrer" value={log.referer} />
+          </Grid>
+          <Grid item xs={12}>
+            <DetailValue label="User agent" value={log.userAgent} />
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Close</Button>
+      </DialogActions>
+    </Dialog>
   );
 };
 
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const theme = useTheme();
   const [currentTab, setCurrentTab] = useState(0);
-
-  // User Tab State
   const [userPage, setUserPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [userSearch, setUserSearch] = useState("");
@@ -144,71 +367,70 @@ export const AdminDashboard: React.FC = () => {
   const [banReason, setBanReason] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
-
-  // Image Tab State
   const [imagePage, setImagePage] = useState(0);
-
-  // Logs Tab State
   const [logsPage, setLogsPage] = useState(0);
   const [logsRowsPerPage, setLogsRowsPerPage] = useState(50);
-  const [logsMethodFilter, setLogsMethodFilter] = useState<string>("");
-  const [logsStatusFilter, setLogsStatusFilter] = useState<string>("");
+  const [logsMethodFilter, setLogsMethodFilter] = useState("");
+  const [logsStatusFilter, setLogsStatusFilter] = useState("");
   const [logsSearch, setLogsSearch] = useState("");
   const [logsStartDate, setLogsStartDate] = useState("");
   const [logsEndDate, setLogsEndDate] = useState("");
-
-  // Auth Activity Tab State
   const [authLogsPage, setAuthLogsPage] = useState(0);
   const [authLogsRowsPerPage, setAuthLogsRowsPerPage] = useState(50);
-  const [authLogsActionFilter, setAuthLogsActionFilter] = useState<string>("");
-  const [authLogsStatusFilter, setAuthLogsStatusFilter] = useState<string>("");
+  const [authLogsActionFilter, setAuthLogsActionFilter] = useState("");
+  const [authLogsStatusFilter, setAuthLogsStatusFilter] = useState("");
   const [authLogsSearch, setAuthLogsSearch] = useState("");
   const [authLogsStartDate, setAuthLogsStartDate] = useState("");
   const [authLogsEndDate, setAuthLogsEndDate] = useState("");
+  const [selectedLog, setSelectedLog] = useState<AdminLog | null>(null);
 
-  // Queries
-  const { data: stats, isLoading: statsLoading } = useDashboardStats(currentTab === 0);
-
-  const { data: usersData, isLoading: usersLoading } = useAdminUsers({
-    page: userPage + 1,
-    limit: rowsPerPage,
-    search: userSearch,
-    sortBy,
-    sortOrder,
-  }, currentTab === 1);
-
-  const { data: imagesData, isLoading: imagesLoading } = useAdminImages({
-    page: imagePage + 1,
-    limit: rowsPerPage,
-  }, currentTab === 2);
-
-  const { data: activityData } = useRecentActivity({ page: 1, limit: 10 }, currentTab === 0);
-  const { data: telemetryData, isLoading: telemetryLoading } =
+  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useDashboardStats(currentTab === 0);
+  const { data: usersData, isLoading: usersLoading, refetch: refetchUsers } = useAdminUsers(
+    {
+      page: userPage + 1,
+      limit: rowsPerPage,
+      search: userSearch,
+      sortBy,
+      sortOrder,
+    },
+    currentTab === 1,
+  );
+  const { data: imagesData, isLoading: imagesLoading, refetch: refetchImages } = useAdminImages(
+    { page: imagePage + 1, limit: rowsPerPage },
+    currentTab === 2,
+  );
+  const { data: activityData, refetch: refetchActivity } = useRecentActivity(
+    { page: 1, limit: 8 },
+    currentTab === 0,
+  );
+  const { data: telemetryData, isLoading: telemetryLoading, refetch: refetchTelemetry } =
     useTelemetryMetrics(currentTab === 3);
+  const { data: requestLogsData, isLoading: logsLoading, refetch: refetchRequestLogs } = useRequestLogs(
+    {
+      page: logsPage + 1,
+      limit: logsRowsPerPage,
+      method: logsMethodFilter || undefined,
+      statusCode: logsStatusFilter ? parseInt(logsStatusFilter, 10) : undefined,
+      search: logsSearch || undefined,
+      startDate: logsStartDate || undefined,
+      endDate: logsEndDate || undefined,
+    },
+    currentTab === 4,
+  );
+  const { data: authActivityLogsData, isLoading: authLogsLoading, refetch: refetchAuthLogs } =
+    useAuthActivityLogs(
+      {
+        page: authLogsPage + 1,
+        limit: authLogsRowsPerPage,
+        action: authLogsActionFilter || undefined,
+        statusCode: authLogsStatusFilter ? parseInt(authLogsStatusFilter, 10) : undefined,
+        search: authLogsSearch || undefined,
+        startDate: authLogsStartDate || undefined,
+        endDate: authLogsEndDate || undefined,
+      },
+      currentTab === 5,
+    );
 
-  const { data: requestLogsData, isLoading: logsLoading } = useRequestLogs({
-    page: logsPage + 1,
-    limit: logsRowsPerPage,
-    statusCode: logsStatusFilter ? parseInt(logsStatusFilter) : undefined,
-    search: logsSearch,
-    startDate: logsStartDate || undefined,
-    endDate: logsEndDate || undefined,
-  }, currentTab === 4);
-
-  const { data: authActivityLogsData, isLoading: authLogsLoading } =
-    useAuthActivityLogs({
-      page: authLogsPage + 1,
-      limit: authLogsRowsPerPage,
-      action: authLogsActionFilter || undefined,
-      statusCode: authLogsStatusFilter
-        ? parseInt(authLogsStatusFilter)
-        : undefined,
-      search: authLogsSearch,
-      startDate: authLogsStartDate || undefined,
-      endDate: authLogsEndDate || undefined,
-    }, currentTab === 5);
-
-  // Mutations
   const banUserMutation = useBanUser();
   const unbanUserMutation = useUnbanUser();
   const promoteUserMutation = usePromoteToAdmin();
@@ -217,1512 +439,582 @@ export const AdminDashboard: React.FC = () => {
   const deleteImageMutation = useDeleteImageAdmin();
   const clearCacheMutation = useClearCache();
 
-  const handleBanUser = () => {
-    if (selectedUser && banReason.trim()) {
-      banUserMutation.mutate(
-        { publicId: selectedUser.publicId, reason: banReason.trim() },
-        {
-          onSuccess: () => {
-            setBanDialogOpen(false);
-            setBanReason("");
-            setSelectedUser(null);
-          },
-        },
-      );
-    }
+  const operations = stats?.operations ?? {
+    requestsLast24Hours: 0,
+    serverErrorsLast24Hours: 0,
+    slowRequestsLast24Hours: 0,
+    averageResponseTimeMs: 0,
+    failedAuthAttemptsLast24Hours: 0,
+  };
+  const hasOperationalConcern =
+    operations.serverErrorsLast24Hours > 0 || operations.slowRequestsLast24Hours > 0;
+  const telemetryIsReliable = (telemetryData?.ttfi.count ?? 0) >= MIN_TELEMETRY_SAMPLES;
+
+  const handleRefresh = (): void => {
+    const refreshers = [
+      [refetchStats, refetchActivity],
+      [refetchUsers],
+      [refetchImages],
+      [refetchTelemetry],
+      [refetchRequestLogs],
+      [refetchAuthLogs],
+    ][currentTab];
+    void Promise.all(refreshers.map((refetch) => refetch()));
   };
 
-  const openBanDialog = (user: AdminUserDTO) => {
+  const openBanDialog = (user: AdminUserDTO): void => {
     setSelectedUser(user);
+    setBanReason("");
     setBanDialogOpen(true);
   };
 
-  const openDeleteDialog = (user: AdminUserDTO) => {
+  const openDeleteDialog = (user: AdminUserDTO): void => {
     setSelectedUser(user);
     setDeleteReason("");
     setDeleteDialogOpen(true);
   };
 
-  const handleDeleteUser = () => {
+  const handleBanUser = (): void => {
+    if (!selectedUser || !banReason.trim()) return;
+    banUserMutation.mutate(
+      { publicId: selectedUser.publicId, reason: banReason.trim() },
+      {
+        onSuccess: () => {
+          setBanDialogOpen(false);
+          setSelectedUser(null);
+          setBanReason("");
+        },
+      },
+    );
+  };
+
+  const handleDeleteUser = (): void => {
     if (!selectedUser || !deleteReason.trim()) return;
     deleteUserMutation.mutate(
       { publicId: selectedUser.publicId, reason: deleteReason.trim() },
       {
         onSuccess: () => {
           setDeleteDialogOpen(false);
-          setDeleteReason("");
           setSelectedUser(null);
+          setDeleteReason("");
         },
       },
     );
   };
 
   return (
-    <Container maxWidth="xl" sx={{ py: 4 }}>
-      <Box sx={{ mb: 4 }}>
-        <Typography
-          variant="h4"
-          gutterBottom
-          sx={{ display: "flex", alignItems: "center", gap: 1 }}
-        >
-          <AdminPanelSettingsIcon fontSize="large" />
-          admin dashboard
-        </Typography>
+    <Container maxWidth={false} sx={{ maxWidth: 1500, px: { xs: 2, sm: 3, lg: 4 }, py: { xs: 2, md: 4 } }}>
+      <Box
+        sx={{
+          p: { xs: 2.25, sm: 3 },
+          mb: 2.5,
+          border: `1px solid ${theme.palette.divider}`,
+          borderRadius: 4,
+          background: "radial-gradient(circle at top right, rgba(56, 189, 248, 0.16), transparent 34%), linear-gradient(135deg, rgba(14, 19, 26, 0.98), rgba(7, 9, 13, 0.9))",
+        }}
+      >
+        <Stack direction={{ xs: "column", md: "row" }} alignItems={{ md: "center" }} justifyContent="space-between" spacing={2}>
+          <Box>
+            <Typography variant="overline" color="primary.main" sx={{ fontWeight: 800, letterSpacing: 1.2 }}>
+              Admin workspace
+            </Typography>
+            <Stack direction="row" spacing={1.25} alignItems="center">
+              <AdminPanelSettingsIcon color="primary" fontSize="large" />
+              <Typography variant="h3">Control center</Typography>
+            </Stack>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.8 }}>
+              People, content, platform signals, and secure diagnostics in one place.
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Chip icon={<SecurityIcon />} label="Admin only" color="primary" variant="outlined" />
+            <Button variant="outlined" startIcon={<RefreshIcon />} onClick={handleRefresh}>
+              Refresh
+            </Button>
+          </Stack>
+        </Stack>
       </Box>
 
       <Tabs
         value={currentTab}
         onChange={(_, newValue) => setCurrentTab(newValue)}
-        sx={{ mb: 3 }}
         variant="scrollable"
         scrollButtons="auto"
         allowScrollButtonsMobile
+        sx={{
+          mb: 3,
+          minHeight: 48,
+          borderBottom: `1px solid ${theme.palette.divider}`,
+          "& .MuiTabs-flexContainer": { gap: 0.5 },
+          "& .MuiTab-root": {
+            minHeight: 48,
+            px: 1.5,
+            textTransform: "none",
+            fontWeight: 700,
+            color: "text.secondary",
+          },
+          "& .Mui-selected": { color: "primary.main" },
+          "& .MuiTabs-indicator": { height: 3, borderRadius: "3px 3px 0 0" },
+        }}
       >
-        <Tab icon={<DashboardIcon />} label="overview" />
-        <Tab icon={<PeopleIcon />} label="users" />
-        <Tab icon={<ImageIcon />} label="posts" />
-        <Tab icon={<SpeedIcon />} label="telemetry" />
-        <Tab icon={<StorageIcon />} label="request logs" />
-        <Tab icon={<StorageIcon />} label="auth logs" />
+        <Tab icon={<DashboardIcon />} iconPosition="start" label="Overview" />
+        <Tab icon={<PeopleIcon />} iconPosition="start" label="People" />
+        <Tab icon={<ArticleIcon />} iconPosition="start" label="Content" />
+        <Tab icon={<QueryStatsIcon />} iconPosition="start" label="Experience" />
+        <Tab icon={<StorageIcon />} iconPosition="start" label="Requests" />
+        <Tab icon={<KeyIcon />} iconPosition="start" label="Security" />
       </Tabs>
 
-      {/* overview tab */}
       <TabPanel value={currentTab} index={0}>
         {statsLoading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+          <Box sx={{ display: "grid", placeItems: "center", minHeight: 320 }}>
             <CircularProgress />
           </Box>
         ) : (
-          <Grid container spacing={3}>
-            <Grid item xs={12} sm={6} md={3}>
-              <StatCard
-                title="Total Users"
-                value={stats?.totalUsers || 0}
-                change={`+${stats?.recentUsers || 0} this month`}
-                icon={<PersonIcon sx={{ fontSize: 40 }} />}
+          <Grid container spacing={2.5}>
+            <Grid item xs={12} sm={6} lg={3}>
+              <MetricCard
+                label="People"
+                value={formatCompactNumber(stats?.totalUsers ?? 0)}
+                detail={`${stats?.recentUsers ?? 0} joined in the last 30 days`}
+                icon={<PeopleIcon />}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} lg={3}>
+              <MetricCard
+                label="Posts"
+                value={formatCompactNumber(stats?.totalImages ?? 0)}
+                detail={`${stats?.recentImages ?? 0} published in the last 30 days`}
+                icon={<ImageIcon />}
+                tone="success"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} lg={3}>
+              <MetricCard
+                label="Server errors"
+                value={operations.serverErrorsLast24Hours}
+                detail="Responses with a 5xx status in the last 24 hours"
+                icon={<WarningAmberIcon />}
+                tone={operations.serverErrorsLast24Hours > 0 ? "error" : "success"}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} lg={3}>
+              <MetricCard
+                label="Auth failures"
+                value={operations.failedAuthAttemptsLast24Hours}
+                detail="Unauthorized auth events in the last 24 hours"
+                icon={<KeyIcon />}
+                tone={operations.failedAuthAttemptsLast24Hours > 0 ? "warning" : "primary"}
               />
             </Grid>
 
-            <Grid item xs={12} sm={6} md={3}>
-              <StatCard
-                title="Total Posts"
-                value={stats?.totalImages || 0}
-                change={`+${stats?.recentImages || 0} this month`}
-                icon={<ImageIcon sx={{ fontSize: 40 }} />}
-              />
+            <Grid item xs={12} lg={7}>
+              <Panel
+                title="Platform pulse"
+                description="A compact health readout built from the last 24 hours of request data."
+                action={<Button size="small" onClick={() => setCurrentTab(4)}>Open requests</Button>}
+              >
+                <Box sx={{ p: 2.5 }}>
+                  <Alert severity={hasOperationalConcern ? "warning" : "success"} sx={{ mb: 2.5 }}>
+                    {hasOperationalConcern
+                      ? "The platform has signals worth reviewing. Open Requests to inspect the affected routes."
+                      : "No server errors or slow requests have been recorded in the last 24 hours."}
+                  </Alert>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={4}>
+                      <Typography variant="h5">{formatCompactNumber(operations.requestsLast24Hours)}</Typography>
+                      <Typography variant="body2" color="text.secondary">Requests</Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Typography variant="h5">{formatLatency(operations.averageResponseTimeMs)}</Typography>
+                      <Typography variant="body2" color="text.secondary">Average response time</Typography>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Typography variant="h5">{operations.slowRequestsLast24Hours}</Typography>
+                      <Typography variant="body2" color="text.secondary">Slow requests over 1s</Typography>
+                    </Grid>
+                  </Grid>
+                </Box>
+              </Panel>
             </Grid>
 
-            <Grid item xs={12} sm={6} md={3}>
-              <StatCard
-                title="Banned Users"
-                value={stats?.bannedUsers || 0}
-                icon={<BlockIcon sx={{ fontSize: 40 }} />}
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6} md={3}>
-              <StatCard
-                title="Admin Users"
-                value={stats?.adminUsers || 0}
-                icon={<AdminPanelSettingsIcon sx={{ fontSize: 40 }} />}
-              />
-            </Grid>
-
-            {/* Removed fake chart as per request */}
-
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      mb: 2,
-                    }}
-                  >
-                    <Typography variant="h6">cache management</Typography>
+            <Grid item xs={12} lg={5}>
+              <Panel title="Operator actions" description="Common tasks without burying maintenance in the overview.">
+                <Stack spacing={1.1} sx={{ p: 2 }}>
+                  <Button fullWidth variant="outlined" startIcon={<ManageAccountsIcon />} onClick={() => setCurrentTab(1)}>
+                    Review people
+                  </Button>
+                  <Button fullWidth variant="outlined" startIcon={<ArticleIcon />} onClick={() => setCurrentTab(2)}>
+                    Review posts
+                  </Button>
+                  <Button fullWidth variant="outlined" startIcon={<SecurityIcon />} onClick={() => setCurrentTab(5)}>
+                    Inspect security activity
+                  </Button>
+                  <Divider sx={{ my: 0.5 }} />
+                  <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={2}>
+                    <Box>
+                      <Typography variant="body2" fontWeight={700}>Feed cache</Typography>
+                      <Typography variant="caption" color="text.secondary">Use only when feeds remain stale after changes.</Typography>
+                    </Box>
                     <Button
-                      variant="contained"
                       color="warning"
+                      variant="contained"
                       onClick={() => clearCacheMutation.mutate("feed:*")}
                       disabled={clearCacheMutation.isPending}
                     >
-                      {clearCacheMutation.isPending
-                        ? "clearing..."
-                        : "clear feed cache"}
+                      {clearCacheMutation.isPending ? "Clearing…" : "Clear"}
                     </Button>
-                  </Box>
-                  <Typography variant="body2" color="text.secondary">
-                    clear Redis cache to force feed regeneration. useful when
-                    feed data seems stale after deletions or updates.
-                  </Typography>
-                </CardContent>
-              </Card>
+                  </Stack>
+                </Stack>
+              </Panel>
             </Grid>
 
             <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Recent activity
-                  </Typography>
-                  <TableContainer>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell>user</TableCell>
-                          <TableCell>action</TableCell>
-                          <TableCell>target</TableCell>
-                          <TableCell>time</TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {activityData?.data.slice(0, 5).map((activity, idx) => (
-                          <TableRow key={idx}>
-                            <TableCell>{activity.username}</TableCell>
-                            <TableCell>{activity.action}</TableCell>
-                            <TableCell>{activity.targetType}</TableCell>
-                            <TableCell>
-                              {formatDistanceToNow(
-                                new Date(activity.timestamp),
-                                { addSuffix: true },
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </CardContent>
-              </Card>
+              <Panel title="Recent activity" description="The latest visible community actions.">
+                <Box sx={{ px: { xs: 2, sm: 2.5 }, py: 0.5 }}>
+                  {activityData?.data.length ? (
+                    activityData.data.map((activity, index) => (
+                      <Stack
+                        key={`${activity.userId}-${activity.timestamp}-${index}`}
+                        direction="row"
+                        spacing={1.5}
+                        alignItems="center"
+                        sx={{ py: 1.6, borderBottom: index < activityData.data.length - 1 ? `1px solid ${theme.palette.divider}` : "none" }}
+                      >
+                        <Box sx={{ width: 8, height: 8, flexShrink: 0, borderRadius: "50%", bgcolor: "primary.main" }} />
+                        <Box sx={{ minWidth: 0, flexGrow: 1 }}>
+                          <Typography variant="body2">
+                            <Box component="span" sx={{ fontWeight: 800 }}>{activity.username}</Box>{" "}
+                            {describeActivity(activity.action, activity.targetType)}
+                          </Typography>
+                        </Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ flexShrink: 0 }}>
+                          {formatDistanceToNow(new Date(activity.timestamp), { addSuffix: true })}
+                        </Typography>
+                      </Stack>
+                    ))
+                  ) : (
+                    <Typography color="text.secondary" sx={{ py: 4, textAlign: "center" }}>
+                      Community activity will appear here as members interact with the app.
+                    </Typography>
+                  )}
+                </Box>
+              </Panel>
             </Grid>
           </Grid>
         )}
       </TabPanel>
 
-      {/* users tab */}
       <TabPanel value={currentTab} index={1}>
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Stack
-              direction={{ xs: "column", sm: "row" }}
-              spacing={2}
-              sx={{ mb: 2 }}
-              alignItems={{ xs: "stretch", sm: "center" }}
-            >
+        <Stack spacing={2.5}>
+          <Panel title="People" description="Search accounts, review their activity, and apply account controls.">
+            <Stack direction={{ xs: "column", md: "row" }} spacing={1.25} sx={{ p: 2 }}>
               <TextField
                 size="small"
-                label="Search Users"
-                placeholder="Username or Email"
+                label="Search people"
+                placeholder="Username or email"
                 value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <SearchIcon
-                      color="action"
-                      fontSize="small"
-                      sx={{ mr: 1 }}
-                    />
-                  ),
-                }}
-                sx={{ width: { xs: "100%", sm: 300 } }}
+                onChange={(event) => { setUserSearch(event.target.value); setUserPage(0); }}
+                InputProps={{ startAdornment: <SearchIcon color="action" fontSize="small" sx={{ mr: 1 }} /> }}
+                sx={{ minWidth: { md: 260 }, flexGrow: 1 }}
               />
-              <TextField
-                select
-                size="small"
-                label="Sort By"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                sx={{ width: { xs: "100%", sm: 150 } }}
-                SelectProps={{ native: true }}
-              >
-                <option value="createdAt">Joined Date</option>
-                <option value="postCount">Post Count</option>
-                <option value="lastActive">Last Active</option>
-                <option value="followerCount">Followers</option>
+              <TextField select size="small" label="Sort" value={sortBy} onChange={(event) => { setSortBy(event.target.value); setUserPage(0); }} SelectProps={{ native: true }} sx={{ minWidth: 150 }}>
+                <option value="createdAt">Joined date</option>
+                <option value="updatedAt">Last updated</option>
+                <option value="username">Username</option>
+                <option value="email">Email</option>
               </TextField>
-              <TextField
-                select
-                size="small"
-                label="Order"
-                value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
-                sx={{ width: { xs: "100%", sm: 120 } }}
-                SelectProps={{ native: true }}
-              >
-                <option value="desc">Descending</option>
-                <option value="asc">Ascending</option>
+              <TextField select size="small" label="Order" value={sortOrder} onChange={(event) => { setSortOrder(event.target.value as "asc" | "desc"); setUserPage(0); }} SelectProps={{ native: true }} sx={{ minWidth: 130 }}>
+                <option value="desc">Newest first</option>
+                <option value="asc">Oldest first</option>
               </TextField>
-              <Button
-                variant="outlined"
-                onClick={() => {
-                  setUserSearch("");
-                  setSortBy("createdAt");
-                  setSortOrder("desc");
-                }}
-              >
+              <Button variant="text" onClick={() => { setUserSearch(""); setSortBy("createdAt"); setSortOrder("desc"); setUserPage(0); }}>
                 Reset
               </Button>
             </Stack>
-          </CardContent>
-        </Card>
+          </Panel>
 
-        {usersLoading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <Paper>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>user</TableCell>
-                    <TableCell>email</TableCell>
-                    <TableCell>posts</TableCell>
-                    <TableCell>status</TableCell>
-                    <TableCell>joined</TableCell>
-                    <TableCell>actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {usersData?.data.map((user) => (
-                    <TableRow
-                      key={user.publicId}
-                      hover
-                      sx={{ cursor: "pointer" }}
-                      onClick={() => navigate(`/admin/users/${user.publicId}`)}
-                    >
-                      <TableCell>
-                        <Box
-                          sx={{ display: "flex", alignItems: "center", gap: 1 }}
-                        >
-                          <Avatar
-                            src={buildAvatarUrl(user.avatar, 32)}
-                            sx={{ width: 32, height: 32 }}
-                          >
-                            {user.username.charAt(0).toUpperCase()}
-                          </Avatar>
-                          <Box>
-                            <Typography variant="body2" fontWeight="bold">
-                              {user.username}
-                            </Typography>
-                            {user.isAdmin && (
-                              <Chip
-                                label="admin"
-                                size="small"
-                                color="warning"
-                                sx={{ height: 20, fontSize: "0.625rem" }}
-                              />
-                            )}
-                          </Box>
-                        </Box>
-                      </TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>{user.postCount}</TableCell>
-                      <TableCell>
-                        {user.isBanned ? (
-                          <Chip label="banned" size="small" color="error" />
-                        ) : (
-                          <Chip label="active" size="small" color="success" />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {formatDistanceToNow(new Date(user.createdAt), {
-                          addSuffix: true,
-                        })}
-                      </TableCell>
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Box sx={{ display: "flex", gap: 1 }}>
-                          {user.isBanned ? (
-                            <IconButton
-                              size="small"
-                              color="success"
-                              onClick={() =>
-                                unbanUserMutation.mutate(user.publicId)
-                              }
-                              title="unban user"
-                            >
-                              <CheckCircleIcon />
-                            </IconButton>
-                          ) : (
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => openBanDialog(user)}
-                              title="ban user"
-                            >
-                              <BlockIcon />
-                            </IconButton>
-                          )}
-                          {user.isAdmin ? (
-                            <IconButton
-                              size="small"
-                              onClick={() =>
-                                demoteUserMutation.mutate(user.publicId)
-                              }
-                              title="remove admin"
-                            >
-                              <RemoveCircleIcon />
-                            </IconButton>
-                          ) : (
-                            <IconButton
-                              size="small"
-                              color="warning"
-                              onClick={() =>
-                                promoteUserMutation.mutate(user.publicId)
-                              }
-                              title="make admin"
-                            >
-                              <AdminPanelSettingsIcon />
-                            </IconButton>
-                          )}
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => openDeleteDialog(user)}
-                            title="delete user"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </Box>
-                      </TableCell>
+          {usersLoading ? (
+            <Box sx={{ display: "grid", placeItems: "center", minHeight: 260 }}><CircularProgress /></Box>
+          ) : (
+            <Paper sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 3, overflow: "hidden" }}>
+              <TableContainer>
+                <Table stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Person</TableCell>
+                      <TableCell>Email</TableCell>
+                      <TableCell align="right">Posts</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Joined</TableCell>
+                      <TableCell align="right">Actions</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-            <TablePagination
-              component="div"
-              count={usersData?.total || 0}
-              page={userPage}
-              onPageChange={(_, newPage) => setUserPage(newPage)}
-              rowsPerPage={rowsPerPage}
-              onRowsPerPageChange={(e) => {
-                setRowsPerPage(parseInt(e.target.value, 10));
-                setUserPage(0);
-              }}
-            />
-          </Paper>
-        )}
+                  </TableHead>
+                  <TableBody>
+                    {usersData?.data.map((user) => (
+                      <TableRow key={user.publicId} hover sx={{ cursor: "pointer" }} onClick={() => navigate(`/admin/users/${user.publicId}`)}>
+                        <TableCell>
+                          <Stack direction="row" spacing={1.25} alignItems="center">
+                            <Avatar src={buildAvatarUrl(user.avatar, 36)} sx={{ width: 36, height: 36 }}>{user.username.charAt(0).toUpperCase()}</Avatar>
+                            <Box>
+                              <Typography variant="body2" fontWeight={800}>{user.username}</Typography>
+                              {user.isAdmin ? <Chip label="Admin" size="small" color="warning" sx={{ mt: 0.35, height: 20 }} /> : null}
+                            </Box>
+                          </Stack>
+                        </TableCell>
+                        <TableCell>{user.email}</TableCell>
+                        <TableCell align="right">{user.postCount}</TableCell>
+                        <TableCell><Chip label={user.isBanned ? "Banned" : "Active"} size="small" color={user.isBanned ? "error" : "success"} /></TableCell>
+                        <TableCell>{formatDistanceToNow(new Date(user.createdAt), { addSuffix: true })}</TableCell>
+                        <TableCell align="right" onClick={(event) => event.stopPropagation()}>
+                          <Stack direction="row" spacing={0.25} justifyContent="flex-end">
+                            {user.isBanned ? (
+                              <Tooltip title="Restore account"><IconButton aria-label="Restore account" size="small" color="success" onClick={() => unbanUserMutation.mutate(user.publicId)}><CheckCircleIcon /></IconButton></Tooltip>
+                            ) : (
+                              <Tooltip title="Ban account"><IconButton aria-label="Ban account" size="small" color="error" onClick={() => openBanDialog(user)}><BlockIcon /></IconButton></Tooltip>
+                            )}
+                            {user.isAdmin ? (
+                              <Tooltip title="Remove administrator access"><IconButton aria-label="Remove administrator access" size="small" onClick={() => demoteUserMutation.mutate(user.publicId)}><RemoveCircleIcon /></IconButton></Tooltip>
+                            ) : (
+                              <Tooltip title="Make administrator"><IconButton aria-label="Make administrator" size="small" color="warning" onClick={() => promoteUserMutation.mutate(user.publicId)}><AdminPanelSettingsIcon /></IconButton></Tooltip>
+                            )}
+                            <Tooltip title="Permanently delete account"><IconButton aria-label="Permanently delete account" size="small" color="error" onClick={() => openDeleteDialog(user)}><DeleteIcon /></IconButton></Tooltip>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              <TablePagination component="div" count={usersData?.total ?? 0} page={userPage} onPageChange={(_, page) => setUserPage(page)} rowsPerPage={rowsPerPage} onRowsPerPageChange={(event) => { setRowsPerPage(parseInt(event.target.value, 10)); setUserPage(0); }} rowsPerPageOptions={[10, 25, 50]} />
+            </Paper>
+          )}
+        </Stack>
       </TabPanel>
 
-      {/* images tab */}
       <TabPanel value={currentTab} index={2}>
-        {imagesLoading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <Paper>
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>preview</TableCell>
-                    <TableCell>content</TableCell>
-                    <TableCell>author</TableCell>
-                    <TableCell>likes</TableCell>
-                    <TableCell>posted</TableCell>
-                    <TableCell>actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {imagesData?.data.map((post: IPost) => {
-                    const imageUrl = post.image?.url || post.url;
-                    const hasImage = !!imageUrl;
-                    const contentPreview = post.body
-                      ? post.body.length > 50
-                        ? post.body.substring(0, 50) + "..."
-                        : post.body
-                      : hasImage
-                        ? "[image only]"
-                        : "[no content]";
-                    return (
-                      <TableRow
-                        key={post.publicId}
-                        sx={{
-                          cursor: "pointer",
-                          "&:hover": { bgcolor: "rgba(255,255,255,0.05)" },
-                        }}
-                        onClick={() => navigate(`/posts/${post.publicId}`)}
-                      >
-                        <TableCell>
-                          {hasImage ? (
+        <Stack spacing={2.5}>
+          <Panel title="Content library" description="Review posts as members see them. Open a row to inspect the post before removing it." action={<Chip label={`${imagesData?.total ?? 0} posts`} size="small" />}>
+            <Box sx={{ display: "none" }} />
+          </Panel>
+          {imagesLoading ? (
+            <Box sx={{ display: "grid", placeItems: "center", minHeight: 260 }}><CircularProgress /></Box>
+          ) : (
+            <Paper sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 3, overflow: "hidden" }}>
+              <TableContainer>
+                <Table stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Preview</TableCell>
+                      <TableCell>Post</TableCell>
+                      <TableCell>Author</TableCell>
+                      <TableCell align="right">Likes</TableCell>
+                      <TableCell>Published</TableCell>
+                      <TableCell align="right">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {imagesData?.data.map((post: IPost) => {
+                      const imageUrl = post.image?.url || post.url;
+                      const hasImage = Boolean(imageUrl);
+                      const contentPreview = post.body ? (post.body.length > 90 ? `${post.body.substring(0, 90)}…` : post.body) : hasImage ? "Image post" : "No caption";
+                      return (
+                        <TableRow key={post.publicId} hover sx={{ cursor: "pointer" }} onClick={() => navigate(`/posts/${post.publicId}`)}>
+                          <TableCell>
                             <Avatar
                               variant="rounded"
-                              src={transformCloudinaryUrl(imageUrl, {
-                                width: 120,
-                                height: 120,
-                                crop: "fill",
-                                quality: "auto:eco",
-                                dpr: false,
-                              })}
-                              sx={{ width: 60, height: 60 }}
-                            />
-                          ) : (
-                            <Avatar
-                              variant="rounded"
-                              sx={{
-                                width: 60,
-                                height: 60,
-                                bgcolor: "grey.800",
-                              }}
+                              src={hasImage ? transformCloudinaryUrl(imageUrl, { width: 120, height: 120, crop: "fill", quality: "auto:eco", dpr: false }) : undefined}
+                              sx={{ width: 56, height: 56, bgcolor: "grey.800" }}
                             >
                               <ImageIcon />
                             </Avatar>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Typography variant="body2" sx={{ maxWidth: 200 }}>
-                            {contentPreview}
-                          </Typography>
-                        </TableCell>
-                        <TableCell
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (post.user?.publicId) {
-                              navigate(
-                                `/profile/${post.user.handle || post.user.publicId}`,
-                              );
-                            }
-                          }}
-                          sx={{
-                            "&:hover": {
-                              color: "primary.main",
-                              textDecoration: "underline",
-                            },
-                          }}
-                        >
-                          {post.user?.username}
-                        </TableCell>
-                        <TableCell>{post.likes || 0}</TableCell>
-                        <TableCell>
-                          {formatDistanceToNow(new Date(post.createdAt), {
-                            addSuffix: true,
-                          })}
-                        </TableCell>
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  "delete this post? this cannot be undone.",
-                                )
-                              ) {
-                                deleteImageMutation.mutate(post.publicId);
-                              }
-                            }}
-                            title="delete post"
-                          >
-                            <DeleteIcon />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
-            <TablePagination
-              component="div"
-              count={imagesData?.total || 0}
-              page={imagePage}
-              onPageChange={(_, newPage) => setImagePage(newPage)}
-              rowsPerPage={rowsPerPage}
-              onRowsPerPageChange={(e) => {
-                setRowsPerPage(parseInt(e.target.value, 10));
-                setImagePage(0);
-              }}
-            />
-          </Paper>
-        )}
-      </TabPanel>
-
-      {/* telemetry tab */}
-      <TabPanel value={currentTab} index={3}>
-        {telemetryLoading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <Grid container spacing={3}>
-            {/* TTFI metrics */}
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Time to First Interaction (TTFI)
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ mb: 2 }}
-                  >
-                    Measures how quickly users can interact with the page after
-                    loading
-                  </Typography>
-                  <Grid container spacing={2}>
-                    <Grid item xs={6} sm={2.4}>
-                      <Box
-                        sx={{
-                          textAlign: "center",
-                          p: 2,
-                          bgcolor: "background.default",
-                          borderRadius: 1,
-                        }}
-                      >
-                        <Typography variant="h4" color="primary.main">
-                          {telemetryData?.ttfi.count || 0}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Samples
-                        </Typography>
-                      </Box>
-                    </Grid>
-                    <Grid item xs={6} sm={2.4}>
-                      <Box
-                        sx={{
-                          textAlign: "center",
-                          p: 2,
-                          bgcolor: "background.default",
-                          borderRadius: 1,
-                        }}
-                      >
-                        <Typography variant="h4" color="primary.main">
-                          {telemetryData?.ttfi.avg || 0}ms
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Average
-                        </Typography>
-                      </Box>
-                    </Grid>
-                    <Grid item xs={6} sm={2.4}>
-                      <Box
-                        sx={{
-                          textAlign: "center",
-                          p: 2,
-                          bgcolor: "background.default",
-                          borderRadius: 1,
-                        }}
-                      >
-                        <Typography variant="h4" color="success.main">
-                          {telemetryData?.ttfi.p50 || 0}ms
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          P50
-                        </Typography>
-                      </Box>
-                    </Grid>
-                    <Grid item xs={6} sm={2.4}>
-                      <Box
-                        sx={{
-                          textAlign: "center",
-                          p: 2,
-                          bgcolor: "background.default",
-                          borderRadius: 1,
-                        }}
-                      >
-                        <Typography variant="h4" color="warning.main">
-                          {telemetryData?.ttfi.p90 || 0}ms
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          P90
-                        </Typography>
-                      </Box>
-                    </Grid>
-                    <Grid item xs={6} sm={2.4}>
-                      <Box
-                        sx={{
-                          textAlign: "center",
-                          p: 2,
-                          bgcolor: "background.default",
-                          borderRadius: 1,
-                        }}
-                      >
-                        <Typography variant="h4" color="error.main">
-                          {telemetryData?.ttfi.p99 || 0}ms
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          P99
-                        </Typography>
-                      </Box>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* user flows */}
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    User Flows
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ mb: 2 }}
-                  >
-                    Tracks completion rates of key user journeys
-                  </Typography>
-                  {telemetryData?.flows && telemetryData.flows.length > 0 ? (
-                    <TableContainer>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Flow</TableCell>
-                            <TableCell align="right">Started</TableCell>
-                            <TableCell align="right">Completed</TableCell>
-                            <TableCell align="right">Abandoned</TableCell>
-                            <TableCell align="right">Completion Rate</TableCell>
-                            <TableCell align="right">Avg Duration</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {telemetryData.flows.map((flow) => (
-                            <TableRow key={flow.flowType}>
-                              <TableCell>
-                                <Chip
-                                  label={flow.flowType}
-                                  size="small"
-                                  variant="outlined"
-                                />
-                              </TableCell>
-                              <TableCell align="right">
-                                {flow.started}
-                              </TableCell>
-                              <TableCell align="right">
-                                {flow.completed}
-                              </TableCell>
-                              <TableCell align="right">
-                                {flow.abandoned}
-                              </TableCell>
-                              <TableCell align="right">
-                                <Chip
-                                  label={`${flow.completionRate}%`}
-                                  size="small"
-                                  color={
-                                    flow.completionRate >= 70
-                                      ? "success"
-                                      : flow.completionRate >= 40
-                                        ? "warning"
-                                        : "error"
-                                  }
-                                />
-                              </TableCell>
-                              <TableCell align="right">
-                                {flow.avgDuration > 0
-                                  ? `${(flow.avgDuration / 1000).toFixed(1)}s`
-                                  : "-"}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  ) : (
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ textAlign: "center", py: 4 }}
-                    >
-                      No flow data available yet
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* scroll depth */}
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Scroll Depth
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ mb: 2 }}
-                  >
-                    How far users scroll through feeds
-                  </Typography>
-                  {telemetryData?.scrollDepth &&
-                  telemetryData.scrollDepth.length > 0 ? (
-                    <TableContainer>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow>
-                            <TableCell>Feed</TableCell>
-                            <TableCell align="right">Avg Depth</TableCell>
-                            <TableCell align="right">25%</TableCell>
-                            <TableCell align="right">50%</TableCell>
-                            <TableCell align="right">75%</TableCell>
-                            <TableCell align="right">100%</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {telemetryData.scrollDepth.map((scroll) => (
-                            <TableRow key={scroll.feedId}>
-                              <TableCell>
-                                <Chip
-                                  label={scroll.feedId}
-                                  size="small"
-                                  variant="outlined"
-                                />
-                              </TableCell>
-                              <TableCell align="right">
-                                {scroll.avgMaxDepth}%
-                              </TableCell>
-                              <TableCell align="right">
-                                {scroll.reachedThresholds[25] || 0}
-                              </TableCell>
-                              <TableCell align="right">
-                                {scroll.reachedThresholds[50] || 0}
-                              </TableCell>
-                              <TableCell align="right">
-                                {scroll.reachedThresholds[75] || 0}
-                              </TableCell>
-                              <TableCell align="right">
-                                {scroll.reachedThresholds[100] || 0}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-                  ) : (
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ textAlign: "center", py: 4 }}
-                    >
-                      No scroll data available yet
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-
-            {/* bucket info */}
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <Typography variant="body2" color="text.secondary">
-                      Data bucket age:{" "}
-                      {telemetryData?.bucketAge
-                        ? Math.round(telemetryData.bucketAge / 1000)
-                        : 0}
-                      s (resets every 5 minutes)
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Auto-refreshes every 60s
-                    </Typography>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        )}
-      </TabPanel>
-
-      {/* request logs tab */}
-      <TabPanel value={currentTab} index={4}>
-        <Card>
-          <CardContent>
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: { xs: "column", sm: "row" },
-                justifyContent: "space-between",
-                alignItems: { xs: "flex-start", sm: "center" },
-                mb: 2,
-                gap: 2,
-              }}
-            >
-              <Typography
-                variant="h6"
-                sx={{ display: "flex", alignItems: "center", gap: 1 }}
-              >
-                <StorageIcon />
-                request logs
-              </Typography>
-              <Box
-                sx={{
-                  display: "flex",
-                  gap: 1,
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  width: { xs: "100%", sm: "auto" },
-                }}
-              >
-                <TextField
-                  size="small"
-                  label="Search"
-                  value={logsSearch}
-                  onChange={(e) => {
-                    setLogsSearch(e.target.value);
-                    setLogsPage(0);
-                  }}
-                  InputProps={{
-                    startAdornment: (
-                      <SearchIcon
-                        color="action"
-                        fontSize="small"
-                        sx={{ mr: 1 }}
-                      />
-                    ),
-                  }}
-                  sx={{ width: { xs: "100%", sm: 200 } }}
-                />
-                <TextField
-                  type="date"
-                  size="small"
-                  label="Start Date"
-                  value={logsStartDate}
-                  onChange={(e) => {
-                    setLogsStartDate(e.target.value);
-                    setLogsPage(0);
-                  }}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ width: { xs: "calc(50% - 4px)", sm: 150 } }}
-                />
-                <TextField
-                  type="date"
-                  size="small"
-                  label="End Date"
-                  value={logsEndDate}
-                  onChange={(e) => {
-                    setLogsEndDate(e.target.value);
-                    setLogsPage(0);
-                  }}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ width: { xs: "calc(50% - 4px)", sm: 150 } }}
-                />
-                <TextField
-                  select
-                  size="small"
-                  value={logsMethodFilter}
-                  onChange={(e) => {
-                    setLogsMethodFilter(e.target.value);
-                    setLogsPage(0);
-                  }}
-                  SelectProps={{ native: true }}
-                  sx={{ minWidth: 100, flexGrow: 1 }}
-                >
-                  <option value="">Method: All</option>
-                  <option value="GET">GET</option>
-                  <option value="POST">POST</option>
-                  <option value="PUT">PUT</option>
-                  <option value="DELETE">DELETE</option>
-                  <option value="PATCH">PATCH</option>
-                </TextField>
-                <TextField
-                  select
-                  size="small"
-                  value={logsStatusFilter}
-                  onChange={(e) => {
-                    setLogsStatusFilter(e.target.value);
-                    setLogsPage(0);
-                  }}
-                  SelectProps={{ native: true }}
-                  sx={{ minWidth: 100, flexGrow: 1 }}
-                >
-                  <option value="">Status: All</option>
-                  <option value="200">200 OK</option>
-                  <option value="201">201 Created</option>
-                  <option value="400">400 Bad Request</option>
-                  <option value="401">401 Unauthorized</option>
-                  <option value="403">403 Forbidden</option>
-                  <option value="404">404 Not Found</option>
-                  <option value="500">500 Server Error</option>
-                </TextField>
-              </Box>
-            </Box>
-            {logsLoading ? (
-              <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              <>
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>timestamp</TableCell>
-                        <TableCell>method</TableCell>
-                        <TableCell>route</TableCell>
-                        <TableCell>status</TableCell>
-                        <TableCell>time (ms)</TableCell>
-                        <TableCell>ip</TableCell>
-                        <TableCell>user / email</TableCell>
-                        <TableCell>auth</TableCell>
-                        <TableCell>session</TableCell>
-                        <TableCell>family</TableCell>
-                        <TableCell>request id</TableCell>
-                        <TableCell>boot id</TableCell>
-                        <TableCell>retry</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {requestLogsData?.data
-                        .filter(
-                          (log) =>
-                            !logsMethodFilter ||
-                            log.method === logsMethodFilter,
-                        )
-                        .map((log, idx) => {
-                          const statusColor =
-                            log.statusCode >= 500
-                              ? "error"
-                              : log.statusCode >= 400
-                                ? "warning"
-                                : log.statusCode >= 300
-                                  ? "info"
-                                  : "success";
-                          return (
-                            <TableRow key={idx}>
-                              <TableCell sx={{ fontSize: "0.75rem" }}>
-                                {new Date(log.timestamp).toLocaleString()}
-                              </TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={log.method}
-                                  size="small"
-                                  sx={{ fontWeight: 600, minWidth: 65 }}
-                                />
-                              </TableCell>
-                              <TableCell
-                                sx={{
-                                  fontSize: "0.75rem",
-                                  fontFamily: "monospace",
-                                }}
-                              >
-                                {log.route}
-                              </TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={log.statusCode}
-                                  size="small"
-                                  color={statusColor}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Typography
-                                  variant="body2"
-                                  sx={{
-                                    color:
-                                      log.responseTimeMs > 1000
-                                        ? "error.main"
-                                        : log.responseTimeMs > 500
-                                          ? "warning.main"
-                                          : "success.main",
-                                    fontWeight: 600,
-                                  }}
-                                >
-                                  {log.responseTimeMs}
-                                </Typography>
-                              </TableCell>
-                              <TableCell
-                                sx={{
-                                  fontSize: "0.75rem",
-                                  fontFamily: "monospace",
-                                }}
-                              >
-                                {log.ip}
-                              </TableCell>
-                              <TableCell>
-                                {log.userId ? (
-                                  <Box
-                                    sx={{
-                                      display: "flex",
-                                      flexDirection: "column",
-                                    }}
-                                  >
-                                    <Chip
-                                      label="auth"
-                                      size="small"
-                                      color="primary"
-                                      sx={{ width: "fit-content", mb: 0.5 }}
-                                    />
-                                    <Typography variant="caption" noWrap>
-                                      {log.userId}
-                                    </Typography>
-                                    {log.authEmail && (
-                                      <Typography
-                                        variant="caption"
-                                        color="text.secondary"
-                                        noWrap
-                                      >
-                                        {log.authEmail}
-                                      </Typography>
-                                    )}
-                                  </Box>
-                                ) : (
-                                  <Chip
-                                    label="anon"
-                                    size="small"
-                                    variant="outlined"
-                                  />
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <Box
-                                  sx={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: 0.5,
-                                  }}
-                                >
-                                  <Chip
-                                    label={log.authState || "unknown"}
-                                    size="small"
-                                    variant="outlined"
-                                  />
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    noWrap
-                                  >
-                                    {log.authSource || "none"}
-                                  </Typography>
-                                  {log.refreshRotated && (
-                                    <Typography
-                                      variant="caption"
-                                      color="success.main"
-                                      noWrap
-                                    >
-                                      rotated
-                                    </Typography>
-                                  )}
-                                </Box>
-                              </TableCell>
-                              <TableCell sx={{ fontSize: "0.75rem" }}>
-                                {log.sessionId || "-"}
-                              </TableCell>
-                              <TableCell sx={{ fontSize: "0.75rem" }}>
-                                {log.tokenFamilyId || "-"}
-                              </TableCell>
-                              <TableCell sx={{ fontSize: "0.75rem" }}>
-                                <Box sx={{ display: "flex", flexDirection: "column" }}>
-                                  <Typography variant="caption" noWrap>
-                                    {log.clientRequestId || "-"}
-                                  </Typography>
-                                  {log.causedByClientRequestId && (
-                                    <Typography
-                                      variant="caption"
-                                      color="text.secondary"
-                                      noWrap
-                                    >
-                                      caused by {log.causedByClientRequestId}
-                                    </Typography>
-                                  )}
-                                </Box>
-                              </TableCell>
-                              <TableCell sx={{ fontSize: "0.75rem" }}>
-                                {log.clientBootId || "-"}
-                              </TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={
-                                    log.axiosRetry
-                                      ? `retry ${log.clientRequestAttempt ?? ""}`.trim()
-                                      : log.clientRequestAttempt
-                                        ? `attempt ${log.clientRequestAttempt}`
-                                        : "-"
-                                  }
-                                  size="small"
-                                  color={log.axiosRetry ? "warning" : "default"}
-                                  variant={log.axiosRetry ? "filled" : "outlined"}
-                                />
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-                <TablePagination
-                  component="div"
-                  count={requestLogsData?.total || 0}
-                  page={logsPage}
-                  onPageChange={(_, newPage) => setLogsPage(newPage)}
-                  rowsPerPage={logsRowsPerPage}
-                  onRowsPerPageChange={(e) => {
-                    setLogsRowsPerPage(parseInt(e.target.value, 10));
-                    setLogsPage(0);
-                  }}
-                  rowsPerPageOptions={[25, 50, 100]}
-                />
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </TabPanel>
-
-      {/* auth activity logs tab */}
-      <TabPanel value={currentTab} index={5}>
-        <Card>
-          <CardContent>
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: { xs: "column", sm: "row" },
-                justifyContent: "space-between",
-                alignItems: { xs: "flex-start", sm: "center" },
-                mb: 2,
-                gap: 2,
-              }}
-            >
-              <Typography
-                variant="h6"
-                sx={{ display: "flex", alignItems: "center", gap: 1 }}
-              >
-                <StorageIcon />
-                auth activity logs
-              </Typography>
-              <Box
-                sx={{
-                  display: "flex",
-                  gap: 1,
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  width: { xs: "100%", sm: "auto" },
-                }}
-              >
-                <TextField
-                  size="small"
-                  label="Search"
-                  value={authLogsSearch}
-                  onChange={(e) => {
-                    setAuthLogsSearch(e.target.value);
-                    setAuthLogsPage(0);
-                  }}
-                  InputProps={{
-                    startAdornment: (
-                      <SearchIcon
-                        color="action"
-                        fontSize="small"
-                        sx={{ mr: 1 }}
-                      />
-                    ),
-                  }}
-                  sx={{ width: { xs: "100%", sm: 200 } }}
-                />
-                <TextField
-                  size="small"
-                  label="Action"
-                  value={authLogsActionFilter}
-                  onChange={(e) => {
-                    setAuthLogsActionFilter(e.target.value);
-                    setAuthLogsPage(0);
-                  }}
-                  sx={{ minWidth: 150, flexGrow: 1 }}
-                />
-                <TextField
-                  type="date"
-                  size="small"
-                  label="Start Date"
-                  value={authLogsStartDate}
-                  onChange={(e) => {
-                    setAuthLogsStartDate(e.target.value);
-                    setAuthLogsPage(0);
-                  }}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ width: { xs: "calc(50% - 4px)", sm: 150 } }}
-                />
-                <TextField
-                  type="date"
-                  size="small"
-                  label="End Date"
-                  value={authLogsEndDate}
-                  onChange={(e) => {
-                    setAuthLogsEndDate(e.target.value);
-                    setAuthLogsPage(0);
-                  }}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ width: { xs: "calc(50% - 4px)", sm: 150 } }}
-                />
-                <TextField
-                  select
-                  size="small"
-                  value={authLogsStatusFilter}
-                  onChange={(e) => {
-                    setAuthLogsStatusFilter(e.target.value);
-                    setAuthLogsPage(0);
-                  }}
-                  SelectProps={{ native: true }}
-                  sx={{ minWidth: 100, flexGrow: 1 }}
-                >
-                  <option value="">Status: All</option>
-                  <option value="200">200</option>
-                  <option value="201">201</option>
-                  <option value="400">400</option>
-                  <option value="401">401</option>
-                  <option value="403">403</option>
-                  <option value="404">404</option>
-                  <option value="500">500</option>
-                </TextField>
-              </Box>
-            </Box>
-            {authLogsLoading ? (
-              <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-                <CircularProgress />
-              </Box>
-            ) : (
-              <>
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>timestamp</TableCell>
-                        <TableCell>action</TableCell>
-                        <TableCell>route</TableCell>
-                        <TableCell>status</TableCell>
-                        <TableCell>ip</TableCell>
-                        <TableCell>user / email</TableCell>
-                        <TableCell>auth</TableCell>
-                        <TableCell>session</TableCell>
-                        <TableCell>family</TableCell>
-                        <TableCell>request id</TableCell>
-                        <TableCell>boot id</TableCell>
-                        <TableCell>retry</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {authActivityLogsData?.data.map((log, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell sx={{ fontSize: "0.75rem" }}>
-                            {new Date(log.timestamp).toLocaleString()}
                           </TableCell>
-                          <TableCell>{log.action}</TableCell>
-                          <TableCell
-                            sx={{
-                              fontSize: "0.75rem",
-                              fontFamily: "monospace",
-                            }}
-                          >
-                            {log.route || "-"}
-                          </TableCell>
-                          <TableCell>
-                            <Chip
-                              label={log.statusCode ?? "-"}
-                              size="small"
-                            />
-                          </TableCell>
-                          <TableCell
-                            sx={{
-                              fontSize: "0.75rem",
-                              fontFamily: "monospace",
-                            }}
-                          >
-                            {log.ip}
-                          </TableCell>
-                          <TableCell>
-                            {log.userId ? (
-                              <Box
-                                sx={{
-                                  display: "flex",
-                                  flexDirection: "column",
-                                }}
-                              >
-                                <Typography variant="body2" noWrap>
-                                  {log.userId}
-                                </Typography>
-                                {log.authEmail && (
-                                  <Typography
-                                    variant="caption"
-                                    color="text.secondary"
-                                    noWrap
-                                  >
-                                    {log.authEmail}
-                                  </Typography>
-                                )}
-                              </Box>
-                            ) : (
-                              <Chip label="anon" size="small" variant="outlined" />
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Box
-                              sx={{
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 0.5,
-                              }}
-                            >
-                              <Chip
-                                label={log.authState || "unknown"}
-                                size="small"
-                                variant="outlined"
-                              />
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                noWrap
-                              >
-                                {log.authSource || "none"}
-                              </Typography>
-                              {log.refreshRotated && (
-                                <Typography
-                                  variant="caption"
-                                  color="success.main"
-                                  noWrap
-                                >
-                                  rotated
-                                </Typography>
-                              )}
-                            </Box>
-                          </TableCell>
-                          <TableCell sx={{ fontSize: "0.75rem" }}>
-                            {log.sessionId || "-"}
-                          </TableCell>
-                          <TableCell sx={{ fontSize: "0.75rem" }}>
-                            {log.tokenFamilyId || "-"}
-                          </TableCell>
-                          <TableCell sx={{ fontSize: "0.75rem" }}>
-                            <Box sx={{ display: "flex", flexDirection: "column" }}>
-                              <Typography variant="caption" noWrap>
-                                {log.clientRequestId || "-"}
-                              </Typography>
-                              {log.causedByClientRequestId && (
-                                <Typography
-                                  variant="caption"
-                                  color="text.secondary"
-                                  noWrap
-                                >
-                                  caused by {log.causedByClientRequestId}
-                                </Typography>
-                              )}
-                            </Box>
-                          </TableCell>
-                          <TableCell sx={{ fontSize: "0.75rem" }}>
-                            {log.clientBootId || "-"}
-                          </TableCell>
-                          <TableCell>
-                            <Chip
-                              label={
-                                log.axiosRetry
-                                  ? `retry ${log.clientRequestAttempt ?? ""}`.trim()
-                                  : log.clientRequestAttempt
-                                    ? `attempt ${log.clientRequestAttempt}`
-                                    : "-"
-                              }
-                              size="small"
-                              color={log.axiosRetry ? "warning" : "default"}
-                              variant={log.axiosRetry ? "filled" : "outlined"}
-                            />
+                          <TableCell><Typography variant="body2" sx={{ maxWidth: 360 }}>{contentPreview}</Typography></TableCell>
+                          <TableCell onClick={(event) => { event.stopPropagation(); if (post.user?.publicId) navigate(`/profile/${post.user.handle || post.user.publicId}`); }} sx={{ "&:hover": { color: "primary.main", textDecoration: "underline" } }}>{post.user?.username || "Unknown"}</TableCell>
+                          <TableCell align="right">{post.likes || 0}</TableCell>
+                          <TableCell>{formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}</TableCell>
+                          <TableCell align="right" onClick={(event) => event.stopPropagation()}>
+                            <Tooltip title="Delete post"><IconButton aria-label="Delete post" size="small" color="error" onClick={() => { if (window.confirm("Delete this post? This cannot be undone.")) deleteImageMutation.mutate(post.publicId); }}><DeleteIcon /></IconButton></Tooltip>
                           </TableCell>
                         </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              <TablePagination component="div" count={imagesData?.total ?? 0} page={imagePage} onPageChange={(_, page) => setImagePage(page)} rowsPerPage={rowsPerPage} onRowsPerPageChange={(event) => { setRowsPerPage(parseInt(event.target.value, 10)); setImagePage(0); }} rowsPerPageOptions={[10, 25, 50]} />
+            </Paper>
+          )}
+        </Stack>
+      </TabPanel>
+
+      <TabPanel value={currentTab} index={3}>
+        {telemetryLoading ? (
+          <Box sx={{ display: "grid", placeItems: "center", minHeight: 320 }}><CircularProgress /></Box>
+        ) : (
+          <Stack spacing={2.5}>
+            <Panel title="Experience signals" description="A live, rolling view of browser telemetry rather than a historical analytics report." action={<Chip label={`${telemetryData?.ttfi.count ?? 0} samples`} size="small" color={telemetryIsReliable ? "success" : "warning"} />}>
+              <Box sx={{ p: 2.5 }}>
+                <Alert severity={telemetryIsReliable ? "info" : "warning"}>
+                  {telemetryIsReliable
+                    ? "Percentiles are shown only after enough current-session samples have been collected."
+                    : `Need ${MIN_TELEMETRY_SAMPLES} samples before treating interaction percentiles as meaningful. This window currently resets every five minutes.`}
+                </Alert>
+              </Box>
+            </Panel>
+            <Grid container spacing={2.5}>
+              <Grid item xs={12} sm={6} lg={3}><MetricCard label="First interaction" value={telemetryIsReliable ? formatLatency(telemetryData?.ttfi.avg) : "—"} detail={telemetryIsReliable ? "Average delay in this live sample window" : `${telemetryData?.ttfi.count ?? 0}/${MIN_TELEMETRY_SAMPLES} samples collected`} icon={<SpeedIcon />} /></Grid>
+              <Grid item xs={12} sm={6} lg={3}><MetricCard label="P50 interaction" value={telemetryIsReliable ? formatLatency(telemetryData?.ttfi.p50) : "—"} detail="Middle of the current sample window" icon={<QueryStatsIcon />} tone="success" /></Grid>
+              <Grid item xs={12} sm={6} lg={3}><MetricCard label="P90 interaction" value={telemetryIsReliable ? formatLatency(telemetryData?.ttfi.p90) : "—"} detail="Slower experiences in the current window" icon={<WarningAmberIcon />} tone="warning" /></Grid>
+              <Grid item xs={12} sm={6} lg={3}><MetricCard label="P99 interaction" value={telemetryIsReliable ? formatLatency(telemetryData?.ttfi.p99) : "—"} detail="Tail latency; only useful with enough samples" icon={<WarningAmberIcon />} tone="error" /></Grid>
+            </Grid>
+            <Grid container spacing={2.5}>
+              <Grid item xs={12} lg={7}>
+                <Panel title="Key journeys" description="Completion signals from the flows the client currently instruments.">
+                  {telemetryData?.flows.length ? (
+                    <Stack divider={<Divider flexItem />} sx={{ px: 2.5 }}>
+                      {telemetryData.flows.map((flow) => (
+                        <Box key={flow.flowType} sx={{ py: 2 }}>
+                          <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" spacing={1}>
+                            <Box><Typography fontWeight={800}>{flow.flowType.replace(/_/g, " ")}</Typography><Typography variant="body2" color="text.secondary">{flow.completed} completed · {flow.abandoned} abandoned · {flow.avgDuration ? formatLatency(flow.avgDuration) : "No duration yet"}</Typography></Box>
+                            <Chip label={`${flow.completionRate}% complete`} size="small" color={flow.completionRate >= 70 ? "success" : flow.completionRate >= 40 ? "warning" : "error"} />
+                          </Stack>
+                          <LinearProgress variant="determinate" value={flow.completionRate} color={flow.completionRate >= 70 ? "success" : flow.completionRate >= 40 ? "warning" : "error"} sx={{ mt: 1.4, height: 7, borderRadius: 999 }} />
+                        </Box>
                       ))}
+                    </Stack>
+                  ) : (
+                    <Typography color="text.secondary" sx={{ py: 6, textAlign: "center" }}>No current flow samples. Instrumented journeys will appear here as people use them.</Typography>
+                  )}
+                </Panel>
+              </Grid>
+              <Grid item xs={12} lg={5}>
+                <Panel title="Feed depth" description="How far people reach in each tracked feed.">
+                  {telemetryData?.scrollDepth.length ? (
+                    <Stack divider={<Divider flexItem />} sx={{ px: 2.5 }}>
+                      {telemetryData.scrollDepth.map((scroll) => (
+                        <Box key={scroll.feedId} sx={{ py: 2 }}>
+                          <Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="body2" fontWeight={800}>{scroll.feedId}</Typography><Chip label={`${scroll.avgMaxDepth}% average`} size="small" /></Stack>
+                          <LinearProgress variant="determinate" value={scroll.avgMaxDepth} sx={{ mt: 1.2, height: 7, borderRadius: 999 }} />
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>{scroll.reachedThresholds[25] || 0} reached 25% · {scroll.reachedThresholds[50] || 0} reached 50% · {scroll.reachedThresholds[75] || 0} reached 75%</Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  ) : (
+                    <Typography color="text.secondary" sx={{ py: 6, textAlign: "center" }}>No feed-depth samples in the current window.</Typography>
+                  )}
+                </Panel>
+              </Grid>
+            </Grid>
+          </Stack>
+        )}
+      </TabPanel>
+
+      <TabPanel value={currentTab} index={4}>
+        <Stack spacing={2.5}>
+          <Panel title="Request traces" description="Start with route, status, latency, and actor. Open a row only when you need sensitive diagnostic identifiers.">
+            <Stack direction={{ xs: "column", lg: "row" }} spacing={1.25} sx={{ p: 2 }}>
+              <TextField size="small" label="Search requests" value={logsSearch} onChange={(event) => { setLogsSearch(event.target.value); setLogsPage(0); }} InputProps={{ startAdornment: <SearchIcon color="action" fontSize="small" sx={{ mr: 1 }} /> }} sx={{ flexGrow: 1, minWidth: { lg: 230 } }} />
+              <TextField select size="small" value={logsMethodFilter} onChange={(event) => { setLogsMethodFilter(event.target.value); setLogsPage(0); }} SelectProps={{ native: true }} sx={{ minWidth: 125 }}>
+                <option value="">Method: all</option><option value="GET">GET</option><option value="POST">POST</option><option value="PUT">PUT</option><option value="PATCH">PATCH</option><option value="DELETE">DELETE</option>
+              </TextField>
+              <TextField select size="small" value={logsStatusFilter} onChange={(event) => { setLogsStatusFilter(event.target.value); setLogsPage(0); }} SelectProps={{ native: true }} sx={{ minWidth: 130 }}>
+                <option value="">Status: all</option><option value="200">200 OK</option><option value="201">201 Created</option><option value="400">400 Bad Request</option><option value="401">401 Unauthorized</option><option value="403">403 Forbidden</option><option value="404">404 Not Found</option><option value="500">500 Server error</option>
+              </TextField>
+              <TextField type="date" size="small" label="From" value={logsStartDate} onChange={(event) => { setLogsStartDate(event.target.value); setLogsPage(0); }} InputLabelProps={{ shrink: true }} sx={{ minWidth: 145 }} />
+              <TextField type="date" size="small" label="To" value={logsEndDate} onChange={(event) => { setLogsEndDate(event.target.value); setLogsPage(0); }} InputLabelProps={{ shrink: true }} sx={{ minWidth: 145 }} />
+            </Stack>
+          </Panel>
+          <Paper sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 3, overflow: "hidden" }}>
+            {logsLoading ? (
+              <Box sx={{ display: "grid", placeItems: "center", minHeight: 260 }}><CircularProgress /></Box>
+            ) : (
+              <>
+                <TableContainer sx={{ maxHeight: 640 }}>
+                  <Table stickyHeader size="small">
+                    <TableHead><TableRow><TableCell>Time</TableCell><TableCell>Request</TableCell><TableCell>Status</TableCell><TableCell>Latency</TableCell><TableCell>Actor</TableCell><TableCell align="right">Details</TableCell></TableRow></TableHead>
+                    <TableBody>
+                      {requestLogsData?.data.length ? requestLogsData.data.map((log, index) => (
+                        <TableRow key={getLogKey(log, index)} hover sx={{ cursor: "pointer" }} onClick={() => setSelectedLog(log)}>
+                          <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDistanceToNow(new Date(log.timestamp), { addSuffix: true })}</TableCell>
+                          <TableCell><Stack direction="row" spacing={1} alignItems="center"><Chip label={log.method} size="small" /><Typography variant="body2" sx={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", maxWidth: { xs: 140, md: 340 }, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{log.route}</Typography></Stack></TableCell>
+                          <TableCell><Chip label={log.statusCode} size="small" color={getStatusColor(log.statusCode)} /></TableCell>
+                          <TableCell sx={{ color: log.responseTimeMs > 1000 ? "error.main" : log.responseTimeMs > 500 ? "warning.main" : "success.main", fontWeight: 800 }}>{formatLatency(log.responseTimeMs)}</TableCell>
+                          <TableCell><Typography variant="body2" noWrap sx={{ maxWidth: 180 }}>{getLogIdentity(log)}</Typography><Typography variant="caption" color="text.secondary">{log.authState || "unknown"}</Typography></TableCell>
+                          <TableCell align="right" onClick={(event) => event.stopPropagation()}><Tooltip title="Open diagnostics"><IconButton aria-label="Open request diagnostics" size="small" onClick={() => setSelectedLog(log)}><StorageIcon fontSize="small" /></IconButton></Tooltip></TableCell>
+                        </TableRow>
+                      )) : <TableRow><TableCell colSpan={6}><Typography color="text.secondary" sx={{ py: 4, textAlign: "center" }}>No requests match these filters.</Typography></TableCell></TableRow>}
                     </TableBody>
                   </Table>
                 </TableContainer>
-                <TablePagination
-                  component="div"
-                  count={authActivityLogsData?.total || 0}
-                  page={authLogsPage}
-                  onPageChange={(_, newPage) => setAuthLogsPage(newPage)}
-                  rowsPerPage={authLogsRowsPerPage}
-                  onRowsPerPageChange={(e) => {
-                    setAuthLogsRowsPerPage(parseInt(e.target.value, 10));
-                    setAuthLogsPage(0);
-                  }}
-                  rowsPerPageOptions={[25, 50, 100]}
-                />
+                <TablePagination component="div" count={requestLogsData?.total ?? 0} page={logsPage} onPageChange={(_, page) => setLogsPage(page)} rowsPerPage={logsRowsPerPage} onRowsPerPageChange={(event) => { setLogsRowsPerPage(parseInt(event.target.value, 10)); setLogsPage(0); }} rowsPerPageOptions={[25, 50, 100]} />
               </>
             )}
-          </CardContent>
-        </Card>
+          </Paper>
+        </Stack>
       </TabPanel>
 
-      {/* ban user dialog */}
-      <Dialog
-        open={banDialogOpen}
-        onClose={() => setBanDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>ban user: {selectedUser?.username}</DialogTitle>
+      <TabPanel value={currentTab} index={5}>
+        <Stack spacing={2.5}>
+          <Panel title="Security activity" description="Authentication events and session outcomes. Identifiers stay in row details to keep the primary review surface focused.">
+            <Stack direction={{ xs: "column", lg: "row" }} spacing={1.25} sx={{ p: 2 }}>
+              <TextField size="small" label="Search security activity" value={authLogsSearch} onChange={(event) => { setAuthLogsSearch(event.target.value); setAuthLogsPage(0); }} InputProps={{ startAdornment: <SearchIcon color="action" fontSize="small" sx={{ mr: 1 }} /> }} sx={{ flexGrow: 1, minWidth: { lg: 230 } }} />
+              <TextField size="small" label="Event" placeholder="refresh, login…" value={authLogsActionFilter} onChange={(event) => { setAuthLogsActionFilter(event.target.value); setAuthLogsPage(0); }} sx={{ minWidth: 150 }} />
+              <TextField select size="small" value={authLogsStatusFilter} onChange={(event) => { setAuthLogsStatusFilter(event.target.value); setAuthLogsPage(0); }} SelectProps={{ native: true }} sx={{ minWidth: 125 }}>
+                <option value="">Status: all</option><option value="200">200 OK</option><option value="201">201 Created</option><option value="400">400 Bad Request</option><option value="401">401 Unauthorized</option><option value="403">403 Forbidden</option><option value="500">500 Server error</option>
+              </TextField>
+              <TextField type="date" size="small" label="From" value={authLogsStartDate} onChange={(event) => { setAuthLogsStartDate(event.target.value); setAuthLogsPage(0); }} InputLabelProps={{ shrink: true }} sx={{ minWidth: 145 }} />
+              <TextField type="date" size="small" label="To" value={authLogsEndDate} onChange={(event) => { setAuthLogsEndDate(event.target.value); setAuthLogsPage(0); }} InputLabelProps={{ shrink: true }} sx={{ minWidth: 145 }} />
+            </Stack>
+          </Panel>
+          <Paper sx={{ border: `1px solid ${theme.palette.divider}`, borderRadius: 3, overflow: "hidden" }}>
+            {authLogsLoading ? (
+              <Box sx={{ display: "grid", placeItems: "center", minHeight: 260 }}><CircularProgress /></Box>
+            ) : (
+              <>
+                <TableContainer sx={{ maxHeight: 640 }}>
+                  <Table stickyHeader size="small">
+                    <TableHead><TableRow><TableCell>Time</TableCell><TableCell>Event</TableCell><TableCell>Route</TableCell><TableCell>Status</TableCell><TableCell>Actor</TableCell><TableCell align="right">Details</TableCell></TableRow></TableHead>
+                    <TableBody>
+                      {authActivityLogsData?.data.length ? authActivityLogsData.data.map((log, index) => (
+                        <TableRow key={getLogKey(log, index)} hover sx={{ cursor: "pointer" }} onClick={() => setSelectedLog(log)}>
+                          <TableCell sx={{ whiteSpace: "nowrap" }}>{formatDistanceToNow(new Date(log.timestamp), { addSuffix: true })}</TableCell>
+                          <TableCell><Chip label={log.action} size="small" variant="outlined" /></TableCell>
+                          <TableCell><Typography variant="body2" sx={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", maxWidth: { xs: 130, md: 300 }, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{log.route || "—"}</Typography></TableCell>
+                          <TableCell><Chip label={log.statusCode ?? "—"} size="small" color={getStatusColor(log.statusCode)} /></TableCell>
+                          <TableCell><Typography variant="body2" noWrap sx={{ maxWidth: 180 }}>{getLogIdentity(log)}</Typography><Typography variant="caption" color="text.secondary">{log.authState || "unknown"}</Typography></TableCell>
+                          <TableCell align="right" onClick={(event) => event.stopPropagation()}><Tooltip title="Open security diagnostics"><IconButton aria-label="Open security diagnostics" size="small" onClick={() => setSelectedLog(log)}><KeyIcon fontSize="small" /></IconButton></Tooltip></TableCell>
+                        </TableRow>
+                      )) : <TableRow><TableCell colSpan={6}><Typography color="text.secondary" sx={{ py: 4, textAlign: "center" }}>No authentication events match these filters.</Typography></TableCell></TableRow>}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                <TablePagination component="div" count={authActivityLogsData?.total ?? 0} page={authLogsPage} onPageChange={(_, page) => setAuthLogsPage(page)} rowsPerPage={authLogsRowsPerPage} onRowsPerPageChange={(event) => { setAuthLogsRowsPerPage(parseInt(event.target.value, 10)); setAuthLogsPage(0); }} rowsPerPageOptions={[25, 50, 100]} />
+              </>
+            )}
+          </Paper>
+        </Stack>
+      </TabPanel>
+
+      <Dialog open={banDialogOpen} onClose={() => setBanDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Ban {selectedUser?.username}</DialogTitle>
         <DialogContent>
-          <Alert severity="warning" sx={{ mt: 1, mb: 2 }}>
-            Banning is destructive: posts and social data are removed, while
-            comments and message history are anonymized for other users.
-          </Alert>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="ban reason"
-            fullWidth
-            multiline
-            rows={3}
-            value={banReason}
-            onChange={(e) => setBanReason(e.target.value)}
-            placeholder="provide reason for ban"
-          />
+          <Alert severity="warning" sx={{ mt: 1, mb: 2 }}>Banning removes this account’s posts and social data. Comments and message history are anonymized for other members.</Alert>
+          <TextField autoFocus margin="dense" label="Reason" fullWidth multiline rows={3} value={banReason} onChange={(event) => setBanReason(event.target.value)} placeholder="Provide a reason for the audit trail" />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setBanDialogOpen(false)}>cancel</Button>
-          <Button
-            onClick={handleBanUser}
-            variant="contained"
-            color="error"
-            disabled={!banReason.trim() || banUserMutation.isPending}
-          >
-            {banUserMutation.isPending ? "banning..." : "ban user"}
-          </Button>
-        </DialogActions>
+        <DialogActions><Button onClick={() => setBanDialogOpen(false)}>Cancel</Button><Button onClick={handleBanUser} variant="contained" color="error" disabled={!banReason.trim() || banUserMutation.isPending}>{banUserMutation.isPending ? "Banning…" : "Ban account"}</Button></DialogActions>
       </Dialog>
 
-      <Dialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>permanently delete user: {selectedUser?.username}</DialogTitle>
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Permanently delete {selectedUser?.username}</DialogTitle>
         <DialogContent>
-          <Alert severity="error" sx={{ mt: 1, mb: 2 }}>
-            This permanently removes the account and all owned content. The
-            reason and a 30-day evidence snapshot are retained in the audit
-            trail.
-          </Alert>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="deletion reason"
-            fullWidth
-            multiline
-            rows={3}
-            value={deleteReason}
-            onChange={(event) => setDeleteReason(event.target.value)}
-            inputProps={{ maxLength: 500 }}
-          />
+          <Alert severity="error" sx={{ mt: 1, mb: 2 }}>This permanently removes the account and owned content. The reason and 30-day evidence snapshot remain in the audit trail.</Alert>
+          <TextField autoFocus margin="dense" label="Reason" fullWidth multiline rows={3} value={deleteReason} onChange={(event) => setDeleteReason(event.target.value)} placeholder="Provide a reason for the audit trail" />
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>cancel</Button>
-          <Button
-            onClick={handleDeleteUser}
-            variant="contained"
-            color="error"
-            disabled={!deleteReason.trim() || deleteUserMutation.isPending}
-          >
-            {deleteUserMutation.isPending ? "deleting..." : "delete permanently"}
-          </Button>
-        </DialogActions>
+        <DialogActions><Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button><Button onClick={handleDeleteUser} variant="contained" color="error" disabled={!deleteReason.trim() || deleteUserMutation.isPending}>{deleteUserMutation.isPending ? "Deleting…" : "Delete account"}</Button></DialogActions>
       </Dialog>
+
+      <LogDetailsDialog log={selectedLog} onClose={() => setSelectedLog(null)} />
     </Container>
   );
 };

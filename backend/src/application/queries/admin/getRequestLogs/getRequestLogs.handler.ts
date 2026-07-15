@@ -60,6 +60,7 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<
       causedByClientRequestId,
       authState,
       authSource,
+      method,
       statusCode,
       startDate,
       endDate,
@@ -102,6 +103,10 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<
 
     if (authSource) {
       filter["metadata.authSource"] = authSource;
+    }
+
+    if (method) {
+      filter["metadata.method"] = method;
     }
 
     if (statusCode) {

@@ -45,6 +45,9 @@ export const requestLogsQuerySchema = z
     causedByClientRequestId: z.string().trim().min(1).optional(),
     authState: z.string().trim().max(50).optional(),
     authSource: z.string().trim().max(50).optional(),
+    method: z
+      .enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"])
+      .optional(),
     statusCode: z.coerce.number().int().min(100).max(599).optional(),
     startDate: z.coerce.date().optional(),
     endDate: z.coerce.date().optional(),
