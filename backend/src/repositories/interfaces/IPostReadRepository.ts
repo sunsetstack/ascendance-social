@@ -3,10 +3,11 @@ import { MongoId, PostPublicId, UserPublicId } from "@/types/branded";
 
 /**
  * Read-only repository interface for post queries
- * used by query handlers in CQRS pattern
+ * used by query handlers in CQRS
  */
 export interface IPostReadRepository {
   searchByText(terms: string[], limit?: number): Promise<FeedPost[]>;
+
   // single post lookups
   findById(id: MongoId): Promise<IPost | null>;
   findInternalIdByPublicId(publicId: PostPublicId): Promise<MongoId | null>;
@@ -14,12 +15,14 @@ export interface IPostReadRepository {
   findByIdWithPopulates(id: MongoId): Promise<IPost | null>;
   findByPublicId(publicId: PostPublicId): Promise<IPost | null>;
   findBySlug(slug: string): Promise<IPost | null>;
+
   // batch lookups
   findPostsByIds(
     ids: MongoId[],
     viewerPublicId?: UserPublicId,
   ): Promise<FeedPost[]>;
   findPostsByPublicIds(publicIds: PostPublicId[]): Promise<FeedPost[]>;
+
   findByUserPublicId(
     userPublicId: UserPublicId,
     options: PaginationOptions,

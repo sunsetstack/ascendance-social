@@ -4,7 +4,7 @@ import { MongoId } from "@/types/branded";
 
 /**
  * Write-only repository interface for post mutations
- * used by command handlers in CQRS pattern
+ * used by command handlers in CQRS
  */
 export interface IPostWriteRepository {
   // CRUD operations
