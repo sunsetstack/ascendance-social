@@ -12,6 +12,7 @@ export interface GetRequestLogsOptions {
 	causedByClientRequestId?: string;
 	authState?: string;
 	authSource?: string;
+	method?: string;
 	statusCode?: number;
 	startDate?: Date;
 	endDate?: Date;

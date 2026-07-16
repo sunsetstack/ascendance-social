@@ -8,7 +8,7 @@ import { MongoId, UserPublicId } from "@/types/branded";
 
 /**
  * Read-only repository interface for user queries
- * used by query handlers in CQRS pattern
+ * used by query handlers in CQRS
  */
 export interface IUserReadRepository {
   // single user lookups

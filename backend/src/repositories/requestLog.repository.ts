@@ -12,6 +12,13 @@ interface RequestLogCursor {
 	[key: string]: unknown;
 }
 
+export interface RequestLogOperationalSummary {
+  totalRequests: number;
+  serverErrors: number;
+  slowRequests: number;
+  averageResponseTimeMs: number;
+}
+
 @injectable()
 export class RequestLogRepository extends BaseRepository<IRequestLog> {
 	constructor() {
@@ -166,5 +173,47 @@ export class RequestLogRepository extends BaseRepository<IRequestLog> {
 		]);
 
 		return result.length > 0 ? result[0].avg : 0;
+	}
+
+	async getOperationalSummary(since: Date): Promise<RequestLogOperationalSummary> {
+		const [summary] = await this.model
+			.aggregate<RequestLogOperationalSummary>([
+				{ $match: { timestamp: { $gte: since } } },
+				{
+					$group: {
+						_id: null,
+						totalRequests: { $sum: 1 },
+						serverErrors: {
+							$sum: {
+								$cond: [
+									{ $gte: ["$metadata.statusCode", 500] },
+									1,
+									0,
+								],
+							},
+						},
+						slowRequests: {
+							$sum: {
+								$cond: [
+									{ $gte: ["$metadata.responseTimeMs", 1000] },
+									1,
+									0,
+								],
+							},
+						},
+						averageResponseTimeMs: {
+							$avg: "$metadata.responseTimeMs",
+						},
+					},
+				},
+			])
+			.exec();
+
+		return {
+			totalRequests: summary?.totalRequests ?? 0,
+			serverErrors: summary?.serverErrors ?? 0,
+			slowRequests: summary?.slowRequests ?? 0,
+			averageResponseTimeMs: Math.round(summary?.averageResponseTimeMs ?? 0),
+		};
 	}
 }

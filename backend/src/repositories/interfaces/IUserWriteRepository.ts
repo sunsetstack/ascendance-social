@@ -8,7 +8,7 @@ export type JoinedCommunitySnapshotUpdate = Partial<
 
 /**
  * Write-only repository interface for user mutations
- * used by command handlers in CQRS pattern
+ * used by command handlers in CQRS
  */
 export interface IUserWriteRepository {
   // CRUD operations

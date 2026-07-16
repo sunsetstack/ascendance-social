@@ -12,6 +12,13 @@ export interface DashboardStats {
     users: number;
     images: number;
   };
+  operations: {
+    requestsLast24Hours: number;
+    serverErrorsLast24Hours: number;
+    slowRequestsLast24Hours: number;
+    averageResponseTimeMs: number;
+    failedAuthAttemptsLast24Hours: number;
+  };
 }
 
 export interface UserStats {
@@ -187,6 +194,7 @@ export interface RequestLog {
   referer?: string;
   statusCode: number;
   responseTimeMs: number;
+  correlationId?: string;
   userId?: string;
   userAgent?: string;
   authState?: string;
@@ -227,6 +235,7 @@ export interface AuthActivityLog {
   authEmail?: string;
   authUsername?: string;
   authHandle?: string;
+  userAgent?: string;
   clientRequestId?: string;
   clientBootId?: string;
   clientRequestAttempt?: number;
@@ -261,6 +270,7 @@ export const fetchRequestLogs = async (params: {
   causedByClientRequestId?: string;
   authState?: string;
   authSource?: string;
+  method?: string;
   statusCode?: number;
   startDate?: string;
   endDate?: string;

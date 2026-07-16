@@ -238,6 +238,7 @@ export const useRequestLogs = (params: {
 	causedByClientRequestId?: string;
 	authState?: string;
 	authSource?: string;
+	method?: string;
 	statusCode?: number;
 	startDate?: string;
 	endDate?: string;
