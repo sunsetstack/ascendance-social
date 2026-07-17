@@ -9,6 +9,7 @@
     "build": "npm run build:ts7",
     "build:ts6": "tsc6 -b && vite build",
     "build:ts7": "tsc -b && vite build",
+    "test:auth": "tsx --test tests/auth-refresh-coordinator.test.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "cypress:open": "cypress open",

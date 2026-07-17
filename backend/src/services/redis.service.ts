@@ -7,8 +7,15 @@ import { RedisNotificationModule } from "./redis/redis-notification.module";
 import { RedisFeedModule } from "./redis/redis-feed.module";
 import { RedisStreamModule } from "./redis/redis-stream.module";
 import {
+  CompareAndRotateSessionInput,
+  CompareAndRotateSessionResult,
+  PatchSessionMetadataInput,
   RedisSessionModule,
+  RefreshSessionRevocationOutcome,
+  RevokeRefreshSessionInput,
+  SessionMetadataPatchOutcome,
   SessionWithTtl,
+  TouchSessionInput,
 } from "./redis/redis-session.module";
 import { RedisFeedType } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
@@ -250,12 +257,28 @@ export class RedisService {
     return this.sessionModule.saveSession(session, ttlSeconds);
   }
 
-  async updateAuthSession<T>(
-    sid: string,
-    session: T,
-    ttlSeconds: number,
-  ): Promise<void> {
-    return this.sessionModule.updateSession(sid, session, ttlSeconds);
+  async compareAndRotateAuthSession<T>(
+    input: CompareAndRotateSessionInput,
+  ): Promise<CompareAndRotateSessionResult<T>> {
+    return this.sessionModule.compareAndRotateSession<T>(input);
+  }
+
+  async touchAuthSession(
+    input: TouchSessionInput,
+  ): Promise<SessionMetadataPatchOutcome> {
+    return this.sessionModule.touchSession(input);
+  }
+
+  async markAuthSessionEmailVerified(
+    input: PatchSessionMetadataInput,
+  ): Promise<SessionMetadataPatchOutcome> {
+    return this.sessionModule.markSessionEmailVerified(input);
+  }
+
+  async revokeAuthSessionByRefreshToken(
+    input: RevokeRefreshSessionInput,
+  ): Promise<RefreshSessionRevocationOutcome> {
+    return this.sessionModule.revokeRefreshSession(input);
   }
 
   async removeAuthSession(sid: string, publicId: string): Promise<void> {
@@ -288,18 +311,6 @@ export class RedisService {
     sessionIds: string[],
   ): Promise<Array<SessionWithTtl<T>>> {
     return this.sessionModule.getSessionsWithTtl<T>(sessionIds);
-  }
-
-  async updateAuthSessions<T>(
-    publicId: string,
-    updates: Array<SessionWithTtl<T>>,
-    staleSessionIds: string[] = [],
-  ): Promise<void> {
-    return this.sessionModule.updateSessions(
-      publicId,
-      updates,
-      staleSessionIds,
-    );
   }
 
   async addToFeed(

@@ -10,6 +10,10 @@ import {
   resolveApiErrorMessage,
   type ApiErrorResponse,
 } from "./errorMessages";
+import {
+  AuthRefreshCoordinator,
+  shouldAttemptAuthRefresh,
+} from "./authRefreshCoordinator";
 
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
@@ -140,7 +144,7 @@ axiosClient.interceptors.request.use((config) => {
   return config;
 });
 
-let refreshPromise: Promise<void> | null = null;
+const authRefreshCoordinator = new AuthRefreshCoordinator();
 
 const shouldBypassRefresh = (url?: string): boolean => {
   if (!url) return false;
@@ -180,11 +184,11 @@ axiosClient.interceptors.response.use(
     }
 
     const originalRequest = error.config as RetryableRequestConfig | undefined;
-    const shouldRefresh =
-      status === 401 &&
-      Boolean(originalRequest) &&
-      !originalRequest?._retry &&
-      !shouldBypassRefresh(originalRequest?.url);
+    const shouldRefresh = shouldAttemptAuthRefresh(
+      status,
+      originalRequest,
+      shouldBypassRefresh(originalRequest?.url),
+    );
 
     if (shouldRefresh && originalRequest) {
       originalRequest._retry = true;
@@ -199,16 +203,10 @@ axiosClient.interceptors.response.use(
       originalRequest._clientRequestAttempt =
         resolveClientRequestAttempt(originalRequest) + 1;
 
-      if (!refreshPromise) {
-        refreshPromise = refreshAccessSession(
-          originalRequest._clientRequestId,
-        ).finally(() => {
-          refreshPromise = null;
-        });
-      }
-
       try {
-        await refreshPromise;
+        await authRefreshCoordinator.waitForRefresh(() =>
+          refreshAccessSession(originalRequest._clientRequestId),
+        );
         return axiosClient(originalRequest);
       } catch {
         devWarn("[Axios] Session refresh failed");

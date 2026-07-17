@@ -4,43 +4,44 @@ import sinon from "sinon";
 import crypto from "crypto";
 import { AuthSessionService } from "@/services/auth-session.service";
 import { RedisService } from "@/services/redis.service";
+import { AuthSessionRecord } from "@/types";
 
 describe("AuthSessionService", () => {
 	let authSessionService: AuthSessionService;
 	let getAuthSessionStub: sinon.SinonStub;
 	let saveAuthSessionStub: sinon.SinonStub;
+	let compareAndRotateAuthSessionStub: sinon.SinonStub;
+	let touchAuthSessionStub: sinon.SinonStub;
+	let markAuthSessionEmailVerifiedStub: sinon.SinonStub;
+	let revokeAuthSessionByRefreshTokenStub: sinon.SinonStub;
 	let removeAuthSessionStub: sinon.SinonStub;
 	let removeAuthSessionMembershipStub: sinon.SinonStub;
 	let getUserAuthSessionIdsStub: sinon.SinonStub;
 	let deleteUserAuthSessionsStub: sinon.SinonStub;
-	let getAuthSessionsWithTtlStub: sinon.SinonStub;
-	let getAuthSessionTtlStub: sinon.SinonStub;
-	let updateAuthSessionStub: sinon.SinonStub;
-	let updateAuthSessionsStub: sinon.SinonStub;
 
 	beforeEach(() => {
 		getAuthSessionStub = sinon.stub();
 		saveAuthSessionStub = sinon.stub().resolves();
+		compareAndRotateAuthSessionStub = sinon.stub();
+		touchAuthSessionStub = sinon.stub().resolves("updated");
+		markAuthSessionEmailVerifiedStub = sinon.stub().resolves("updated");
+		revokeAuthSessionByRefreshTokenStub = sinon.stub().resolves("revoked");
 		removeAuthSessionStub = sinon.stub().resolves();
 		removeAuthSessionMembershipStub = sinon.stub().resolves();
 		getUserAuthSessionIdsStub = sinon.stub().resolves([]);
 		deleteUserAuthSessionsStub = sinon.stub().resolves();
-		getAuthSessionsWithTtlStub = sinon.stub().resolves([]);
-		getAuthSessionTtlStub = sinon.stub().resolves(3600);
-		updateAuthSessionStub = sinon.stub().resolves();
-		updateAuthSessionsStub = sinon.stub().resolves();
 
 		const mockRedisService = {
 			getAuthSession: getAuthSessionStub,
 			saveAuthSession: saveAuthSessionStub,
+			compareAndRotateAuthSession: compareAndRotateAuthSessionStub,
+			touchAuthSession: touchAuthSessionStub,
+			markAuthSessionEmailVerified: markAuthSessionEmailVerifiedStub,
+			revokeAuthSessionByRefreshToken: revokeAuthSessionByRefreshTokenStub,
 			removeAuthSession: removeAuthSessionStub,
 			removeAuthSessionMembership: removeAuthSessionMembershipStub,
 			getUserAuthSessionIds: getUserAuthSessionIdsStub,
 			deleteUserAuthSessions: deleteUserAuthSessionsStub,
-			getAuthSessionsWithTtl: getAuthSessionsWithTtlStub,
-			getAuthSessionTtl: getAuthSessionTtlStub,
-			updateAuthSession: updateAuthSessionStub,
-			updateAuthSessions: updateAuthSessionsStub,
 		} as unknown as RedisService;
 
 		authSessionService = new AuthSessionService(mockRedisService);
@@ -68,6 +69,7 @@ describe("AuthSessionService", () => {
 		expect(session.publicId).to.equal("user-public-id");
 		expect(session.isEmailVerified).to.equal(true);
 		expect(session.status).to.equal("active");
+		expect(session.refreshVersion).to.equal(0);
 		expect(session.refreshTokenHash).to.not.equal(refreshToken);
 		expect(saveAuthSessionStub.calledOnce).to.be.true;
 		expect(saveAuthSessionStub.firstCall.args[1]).to.equal(3600);
@@ -81,7 +83,9 @@ describe("AuthSessionService", () => {
 		getAuthSessionStub.resolves({
 			sid,
 			publicId: "user-public-id",
+			isEmailVerified: true,
 			refreshTokenHash,
+			refreshVersion: 0,
 			createdAt: Date.now(),
 			lastSeenAt: Date.now(),
 			status: "active",
@@ -99,7 +103,9 @@ describe("AuthSessionService", () => {
 		getAuthSessionStub.onFirstCall().resolves({
 			sid,
 			publicId: "user-public-id",
+			isEmailVerified: true,
 			refreshTokenHash: crypto.createHash("sha256").update("different-token", "utf8").digest("hex"),
+			refreshVersion: 0,
 			createdAt: Date.now(),
 			lastSeenAt: Date.now(),
 			status: "active",
@@ -107,7 +113,9 @@ describe("AuthSessionService", () => {
 		getAuthSessionStub.onSecondCall().resolves({
 			sid,
 			publicId: "user-public-id",
+			isEmailVerified: true,
 			refreshTokenHash: crypto.createHash("sha256").update("different-token", "utf8").digest("hex"),
+			refreshVersion: 0,
 			createdAt: Date.now(),
 			lastSeenAt: Date.now(),
 			status: "active",
@@ -125,7 +133,9 @@ describe("AuthSessionService", () => {
 		getAuthSessionStub.resolves({
 			sid,
 			publicId: "user-public-id",
+			isEmailVerified: true,
 			refreshTokenHash: crypto.createHash("sha256").update(currentRefreshToken, "utf8").digest("hex"),
+			refreshVersion: 1,
 			previousRefreshTokenHash: crypto.createHash("sha256").update(previousRefreshToken, "utf8").digest("hex"),
 			previousRefreshTokenGraceUntil: Date.now() + 60_000,
 			createdAt: Date.now(),
@@ -145,32 +155,132 @@ describe("AuthSessionService", () => {
 		const currentRefreshToken = `${sid}.current-refresh-secret`;
 		const nextRefreshToken = `${sid}.next-refresh-secret`;
 
-		getAuthSessionStub.resolves({
+		const session = {
 			sid,
 			publicId: "user-public-id",
 			refreshTokenHash: crypto.createHash("sha256").update(currentRefreshToken, "utf8").digest("hex"),
+			refreshVersion: 1,
 			previousRefreshTokenHash: crypto.createHash("sha256").update(priorRefreshToken, "utf8").digest("hex"),
 			previousRefreshTokenGraceUntil: Date.now() + 60_000,
 			createdAt: Date.now(),
 			lastSeenAt: Date.now(),
 			status: "active",
+		} as const;
+		compareAndRotateAuthSessionStub.resolves({
+			outcome: "stale_previous",
+			session: null,
 		});
 
-		await expect(authSessionService.rotateRefreshToken(sid, priorRefreshToken, nextRefreshToken, 3600)).to.be.rejectedWith(
+		await expect(authSessionService.rotateRefreshToken(session as AuthSessionRecord, priorRefreshToken, nextRefreshToken, 3600)).to.be.rejectedWith(
 			"Refresh token already rotated",
 		);
-		expect(saveAuthSessionStub.called).to.be.false;
+		expect(compareAndRotateAuthSessionStub.calledOnce).to.be.true;
 		expect(removeAuthSessionStub.called).to.be.false;
 	});
+
+	it("rejects a refresh record whose embedded SID differs from the token SID", async () => {
+		const sid = "3f7c90af-22a8-4a48-8e03-3ea6f865b59f";
+		getAuthSessionStub.resolves({
+			sid: "4f7c90af-22a8-4a48-8e03-3ea6f865b59f",
+			publicId: "user-public-id",
+			isEmailVerified: true,
+			refreshTokenHash: crypto.createHash("sha256").update("hash-source", "utf8").digest("hex"),
+			refreshVersion: 0,
+			createdAt: Date.now(),
+			lastSeenAt: Date.now(),
+			status: "active",
+		});
+
+		await expect(
+			authSessionService.getRefreshSession(`${sid}.refresh-secret`),
+		).to.be.rejectedWith("Session is invalid or expired");
+		expect(removeAuthSessionStub.called).to.equal(false);
+		expect(removeAuthSessionMembershipStub.called).to.equal(false);
+	});
+
+	it("returns the atomically rotated session", async () => {
+		const sid = "3f7c90af-22a8-4a48-8e03-3ea6f865b59f";
+		const currentRefreshToken = `${sid}.current-refresh-secret`;
+		const nextRefreshToken = `${sid}.next-refresh-secret`;
+		const session = {
+			sid,
+			publicId: "user-public-id",
+			isEmailVerified: true,
+			refreshTokenHash: crypto.createHash("sha256").update(currentRefreshToken, "utf8").digest("hex"),
+			refreshVersion: 0,
+			createdAt: Date.now(),
+			lastSeenAt: Date.now(),
+			status: "active",
+		} as const;
+		const rotated = {
+			...session,
+			refreshTokenHash: crypto.createHash("sha256").update(nextRefreshToken, "utf8").digest("hex"),
+			previousRefreshTokenHash: session.refreshTokenHash,
+			refreshVersion: 1,
+		};
+		compareAndRotateAuthSessionStub.resolves({
+			outcome: "rotated",
+			session: rotated,
+		});
+
+		const result = await authSessionService.rotateRefreshToken(
+			session as AuthSessionRecord,
+			currentRefreshToken,
+			nextRefreshToken,
+			3600,
+		);
+
+		expect(result).to.equal(rotated);
+		const input = compareAndRotateAuthSessionStub.firstCall.args[0];
+		expect(input.sid).to.equal(sid);
+		expect(input.expectedRefreshVersion).to.equal(0);
+		expect(input.presentedRefreshTokenHash).to.not.equal(currentRefreshToken);
+		expect(input.nextRefreshTokenHash).to.not.equal(nextRefreshToken);
+	});
+
+	for (const [outcome, message] of [
+		["missing", "Session is invalid or expired"],
+		["revoked", "Session is invalid or expired"],
+		["identity_mismatch", "Session is invalid or expired"],
+		["invalid_record", "Session is invalid or expired"],
+		["mismatch", "Refresh token reuse detected"],
+		["version_conflict", "Refresh session state changed"],
+	] as const) {
+		it(`maps ${outcome} to a deterministic authentication error`, async () => {
+			const sid = "3f7c90af-22a8-4a48-8e03-3ea6f865b59f";
+			const refreshToken = `${sid}.current-refresh-secret`;
+			const session = {
+				sid,
+				publicId: "user-public-id",
+				isEmailVerified: true,
+				refreshTokenHash: crypto.createHash("sha256").update(refreshToken, "utf8").digest("hex"),
+				refreshVersion: 0,
+				createdAt: Date.now(),
+				lastSeenAt: Date.now(),
+				status: "active",
+			} as const;
+			compareAndRotateAuthSessionStub.resolves({ outcome, session: null });
+
+			await expect(
+				authSessionService.rotateRefreshToken(
+					session as AuthSessionRecord,
+					refreshToken,
+					`${sid}.next-refresh-secret`,
+					3600,
+				),
+			).to.be.rejectedWith(message);
+		});
+	}
 
 	it("updates lastSeenAt during access-session validation when touch interval has elapsed", async () => {
 		const sid = "3f7c90af-22a8-4a48-8e03-3ea6f865b59f";
 		const previousSeen = Date.now() - 120_000;
+		const createdAt = Date.now() - 300_000;
 		getAuthSessionStub.resolves({
 			sid,
 			publicId: "user-public-id",
 			refreshTokenHash: crypto.createHash("sha256").update(`${sid}.refresh-secret`, "utf8").digest("hex"),
-			createdAt: Date.now() - 300_000,
+			createdAt,
 			lastSeenAt: previousSeen,
 			status: "active",
 		});
@@ -178,11 +288,28 @@ describe("AuthSessionService", () => {
 		const session = await authSessionService.assertAccessSession(sid, "user-public-id");
 
 		expect(session.sid).to.equal(sid);
-		expect(getAuthSessionTtlStub.calledOnceWith(sid)).to.be.true;
-		expect(updateAuthSessionStub.calledOnce).to.be.true;
-		expect(updateAuthSessionStub.firstCall.args[0]).to.equal(sid);
-		expect(updateAuthSessionStub.firstCall.args[2]).to.equal(3600);
-		expect(updateAuthSessionStub.firstCall.args[1].lastSeenAt).to.be.greaterThan(previousSeen);
+		expect(touchAuthSessionStub.calledOnce).to.be.true;
+		const input = touchAuthSessionStub.firstCall.args[0];
+		expect(input.sid).to.equal(sid);
+		expect(input.publicId).to.equal("user-public-id");
+		expect(input.lastSeenAt).to.be.greaterThan(previousSeen);
+	});
+
+	it("rejects access when the atomic touch observes a deleted session", async () => {
+		const sid = "3f7c90af-22a8-4a48-8e03-3ea6f865b59f";
+		getAuthSessionStub.resolves({
+			sid,
+			publicId: "user-public-id",
+			refreshTokenHash: crypto.createHash("sha256").update(`${sid}.refresh-secret`, "utf8").digest("hex"),
+			createdAt: Date.now() - 300_000,
+			lastSeenAt: Date.now() - 120_000,
+			status: "active",
+		});
+		touchAuthSessionStub.resolves("missing");
+
+		await expect(authSessionService.assertAccessSession(sid, "user-public-id")).to.be.rejectedWith(
+			"Session is invalid or expired",
+		);
 	});
 
 	it("removes stale user-session index entry when access-session key is missing", async () => {
@@ -203,57 +330,58 @@ describe("AuthSessionService", () => {
 		expect(deleteUserAuthSessionsStub.calledOnceWith("user-public-id", ["session-a", "session-b"])).to.equal(true);
 	});
 
+	it("atomically revokes the session addressed by a refresh token", async () => {
+		const sid = "3f7c90af-22a8-4a48-8e03-3ea6f865b59f";
+		const refreshToken = `${sid}.refresh-secret`;
+
+		await authSessionService.revokeSessionByRefreshToken(refreshToken);
+
+		expect(revokeAuthSessionByRefreshTokenStub.calledOnce).to.equal(true);
+		const input = revokeAuthSessionByRefreshTokenStub.firstCall.args[0];
+		expect(input.sid).to.equal(sid);
+		expect(input.presentedRefreshTokenHash).to.not.equal(refreshToken);
+		expect(input.now).to.be.a("number");
+	});
+
+	it("maps refresh-token revocation mismatch to token reuse", async () => {
+		const sid = "3f7c90af-22a8-4a48-8e03-3ea6f865b59f";
+		revokeAuthSessionByRefreshTokenStub.resolves("mismatch");
+
+		await expect(
+			authSessionService.revokeSessionByRefreshToken(`${sid}.refresh-secret`),
+		).to.be.rejectedWith("Refresh token reuse detected");
+	});
+
 	it("marks active sessions as email verified", async () => {
 		const sessionA = "11111111-1111-4111-8111-111111111111";
 		const sessionB = "22222222-2222-4222-8222-222222222222";
 		const staleSession = "33333333-3333-4333-8333-333333333333";
 		getUserAuthSessionIdsStub.resolves([sessionA, sessionB, staleSession]);
-		getAuthSessionsWithTtlStub.resolves([
-			{
-				sid: sessionA,
-				session: {
-				sid: sessionA,
-				publicId: "user-public-id",
-				isEmailVerified: false,
-				refreshTokenHash: crypto.createHash("sha256").update("refresh-a", "utf8").digest("hex"),
-				createdAt: Date.now(),
-				lastSeenAt: Date.now(),
-				status: "active",
-				},
-				ttlSeconds: 3600,
-			},
-			{
-				sid: sessionB,
-				session: {
-				sid: sessionB,
-				publicId: "user-public-id",
-				isEmailVerified: false,
-				refreshTokenHash: crypto.createHash("sha256").update("refresh-b", "utf8").digest("hex"),
-				createdAt: Date.now(),
-				lastSeenAt: Date.now(),
-				status: "active",
-				},
-				ttlSeconds: 1800,
-			},
-			{
-				sid: staleSession,
-				session: null,
-				ttlSeconds: -2,
-			},
-		]);
 
 		await authSessionService.markUserEmailVerified("user-public-id");
 
-		expect(updateAuthSessionsStub.calledOnce).to.equal(true);
-		const [publicId, updates, staleSessionIds] = updateAuthSessionsStub.firstCall.args;
-		expect(publicId).to.equal("user-public-id");
-		expect(staleSessionIds).to.deep.equal([staleSession]);
-		expect(updates).to.have.length(2);
-		expect(updates[0].sid).to.equal(sessionA);
-		expect(updates[0].ttlSeconds).to.equal(3600);
-		expect(updates[0].session.isEmailVerified).to.equal(true);
-		expect(updates[1].sid).to.equal(sessionB);
-		expect(updates[1].ttlSeconds).to.equal(1800);
-		expect(updates[1].session.isEmailVerified).to.equal(true);
+		expect(markAuthSessionEmailVerifiedStub.callCount).to.equal(3);
+		expect(markAuthSessionEmailVerifiedStub.getCalls().map((call) => call.args[0])).to.deep.equal([
+			{ sid: sessionA, publicId: "user-public-id" },
+			{ sid: sessionB, publicId: "user-public-id" },
+			{ sid: staleSession, publicId: "user-public-id" },
+		]);
+	});
+
+	it("cleans only missing email-verification memberships", async () => {
+		const activeSession = "11111111-1111-4111-8111-111111111111";
+		const missingSession = "22222222-2222-4222-8222-222222222222";
+		getUserAuthSessionIdsStub.resolves([activeSession, missingSession]);
+		markAuthSessionEmailVerifiedStub.onFirstCall().resolves("updated");
+		markAuthSessionEmailVerifiedStub.onSecondCall().resolves("missing");
+
+		await authSessionService.markUserEmailVerified("user-public-id");
+
+		expect(
+			removeAuthSessionMembershipStub.calledOnceWith(
+				"user-public-id",
+				missingSession,
+			),
+		).to.equal(true);
 	});
 });

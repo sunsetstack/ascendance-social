@@ -119,8 +119,9 @@ export class AuthService {
     refreshToken: string,
     context: AuthSessionContext = {},
   ): Promise<AuthenticatedSessionResult> {
-    const session =
-      await this.authSessionService.validateRefreshToken(refreshToken);
+    const session = await this.authSessionService.getRefreshSession(
+      refreshToken,
+    );
     const user = await this.userReadRepository.findByPublicId(session.publicId);
     if (!user) {
       await this.authSessionService.revokeSession(session.sid);
@@ -138,7 +139,7 @@ export class AuthService {
       session.sid,
     );
     await this.authSessionService.rotateRefreshToken(
-      session.sid,
+      session,
       refreshToken,
       nextRefreshToken,
       this.getRefreshTokenTtlSeconds(),
@@ -159,13 +160,11 @@ export class AuthService {
 
   /**
    * Revokes one session using a refresh token
-   * - validates token first to get trusted session context
-   * - removes only the matching sid
+   * - atomically validates the token against current session state
+   * - removes only the matching sid and membership entry
    */
   async revokeSessionByRefreshToken(refreshToken: string): Promise<void> {
-    const session =
-      await this.authSessionService.validateRefreshToken(refreshToken);
-    await this.authSessionService.revokeSession(session.sid);
+    await this.authSessionService.revokeSessionByRefreshToken(refreshToken);
   }
 
   /**
