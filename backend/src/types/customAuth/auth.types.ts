@@ -32,6 +32,7 @@ export interface AuthSessionRecord {
   publicId: UserPublicId;
   isEmailVerified: boolean;
   refreshTokenHash: RefreshTokenHash;
+  refreshVersion: number;
   previousRefreshTokenHash?: RefreshTokenHash;
   previousRefreshTokenGraceUntil?: number;
   createdAt: number;

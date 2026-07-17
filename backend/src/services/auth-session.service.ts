@@ -71,6 +71,7 @@ export class AuthSessionService {
       refreshTokenHash: asRefreshTokenHash(
         this.hashRefreshToken(input.refreshToken),
       ),
+      refreshVersion: 0,
       createdAt: now,
       lastSeenAt: now,
       ip: input.ip,
@@ -111,7 +112,11 @@ export class AuthSessionService {
       await this.redisService.removeAuthSessionMembership(publicId, sid);
       throw Errors.authentication("Session is invalid or expired");
     }
-    if (session.status !== "active" || session.publicId !== publicId) {
+    if (
+      session.sid !== sid ||
+      session.status !== "active" ||
+      session.publicId !== publicId
+    ) {
       throw Errors.authentication("Session is invalid or expired");
     }
     await this.touchSessionOnAccess(session);
@@ -126,15 +131,7 @@ export class AuthSessionService {
    * - Returns session only for valid token and revokes session on suspicious reuse
    */
   async validateRefreshToken(refreshToken: string): Promise<AuthSessionRecord> {
-    const sid = this.extractSessionIdFromRefreshToken(refreshToken);
-    if (!sid) {
-      throw Errors.authentication("Invalid refresh token");
-    }
-
-    const session = await this.getSession(sid);
-    if (!session || session.status !== "active") {
-      throw Errors.authentication("Session is invalid or expired");
-    }
+    const session = await this.getRefreshSession(refreshToken);
 
     const presentedHash = this.hashRefreshToken(refreshToken);
     const matchState = this.classifyRefreshTokenMatch(session, presentedHash);
@@ -142,8 +139,34 @@ export class AuthSessionService {
       throw Errors.authentication("Refresh token already rotated");
     }
     if (matchState !== "current") {
-      await this.revokeSession(sid);
+      await this.revokeSession(session.sid);
       throw Errors.authentication("Refresh token reuse detected");
+    }
+
+    return session;
+  }
+
+  /**
+   * Loads the active session addressed by a refresh token without accepting its hash
+   *
+   * - Refresh orchestration needs user context before minting a successor
+   * - Hash acceptance is deferred to the atomic Redis compare-and-rotate operation
+   */
+  async getRefreshSession(refreshToken: string): Promise<AuthSessionRecord> {
+    const sid = this.extractSessionIdFromRefreshToken(refreshToken);
+    if (!sid) {
+      throw Errors.authentication("Invalid refresh token");
+    }
+
+    let session: unknown;
+    try {
+      session = await this.redisService.getAuthSession<unknown>(sid);
+    } catch {
+      throw Errors.authentication("Session is invalid or expired");
+    }
+
+    if (!this.isExpectedActiveRefreshSession(session, sid)) {
+      throw Errors.authentication("Session is invalid or expired");
     }
 
     return session;
@@ -157,44 +180,49 @@ export class AuthSessionService {
    * - Stores next token hash, tracks previous hash grace period, and refreshes session metadata
    */
   async rotateRefreshToken(
-    sid: string,
+    current: AuthSessionRecord,
     presentedRefreshToken: string,
     nextRefreshToken: string,
     ttlSeconds: number,
     context?: SessionContext,
   ): Promise<AuthSessionRecord> {
-    const current = await this.getSession(sid);
-    if (!current || current.status !== "active") {
-      throw Errors.authentication("Session is invalid or expired");
-    }
-
-    const presentedHash = this.hashRefreshToken(presentedRefreshToken);
-    const matchState = this.classifyRefreshTokenMatch(current, presentedHash);
-    if (matchState === "recently_rotated") {
-      throw Errors.authentication("Refresh token already rotated");
-    }
-    if (matchState !== "current") {
-      await this.revokeSession(sid);
-      throw Errors.authentication("Refresh token reuse detected");
-    }
-
     const now = Date.now();
     const normalizedTtl = this.normalizeTtlSeconds(ttlSeconds);
-    const next: AuthSessionRecord = {
-      ...current,
-      refreshTokenHash: asRefreshTokenHash(
-        this.hashRefreshToken(nextRefreshToken),
-      ),
-      previousRefreshTokenHash: current.refreshTokenHash,
-      previousRefreshTokenGraceUntil: now + this.getRefreshRotationGraceMs(),
-      lastSeenAt: now,
-      ip: context?.ip ?? current.ip,
-      userAgent: context?.userAgent ?? current.userAgent,
-    };
+    const result =
+      await this.redisService.compareAndRotateAuthSession<AuthSessionRecord>({
+        sid: current.sid,
+        publicId: current.publicId,
+        presentedRefreshTokenHash: this.hashRefreshToken(
+          presentedRefreshToken,
+        ),
+        nextRefreshTokenHash: this.hashRefreshToken(nextRefreshToken),
+        expectedRefreshVersion: current.refreshVersion ?? 0,
+        now,
+        previousRefreshTokenGraceUntil:
+          now + this.getRefreshRotationGraceMs(),
+        ttlSeconds: normalizedTtl,
+        ip: context?.ip,
+        userAgent: context?.userAgent,
+      });
 
-    await this.redisService.saveAuthSession(next, normalizedTtl);
-
-    return next;
+    switch (result.outcome) {
+      case "rotated":
+        if (!result.session) {
+          throw Errors.internal("Atomic refresh rotation returned no session");
+        }
+        return result.session;
+      case "stale_previous":
+        throw Errors.authentication("Refresh token already rotated");
+      case "missing":
+      case "revoked":
+      case "identity_mismatch":
+      case "invalid_record":
+        throw Errors.authentication("Session is invalid or expired");
+      case "mismatch":
+        throw Errors.authentication("Refresh token reuse detected");
+      case "version_conflict":
+        throw Errors.authentication("Refresh session state changed");
+    }
   }
 
   /**
@@ -204,10 +232,43 @@ export class AuthSessionService {
    * - Clears both the session key and the user-session index entry to avoid dangling references
    */
   async revokeSession(sid: string): Promise<void> {
-    const session = await this.getSession(sid);
+    let session: AuthSessionRecord | null;
+    try {
+      session = await this.getSession(sid);
+    } catch {
+      throw Errors.authentication("Session is invalid or expired");
+    }
     if (!session) return;
+    if (session.sid !== sid || typeof session.publicId !== "string") {
+      throw Errors.authentication("Session is invalid or expired");
+    }
 
     await this.redisService.removeAuthSession(sid, session.publicId);
+  }
+
+  async revokeSessionByRefreshToken(refreshToken: string): Promise<void> {
+    const sid = this.extractSessionIdFromRefreshToken(refreshToken);
+    if (!sid) {
+      throw Errors.authentication("Invalid refresh token");
+    }
+
+    const outcome = await this.redisService.revokeAuthSessionByRefreshToken({
+      sid,
+      presentedRefreshTokenHash: this.hashRefreshToken(refreshToken),
+      now: Date.now(),
+    });
+
+    switch (outcome) {
+      case "revoked":
+        return;
+      case "mismatch":
+        throw Errors.authentication("Refresh token reuse detected");
+      case "missing":
+      case "inactive":
+      case "identity_mismatch":
+      case "invalid_record":
+        throw Errors.authentication("Session is invalid or expired");
+    }
   }
 
   /**
@@ -226,41 +287,21 @@ export class AuthSessionService {
     const sessionIds = await this.redisService.getUserAuthSessionIds(publicId);
     if (sessionIds.length === 0) return;
 
-    const staleSessionIds: string[] = [];
-    const sessionsToUpdate = (
-      await this.redisService.getAuthSessionsWithTtl<AuthSessionRecord>(
-        sessionIds,
-      )
-    )
-      .map((entry) => {
-        if (!entry.session || entry.ttlSeconds <= 0) {
-          staleSessionIds.push(entry.sid);
-          return null;
-        }
-
-        return {
-          ...entry,
-          session: {
-            ...entry.session,
-            isEmailVerified: true,
-          },
-        };
-      })
-      .filter(
-        (
-          entry,
-        ): entry is {
-          sid: string;
-          session: AuthSessionRecord;
-          ttlSeconds: number;
-        } => entry !== null,
-      );
-
-    await this.redisService.updateAuthSessions(
-      publicId,
-      sessionsToUpdate,
-      staleSessionIds,
+    const outcomes = await Promise.all(
+      sessionIds.map((sid) =>
+        this.redisService.markAuthSessionEmailVerified({ sid, publicId }),
+      ),
     );
+
+    for (let index = 0; index < outcomes.length; index += 1) {
+      const outcome = outcomes[index];
+      const sid = sessionIds[index];
+      if (outcome === "missing") {
+        await this.redisService.removeAuthSessionMembership(publicId, sid);
+      } else if (outcome !== "updated") {
+        throw Errors.internal("Session metadata update failed");
+      }
+    }
   }
 
   /**
@@ -325,6 +366,62 @@ export class AuthSessionService {
     return "unknown";
   }
 
+  private isExpectedActiveRefreshSession(
+    value: unknown,
+    expectedSid: string,
+  ): value is AuthSessionRecord {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return false;
+    }
+
+    const session = value as Record<string, unknown>;
+    if (
+      session.sid !== expectedSid ||
+      typeof session.publicId !== "string" ||
+      session.publicId.length === 0 ||
+      typeof session.isEmailVerified !== "boolean" ||
+      typeof session.refreshTokenHash !== "string" ||
+      !SHA256_HEX_REGEX.test(session.refreshTokenHash) ||
+      typeof session.createdAt !== "number" ||
+      !Number.isFinite(session.createdAt) ||
+      typeof session.lastSeenAt !== "number" ||
+      !Number.isFinite(session.lastSeenAt) ||
+      session.status !== "active"
+    ) {
+      return false;
+    }
+
+    const refreshVersion = session.refreshVersion;
+    if (
+      refreshVersion !== undefined &&
+      (typeof refreshVersion !== "number" ||
+        !Number.isInteger(refreshVersion) ||
+        refreshVersion < 0)
+    ) {
+      return false;
+    }
+
+    const previousHash = session.previousRefreshTokenHash;
+    const previousGraceUntil = session.previousRefreshTokenGraceUntil;
+    if (
+      previousHash !== undefined &&
+      (typeof previousHash !== "string" ||
+        !SHA256_HEX_REGEX.test(previousHash))
+    ) {
+      return false;
+    }
+
+    if (
+      previousGraceUntil !== undefined &&
+      (typeof previousGraceUntil !== "number" ||
+        !Number.isFinite(previousGraceUntil))
+    ) {
+      return false;
+    }
+
+    return (previousHash === undefined) === (previousGraceUntil === undefined);
+  }
+
   /**
    * Updates `lastSeenAt` for active usage throttled by a configurable interval
    *
@@ -342,28 +439,19 @@ export class AuthSessionService {
       return;
     }
 
-    const ttlSeconds = await this.redisService.getAuthSessionTtl(session.sid);
-    if (ttlSeconds <= 0) {
+    const outcome = await this.redisService.touchAuthSession({
+      sid: session.sid,
+      publicId: session.publicId,
+      lastSeenAt: now,
+    });
+    if (outcome === "updated") return;
+    if (outcome === "missing") {
       await this.redisService.removeAuthSessionMembership(
         session.publicId,
         session.sid,
       );
-      throw Errors.authentication("Session is invalid or expired");
     }
-
-    const touchedSession: AuthSessionRecord = {
-      ...session,
-      lastSeenAt: now,
-    };
-    await this.redisService.updateAuthSession(
-      session.sid,
-      touchedSession,
-      ttlSeconds,
-    );
-  }
-
-  private sessionKey(sid: string): string {
-    return `session:${sid}`;
+    throw Errors.authentication("Session is invalid or expired");
   }
 
   /**
