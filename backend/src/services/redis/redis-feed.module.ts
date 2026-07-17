@@ -1,25 +1,15 @@
 import { RedisClientType } from "redis";
 import { CacheKeyBuilder, RedisFeedType } from "@/utils/cache/CacheKeyBuilder";
-import { decodeCursor, encodeCursor } from "@/utils/cursorCodec";
 import { redisLogger } from "@/utils/winston";
+import {
+  decodeFeedCursor,
+  encodeFeedCursor,
+  FEED_CURSOR_ORDER,
+} from "@/utils/feedCursor";
 
 /** How long per-user feed ZSETs live in Redis (1 hour). */
 const FEED_TTL_SECONDS = 3600;
 const FEED_WRITE_BATCH_SIZE = 500;
-
-/**
- * Cursor payload written by this module. Decode-side accepts the full
- * superset of score aliases so cursors issued by DB-backed feed queries
- * (rankScore, trendScore) remain compatible with Redis-backed feeds.
- */
-type CursorPayload = {
-  score?: number;
-  rankScore?: number;
-  trendScore?: number;
-  createdAt?: string | number;
-  _id?: string;
-  id?: string;
-};
 
 export class RedisFeedModule {
   constructor(private readonly client: RedisClientType) {}
@@ -107,20 +97,34 @@ export class RedisFeedModule {
     nextCursor?: string;
   }> {
     const key = CacheKeyBuilder.getRedisFeedKey(feedType, userId);
-    const decoded = decodeCursor<CursorPayload>(cursor);
-    const maxScoreValue =
-      decoded?.score ??
-      decoded?.rankScore ??
-      decoded?.trendScore ??
-      decoded?.createdAt;
+    const decoded = cursor
+      ? decodeFeedCursor(cursor, {
+          feed: "for-you",
+          orders: [FEED_CURSOR_ORDER.FOR_YOU],
+          source: "redis",
+        })
+      : null;
     const maxScore =
-      maxScoreValue !== undefined && maxScoreValue !== null
-        ? String(maxScoreValue)
-        : "+inf";
-    const maxId = String(decoded?._id ?? decoded?.id ?? "");
+      decoded?.score !== undefined ? String(decoded.score) : "+inf";
+    const maxId = decoded?._id ?? "";
 
-    return this.paginateZSet(key, limit, maxScore, maxId, cursor, (score, id) =>
-      encodeCursor({ score, _id: id }),
+    return this.paginateZSet(
+      key,
+      limit,
+      maxScore,
+      maxId,
+      cursor,
+      (score, id, pageIds) =>
+      encodeFeedCursor({
+        feed: "for-you",
+        order: FEED_CURSOR_ORDER.FOR_YOU,
+        source: "redis",
+        score,
+        _id: id,
+        seenPublicIds: [
+          ...new Set([...(decoded?.seenPublicIds ?? []), ...pageIds]),
+        ],
+      }),
     );
   }
 
@@ -223,15 +227,37 @@ export class RedisFeedModule {
     hasMore: boolean;
     nextCursor?: string;
   }> {
-    const decoded = decodeCursor<{ trendScore?: number; _id?: string }>(cursor);
+    const decoded = cursor
+      ? decodeFeedCursor(cursor, {
+          feed: "trending",
+          orders: [FEED_CURSOR_ORDER.TRENDING],
+          source: "redis",
+        })
+      : null;
     const maxScore =
       decoded?.trendScore !== undefined && decoded?.trendScore !== null
         ? String(decoded.trendScore)
         : "+inf";
     const maxId = String(decoded?._id ?? "");
 
-    return this.paginateZSet(key, limit, maxScore, maxId, cursor, (score, id) =>
-      encodeCursor({ trendScore: score, _id: id }),
+    return this.paginateZSet(
+      key,
+      limit,
+      maxScore,
+      maxId,
+      cursor,
+      (score, id, pageIds) =>
+      encodeFeedCursor({
+        feed: "trending",
+        order: FEED_CURSOR_ORDER.TRENDING,
+        source: "redis",
+        phase: "trending",
+        trendScore: score,
+        _id: id,
+        seenPublicIds: [
+          ...new Set([...(decoded?.seenPublicIds ?? []), ...pageIds]),
+        ],
+      }),
     );
   }
 
@@ -245,7 +271,7 @@ export class RedisFeedModule {
     maxScore: string,
     maxId: string,
     cursor: string | undefined,
-    buildNextCursor: (score: number, id: string) => string,
+    buildNextCursor: (score: number, id: string, pageIds: string[]) => string,
   ): Promise<{ ids: string[]; hasMore: boolean; nextCursor?: string }> {
     type ZRangeWithScoresReply = Awaited<
       ReturnType<RedisClientType["zRangeWithScores"]>
@@ -290,9 +316,9 @@ export class RedisFeedModule {
     const ids = sliced.map((item: ZRangeWithScoresReply[number]) => item.value);
 
     let nextCursor: string | undefined;
-    if (sliced.length > 0) {
+    if (hasMore && sliced.length > 0) {
       const last = sliced[sliced.length - 1];
-      nextCursor = buildNextCursor(last.score, last.value);
+      nextCursor = buildNextCursor(last.score, last.value, ids);
     }
 
     return { ids, hasMore, nextCursor };

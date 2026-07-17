@@ -117,12 +117,15 @@ export class FeedFanoutService {
       const limit = 20;
       let cursor: string | undefined;
       for (let page = 1; page <= 3; page++) {
-        const key = CacheKeyBuilder.getNewFeedKey(page, limit);
+        const requestCursor = cursor;
+        const key = requestCursor
+          ? CacheKeyBuilder.getNewFeedCursorKey(requestCursor, limit)
+          : CacheKeyBuilder.getNewFeedKey(page, limit);
         const cursorResult = await this.feedReadDao.getNewFeedWithCursor({
           limit,
-          cursor,
+          cursor: requestCursor,
         });
-        const core: CoreFeed = {
+        const core: CoreFeed & { headCursor?: string } = {
           data: cursorResult.data as FeedPost[],
           limit,
           page,
@@ -131,6 +134,7 @@ export class FeedFanoutService {
           hasMore: cursorResult.hasMore,
           nextCursor: cursorResult.nextCursor,
           prevCursor: cursorResult.prevCursor,
+          headCursor: cursorResult.prevCursor,
         };
         cursor = cursorResult.nextCursor;
         await this.redisService.setWithTags(

@@ -44,7 +44,7 @@ describe("FeedReadDao", () => {
     const personalizedDate = new Date("2024-01-02T00:00:00.000Z");
     const backfillDate = new Date("2024-01-01T00:00:00.000Z");
 
-    mockModel.aggregate.onFirstCall().returns({
+    mockModel.aggregate.returns({
       exec: sinon.stub().resolves([
         {
           _id: personalizedId,
@@ -52,10 +52,6 @@ describe("FeedReadDao", () => {
           createdAt: personalizedDate,
           isPersonalized: true,
         },
-      ]),
-    });
-    mockModel.aggregate.onSecondCall().returns({
-      exec: sinon.stub().resolves([
         {
           _id: backfillId,
           publicId: "post-2",
@@ -67,20 +63,16 @@ describe("FeedReadDao", () => {
 
     const result = await dao.getFeedForUserCoreWithCursor(["000000000000000000000001"], [], { limit: 1 });
 
-    const personalizedPipeline = mockModel.aggregate.firstCall.args[0] as Array<Record<string, unknown>>;
-    const backfillPipeline = mockModel.aggregate.secondCall.args[0] as Array<Record<string, unknown>>;
-    const personalizedProjection = personalizedPipeline.find((stage) => "$project" in stage)?.$project as Record<
-      string,
-      unknown
-    >;
-    const backfillProjection = backfillPipeline.find((stage) => "$project" in stage)?.$project as Record<
+    const pipeline = mockModel.aggregate.firstCall.args[0] as Array<Record<string, unknown>>;
+    const projection = pipeline.find((stage) => "$project" in stage)?.$project as Record<
       string,
       unknown
     >;
     const decodedCursor = decodeCursor<{ _id: string; phase: string }>(result.nextCursor);
 
-    expect(personalizedProjection._id).to.equal(1);
-    expect(backfillProjection._id).to.equal(1);
+    expect(projection._id).to.equal(1);
+    expect(projection.visibleIdentityId).to.equal(1);
+    expect(mockModel.aggregate.calledOnce).to.equal(true);
     expect(result.data).to.have.length(1);
     expect(result.data[0].publicId).to.equal("post-1");
     expect(decodedCursor?._id).to.equal(personalizedId.toString());

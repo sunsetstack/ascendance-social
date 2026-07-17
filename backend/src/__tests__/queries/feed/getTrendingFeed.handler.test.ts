@@ -15,6 +15,7 @@ describe("GetTrendingFeedQueryHandler", () => {
 	let mockFeedReadDao: { getTrendingFeedWithCursor: SinonStub; getNewFeedWithCursor: SinonStub };
 	let mockPostReadRepository: {
 		findPostsByPublicIds: SinonStub;
+		findInternalIdByPublicId: SinonStub;
 		getTrendingFeedWithCursor: SinonStub;
 	};
 	let mockRedisService: { getTrendingFeedWithCursor: SinonStub };
@@ -27,6 +28,7 @@ describe("GetTrendingFeedQueryHandler", () => {
 		};
 		mockPostReadRepository = {
 			findPostsByPublicIds: sinon.stub(),
+			findInternalIdByPublicId: sinon.stub().resolves(null),
 			getTrendingFeedWithCursor: sinon.stub(),
 		};
 		mockRedisService = {
@@ -47,7 +49,7 @@ describe("GetTrendingFeedQueryHandler", () => {
 	});
 
 	it("uses Redis ZSET when it has post IDs", async () => {
-		mockRedisService.getTrendingFeedWithCursor.resolves({ ids: ["p1", "p2"], hasMore: false, nextCursor: "n1" });
+		mockRedisService.getTrendingFeedWithCursor.resolves({ ids: ["p1", "p2"], hasMore: true, nextCursor: "n1" });
 		mockPostReadRepository.findPostsByPublicIds.resolves([
 			{
 				publicId: "p1",

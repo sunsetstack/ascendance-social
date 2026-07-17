@@ -2,8 +2,8 @@ import "reflect-metadata";
 import { expect } from "chai";
 import sinon from "sinon";
 import { RedisFeedModule } from "@/services/redis/redis-feed.module";
-import { encodeCursor } from "@/utils/cursorCodec";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
+import { encodeFeedCursor, FEED_CURSOR_ORDER } from "@/utils/feedCursor";
 
 describe("RedisFeedModule", () => {
   afterEach(() => {
@@ -27,7 +27,14 @@ describe("RedisFeedModule", () => {
 
     const result = await module.getTrendingFeedWithCursor(
       20,
-      encodeCursor({ trendScore: 10, _id: "post-021" }),
+      encodeFeedCursor({
+        feed: "trending",
+        order: FEED_CURSOR_ORDER.TRENDING,
+        source: "redis",
+        phase: "trending",
+        trendScore: 10,
+        _id: "post-021",
+      }),
     );
 
     expect(result.ids).to.deep.equal(buildBatch(20, 1).map((item) => item.value));

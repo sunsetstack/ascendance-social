@@ -70,6 +70,7 @@ export class FeedCoreService {
       return this.feedReadDao.getRankedFeedWithCursor(favoriteTags, {
         limit,
         cursor,
+        cursorFeed: "personalized",
       });
     }
 

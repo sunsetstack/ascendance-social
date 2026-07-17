@@ -8,13 +8,19 @@ import type {
 } from "@/repositories/interfaces";
 import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
 import { RedisService } from "@/services/redis.service";
-import { Errors } from "@/utils/errors";
+import { Errors, isAppError } from "@/utils/errors";
 import { errorLogger, redisLogger } from "@/utils/winston";
 import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
 import { FeedPost, PaginatedFeedResult } from "@/types";
 import { TOKENS } from "@/types/tokens";
 import { asPostPublicId, asUserPublicId } from "@/types/branded";
 import { normalizeFeedPosts } from "@/application/queries/feed/feed-post-normalizer";
+import {
+  decodeFeedCursor,
+  encodeFeedCursor,
+  FEED_CURSOR_ORDER,
+  FeedCursorPayload,
+} from "@/utils/feedCursor";
 
 @injectable()
 export class GetForYouFeedQueryHandler implements IQueryHandler<
@@ -45,52 +51,57 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
     });
 
     try {
-      // 1. Try Redis ZSET with cursor
-      try {
-        const redisResult = await this.redisService.getFeedWithCursor(
-          userId,
-          limit,
-          cursor,
-          "for_you",
-        );
+      const decodedCursor = cursor
+        ? decodeFeedCursor(cursor, {
+            feed: "for-you",
+            orders: [FEED_CURSOR_ORDER.FOR_YOU],
+          })
+        : null;
 
-        if (redisResult.ids.length > 0) {
-          redisLogger.info(`For You feed ZSET HIT`, {
-            count: redisResult.ids.length,
-          });
-          const posts = await this.postReadRepository.findPostsByPublicIds(
-            redisResult.ids.map(asPostPublicId),
+      if (!decodedCursor || decodedCursor.source === "redis") {
+        try {
+          const redisResult = await this.redisService.getFeedWithCursor(
+            userId,
+            limit,
+            cursor,
+            "for_you",
           );
 
-          // Re-sort to match Redis order (crucial for feed consistency)
-          const postMap = new Map(posts.map((p) => [p.publicId, p]));
-          const orderedPosts = redisResult.ids
-            .map((id) => postMap.get(id))
-            .filter((p): p is FeedPost => p !== undefined);
-
-          const transformedPosts = normalizeFeedPosts(orderedPosts);
-          const enriched =
-            await this.feedEnrichmentService.enrichFeedWithCurrentData(
-              transformedPosts,
+          if (redisResult.ids.length > 0) {
+            redisLogger.info(`For You feed ZSET HIT`, {
+              count: redisResult.ids.length,
+            });
+            const posts = await this.postReadRepository.findPostsByPublicIds(
+              redisResult.ids.map(asPostPublicId),
             );
 
-          // If we are on the first page/cursor and have data, we assume the feed is populated.
-          // If we are deep paginating, we just return what we have.
+            const postMap = new Map(posts.map((p) => [p.publicId, p]));
+            const orderedPosts = redisResult.ids
+              .map((id) => postMap.get(id))
+              .filter((p): p is FeedPost => p !== undefined);
 
-          return {
-            data: enriched,
-            page,
-            limit,
-            total: 0,
-            totalPages: 0,
-            nextCursor: redisResult.nextCursor,
-            hasMore: redisResult.hasMore,
-          };
+            const transformedPosts = normalizeFeedPosts(orderedPosts);
+            const enriched =
+              await this.feedEnrichmentService.enrichFeedWithCurrentData(
+                transformedPosts,
+              );
+
+            return {
+              data: enriched,
+              page,
+              limit,
+              total: 0,
+              totalPages: 0,
+              nextCursor: redisResult.nextCursor,
+              hasMore: redisResult.hasMore,
+            };
+          }
+        } catch (error) {
+          if (isAppError(error) && error.statusCode === 400) throw error;
+          redisLogger.warn("Failed to get feed from Redis cursor", {
+            error,
+          });
         }
-      } catch (err) {
-        redisLogger.warn("Failed to get feed from Redis cursor", {
-          error: err,
-        });
       }
 
       // 2. Cache Miss - Generate from DB using Cursor Pagination
@@ -108,10 +119,14 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
         String(user._id),
       );
       const favoriteTags = topTags.map((pref) => pref.tag);
+      const mongoCursor =
+        decodedCursor?.source === "redis"
+          ? await this.translateRedisCursor(decodedCursor)
+          : cursor;
 
       const result = await this.feedReadDao.getRankedFeedWithCursor(
         favoriteTags,
-        { limit, cursor },
+        { limit, cursor: mongoCursor },
       );
       const transformedFeedData = normalizeFeedPosts(result.data);
 
@@ -157,12 +172,44 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
         hasMore: result.hasMore,
       };
     } catch (error) {
+      if (isAppError(error) && error.statusCode === 400) throw error;
       errorLogger.error("For You feed error", {
         userId,
         error: error instanceof Error ? error.message : String(error),
       });
       throw Errors.internal("Could not generate For You feed.");
     }
+  }
+
+  private async translateRedisCursor(
+    cursor: FeedCursorPayload,
+  ): Promise<string> {
+    const posts = await this.postReadRepository.findPostsByPublicIds(
+      (cursor.seenPublicIds ?? []).map(asPostPublicId),
+    );
+    const visiblePublicIds = [
+      ...new Set(
+        posts.map((post) => post.repostOf?.publicId ?? post.publicId),
+      ),
+    ];
+    const visibleInternalIds = (
+      await Promise.all(
+        visiblePublicIds.map((publicId) =>
+          this.postReadRepository.findInternalIdByPublicId(
+            asPostPublicId(publicId),
+          ),
+        ),
+      )
+    ).filter((id): id is NonNullable<typeof id> => id !== null);
+
+    return encodeFeedCursor({
+      feed: "for-you",
+      order: FEED_CURSOR_ORDER.FOR_YOU,
+      source: "mongo",
+      asOf: new Date().toISOString(),
+      seen: visibleInternalIds.map(String),
+      seenPublicIds: visiblePublicIds,
+    });
   }
 
 }

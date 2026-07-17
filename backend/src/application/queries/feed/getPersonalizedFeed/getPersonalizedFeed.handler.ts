@@ -2,7 +2,7 @@ import { inject, injectable } from "tsyringe";
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { GetPersonalizedFeedQuery } from "./getPersonalizedFeed.query";
 import { RedisService } from "@/services/redis.service";
-import { Errors } from "@/utils/errors";
+import { Errors, isAppError } from "@/utils/errors";
 import { CursorPaginationResult, FeedPost } from "@/types";
 import { logger } from "@/utils/winston";
 import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
@@ -10,6 +10,7 @@ import { FeedCoreService } from "@/services/feed/feed-core.service";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
 import { asUserPublicId } from "@/types/branded";
+import { decodeFeedCursor, FEED_CURSOR_ORDER } from "@/utils/feedCursor";
 
 @injectable()
 export class GetPersonalizedFeedQueryHandler implements IQueryHandler<
@@ -34,9 +35,21 @@ export class GetPersonalizedFeedQueryHandler implements IQueryHandler<
     const safeLimit = Math.min(100, Math.max(1, Math.floor(limit || 20)));
 
     try {
-      // Get core feed structure (post IDs and order)
-      let cacheKeyArgs = cursor ? cursor : "first_page";
-      const coreFeedKey = `${CacheKeyBuilder.PREFIXES.CORE_FEED}:cursor:${userId}:${cacheKeyArgs}:${safeLimit}`;
+      if (cursor) {
+        decodeFeedCursor(cursor, {
+          feed: "personalized",
+          orders: [
+            FEED_CURSOR_ORDER.PERSONALIZED,
+            FEED_CURSOR_ORDER.PERSONALIZED_RANKED,
+          ],
+          source: "mongo",
+        });
+      }
+      const coreFeedKey = CacheKeyBuilder.getPersonalizedCursorFeedKey(
+        userId,
+        cursor,
+        safeLimit,
+      );
       let coreFeed = (await this.redisService.getWithTags(
         coreFeedKey,
       )) as CursorPaginationResult<any> | null;
@@ -73,6 +86,7 @@ export class GetPersonalizedFeedQueryHandler implements IQueryHandler<
         prevCursor: coreFeed.prevCursor,
       };
     } catch (error) {
+      if (isAppError(error) && error.statusCode === 400) throw error;
       logger.error("Failed to generate personalized feed", { error });
       throw Errors.internal(
         `Could not generate personalized feed for user ${userId}: ${(error as Error).message}`,

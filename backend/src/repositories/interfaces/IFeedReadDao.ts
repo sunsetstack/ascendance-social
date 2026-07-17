@@ -44,6 +44,7 @@ export interface IFeedReadDao {
   getRankedFeedWithCursor(
     favoriteTags: string[],
     options: CursorPaginationOptions & {
+      cursorFeed?: "for-you" | "personalized";
       weights?: { recency?: number; popularity?: number; tagMatch?: number };
     }
   ): Promise<CursorPaginationResult<FeedPost>>;

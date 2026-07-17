@@ -1,4 +1,5 @@
 import { UserPublicId, PostPublicId } from "@/types/branded";
+import { FEED_CURSOR_ORDER, FEED_CURSOR_VERSION } from "@/utils/feedCursor";
 /**
  * Union of valid per-user Redis feed types.
  * Only covers feeds stored under the `feed:{type}:{userId}` key pattern.
@@ -57,11 +58,19 @@ export class CacheKeyBuilder {
   }
 
   static getNewFeedKey(page: number, limit: number): string {
-    return `${this.PREFIXES.NEW_FEED}:${page}:${limit}`;
+    return `${this.PREFIXES.NEW_FEED}:v${FEED_CURSOR_VERSION}:${FEED_CURSOR_ORDER.NEW}:page:${page}:limit:${limit}`;
   }
 
   static getNewFeedCursorKey(cursor: string, limit: number): string {
-    return `${this.PREFIXES.NEW_FEED}:cursor:${cursor}:${limit}`;
+    return `${this.PREFIXES.NEW_FEED}:v${FEED_CURSOR_VERSION}:${FEED_CURSOR_ORDER.NEW}:cursor:${cursor}:limit:${limit}`;
+  }
+
+  static getPersonalizedCursorFeedKey(
+    userId: string,
+    cursor: string | undefined,
+    limit: number,
+  ): string {
+    return `${this.PREFIXES.CORE_FEED}:v${FEED_CURSOR_VERSION}:${FEED_CURSOR_ORDER.PERSONALIZED}:${userId}:cursor:${cursor ?? "first"}:limit:${limit}`;
   }
 
   static getNewFeedTag(): string {
