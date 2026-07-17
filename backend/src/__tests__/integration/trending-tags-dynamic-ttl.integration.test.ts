@@ -8,6 +8,12 @@ import { GetTrendingTagsQueryHandler } from "@/application/queries/tags/getTrend
 import { GetTrendingTagsQuery } from "@/application/queries/tags/getTrendingTags/getTrendingTags.query";
 import { MetricsService } from "@/metrics/metrics.service";
 import mongoose from "mongoose";
+import { createClient } from "redis";
+
+async function closeRedisClient(redisService: RedisService): Promise<void> {
+	await redisService.unsubscribeAll().catch(() => undefined);
+	await redisService.clientInstance.disconnect().catch(() => undefined);
+}
 
 /**
  * Integration tests for the Dynamic TTL Trending Tags system
@@ -26,6 +32,7 @@ describe("Trending Tags Dynamic TTL Integration", function () {
 	this.timeout(30000);
 
 	let redisService: RedisService;
+	let redisServiceCreated = false;
 	let tagService: TagService;
 	let trendingTagsHandler: GetTrendingTagsQueryHandler;
 
@@ -39,28 +46,49 @@ describe("Trending Tags Dynamic TTL Integration", function () {
 	];
 
 	before(async function () {
+		const redisUrl = process.env.REDIS_URL;
+		if (!redisUrl) {
+			throw new Error(
+				"REDIS_URL is required. Run `npm run test-integration` from the repository root to start the test Redis service.",
+			);
+		}
+
+		const probe = createClient({
+			url: redisUrl,
+			socket: { connectTimeout: 3_000, reconnectStrategy: false },
+		});
+		probe.on("error", () => undefined);
+		try {
+			await probe.connect();
+			await probe.ping();
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(
+				`Redis is required for Trending Tags Dynamic TTL integration tests (${message}). Run \`npm run test-integration\` from the repository root to start it.`,
+			);
+		} finally {
+			if (probe.isOpen) await probe.disconnect().catch(() => undefined);
+		}
+
 		// setup DI container with real services
 		const metricsService = new MetricsService();
 		container.registerInstance("MetricsService", metricsService);
 
 		redisService = new RedisService(metricsService);
+		redisServiceCreated = true;
 		container.registerInstance("RedisService", redisService);
 
-		// wait for Redis connection
-		await new Promise((resolve) => setTimeout(resolve, 1000));
-
-		// verify Redis is connected
-		try {
-			await redisService.set("test:connection", "ok", 10);
-			const val = await redisService.get("test:connection");
-			if (val !== "ok") {
-				throw new Error("Redis connection test failed");
-			}
-			console.log("✓ Redis connection verified");
-		} catch (error) {
-			console.error("Redis not available, skipping integration tests");
-			this.skip();
+		const connected = await redisService.waitForConnection(5_000);
+		if (!connected) {
+			await closeRedisClient(redisService);
+			throw new Error(
+				"Redis connection did not become ready within 5 seconds. Run `npm run test-integration` from the repository root to start it.",
+			);
 		}
+
+		await redisService.set("test:connection", "ok", 10);
+		const val = await redisService.get("test:connection");
+		expect(val).to.equal("ok");
 	});
 
 	beforeEach(async function () {
@@ -75,13 +103,19 @@ describe("Trending Tags Dynamic TTL Integration", function () {
 	});
 
 	after(async function () {
-		// final cleanup
-		for (const key of testKeys) {
-			try {
-				await redisService.del(key);
-			} catch {
-				// ignore
+		try {
+			if (redisServiceCreated) {
+				for (const key of testKeys) {
+					try {
+						await redisService.del(key);
+					} catch {
+						// cleanup continues so the client is always closed
+					}
+				}
 			}
+		} finally {
+			if (redisServiceCreated) await closeRedisClient(redisService);
+			container.reset();
 		}
 	});
 
