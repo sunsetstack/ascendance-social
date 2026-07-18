@@ -63,7 +63,7 @@ describe("GetPersonalizedFeedQueryHandler", () => {
 		expect(mockFeedCoreService.generatePersonalizedCoreFeed.calledOnceWith("viewer", 10, undefined)).to.be.true;
 		expect(
 			mockRedisService.setWithTags.calledOnceWith(
-				`${CacheKeyBuilder.PREFIXES.CORE_FEED}:cursor:viewer:first_page:10`,
+				CacheKeyBuilder.getPersonalizedCursorFeedKey("viewer", undefined, 10),
 				sinon.match.object,
 				[
 					CacheKeyBuilder.getUserFeedTag("viewer"),

@@ -6,13 +6,21 @@ import type {
   IFeedReadDao,
 } from "@/repositories/interfaces";
 import { RedisService } from "@/services/redis.service";
-import { Errors } from "@/utils/errors";
+import { Errors, isAppError } from "@/utils/errors";
 import { redisLogger } from "@/utils/winston";
 import { FeedPost, PaginatedFeedResult } from "@/types";
 import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
 import { asPostPublicId } from "@/types/branded";
 import { TOKENS } from "@/types/tokens";
 import { normalizeFeedPosts } from "@/application/queries/feed/feed-post-normalizer";
+import {
+  decodeFeedCursor,
+  encodeFeedCursor,
+  encodeTrendingNewCursor,
+  FEED_CURSOR_ORDER,
+  hashFeedCursorScope,
+  TrendingNewFeedCursorPayload,
+} from "@/utils/feedCursor";
 
 @injectable()
 export class GetTrendingFeedQueryHandler implements IQueryHandler<
@@ -38,21 +46,20 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
     });
 
     try {
-      // Always try cursor-based pagination (Redis or DB)
-      // If cursor is undefined, it fetches the first page
-      redisLogger.debug("Using cursor-based trending feed strategy");
+      const decodedCursor = cursor
+        ? decodeFeedCursor(cursor, {
+            feed: "trending",
+            orders: [
+              FEED_CURSOR_ORDER.TRENDING,
+              FEED_CURSOR_ORDER.TRENDING_NEW,
+            ],
+          })
+        : null;
 
-      let isNewPhase = false;
-      let actualCursor = cursor;
-      if (cursor?.startsWith("new_phase:")) {
-        isNewPhase = true;
-        actualCursor = cursor.replace("new_phase:", "");
-      }
-
-      if (isNewPhase) {
+      if (decodedCursor?.phase === "new") {
         const result = await this.feedReadDao.getNewFeedWithCursor({
           limit,
-          cursor: actualCursor,
+          cursor: this.toNewCursor(decodedCursor),
         });
         const transformedPosts = normalizeFeedPosts(result.data);
         const enriched =
@@ -67,107 +74,92 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
           total: 0,
           totalPages: 0,
           nextCursor: result.nextCursor
-            ? `new_phase:${result.nextCursor}`
+            ? this.toTrendingNewCursor(result.nextCursor)
             : undefined,
           hasMore: result.hasMore,
         };
       }
 
-      // Try Redis ZSET first
-      try {
-        const redisResult = await this.redisService.getTrendingFeedWithCursor(
-          limit,
-          cursor,
-        );
-        if (redisResult.ids.length > 0) {
-          redisLogger.info(`Trending feed ZSET HIT`, {
-            count: redisResult.ids.length,
-          });
-          const posts = await this.postReadRepository.findPostsByPublicIds(
-            redisResult.ids.map(asPostPublicId),
+      if (!decodedCursor || decodedCursor.source === "redis") {
+        try {
+          const redisResult = await this.redisService.getTrendingFeedWithCursor(
+            limit,
+            cursor,
           );
-
-          // Re-sort to match Redis order
-          const postMap = new Map(posts.map((p) => [p.publicId, p]));
-          const orderedPosts = redisResult.ids
-            .map((id) => postMap.get(id))
-            .filter((p): p is FeedPost => p !== undefined);
-
-          const transformedPosts = normalizeFeedPosts(orderedPosts);
-          const enriched =
-            await this.feedEnrichmentService.enrichFeedWithCurrentData(
-              transformedPosts,
+          if (redisResult.ids.length > 0) {
+            redisLogger.info(`Trending feed ZSET HIT`, {
+              count: redisResult.ids.length,
+            });
+            const posts = await this.postReadRepository.findPostsByPublicIds(
+              redisResult.ids.map(asPostPublicId),
             );
 
-          return {
-            data: enriched,
-            page: page, // keep page for backward compat in response structure
-            limit,
-            total: 0,
-            totalPages: 0,
-            nextCursor: redisResult.nextCursor,
-            hasMore: redisResult.hasMore,
-          };
+            const postMap = new Map(posts.map((p) => [p.publicId, p]));
+            const orderedPosts = redisResult.ids
+              .map((id) => postMap.get(id))
+              .filter((p): p is FeedPost => p !== undefined);
+
+            const transformedPosts = normalizeFeedPosts(orderedPosts);
+            if (!redisResult.hasMore) {
+              return this.completeWithNewFeed(
+                transformedPosts,
+                redisResult.snapshotId,
+                redisResult.consumedOffset,
+                page,
+                limit,
+              );
+            }
+            const enriched =
+              await this.feedEnrichmentService.enrichFeedWithCurrentData(
+                transformedPosts,
+              );
+
+            return {
+              data: enriched,
+              page,
+              limit,
+              total: 0,
+              totalPages: 0,
+              nextCursor: redisResult.nextCursor,
+              hasMore: redisResult.hasMore,
+            };
+          }
+          if (decodedCursor?.source === "redis") {
+            return this.completeWithNewFeed(
+              [],
+              decodedCursor.snapshotId,
+              decodedCursor.offset,
+              page,
+              limit,
+            );
+          }
+        } catch (error) {
+          if (isAppError(error) && error.statusCode === 400) throw error;
+          redisLogger.warn(
+            "Failed to get trending feed from Redis, falling back to DB",
+            { error },
+          );
         }
-      } catch (err) {
-        redisLogger.warn(
-          "Failed to get trending feed from Redis, falling back to DB",
-          { error: err },
-        );
       }
 
-      // Fallback to DB cursor pagination
       redisLogger.info(
         "Falling back to DB cursor pagination for trending feed",
       );
-      let result = await this.feedReadDao.getTrendingFeedWithCursor({
+      const result = await this.feedReadDao.getTrendingFeedWithCursor({
         limit,
-        cursor: actualCursor,
+        cursor,
         timeWindowDays: 30,
         minLikes: 1,
       });
-
-      let transformedPosts = normalizeFeedPosts(result.data);
-      let nextCursor = result.nextCursor;
-      let hasMore = result.hasMore;
-
-      // When trending content is exhausted, transition to chronological (new) feed
-      if (!hasMore) {
-        const needed = limit - transformedPosts.length;
-        if (needed > 0) {
-          // Current page isn't full backfill the remainder with new posts
-          const backfill = await this.feedReadDao.getNewFeedWithCursor({
-            limit: needed + 1,
-          });
-          const existingIds = new Set(transformedPosts.map((p) => p.publicId));
-
-          const uniqueBackfill = backfill.data.filter(
-            (p) => !existingIds.has(p.publicId),
-          );
-          const mappedBackfill = normalizeFeedPosts(uniqueBackfill);
-
-          transformedPosts = [...transformedPosts, ...mappedBackfill];
-          nextCursor = backfill.nextCursor
-            ? `new_phase:${backfill.nextCursor}`
-            : undefined;
-          hasMore = backfill.hasMore;
-        } else {
-          // Current page is full with trending posts, but there are no more trending posts.
-          // Fetch a single new feed page so we can generate the new_phase cursor for the NEXT request.
-          const backfill = await this.feedReadDao.getNewFeedWithCursor({
-            limit: limit + 1,
-          });
-          nextCursor = backfill.nextCursor
-            ? `new_phase:${backfill.nextCursor}`
-            : undefined;
-          hasMore = backfill.data.length > 0;
-        }
-      }
-
-      // Ensure we respect the limit
-      if (transformedPosts.length > limit) {
-        transformedPosts = transformedPosts.slice(0, limit);
-        hasMore = true;
+      const transformedPosts = normalizeFeedPosts(result.data);
+      if (!result.hasMore) {
+        return this.completeWithNewFeed(
+          transformedPosts,
+          result.snapshotId,
+          result.consumedOffset,
+          page,
+          limit,
+        );
       }
 
       const enriched =
@@ -181,15 +173,165 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
         limit,
         total: 0,
         totalPages: 0,
-        nextCursor,
-        hasMore,
+        nextCursor: result.nextCursor,
+        hasMore: result.hasMore,
       };
     } catch (error) {
+      if (isAppError(error) && error.statusCode === 400) throw error;
       redisLogger.error("Trending feed error", {
         error: error instanceof Error ? error.message : String(error),
       });
       throw Errors.internal("Could not generate trending feed.");
     }
+  }
+
+  private async completeWithNewFeed(
+    trendingPosts: FeedPost[],
+    snapshotId: string | undefined,
+    consumedOffset: number | undefined,
+    page: number,
+    limit: number,
+  ): Promise<PaginatedFeedResult> {
+    const seen = await this.collectVisibleInternalIds(
+      snapshotId,
+      consumedOffset,
+      trendingPosts,
+    );
+    const exclusionSnapshot =
+      seen.length > 0
+        ? await this.redisService.getOrCreateFeedCursorSnapshot(
+            `new-feed-exclusions:${hashFeedCursorScope([...seen].sort())}`,
+            async () => ({
+              version: 1,
+              feed: "new",
+              order: FEED_CURSOR_ORDER.NEW,
+              source: "mongo",
+              entries: [],
+              excludedIdentityIds: [...new Set(seen)],
+            }),
+          )
+        : null;
+    const newStartCursor =
+      exclusionSnapshot
+        ? encodeFeedCursor({
+            feed: "new",
+            order: FEED_CURSOR_ORDER.NEW,
+            source: "mongo",
+            phase: "new",
+            snapshotId: exclusionSnapshot.id,
+          })
+        : undefined;
+    const needed = limit - trendingPosts.length;
+
+    let data = trendingPosts;
+    let hasMore = false;
+    let nextCursor: string | undefined;
+    if (needed > 0) {
+      const backfill = await this.feedReadDao.getNewFeedWithCursor({
+        limit: needed,
+        cursor: newStartCursor,
+      });
+      data = [...data, ...normalizeFeedPosts(backfill.data)];
+      hasMore = backfill.hasMore;
+      nextCursor = backfill.nextCursor
+        ? this.toTrendingNewCursor(backfill.nextCursor)
+        : undefined;
+    } else {
+      const peek = await this.feedReadDao.getNewFeedWithCursor({
+        limit: 1,
+        cursor: newStartCursor,
+      });
+      hasMore = peek.data.length > 0;
+      if (hasMore) {
+        nextCursor = this.toTrendingNewCursor(newStartCursor!);
+      }
+    }
+
+    const enriched = await this.feedEnrichmentService.enrichFeedWithCurrentData(
+      data,
+    );
+    return {
+      data: enriched,
+      page,
+      limit,
+      total: 0,
+      totalPages: 0,
+      nextCursor,
+      hasMore,
+    };
+  }
+
+  private async resolveVisibleInternalIds(
+    publicIds: string[],
+  ): Promise<string[]> {
+    return (
+      await this.postReadRepository.findInternalIdsByPublicIds(
+        [...new Set(publicIds)].map(asPostPublicId),
+      )
+    ).map(String);
+  }
+
+  private async collectVisibleInternalIds(
+    snapshotId: string | undefined,
+    consumedOffset: number | undefined,
+    currentPosts: FeedPost[],
+  ): Promise<string[]> {
+    const internalIds = new Set<string>();
+    const visiblePublicIds = new Set(
+      currentPosts.map((post) => post.repostOf?.publicId ?? post.publicId),
+    );
+    if (snapshotId && consumedOffset !== undefined) {
+      const snapshot = await this.redisService.getFeedCursorSnapshot(snapshotId);
+      if (!snapshot) {
+        throw Errors.validation("Feed cursor snapshot is missing or expired");
+      }
+      const consumed = snapshot.entries.slice(0, consumedOffset);
+      if (snapshot.source === "mongo") {
+        for (const entry of consumed) internalIds.add(entry.visibleIdentityId);
+      } else {
+        const posts = await this.postReadRepository.findPostsByPublicIds(
+          consumed.map((entry) => asPostPublicId(entry.publicId)),
+        );
+        for (const post of posts) {
+          visiblePublicIds.add(post.repostOf?.publicId ?? post.publicId);
+        }
+      }
+    }
+    for (const id of await this.resolveVisibleInternalIds([...visiblePublicIds])) {
+      internalIds.add(id);
+    }
+    return [...internalIds];
+  }
+
+  private toNewCursor(cursor: TrendingNewFeedCursorPayload): string {
+    return encodeFeedCursor({
+      feed: "new",
+      order: FEED_CURSOR_ORDER.NEW,
+      source: "mongo",
+      phase: "new",
+      snapshotId: cursor.snapshotId,
+      ...("createdAt" in cursor && cursor.createdAt
+        ? { createdAt: cursor.createdAt, _id: cursor._id }
+        : {}),
+    });
+  }
+
+  private toTrendingNewCursor(newCursor: string): string {
+    const decoded = decodeFeedCursor(newCursor, {
+      feed: "new",
+      orders: [FEED_CURSOR_ORDER.NEW],
+      source: "mongo",
+    });
+    return encodeTrendingNewCursor({
+      feed: "trending",
+      order: FEED_CURSOR_ORDER.TRENDING_NEW,
+      source: "mongo",
+      phase: "new",
+      snapshotId: decoded.snapshotId!,
+      ...(decoded.createdAt
+        ? { createdAt: decoded.createdAt, _id: decoded._id }
+        : {}),
+    });
   }
 
 }
