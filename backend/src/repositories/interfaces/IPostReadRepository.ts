@@ -22,6 +22,7 @@ export interface IPostReadRepository {
     viewerPublicId?: UserPublicId,
   ): Promise<FeedPost[]>;
   findPostsByPublicIds(publicIds: PostPublicId[]): Promise<FeedPost[]>;
+  findInternalIdsByPublicIds(publicIds: PostPublicId[]): Promise<MongoId[]>;
 
   findByUserPublicId(
     userPublicId: UserPublicId,

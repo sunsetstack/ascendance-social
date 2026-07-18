@@ -4,7 +4,11 @@ import sinon, { SinonStub } from "sinon";
 import { Model, Types } from "mongoose";
 import { FeedReadDao } from "@/repositories/read/FeedReadDao";
 import { TagRepository } from "@/repositories/tag.repository";
-import { decodeCursor } from "@/utils/cursorCodec";
+import {
+  decodeFeedCursor,
+  FEED_CURSOR_ORDER,
+  hashFeedCursorScope,
+} from "@/utils/feedCursor";
 
 interface MockPostModel {
   aggregate: SinonStub;
@@ -16,6 +20,10 @@ describe("FeedReadDao", () => {
   let dao: FeedReadDao;
   let mockModel: MockPostModel;
   let mockTagRepository: { findByTags: SinonStub };
+  let mockRedisService: {
+    getOrCreateFeedCursorSnapshot: SinonStub;
+    requireFeedCursorSnapshot: SinonStub;
+  };
 
   beforeEach(() => {
     mockModel = {
@@ -27,10 +35,20 @@ describe("FeedReadDao", () => {
     mockTagRepository = {
       findByTags: sinon.stub().resolves([]),
     };
+    mockRedisService = {
+      getOrCreateFeedCursorSnapshot: sinon
+        .stub()
+        .callsFake(async (_context: string, build: () => Promise<unknown>) => ({
+          id: `${hashFeedCursorScope(["unit-snapshot"])}.1`,
+          snapshot: await build(),
+        })),
+      requireFeedCursorSnapshot: sinon.stub(),
+    };
 
     dao = new FeedReadDao(
       mockModel as unknown as Model<any>,
-      mockTagRepository as unknown as TagRepository
+      mockTagRepository as unknown as TagRepository,
+      mockRedisService as any,
     );
   });
 
@@ -68,7 +86,11 @@ describe("FeedReadDao", () => {
       string,
       unknown
     >;
-    const decodedCursor = decodeCursor<{ _id: string; phase: string }>(result.nextCursor);
+    const decodedCursor = decodeFeedCursor(result.nextCursor!, {
+      feed: "personalized",
+      orders: [FEED_CURSOR_ORDER.PERSONALIZED],
+      source: "mongo",
+    });
 
     expect(projection._id).to.equal(1);
     expect(projection.visibleIdentityId).to.equal(1);

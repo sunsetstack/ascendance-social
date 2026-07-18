@@ -56,13 +56,25 @@ import { RedisService } from "@/services/redis.service";
 import type { CoreFeed, FeedPost, PostDTO } from "@/types";
 import { asPostPublicId, asUserPublicId } from "@/types/branded";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
-import { decodeCursor, encodeCursor } from "@/utils/cursorCodec";
+import { encodeAuthenticatedCursor } from "@/utils/cursorCodec";
+import {
+  decodeFeedCursor,
+  encodeFeedCursor,
+  FEED_CURSOR_ORDER,
+  FEED_CURSOR_VERSION,
+  hashFeedCursorScope,
+  MAX_FEED_CURSOR_ENCODED_LENGTH,
+} from "@/utils/feedCursor";
 import { AppError } from "@/utils/errors";
 import { NewFeedWarmCacheWorker } from "@/workers/_impl/newFeedWarmCache.worker.impl";
 import { TrendingWorker } from "@/workers/_impl/trending.worker.impl";
 
 const mongoUri = process.env.INTEGRATION_MONGODB_URI;
 const redisUrl = process.env.REDIS_URL;
+const feedCursorTestSecret =
+  process.env.FEED_CURSOR_SECRET ??
+  process.env.JWT_SECRET ??
+  "ascendance-feed-cursor-test-secret-v2";
 const fixedCreatedAt = new Date("2026-07-16T12:00:00.000Z");
 const viewerPublicId = asUserPublicId("feed-contract-viewer");
 const viewerInternalId = objectIdFor(90_000);
@@ -391,6 +403,7 @@ describe("Feed cursor/source contract integration", function () {
       {
         findByTags: async () => [],
       } as unknown as TagRepository,
+      redisService,
     );
     postReadRepository = new PostReadRepository(Post);
     feedEnrichmentService = new FeedEnrichmentService(
@@ -680,6 +693,91 @@ describe("Feed cursor/source contract integration", function () {
     );
   });
 
+  it("keeps cursor and cache-key growth bounded across 100 ranked pages", async function () {
+    this.timeout(60_000);
+    await seedPosts(
+      Array.from({ length: 201 }, (_, index) => ({
+        order: index + 1,
+        likes: index + 1,
+      })),
+    );
+
+    const progression: Array<{
+      page: number;
+      cursorLength: number;
+      seen: number;
+      seenPublicIds: number;
+      pending: number;
+      cacheKeyLength: number;
+      snapshotId: string;
+    }> = [];
+    let cursor: string | undefined;
+
+    for (let page = 1; page <= 100; page += 1) {
+      const result = await feedReadDao.getRankedFeedWithCursor([], {
+        limit: 2,
+        cursor,
+        cursorFeed: "personalized",
+        weights: { recency: 0, popularity: 1, tagMatch: 0 },
+      });
+      expect(result.nextCursor, `page ${page} must continue`).to.be.a("string");
+      cursor = result.nextCursor!;
+      const decoded = decodeFeedCursor(cursor, {
+        feed: "personalized",
+        orders: [FEED_CURSOR_ORDER.PERSONALIZED_RANKED],
+        source: "mongo",
+      });
+      const raw = decoded as unknown as Record<string, unknown>;
+      progression.push({
+        page,
+        cursorLength: cursor.length,
+        seen: Array.isArray(raw.seen) ? raw.seen.length : 0,
+        seenPublicIds: Array.isArray(raw.seenPublicIds)
+          ? raw.seenPublicIds.length
+          : 0,
+        pending: Array.isArray(raw.pending) ? raw.pending.length : 0,
+        cacheKeyLength: CacheKeyBuilder.getPersonalizedCursorFeedKey(
+          viewerPublicId,
+          cursor,
+          2,
+        ).length,
+        snapshotId: decoded.snapshotId,
+      });
+      expect(decoded.version).to.equal(FEED_CURSOR_VERSION);
+    }
+
+    const cursorLengths = progression.map((entry) => entry.cursorLength);
+    const cacheKeyLengths = progression.map((entry) => entry.cacheKeyLength);
+    const diagnostics = JSON.stringify(
+      progression.filter((entry) => [1, 10, 25, 50, 100].includes(entry.page)),
+    );
+    expect(Math.max(...cursorLengths), diagnostics).to.be.at.most(
+      MAX_FEED_CURSOR_ENCODED_LENGTH,
+    );
+    expect(
+      Math.max(...cursorLengths) - Math.min(...cursorLengths),
+      diagnostics,
+    ).to.be.at.most(16);
+    expect(new Set(cacheKeyLengths).size, diagnostics).to.equal(1);
+    expect(new Set(progression.map((entry) => entry.snapshotId)).size).to.equal(
+      1,
+    );
+    expect(
+      progression.every(
+        (entry) =>
+          entry.seen === 0 &&
+          entry.seenPublicIds === 0 &&
+          entry.pending === 0,
+      ),
+      diagnostics,
+    ).to.equal(true);
+    const snapshotTtl = await redisService.clientInstance.ttl(
+      `feed_cursor_snapshot:v1:${progression[0].snapshotId}`,
+    );
+    expect(snapshotTtl, diagnostics).to.be.greaterThan(0);
+    expect(snapshotTtl, diagnostics).to.be.at.most(3_600);
+  });
+
   it("continues from personalized candidates into New without returning prior-page identities", async () => {
     await seedPosts([
       ...[8, 7, 6].map((order) => ({
@@ -856,14 +954,18 @@ describe("Feed cursor/source contract integration", function () {
     const first = await forYouHandler.execute(
       new GetForYouFeedQuery(viewerPublicId, 1, 2),
     );
-    const decoded = decodeCursor<{ rankScore?: number }>(first.nextCursor);
-    expect(decoded?.rankScore).to.be.a("number");
+    const decoded = decodeFeedCursor(first.nextCursor!, {
+      feed: "for-you",
+      orders: [FEED_CURSOR_ORDER.FOR_YOU],
+      source: "mongo",
+    });
+    expect(decoded.snapshotId).to.be.a("string");
 
     const key = CacheKeyBuilder.getRedisFeedKey("for_you", viewerPublicId);
     await redisService.clientInstance.zAdd(
       key,
       Array.from({ length: 6 }, (_, index) => ({
-        score: decoded!.rankScore!,
+        score: 100,
         value: `000-feed-${String(index + 1).padStart(2, "0")}`,
       })),
     );
@@ -1082,6 +1184,17 @@ describe("Feed cursor/source contract integration", function () {
       warm: withDiagnostics(warm, expectedIds),
     };
 
+    const cursorCacheKeys = await redisService.clientInstance.keys(
+      "new_feed:*",
+    );
+    expect(cursorCacheKeys).not.to.be.empty;
+    const cursorCacheTtls = await Promise.all(
+      cursorCacheKeys.map((key) => redisService.clientInstance.ttl(key)),
+    );
+    expect(cursorCacheTtls.every((ttl) => ttl > 0 && ttl <= 3_600)).to.equal(
+      true,
+    );
+
     assertContract(
       "F05 New cold/warm equivalence",
       "A Mongo-produced New cursor must retrieve the identical cached page on a warm replay.",
@@ -1198,21 +1311,31 @@ describe("Feed cursor/source contract integration", function () {
       { kind: "malformed", value: "not-base64-json" },
       {
         kind: "wrong-version",
-        value: encodeCursor({
+        value: encodeAuthenticatedCursor({
           version: 999,
           feed: "new",
-          createdAt: fixedCreatedAt,
-          _id: objectIdFor(3),
-        }),
+          order: FEED_CURSOR_ORDER.NEW,
+          source: "mongo",
+          phase: "new",
+          expiresAt: Math.floor(Date.now() / 1000) + 3600,
+          createdAt: fixedCreatedAt.toISOString(),
+          _id: objectIdFor(3).toHexString(),
+        }, feedCursorTestSecret),
       },
       {
         kind: "wrong-feed",
-        value: encodeCursor({
-          version: 1,
+        value: encodeFeedCursor({
           feed: "trending",
-          createdAt: fixedCreatedAt,
-          _id: objectIdFor(3),
+          order: FEED_CURSOR_ORDER.TRENDING,
+          source: "mongo",
+          phase: "trending",
+          snapshotId: `${hashFeedCursorScope(["wrong-feed"])}.1`,
+          offset: 2,
         }),
+      },
+      {
+        kind: "oversized",
+        value: "x".repeat(MAX_FEED_CURSOR_ENCODED_LENGTH + 1),
       },
     ];
     const observed: Array<{

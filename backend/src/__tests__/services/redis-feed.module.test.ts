@@ -3,48 +3,52 @@ import { expect } from "chai";
 import sinon from "sinon";
 import { RedisFeedModule } from "@/services/redis/redis-feed.module";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
-import { encodeFeedCursor, FEED_CURSOR_ORDER } from "@/utils/feedCursor";
 
 describe("RedisFeedModule", () => {
   afterEach(() => {
     sinon.restore();
   });
 
-  it("continues scanning additional score batches when the first batch is fully filtered out by the cursor", async () => {
+  it("continues from an immutable Redis snapshot instead of rescanning a changed ZSET", async () => {
     const buildBatch = (start: number, end: number) =>
       Array.from({ length: start - end + 1 }, (_, index) => ({
         score: 10,
         value: `post-${String(start - index).padStart(3, "0")}`,
       }));
 
-    const zRangeWithScores = sinon.stub();
-    zRangeWithScores.onFirstCall().resolves(buildBatch(60, 21));
-    zRangeWithScores.onSecondCall().resolves(buildBatch(20, 1));
+    const store = new Map<string, string>();
+    const zRangeWithScores = sinon.stub().resolves(buildBatch(60, 1));
+    const get = sinon.stub().callsFake(async (key: string) => store.get(key) ?? null);
+    const set = sinon
+      .stub()
+      .callsFake(async (key: string, value: string) => {
+        if (!store.has(key)) store.set(key, value);
+        return "OK";
+      });
+    const expire = sinon.stub().resolves(true);
 
     const module = new RedisFeedModule({
       zRangeWithScores,
+      get,
+      set,
+      expire,
     } as any);
 
-    const result = await module.getTrendingFeedWithCursor(
-      20,
-      encodeFeedCursor({
-        feed: "trending",
-        order: FEED_CURSOR_ORDER.TRENDING,
-        source: "redis",
-        phase: "trending",
-        trendScore: 10,
-        _id: "post-021",
-      }),
-    );
+    const first = await module.getTrendingFeedWithCursor(20);
+    zRangeWithScores.resolves([]);
+    const second = await module.getTrendingFeedWithCursor(20, first.nextCursor);
 
-    expect(result.ids).to.deep.equal(buildBatch(20, 1).map((item) => item.value));
-    expect(result.hasMore).to.equal(false);
-    expect(zRangeWithScores.calledTwice).to.equal(true);
-    expect(zRangeWithScores.secondCall.args[3]).to.deep.equal({
-      BY: "SCORE",
-      REV: true,
-      LIMIT: { offset: 40, count: 40 },
-    });
+    expect(first.ids).to.deep.equal(buildBatch(60, 41).map((item) => item.value));
+    expect(second.ids).to.deep.equal(buildBatch(40, 21).map((item) => item.value));
+    expect(first.hasMore).to.equal(true);
+    expect(second.hasMore).to.equal(true);
+    expect(zRangeWithScores.calledOnce).to.equal(true);
+    expect(zRangeWithScores.firstCall.args).to.deep.equal([
+      "trending:posts",
+      0,
+      50_000,
+      { REV: true },
+    ]);
   });
 
   it("adds posts to many feeds in de-duped Redis batches", async () => {

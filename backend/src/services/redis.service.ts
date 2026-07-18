@@ -35,6 +35,7 @@ import {
   RedisResilienceModule,
   ResilienceConfig,
 } from "./redis/redis-resilience.module";
+import { FeedCursorSnapshot } from "@/utils/feedCursor";
 
 /**
  * The service is much more of a facade now than it used to be.
@@ -354,6 +355,8 @@ export class RedisService {
     ids: string[];
     hasMore: boolean;
     nextCursor?: string;
+    snapshotId?: string;
+    consumedOffset?: number;
   }> {
     return this.feedModule.getFeedWithCursor(userId, limit, cursor, feedType);
   }
@@ -462,8 +465,30 @@ export class RedisService {
     ids: string[];
     hasMore: boolean;
     nextCursor?: string;
+    snapshotId?: string;
+    consumedOffset?: number;
   }> {
     return this.feedModule.getTrendingFeedWithCursor(limit, cursor, key);
+  }
+
+  async getOrCreateFeedCursorSnapshot(
+    contextKey: string,
+    build: () => Promise<FeedCursorSnapshot>,
+  ): Promise<{ id: string; snapshot: FeedCursorSnapshot }> {
+    return this.feedModule.getOrCreateFeedCursorSnapshot(contextKey, build);
+  }
+
+  async getFeedCursorSnapshot(id: string): Promise<FeedCursorSnapshot | null> {
+    return this.feedModule.getFeedCursorSnapshot(id);
+  }
+
+  async requireFeedCursorSnapshot(
+    id: string,
+    expected: Pick<FeedCursorSnapshot, "feed" | "order" | "source"> & {
+      scope?: string;
+    },
+  ): Promise<FeedCursorSnapshot> {
+    return this.feedModule.requireFeedCursorSnapshot(id, expected);
   }
 
   async xPendingRange(

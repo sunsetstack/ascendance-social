@@ -16,6 +16,7 @@ describe("GetTrendingFeedQueryHandler", () => {
 	let mockPostReadRepository: {
 		findPostsByPublicIds: SinonStub;
 		findInternalIdByPublicId: SinonStub;
+		findInternalIdsByPublicIds: SinonStub;
 		getTrendingFeedWithCursor: SinonStub;
 	};
 	let mockRedisService: { getTrendingFeedWithCursor: SinonStub };
@@ -29,6 +30,7 @@ describe("GetTrendingFeedQueryHandler", () => {
 		mockPostReadRepository = {
 			findPostsByPublicIds: sinon.stub(),
 			findInternalIdByPublicId: sinon.stub().resolves(null),
+			findInternalIdsByPublicIds: sinon.stub().resolves([]),
 			getTrendingFeedWithCursor: sinon.stub(),
 		};
 		mockRedisService = {

@@ -1,10 +1,16 @@
 import { z } from "zod";
+import { MAX_FEED_CURSOR_ENCODED_LENGTH } from "@/utils/feedCursor";
 
 const feedPaginationBaseSchema = z
   .object({
     page: z.coerce.number().int().positive().optional().default(1),
     limit: z.coerce.number().int().positive().max(100).optional().default(20),
-    cursor: z.string().trim().min(1).optional(),
+    cursor: z
+      .string()
+      .trim()
+      .min(1)
+      .max(MAX_FEED_CURSOR_ENCODED_LENGTH)
+      .optional(),
   })
   .strict();
 

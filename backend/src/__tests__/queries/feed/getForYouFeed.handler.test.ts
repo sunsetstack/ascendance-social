@@ -6,7 +6,11 @@ import sinon, { SinonStub } from "sinon";
 
 import { GetForYouFeedQueryHandler } from "@/application/queries/feed/getForYouFeed/getForYouFeed.handler";
 import { GetForYouFeedQuery } from "@/application/queries/feed/getForYouFeed/getForYouFeed.query";
-import { encodeFeedCursor, FEED_CURSOR_ORDER } from "@/utils/feedCursor";
+import {
+	encodeFeedCursor,
+	FEED_CURSOR_ORDER,
+	hashFeedCursorScope,
+} from "@/utils/feedCursor";
 
 chai.use(chaiAsPromised);
 
@@ -116,9 +120,9 @@ describe("GetForYouFeedQueryHandler", () => {
 			feed: "for-you",
 			order: FEED_CURSOR_ORDER.FOR_YOU,
 			source: "mongo",
-			asOf: new Date().toISOString(),
-			rankScore: 1,
-			_id: "000000000000000000000001",
+			snapshotId: `${hashFeedCursorScope(["unit-snapshot"])}.1`,
+			offset: 10,
+			scope: hashFeedCursorScope(["unit-scope"]),
 		});
 		await handler.execute(new GetForYouFeedQuery("viewer", 2, 10, cursor));
 		expect(mockRedisService.addToFeed.called).to.be.false;

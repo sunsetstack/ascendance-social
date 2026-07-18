@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { UserPublicId, PostPublicId } from "@/types/branded";
 import { FEED_CURSOR_ORDER, FEED_CURSOR_VERSION } from "@/utils/feedCursor";
 /**
@@ -62,7 +63,7 @@ export class CacheKeyBuilder {
   }
 
   static getNewFeedCursorKey(cursor: string, limit: number): string {
-    return `${this.PREFIXES.NEW_FEED}:v${FEED_CURSOR_VERSION}:${FEED_CURSOR_ORDER.NEW}:cursor:${cursor}:limit:${limit}`;
+    return `${this.PREFIXES.NEW_FEED}:v${FEED_CURSOR_VERSION}:${FEED_CURSOR_ORDER.NEW}:cursor:${this.hashCursor(cursor)}:limit:${limit}`;
   }
 
   static getPersonalizedCursorFeedKey(
@@ -70,7 +71,8 @@ export class CacheKeyBuilder {
     cursor: string | undefined,
     limit: number,
   ): string {
-    return `${this.PREFIXES.CORE_FEED}:v${FEED_CURSOR_VERSION}:${FEED_CURSOR_ORDER.PERSONALIZED}:${userId}:cursor:${cursor ?? "first"}:limit:${limit}`;
+    const cursorComponent = cursor ? this.hashCursor(cursor) : "first";
+    return `${this.PREFIXES.CORE_FEED}:v${FEED_CURSOR_VERSION}:${FEED_CURSOR_ORDER.PERSONALIZED}:${userId}:cursor:${cursorComponent}:limit:${limit}`;
   }
 
   static getNewFeedTag(): string {
@@ -142,5 +144,9 @@ export class CacheKeyBuilder {
 
   static getNotificationHashKey(id: string): string {
     return `${this.PREFIXES.NOTIFICATION_HASH}:${id}`;
+  }
+
+  private static hashCursor(cursor: string): string {
+    return createHash("sha256").update(cursor).digest("base64url");
   }
 }

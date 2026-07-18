@@ -17,9 +17,7 @@ import { asPostPublicId, asUserPublicId } from "@/types/branded";
 import { normalizeFeedPosts } from "@/application/queries/feed/feed-post-normalizer";
 import {
   decodeFeedCursor,
-  encodeFeedCursor,
   FEED_CURSOR_ORDER,
-  FeedCursorPayload,
 } from "@/utils/feedCursor";
 
 @injectable()
@@ -96,6 +94,16 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
               hasMore: redisResult.hasMore,
             };
           }
+          if (decodedCursor?.source === "redis") {
+            return {
+              data: [],
+              page,
+              limit,
+              total: 0,
+              totalPages: 0,
+              hasMore: false,
+            };
+          }
         } catch (error) {
           if (isAppError(error) && error.statusCode === 400) throw error;
           redisLogger.warn("Failed to get feed from Redis cursor", {
@@ -119,14 +127,9 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
         String(user._id),
       );
       const favoriteTags = topTags.map((pref) => pref.tag);
-      const mongoCursor =
-        decodedCursor?.source === "redis"
-          ? await this.translateRedisCursor(decodedCursor)
-          : cursor;
-
       const result = await this.feedReadDao.getRankedFeedWithCursor(
         favoriteTags,
-        { limit, cursor: mongoCursor },
+        { limit, cursor },
       );
       const transformedFeedData = normalizeFeedPosts(result.data);
 
@@ -179,37 +182,6 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
       });
       throw Errors.internal("Could not generate For You feed.");
     }
-  }
-
-  private async translateRedisCursor(
-    cursor: FeedCursorPayload,
-  ): Promise<string> {
-    const posts = await this.postReadRepository.findPostsByPublicIds(
-      (cursor.seenPublicIds ?? []).map(asPostPublicId),
-    );
-    const visiblePublicIds = [
-      ...new Set(
-        posts.map((post) => post.repostOf?.publicId ?? post.publicId),
-      ),
-    ];
-    const visibleInternalIds = (
-      await Promise.all(
-        visiblePublicIds.map((publicId) =>
-          this.postReadRepository.findInternalIdByPublicId(
-            asPostPublicId(publicId),
-          ),
-        ),
-      )
-    ).filter((id): id is NonNullable<typeof id> => id !== null);
-
-    return encodeFeedCursor({
-      feed: "for-you",
-      order: FEED_CURSOR_ORDER.FOR_YOU,
-      source: "mongo",
-      asOf: new Date().toISOString(),
-      seen: visibleInternalIds.map(String),
-      seenPublicIds: visiblePublicIds,
-    });
   }
 
 }

@@ -18,7 +18,8 @@ import {
   encodeFeedCursor,
   encodeTrendingNewCursor,
   FEED_CURSOR_ORDER,
-  FeedCursorPayload,
+  hashFeedCursorScope,
+  TrendingNewFeedCursorPayload,
 } from "@/utils/feedCursor";
 
 @injectable()
@@ -102,7 +103,8 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
             if (!redisResult.hasMore) {
               return this.completeWithNewFeed(
                 transformedPosts,
-                decodedCursor,
+                redisResult.snapshotId,
+                redisResult.consumedOffset,
                 page,
                 limit,
               );
@@ -122,6 +124,15 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
               hasMore: redisResult.hasMore,
             };
           }
+          if (decodedCursor?.source === "redis") {
+            return this.completeWithNewFeed(
+              [],
+              decodedCursor.snapshotId,
+              decodedCursor.offset,
+              page,
+              limit,
+            );
+          }
         } catch (error) {
           if (isAppError(error) && error.statusCode === 400) throw error;
           redisLogger.warn(
@@ -134,13 +145,9 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
       redisLogger.info(
         "Falling back to DB cursor pagination for trending feed",
       );
-      const mongoCursor =
-        decodedCursor?.source === "redis"
-          ? await this.translateRedisCursor(decodedCursor)
-          : cursor;
       const result = await this.feedReadDao.getTrendingFeedWithCursor({
         limit,
-        cursor: mongoCursor,
+        cursor,
         timeWindowDays: 30,
         minLikes: 1,
       });
@@ -148,7 +155,8 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
       if (!result.hasMore) {
         return this.completeWithNewFeed(
           transformedPosts,
-          decodedCursor,
+          result.snapshotId,
+          result.consumedOffset,
           page,
           limit,
         );
@@ -179,28 +187,38 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
 
   private async completeWithNewFeed(
     trendingPosts: FeedPost[],
-    cursor: FeedCursorPayload | null,
+    snapshotId: string | undefined,
+    consumedOffset: number | undefined,
     page: number,
     limit: number,
   ): Promise<PaginatedFeedResult> {
-    const seenPublicIds = [
-      ...new Set([
-        ...(cursor?.seenPublicIds ?? []),
-        ...trendingPosts.map(
-          (post) => post.repostOf?.publicId ?? post.publicId,
-        ),
-      ]),
-    ];
-    const seen = await this.resolveVisibleInternalIds(seenPublicIds);
+    const seen = await this.collectVisibleInternalIds(
+      snapshotId,
+      consumedOffset,
+      trendingPosts,
+    );
+    const exclusionSnapshot =
+      seen.length > 0
+        ? await this.redisService.getOrCreateFeedCursorSnapshot(
+            `new-feed-exclusions:${hashFeedCursorScope([...seen].sort())}`,
+            async () => ({
+              version: 1,
+              feed: "new",
+              order: FEED_CURSOR_ORDER.NEW,
+              source: "mongo",
+              entries: [],
+              excludedIdentityIds: [...new Set(seen)],
+            }),
+          )
+        : null;
     const newStartCursor =
-      seen.length > 0 || seenPublicIds.length > 0
+      exclusionSnapshot
         ? encodeFeedCursor({
             feed: "new",
             order: FEED_CURSOR_ORDER.NEW,
             source: "mongo",
             phase: "new",
-            seen,
-            seenPublicIds,
+            snapshotId: exclusionSnapshot.id,
           })
         : undefined;
     const needed = limit - trendingPosts.length;
@@ -243,41 +261,58 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
     };
   }
 
-  private async translateRedisCursor(
-    cursor: FeedCursorPayload,
-  ): Promise<string> {
-    const seenPublicIds = cursor.seenPublicIds ?? [];
-    return encodeFeedCursor({
-      feed: "trending",
-      order: FEED_CURSOR_ORDER.TRENDING,
-      source: "mongo",
-      phase: "trending",
-      asOf: new Date().toISOString(),
-      seen: await this.resolveVisibleInternalIds(seenPublicIds),
-      seenPublicIds,
-    });
-  }
-
   private async resolveVisibleInternalIds(
     publicIds: string[],
   ): Promise<string[]> {
-    const ids = await Promise.all(
-      publicIds.map((publicId) =>
-        this.postReadRepository.findInternalIdByPublicId(
-          asPostPublicId(publicId),
-        ),
-      ),
-    );
-    return ids.filter((id): id is NonNullable<typeof id> => id !== null).map(String);
+    return (
+      await this.postReadRepository.findInternalIdsByPublicIds(
+        [...new Set(publicIds)].map(asPostPublicId),
+      )
+    ).map(String);
   }
 
-  private toNewCursor(cursor: FeedCursorPayload): string {
+  private async collectVisibleInternalIds(
+    snapshotId: string | undefined,
+    consumedOffset: number | undefined,
+    currentPosts: FeedPost[],
+  ): Promise<string[]> {
+    const internalIds = new Set<string>();
+    const visiblePublicIds = new Set(
+      currentPosts.map((post) => post.repostOf?.publicId ?? post.publicId),
+    );
+    if (snapshotId && consumedOffset !== undefined) {
+      const snapshot = await this.redisService.getFeedCursorSnapshot(snapshotId);
+      if (!snapshot) {
+        throw Errors.validation("Feed cursor snapshot is missing or expired");
+      }
+      const consumed = snapshot.entries.slice(0, consumedOffset);
+      if (snapshot.source === "mongo") {
+        for (const entry of consumed) internalIds.add(entry.visibleIdentityId);
+      } else {
+        const posts = await this.postReadRepository.findPostsByPublicIds(
+          consumed.map((entry) => asPostPublicId(entry.publicId)),
+        );
+        for (const post of posts) {
+          visiblePublicIds.add(post.repostOf?.publicId ?? post.publicId);
+        }
+      }
+    }
+    for (const id of await this.resolveVisibleInternalIds([...visiblePublicIds])) {
+      internalIds.add(id);
+    }
+    return [...internalIds];
+  }
+
+  private toNewCursor(cursor: TrendingNewFeedCursorPayload): string {
     return encodeFeedCursor({
-      ...cursor,
       feed: "new",
       order: FEED_CURSOR_ORDER.NEW,
       source: "mongo",
       phase: "new",
+      snapshotId: cursor.snapshotId,
+      ...("createdAt" in cursor && cursor.createdAt
+        ? { createdAt: cursor.createdAt, _id: cursor._id }
+        : {}),
     });
   }
 
@@ -288,11 +323,14 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
       source: "mongo",
     });
     return encodeTrendingNewCursor({
-      ...decoded,
       feed: "trending",
       order: FEED_CURSOR_ORDER.TRENDING_NEW,
       source: "mongo",
       phase: "new",
+      snapshotId: decoded.snapshotId!,
+      ...(decoded.createdAt
+        ? { createdAt: decoded.createdAt, _id: decoded._id }
+        : {}),
     });
   }
 
