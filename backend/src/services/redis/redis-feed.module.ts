@@ -9,18 +9,32 @@ import {
   FEED_CURSOR_ORDER,
   FeedCursorSnapshot,
   hashFeedCursorScope,
+  MAX_FEED_CURSOR_SNAPSHOT_BYTES,
+  MAX_FEED_CURSOR_SNAPSHOT_ITEMS,
 } from "@/utils/feedCursor";
 import { Errors } from "@/utils/errors";
+import type { MetricsService } from "@/metrics/metrics.service";
 
 /** How long per-user feed ZSETs live in Redis (1 hour). */
 const FEED_TTL_SECONDS = 3600;
 const FEED_WRITE_BATCH_SIZE = 500;
-const MAX_FEED_CURSOR_SNAPSHOT_ITEMS = 50_000;
-const MAX_FEED_CURSOR_SNAPSHOT_BYTES = 16 * 1024 * 1024;
 const MAX_SNAPSHOT_STRING_LENGTH = 128;
 
 export class RedisFeedModule {
-  constructor(private readonly client: RedisClientType) {}
+  private readonly snapshotBuilds = new Map<
+    string,
+    Promise<{ id: string; snapshot: FeedCursorSnapshot }>
+  >();
+
+  constructor(
+    private readonly client: RedisClientType,
+    private readonly metricsService?: Pick<
+      MetricsService,
+      | "recordFeedCursorSnapshotAccess"
+      | "recordFeedCursorSnapshotCreation"
+      | "recordFeedCursorSnapshotBuildCollision"
+    >,
+  ) {}
 
   async addToFeed(
     userId: string,
@@ -298,8 +312,34 @@ export class RedisFeedModule {
     );
     const id = `${contextHash}.${bucket}`;
     const existing = await this.getFeedCursorSnapshot(id);
-    if (existing) return { id, snapshot: existing };
+    if (existing) {
+      this.metricsService?.recordFeedCursorSnapshotAccess(true);
+      return { id, snapshot: existing };
+    }
 
+    const inFlight = this.snapshotBuilds.get(id);
+    if (inFlight) {
+      this.metricsService?.recordFeedCursorSnapshotBuildCollision();
+      return await inFlight;
+    }
+
+    this.metricsService?.recordFeedCursorSnapshotAccess(false);
+    const creation = this.createFeedCursorSnapshot(id, build);
+    this.snapshotBuilds.set(id, creation);
+    try {
+      return await creation;
+    } finally {
+      if (this.snapshotBuilds.get(id) === creation) {
+        this.snapshotBuilds.delete(id);
+      }
+    }
+  }
+
+  private async createFeedCursorSnapshot(
+    id: string,
+    build: () => Promise<FeedCursorSnapshot>,
+  ): Promise<{ id: string; snapshot: FeedCursorSnapshot }> {
+    const startedAt = Date.now();
     const snapshot = await build();
     this.assertFeedCursorSnapshot(snapshot);
     const serialized = JSON.stringify(snapshot);
@@ -307,13 +347,21 @@ export class RedisFeedModule {
       throw Errors.internal("Feed cursor snapshot exceeds the maximum size");
     }
 
-    await this.client.set(this.getFeedCursorSnapshotKey(id), serialized, {
+    const created = await this.client.set(this.getFeedCursorSnapshotKey(id), serialized, {
       EX: FEED_CURSOR_SNAPSHOT_TTL_SECONDS,
       NX: true,
     });
     const stored = await this.getFeedCursorSnapshot(id);
     if (!stored) {
       throw Errors.internal("Could not persist feed cursor snapshot");
+    }
+    if (created === "OK") {
+      this.metricsService?.recordFeedCursorSnapshotCreation(
+        Buffer.byteLength(serialized, "utf8"),
+        Date.now() - startedAt,
+      );
+    } else {
+      this.metricsService?.recordFeedCursorSnapshotBuildCollision();
     }
     return { id, snapshot: stored };
   }
@@ -329,7 +377,6 @@ export class RedisFeedModule {
       }
       const snapshot = JSON.parse(raw) as FeedCursorSnapshot;
       this.assertFeedCursorSnapshot(snapshot);
-      await this.client.expire(key, FEED_CURSOR_SNAPSHOT_TTL_SECONDS);
       return snapshot;
     } catch {
       return null;

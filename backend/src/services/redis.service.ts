@@ -80,7 +80,7 @@ export class RedisService {
     );
     this.presenceModule = new RedisPresenceModule(client);
     this.notificationModule = new RedisNotificationModule(client);
-    this.feedModule = new RedisFeedModule(client);
+    this.feedModule = new RedisFeedModule(client, metricsService);
     this.streamModule = new RedisStreamModule(client);
     this.sessionModule = new RedisSessionModule(client);
 

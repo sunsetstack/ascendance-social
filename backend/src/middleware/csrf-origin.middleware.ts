@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { authCookieNames } from "@/config/cookieConfig";
-import { getAllowedOrigins } from "@/config/corsConfig";
+import { isAllowedOrigin } from "@/config/corsConfig";
 import { Errors } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 
@@ -38,8 +38,7 @@ export function csrfOriginMiddleware(
   }
 
   const requestOrigin = getRequestOrigin(req);
-  const allowedOrigins = getAllowedOrigins();
-  if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+  if (isAllowedOrigin(requestOrigin)) {
     return next();
   }
 

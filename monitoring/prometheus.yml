@@ -20,9 +20,28 @@ scrape_configs:
       - target_label: instance
         replacement: ascendance
 
-  # Ascendance application metrics.
+  # Ascendance API metrics.
   - job_name: backend
     metrics_path: /metrics
     static_configs:
       - targets:
           - backend:3000
+
+  # Ascendance worker metrics.
+  - job_name: backend-worker
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - backend-worker:9464
+
+  # Redis metrics.
+  - job_name: redis_exporter
+    static_configs:
+      - targets:
+          - redis-exporter:9121
+
+  # Docker container metrics.
+  - job_name: cadvisor
+    static_configs:
+      - targets:
+          - cadvisor:8080

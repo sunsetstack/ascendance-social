@@ -9,13 +9,31 @@ import { Errors } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { RedisService } from "@/services/redis.service";
-import { getAllowedOrigins } from "@/config/corsConfig";
+import { authCookieNames } from "@/config/cookieConfig";
+import { getAllowedOrigins, isAllowedOrigin } from "@/config/corsConfig";
 import { TOKENS } from "@/types/tokens";
 import { EventRegistry } from "@/application/common/events/event-registry";
 import { MetricsService } from "@/metrics/metrics.service";
 
 let ioInstance: SocketIOServer | null = null;
 let viewingStateRedisService: RedisService | null = null;
+
+const AUTH_COOKIE_NAMES = new Set<string>(Object.values(authCookieNames));
+
+function hasAuthCookieHeader(cookieHeader: string | undefined): boolean {
+  if (!cookieHeader) {
+    return false;
+  }
+
+  return cookieHeader.split(";").some((cookie) => {
+    const separatorIndex = cookie.indexOf("=");
+    const cookieName = (
+      separatorIndex < 0 ? cookie : cookie.slice(0, separatorIndex)
+    ).trim();
+
+    return AUTH_COOKIE_NAMES.has(cookieName);
+  });
+}
 
 export async function isUserViewingConversation(
   userPublicId: UserPublicId,
@@ -67,15 +85,38 @@ export class WebSocketServer {
    * @param {HttpServer} server - The HTTP server instance to attach the WebSocket server to.
    */
   initialize(server: HttpServer): void {
+    const allowedOrigins = getAllowedOrigins();
+
     this.io = new SocketIOServer(server, {
       cors: {
-        origin: getAllowedOrigins(),
+        origin: allowedOrigins,
         credentials: true,
         methods: ["GET", "POST"],
       },
+      allowRequest: (req, callback) => {
+        const origin =
+          typeof req.headers.origin === "string"
+            ? req.headers.origin
+            : undefined;
+
+        if (!origin) {
+          // Node/non-browser clients may connect without Origin only when they
+          // are not presenting ambient authentication cookies.
+          if (hasAuthCookieHeader(req.headers.cookie)) {
+            return callback(
+              "Origin is required for cookie-authenticated sockets",
+              false,
+            );
+          }
+
+          return callback(null, true);
+        }
+
+        return callback(null, isAllowedOrigin(origin, allowedOrigins));
+      },
       transports: ["websocket", "polling"],
       path: "/socket.io",
-      allowEIO3: true, // Allow older clients if needed
+      allowEIO3: true,
     });
     ioInstance = this.io;
 
@@ -257,14 +298,20 @@ export class WebSocketServer {
       });
 
       // track when user opens a conversation (for suppressing notifications)
-      socket.on(EventRegistry.socketClientEvents.conversationOpened, (conversationId: string) => {
-        void this.handleConversationOpened(socket, conversationId);
-      });
+      socket.on(
+        EventRegistry.socketClientEvents.conversationOpened,
+        (conversationId: string) => {
+          void this.handleConversationOpened(socket, conversationId);
+        },
+      );
 
       // track when user closes/leaves a conversation
-      socket.on(EventRegistry.socketClientEvents.conversationClosed, (conversationId?: string) => {
-        void this.handleConversationClosed(socket, conversationId);
-      });
+      socket.on(
+        EventRegistry.socketClientEvents.conversationClosed,
+        (conversationId?: string) => {
+          void this.handleConversationClosed(socket, conversationId);
+        },
+      );
 
       socket.on("disconnect", () => {
         void this.handleConversationClosed(socket);

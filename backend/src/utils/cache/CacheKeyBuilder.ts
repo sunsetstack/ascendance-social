@@ -27,7 +27,7 @@ export class CacheKeyBuilder {
   };
 
   static getUserBatchKey(userPublicIds: string[]): string {
-    return `${this.PREFIXES.USER_BATCH}:${userPublicIds.sort().join(",")}`;
+    return `${this.PREFIXES.USER_BATCH}:${[...userPublicIds].sort().join(",")}`;
   }
 
   static getUserDataKey(userPublicId: UserPublicId): string {
@@ -111,7 +111,7 @@ export class CacheKeyBuilder {
   }
 
   static getCoreFeedKeyPattern(userId: string): string {
-    return `${this.PREFIXES.CORE_FEED}:${userId}:*`;
+    return `${this.PREFIXES.CORE_FEED}:*:${userId}:*`;
   }
 
   static getForYouFeedKeyPattern(userId: string): string {

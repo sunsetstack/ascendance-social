@@ -9,15 +9,56 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost",
 ];
 
+export function normalizeOrigin(origin: string | undefined): string | undefined {
+  if (!origin || origin === "null" || origin.trim() !== origin) {
+    return undefined;
+  }
+
+  try {
+    const parsedOrigin = new URL(origin);
+    if (
+      !["http:", "https:"].some(
+        (allowedProtocol) => allowedProtocol === parsedOrigin.protocol,
+      ) ||
+      parsedOrigin.username ||
+      parsedOrigin.password ||
+      (parsedOrigin.href !== parsedOrigin.origin &&
+        parsedOrigin.href !== `${parsedOrigin.origin}/`)
+    ) {
+      return undefined;
+    }
+
+    return parsedOrigin.origin;
+  } catch {
+    return undefined;
+  }
+}
+
 export function getAllowedOrigins(): string[] {
   const envOrigins =
     process.env.ALLOWED_ORIGINS?.split(/[,\s]+/)
       .map((origin) => origin.trim())
-      .filter(Boolean) ?? [];
+      .map(normalizeOrigin)
+      .filter((origin): origin is string => Boolean(origin)) ?? [];
   const defaultOrigins =
-    process.env.NODE_ENV === "production" ? [] : DEFAULT_ALLOWED_ORIGINS;
+    process.env.NODE_ENV === "production"
+      ? []
+      : DEFAULT_ALLOWED_ORIGINS.map(normalizeOrigin).filter(
+          (origin): origin is string => Boolean(origin),
+        );
 
   return [...new Set([...defaultOrigins, ...envOrigins])];
+}
+
+export function isAllowedOrigin(
+  origin: string | undefined,
+  allowedOrigins: string[] = getAllowedOrigins(),
+): boolean {
+  const normalizedOrigin = normalizeOrigin(origin);
+  return (
+    normalizedOrigin !== undefined &&
+    allowedOrigins.some((allowedOrigin) => allowedOrigin === normalizedOrigin)
+  );
 }
 
 export function buildCorsOptions(): CorsOptions {
@@ -32,7 +73,7 @@ export function buildCorsOptions(): CorsOptions {
         return callback(null, true);
       }
 
-      if (allowedOrigins.includes(origin)) {
+      if (isAllowedOrigin(origin, allowedOrigins)) {
         return callback(null, true);
       }
 

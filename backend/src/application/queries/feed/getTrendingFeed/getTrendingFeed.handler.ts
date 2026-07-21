@@ -134,7 +134,7 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
             );
           }
         } catch (error) {
-          if (isAppError(error) && error.statusCode === 400) throw error;
+          if (isAppError(error)) throw error;
           redisLogger.warn(
             "Failed to get trending feed from Redis, falling back to DB",
             { error },
@@ -177,7 +177,7 @@ export class GetTrendingFeedQueryHandler implements IQueryHandler<
         hasMore: result.hasMore,
       };
     } catch (error) {
-      if (isAppError(error) && error.statusCode === 400) throw error;
+      if (isAppError(error)) throw error;
       redisLogger.error("Trending feed error", {
         error: error instanceof Error ? error.message : String(error),
       });

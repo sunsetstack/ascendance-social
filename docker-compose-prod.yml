@@ -104,6 +104,7 @@ services:
       DOMAIN_NAME: ${DOMAIN_NAME}
       ACME_EMAIL: ${ACME_EMAIL}
 
+  # --- MONITORING LAYER ---
   node-exporter:
     image: quay.io/prometheus/node-exporter:v1.12.0
     container_name: node-exporter
@@ -127,6 +128,53 @@ services:
 
     expose:
       - "9100"
+
+    networks:
+      - app-network
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    restart: unless-stopped
+    logging: *default-logging
+    profiles: ["monitoring"]
+
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+    expose:
+      - "9121"
+
+    networks:
+      - app-network
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    logging: *default-logging
+    profiles: ["monitoring"]
+    privileged: true
+
+    command:
+      - "--docker_only=true"
+      - "--housekeeping_interval=10s"
+      - "--allow_dynamic_housekeeping=false"
+
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+
+    expose:
+      - "8080"
 
     networks:
       - app-network
@@ -155,6 +203,10 @@ services:
 
     depends_on:
       node-exporter:
+        condition: service_started
+      cadvisor:
+        condition: service_started
+      redis-exporter:
         condition: service_started
 
     mem_limit: 256m
@@ -196,6 +248,11 @@ services:
       <<: *backend-environment
       ENABLE_API: "false"
       ENABLE_WORKERS: "true"
+      SERVICE_NAME: backend-worker
+      METRICS_PORT: "9464"
+
+    expose:
+      - "9464"
 
     depends_on:
       redis:
