@@ -8,242 +8,311 @@ import type { Request, Response, NextFunction, RequestHandler } from "express";
  */
 @injectable()
 export class MetricsService {
-	private readonly registry: client.Registry;
-	private readonly httpDuration: client.Histogram<string>;
-	private readonly httpRequestsTotal: client.Counter<string>;
-	private readonly workerStatus: client.Gauge<string>;
-	private readonly workerRestarts: client.Counter<string>;
-	private readonly redisUp: client.Gauge<string>;
-	private readonly optionalAuthFailuresTotal: client.Counter<string>;
-	private readonly domainEventsPublishedTotal: client.Counter<string>;
-	private readonly realtimeEventsPublishedTotal: client.Counter<string>;
-	private readonly socketEventsEmittedTotal: client.Counter<string>;
-	private readonly outboxPendingEvents: client.Gauge<string>;
-	private readonly outboxEventsTotal: client.Counter<string>;
-	private readonly outboxBatchSize: client.Histogram<string>;
-	private readonly outboxEventDuration: client.Histogram<string>;
+  private readonly registry: client.Registry;
+  private readonly httpDuration: client.Histogram<string>;
+  private readonly httpRequestsTotal: client.Counter<string>;
+  private readonly workerStatus: client.Gauge<string>;
+  private readonly workerRestarts: client.Counter<string>;
+  private readonly redisUp: client.Gauge<string>;
+  private readonly optionalAuthFailuresTotal: client.Counter<string>;
+  private readonly domainEventsPublishedTotal: client.Counter<string>;
+  private readonly realtimeEventsPublishedTotal: client.Counter<string>;
+  private readonly socketEventsEmittedTotal: client.Counter<string>;
+  private readonly outboxPendingEvents: client.Gauge<string>;
+  private readonly outboxEventsTotal: client.Counter<string>;
+  private readonly outboxBatchSize: client.Histogram<string>;
+  private readonly outboxEventDuration: client.Histogram<string>;
+  private readonly feedCursorSnapshotAccesses: client.Counter<string>;
+  private readonly feedCursorSnapshotCreations: client.Counter<string>;
+  private readonly feedCursorSnapshotBuildCollisions: client.Counter<string>;
+  private readonly feedCursorSnapshotBytes: client.Histogram<string>;
+  private readonly feedCursorSnapshotBuildDuration: client.Histogram<string>;
 
-	constructor() {
-		this.registry = new client.Registry();
-		this.registry.setDefaultLabels({ service: "backend" });
+  constructor() {
+    this.registry = new client.Registry();
+    this.registry.setDefaultLabels({
+      service: process.env.SERVICE_NAME ?? "backend",
+    });
+    // prom-client starts an interval timer for default metrics collection
+    // which keeps the event loop alive and can make Mocha hang at the end of the suite
+    if (process.env.NODE_ENV !== "test") {
+      client.collectDefaultMetrics({
+        register: this.registry,
+        eventLoopMonitoringPrecision: 10,
+      });
+    }
 
-		// prom-client starts an interval timer for default metrics collection
-		// which keeps the event loop alive and can make Mocha hang at the end of the suite
-		if (process.env.NODE_ENV !== "test") {
-			client.collectDefaultMetrics({
-				register: this.registry,
-				eventLoopMonitoringPrecision: 10,
-			});
-		}
+    this.httpDuration = new client.Histogram({
+      name: "http_request_duration_seconds",
+      help: "HTTP request latency",
+      labelNames: ["method", "route", "status"],
+      buckets: [0.05, 0.1, 0.2, 0.5, 1, 2, 5],
+      registers: [this.registry],
+    });
 
-		this.httpDuration = new client.Histogram({
-			name: "http_request_duration_seconds",
-			help: "HTTP request latency",
-			labelNames: ["method", "route", "status"],
-			buckets: [0.05, 0.1, 0.2, 0.5, 1, 2, 5],
-			registers: [this.registry],
-		});
+    this.httpRequestsTotal = new client.Counter({
+      name: "http_requests_total",
+      help: "Total HTTP requests",
+      labelNames: ["method", "route", "status"],
+      registers: [this.registry],
+    });
 
-		this.httpRequestsTotal = new client.Counter({
-			name: "http_requests_total",
-			help: "Total HTTP requests",
-			labelNames: ["method", "route", "status"],
-			registers: [this.registry],
-		});
+    this.workerStatus = new client.Gauge({
+      name: "worker_thread_status",
+      help: "Worker thread state (1 running, 0 stopped)",
+      labelNames: ["worker"],
+      registers: [this.registry],
+    });
 
-		this.workerStatus = new client.Gauge({
-			name: "worker_thread_status",
-			help: "Worker thread state (1 running, 0 stopped)",
-			labelNames: ["worker"],
-			registers: [this.registry],
-		});
+    this.workerRestarts = new client.Counter({
+      name: "worker_thread_restarts_total",
+      help: "Worker thread restart count",
+      labelNames: ["worker"],
+      registers: [this.registry],
+    });
 
-		this.workerRestarts = new client.Counter({
-			name: "worker_thread_restarts_total",
-			help: "Worker thread restart count",
-			labelNames: ["worker"],
-			registers: [this.registry],
-		});
+    this.redisUp = new client.Gauge({
+      name: "redis_connection_up",
+      help: "Redis connection state (1 up, 0 down)",
+      registers: [this.registry],
+    });
 
-		this.redisUp = new client.Gauge({
-			name: "redis_connection_up",
-			help: "Redis connection state (1 up, 0 down)",
-			registers: [this.registry],
-		});
+    this.optionalAuthFailuresTotal = new client.Counter({
+      name: "auth_optional_failures_total",
+      help: "Optional-auth failures by reason and route",
+      labelNames: ["reason", "route"],
+      registers: [this.registry],
+    });
 
-		this.optionalAuthFailuresTotal = new client.Counter({
-			name: "auth_optional_failures_total",
-			help: "Optional-auth failures by reason and route",
-			labelNames: ["reason", "route"],
-			registers: [this.registry],
-		});
+    this.domainEventsPublishedTotal = new client.Counter({
+      name: "domain_events_published_total",
+      help: "Domain events published by delivery mode",
+      labelNames: ["event_type", "mode"],
+      registers: [this.registry],
+    });
 
-		this.domainEventsPublishedTotal = new client.Counter({
-			name: "domain_events_published_total",
-			help: "Domain events published by delivery mode",
-			labelNames: ["event_type", "mode"],
-			registers: [this.registry],
-		});
+    this.realtimeEventsPublishedTotal = new client.Counter({
+      name: "realtime_events_published_total",
+      help: "Realtime messages published to internal channels",
+      labelNames: ["channel", "status"],
+      registers: [this.registry],
+    });
 
-		this.realtimeEventsPublishedTotal = new client.Counter({
-			name: "realtime_events_published_total",
-			help: "Realtime messages published to internal channels",
-			labelNames: ["channel", "status"],
-			registers: [this.registry],
-		});
+    this.socketEventsEmittedTotal = new client.Counter({
+      name: "socket_events_emitted_total",
+      help: "Socket.IO events emitted to clients",
+      labelNames: ["event_name", "target"],
+      registers: [this.registry],
+    });
 
-		this.socketEventsEmittedTotal = new client.Counter({
-			name: "socket_events_emitted_total",
-			help: "Socket.IO events emitted to clients",
-			labelNames: ["event_name", "target"],
-			registers: [this.registry],
-		});
+    this.outboxPendingEvents = new client.Gauge({
+      name: "outbox_pending_events",
+      help: "Outbox events waiting to be dispatched",
+      registers: [this.registry],
+    });
 
-		this.outboxPendingEvents = new client.Gauge({
-			name: "outbox_pending_events",
-			help: "Outbox events waiting to be dispatched",
-			registers: [this.registry],
-		});
+    this.outboxEventsTotal = new client.Counter({
+      name: "outbox_events_total",
+      help: "Outbox event processing attempts grouped by event type and outcome",
+      labelNames: ["event_type", "status"],
+      registers: [this.registry],
+    });
 
-		this.outboxEventsTotal = new client.Counter({
-			name: "outbox_events_total",
-			help: "Outbox event processing attempts grouped by event type and outcome",
-			labelNames: ["event_type", "status"],
-			registers: [this.registry],
-		});
+    this.outboxBatchSize = new client.Histogram({
+      name: "outbox_batch_size",
+      help: "Number of outbox records fetched per worker tick",
+      buckets: [0, 1, 5, 10, 25, 50, 100],
+      registers: [this.registry],
+    });
 
-		this.outboxBatchSize = new client.Histogram({
-			name: "outbox_batch_size",
-			help: "Number of outbox records fetched per worker tick",
-			buckets: [0, 1, 5, 10, 25, 50, 100],
-			registers: [this.registry],
-		});
+    this.outboxEventDuration = new client.Histogram({
+      name: "outbox_event_processing_duration_seconds",
+      help: "Outbox event processing duration by event type and outcome",
+      labelNames: ["event_type", "status"],
+      buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+      registers: [this.registry],
+    });
 
-		this.outboxEventDuration = new client.Histogram({
-			name: "outbox_event_processing_duration_seconds",
-			help: "Outbox event processing duration by event type and outcome",
-			labelNames: ["event_type", "status"],
-			buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
-			registers: [this.registry],
-		});
-	}
+    this.feedCursorSnapshotAccesses = new client.Counter({
+      name: "feed_cursor_snapshot_accesses_total",
+      help: "Feed cursor snapshot reads grouped by cache result",
+      labelNames: ["result"],
+      registers: [this.registry],
+    });
 
-	public httpMetricsMiddleware(): RequestHandler {
-		return (req: Request, res: Response, next: NextFunction) => {
-			const stopTimer = this.httpDuration.startTimer();
-			res.once("finish", () => {
-				const route = this.normalizeRoute(req);
-				const status = String(res.statusCode);
-				this.httpRequestsTotal.labels(req.method, route, status).inc();
-				stopTimer({ method: req.method, route, status });
-			});
-			next();
-		};
-	}
+    this.feedCursorSnapshotCreations = new client.Counter({
+      name: "feed_cursor_snapshot_creations_total",
+      help: "Feed cursor snapshots successfully created",
+      registers: [this.registry],
+    });
 
-	public async getMetrics(): Promise<string> {
-		return await this.registry.metrics();
-	}
+    this.feedCursorSnapshotBuildCollisions = new client.Counter({
+      name: "feed_cursor_snapshot_build_collisions_total",
+      help: "Feed cursor snapshot builds coalesced locally or lost to another writer",
+      registers: [this.registry],
+    });
 
-	public getContentType(): string {
-		return this.registry.contentType;
-	}
+    this.feedCursorSnapshotBytes = new client.Histogram({
+      name: "feed_cursor_snapshot_bytes",
+      help: "Serialized feed cursor snapshot size in bytes",
+      buckets: [1024, 4096, 16384, 65536, 262144, 1048576, 2097152],
+      registers: [this.registry],
+    });
 
-	public markWorkerRunning(worker: string): void {
-		this.workerStatus.labels(worker).set(1);
-	}
+    this.feedCursorSnapshotBuildDuration = new client.Histogram({
+      name: "feed_cursor_snapshot_build_duration_seconds",
+      help: "Feed cursor snapshot build duration",
+      buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10],
+      registers: [this.registry],
+    });
+  }
 
-	public markWorkerStopped(worker: string): void {
-		this.workerStatus.labels(worker).set(0);
-	}
+  public httpMetricsMiddleware(): RequestHandler {
+    return (req: Request, res: Response, next: NextFunction) => {
+      const stopTimer = this.httpDuration.startTimer();
+      res.once("finish", () => {
+        const route = this.normalizeRoute(req);
+        const status = String(res.statusCode);
+        this.httpRequestsTotal.labels(req.method, route, status).inc();
+        stopTimer({ method: req.method, route, status });
+      });
+      next();
+    };
+  }
 
-	public markWorkerCrashed(worker: string): void {
-		this.workerStatus.labels(worker).set(0);
-		this.workerRestarts.labels(worker).inc();
-	}
+  public async getMetrics(): Promise<string> {
+    return await this.registry.metrics();
+  }
 
-	public setRedisConnectionState(up: boolean): void {
-		this.redisUp.set(up ? 1 : 0);
-	}
+  public getContentType(): string {
+    return this.registry.contentType;
+  }
 
-	public recordOptionalAuthFailure(reason: string, route: string): void {
-		this.optionalAuthFailuresTotal.labels(reason || "unknown", route || "unknown").inc();
-	}
+  public markWorkerRunning(worker: string): void {
+    this.workerStatus.labels(worker).set(1);
+  }
 
-	public recordDomainEventPublished(eventType: string, mode: string): void {
-		this.domainEventsPublishedTotal
-			.labels(eventType || "unknown", mode || "unknown")
-			.inc();
-	}
+  public markWorkerStopped(worker: string): void {
+    this.workerStatus.labels(worker).set(0);
+  }
 
-	public recordRealtimeEventPublished(channel: string, status: "published" | "failed"): void {
-		this.realtimeEventsPublishedTotal
-			.labels(channel || "unknown", status)
-			.inc();
-	}
+  public markWorkerCrashed(worker: string): void {
+    this.workerStatus.labels(worker).set(0);
+    this.workerRestarts.labels(worker).inc();
+  }
 
-	public recordSocketEventEmitted(eventName: string, target: "broadcast" | "room" | "socket"): void {
-		this.socketEventsEmittedTotal.labels(eventName || "unknown", target).inc();
-	}
+  public setRedisConnectionState(up: boolean): void {
+    this.redisUp.set(up ? 1 : 0);
+  }
 
-	public setOutboxPendingCount(count: number): void {
-		this.outboxPendingEvents.set(Math.max(0, count));
-	}
+  public recordOptionalAuthFailure(reason: string, route: string): void {
+    this.optionalAuthFailuresTotal
+      .labels(reason || "unknown", route || "unknown")
+      .inc();
+  }
 
-	public recordOutboxBatchSize(size: number): void {
-		this.outboxBatchSize.observe(Math.max(0, size));
-	}
+  public recordDomainEventPublished(eventType: string, mode: string): void {
+    this.domainEventsPublishedTotal
+      .labels(eventType || "unknown", mode || "unknown")
+      .inc();
+  }
 
-	public recordOutboxAttempt(
-		eventType: string,
-		status: "processed" | "failed",
-		durationMs: number,
-	): void {
-		const normalizedEventType = eventType || "unknown";
-		const normalizedDurationSeconds = Math.max(0, durationMs) / 1000;
+  public recordRealtimeEventPublished(
+    channel: string,
+    status: "published" | "failed",
+  ): void {
+    this.realtimeEventsPublishedTotal
+      .labels(channel || "unknown", status)
+      .inc();
+  }
 
-		this.outboxEventsTotal.labels(normalizedEventType, status).inc();
-		this.outboxEventDuration
-			.labels(normalizedEventType, status)
-			.observe(normalizedDurationSeconds);
-	}
+  public recordSocketEventEmitted(
+    eventName: string,
+    target: "broadcast" | "room" | "socket",
+  ): void {
+    this.socketEventsEmittedTotal.labels(eventName || "unknown", target).inc();
+  }
 
-	/**
-	 * Generic counter increment method for custom metrics.
-	 * Creates a counter if it doesn't exist.
-	 */
-	public incrementCounter(name: string, labels: Record<string, string> = {}): void {
-		const labelNames = Object.keys(labels);
-		const labelValues = Object.values(labels);
+  public setOutboxPendingCount(count: number): void {
+    this.outboxPendingEvents.set(Math.max(0, count));
+  }
 
-		// Try to find existing counter
-		const existing = this.registry.getSingleMetric(name);
-		
-		if (existing && existing instanceof client.Counter) {
-			existing.labels(...labelValues).inc();
-		} else if (!existing) {
-			// Create new counter if it doesn't exist
-			const counter = new client.Counter({
-				name,
-				help: `Dynamic counter: ${name}`,
-				labelNames,
-				registers: [this.registry],
-			});
-			counter.labels(...labelValues).inc();
-		}
-	}
+  public recordOutboxBatchSize(size: number): void {
+    this.outboxBatchSize.observe(Math.max(0, size));
+  }
 
-	private normalizeRoute(req: Request): string {
-		const path = this.composeRoute(req);
-		return path.replace(/[0-9a-fA-F]{8,}/g, ":id").replace(/\d+/g, ":id");
-	}
+  public recordOutboxAttempt(
+    eventType: string,
+    status: "processed" | "failed",
+    durationMs: number,
+  ): void {
+    const normalizedEventType = eventType || "unknown";
+    const normalizedDurationSeconds = Math.max(0, durationMs) / 1000;
 
-	private composeRoute(req: Request): string {
-		if (req.route?.path) {
-			return `${req.baseUrl}${req.route.path}` || "/";
-		}
-		const raw = req.baseUrl || req.path || req.originalUrl || "/";
-		const [pathOnly] = raw.split("?");
-		return pathOnly || "/";
-	}
+    this.outboxEventsTotal.labels(normalizedEventType, status).inc();
+    this.outboxEventDuration
+      .labels(normalizedEventType, status)
+      .observe(normalizedDurationSeconds);
+  }
+
+  public recordFeedCursorSnapshotAccess(hit: boolean): void {
+    this.feedCursorSnapshotAccesses.labels(hit ? "hit" : "miss").inc();
+  }
+
+  public recordFeedCursorSnapshotCreation(
+    bytes: number,
+    durationMs: number,
+  ): void {
+    this.feedCursorSnapshotCreations.inc();
+    this.feedCursorSnapshotBytes.observe(Math.max(0, bytes));
+    this.feedCursorSnapshotBuildDuration.observe(
+      Math.max(0, durationMs) / 1000,
+    );
+  }
+
+  public recordFeedCursorSnapshotBuildCollision(): void {
+    this.feedCursorSnapshotBuildCollisions.inc();
+  }
+
+  /**
+   * Generic counter increment method for custom metrics.
+   * Creates a counter if it doesn't exist.
+   */
+  public incrementCounter(
+    name: string,
+    labels: Record<string, string> = {},
+  ): void {
+    const labelNames = Object.keys(labels);
+    const labelValues = Object.values(labels);
+
+    // Try to find existing counter
+    const existing = this.registry.getSingleMetric(name);
+
+    if (existing && existing instanceof client.Counter) {
+      existing.labels(...labelValues).inc();
+    } else if (!existing) {
+      // Create new counter if it doesn't exist
+      const counter = new client.Counter({
+        name,
+        help: `Dynamic counter: ${name}`,
+        labelNames,
+        registers: [this.registry],
+      });
+      counter.labels(...labelValues).inc();
+    }
+  }
+
+  private normalizeRoute(req: Request): string {
+    const path = this.composeRoute(req);
+    return path.replace(/[0-9a-fA-F]{8,}/g, ":id").replace(/\d+/g, ":id");
+  }
+
+  private composeRoute(req: Request): string {
+    if (req.route?.path) {
+      return `${req.baseUrl}${req.route.path}` || "/";
+    }
+    const raw = req.baseUrl || req.path || req.originalUrl || "/";
+    const [pathOnly] = raw.split("?");
+    return pathOnly || "/";
+  }
 }

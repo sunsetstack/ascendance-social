@@ -18,9 +18,8 @@ import { AccountAuditSnapshotService } from "@/services/lifecycle/account-audit-
 import { ContentCleanupService } from "@/services/lifecycle/content-cleanup.service";
 
 const uri = process.env.INTEGRATION_MONGODB_URI;
-const describeWithMongo = uri ? describe : describe.skip;
 
-describeWithMongo("AccountLifecycleService integration", () => {
+describe("AccountLifecycleService integration", () => {
   const departingId = new Types.ObjectId();
   const survivorId = new Types.ObjectId();
   const survivorPostId = new Types.ObjectId();
@@ -37,9 +36,22 @@ describeWithMongo("AccountLifecycleService integration", () => {
   let connectedHere = false;
 
   before(async () => {
+    if (!uri) {
+      throw new Error(
+        "INTEGRATION_MONGODB_URI is required. Run `npm run test-integration` from the repository root to start the test replica set.",
+      );
+    }
     if (mongoose.connection.readyState === 0) {
-      await mongoose.connect(uri!);
       connectedHere = true;
+      try {
+        await mongoose.connect(uri, {
+          serverSelectionTimeoutMS: 5_000,
+          connectTimeoutMS: 5_000,
+        });
+      } catch (error) {
+        await mongoose.disconnect().catch(() => undefined);
+        throw error;
+      }
     }
   });
 

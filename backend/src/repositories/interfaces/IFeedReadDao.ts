@@ -6,6 +6,11 @@ import {
   TrendingTag,
 } from "@/types";
 
+export type FeedSnapshotPaginationResult<T> = CursorPaginationResult<T> & {
+  snapshotId?: string;
+  consumedOffset?: number;
+};
+
 /**
  * Read-only Data Access Object tailored for executing complex Feed aggregations.
  * This separates heavy analytical queries from the domain-focused post read repository.
@@ -39,12 +44,13 @@ export interface IFeedReadDao {
       minLikes?: number;
       weights?: { recency?: number; popularity?: number; comments?: number };
     }
-  ): Promise<CursorPaginationResult<FeedPost>>;
+  ): Promise<FeedSnapshotPaginationResult<FeedPost>>;
 
   getRankedFeedWithCursor(
     favoriteTags: string[],
     options: CursorPaginationOptions & {
+      cursorFeed?: "for-you" | "personalized";
       weights?: { recency?: number; popularity?: number; tagMatch?: number };
     }
-  ): Promise<CursorPaginationResult<FeedPost>>;
+  ): Promise<FeedSnapshotPaginationResult<FeedPost>>;
 }

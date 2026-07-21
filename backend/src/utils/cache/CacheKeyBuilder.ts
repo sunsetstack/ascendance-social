@@ -1,4 +1,6 @@
+import { createHash } from "crypto";
 import { UserPublicId, PostPublicId } from "@/types/branded";
+import { FEED_CURSOR_ORDER, FEED_CURSOR_VERSION } from "@/utils/feedCursor";
 /**
  * Union of valid per-user Redis feed types.
  * Only covers feeds stored under the `feed:{type}:{userId}` key pattern.
@@ -25,7 +27,7 @@ export class CacheKeyBuilder {
   };
 
   static getUserBatchKey(userPublicIds: string[]): string {
-    return `${this.PREFIXES.USER_BATCH}:${userPublicIds.sort().join(",")}`;
+    return `${this.PREFIXES.USER_BATCH}:${[...userPublicIds].sort().join(",")}`;
   }
 
   static getUserDataKey(userPublicId: UserPublicId): string {
@@ -57,11 +59,20 @@ export class CacheKeyBuilder {
   }
 
   static getNewFeedKey(page: number, limit: number): string {
-    return `${this.PREFIXES.NEW_FEED}:${page}:${limit}`;
+    return `${this.PREFIXES.NEW_FEED}:v${FEED_CURSOR_VERSION}:${FEED_CURSOR_ORDER.NEW}:page:${page}:limit:${limit}`;
   }
 
   static getNewFeedCursorKey(cursor: string, limit: number): string {
-    return `${this.PREFIXES.NEW_FEED}:cursor:${cursor}:${limit}`;
+    return `${this.PREFIXES.NEW_FEED}:v${FEED_CURSOR_VERSION}:${FEED_CURSOR_ORDER.NEW}:cursor:${this.hashCursor(cursor)}:limit:${limit}`;
+  }
+
+  static getPersonalizedCursorFeedKey(
+    userId: string,
+    cursor: string | undefined,
+    limit: number,
+  ): string {
+    const cursorComponent = cursor ? this.hashCursor(cursor) : "first";
+    return `${this.PREFIXES.CORE_FEED}:v${FEED_CURSOR_VERSION}:${FEED_CURSOR_ORDER.PERSONALIZED}:${userId}:cursor:${cursorComponent}:limit:${limit}`;
   }
 
   static getNewFeedTag(): string {
@@ -100,7 +111,7 @@ export class CacheKeyBuilder {
   }
 
   static getCoreFeedKeyPattern(userId: string): string {
-    return `${this.PREFIXES.CORE_FEED}:${userId}:*`;
+    return `${this.PREFIXES.CORE_FEED}:*:${userId}:*`;
   }
 
   static getForYouFeedKeyPattern(userId: string): string {
@@ -133,5 +144,9 @@ export class CacheKeyBuilder {
 
   static getNotificationHashKey(id: string): string {
     return `${this.PREFIXES.NOTIFICATION_HASH}:${id}`;
+  }
+
+  private static hashCursor(cursor: string): string {
+    return createHash("sha256").update(cursor).digest("base64url");
   }
 }

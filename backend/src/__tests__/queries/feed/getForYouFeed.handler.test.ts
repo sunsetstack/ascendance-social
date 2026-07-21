@@ -6,6 +6,11 @@ import sinon, { SinonStub } from "sinon";
 
 import { GetForYouFeedQueryHandler } from "@/application/queries/feed/getForYouFeed/getForYouFeed.handler";
 import { GetForYouFeedQuery } from "@/application/queries/feed/getForYouFeed/getForYouFeed.query";
+import {
+	encodeFeedCursor,
+	FEED_CURSOR_ORDER,
+	hashFeedCursorScope,
+} from "@/utils/feedCursor";
 
 chai.use(chaiAsPromised);
 
@@ -111,16 +116,29 @@ describe("GetForYouFeedQueryHandler", () => {
 		mockFeedReadDao.getRankedFeedWithCursor.resolves({ data: [], hasMore: false, nextCursor: undefined });
 		mockFeedEnrichmentService.enrichFeedWithCurrentData.callsFake(async (posts: any) => posts);
 
-		await handler.execute(new GetForYouFeedQuery("viewer", 2, 10, "cursor-token"));
+		const cursor = encodeFeedCursor({
+			feed: "for-you",
+			order: FEED_CURSOR_ORDER.FOR_YOU,
+			source: "mongo",
+			snapshotId: `${hashFeedCursorScope(["unit-snapshot"])}.1`,
+			offset: 10,
+			scope: hashFeedCursorScope(["unit-scope"]),
+		});
+		await handler.execute(new GetForYouFeedQuery("viewer", 2, 10, cursor));
 		expect(mockRedisService.addToFeed.called).to.be.false;
 	});
 
-	it("wraps errors as FeedError", async () => {
+	it("preserves not-found errors", async () => {
 		mockRedisService.getFeedWithCursor.resolves({ ids: [], hasMore: false, nextCursor: undefined });
 		mockUserReadRepository.findByPublicId.resolves(null);
 
-		await expect(handler.execute(new GetForYouFeedQuery("viewer", 1, 10))).to.be.rejectedWith(
-			"Could not generate For You feed.",
-		);
+		const error = await handler
+			.execute(new GetForYouFeedQuery("viewer", 1, 10))
+			.then(
+				() => undefined,
+				(reason) => reason,
+			);
+
+		expect(error).to.include({ statusCode: 404, message: "User not found" });
 	});
 });

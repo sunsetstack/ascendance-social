@@ -4,7 +4,11 @@ import sinon, { SinonStub } from "sinon";
 import { Model, Types } from "mongoose";
 import { FeedReadDao } from "@/repositories/read/FeedReadDao";
 import { TagRepository } from "@/repositories/tag.repository";
-import { decodeCursor } from "@/utils/cursorCodec";
+import {
+  decodeFeedCursor,
+  FEED_CURSOR_ORDER,
+  hashFeedCursorScope,
+} from "@/utils/feedCursor";
 
 interface MockPostModel {
   aggregate: SinonStub;
@@ -16,6 +20,10 @@ describe("FeedReadDao", () => {
   let dao: FeedReadDao;
   let mockModel: MockPostModel;
   let mockTagRepository: { findByTags: SinonStub };
+  let mockRedisService: {
+    getOrCreateFeedCursorSnapshot: SinonStub;
+    requireFeedCursorSnapshot: SinonStub;
+  };
 
   beforeEach(() => {
     mockModel = {
@@ -27,10 +35,20 @@ describe("FeedReadDao", () => {
     mockTagRepository = {
       findByTags: sinon.stub().resolves([]),
     };
+    mockRedisService = {
+      getOrCreateFeedCursorSnapshot: sinon
+        .stub()
+        .callsFake(async (_context: string, build: () => Promise<unknown>) => ({
+          id: `${hashFeedCursorScope(["unit-snapshot"])}.1`,
+          snapshot: await build(),
+        })),
+      requireFeedCursorSnapshot: sinon.stub(),
+    };
 
     dao = new FeedReadDao(
       mockModel as unknown as Model<any>,
-      mockTagRepository as unknown as TagRepository
+      mockTagRepository as unknown as TagRepository,
+      mockRedisService as any,
     );
   });
 
@@ -44,7 +62,7 @@ describe("FeedReadDao", () => {
     const personalizedDate = new Date("2024-01-02T00:00:00.000Z");
     const backfillDate = new Date("2024-01-01T00:00:00.000Z");
 
-    mockModel.aggregate.onFirstCall().returns({
+    mockModel.aggregate.returns({
       exec: sinon.stub().resolves([
         {
           _id: personalizedId,
@@ -52,10 +70,6 @@ describe("FeedReadDao", () => {
           createdAt: personalizedDate,
           isPersonalized: true,
         },
-      ]),
-    });
-    mockModel.aggregate.onSecondCall().returns({
-      exec: sinon.stub().resolves([
         {
           _id: backfillId,
           publicId: "post-2",
@@ -67,20 +81,20 @@ describe("FeedReadDao", () => {
 
     const result = await dao.getFeedForUserCoreWithCursor(["000000000000000000000001"], [], { limit: 1 });
 
-    const personalizedPipeline = mockModel.aggregate.firstCall.args[0] as Array<Record<string, unknown>>;
-    const backfillPipeline = mockModel.aggregate.secondCall.args[0] as Array<Record<string, unknown>>;
-    const personalizedProjection = personalizedPipeline.find((stage) => "$project" in stage)?.$project as Record<
+    const pipeline = mockModel.aggregate.firstCall.args[0] as Array<Record<string, unknown>>;
+    const projection = pipeline.find((stage) => "$project" in stage)?.$project as Record<
       string,
       unknown
     >;
-    const backfillProjection = backfillPipeline.find((stage) => "$project" in stage)?.$project as Record<
-      string,
-      unknown
-    >;
-    const decodedCursor = decodeCursor<{ _id: string; phase: string }>(result.nextCursor);
+    const decodedCursor = decodeFeedCursor(result.nextCursor!, {
+      feed: "personalized",
+      orders: [FEED_CURSOR_ORDER.PERSONALIZED],
+      source: "mongo",
+    });
 
-    expect(personalizedProjection._id).to.equal(1);
-    expect(backfillProjection._id).to.equal(1);
+    expect(projection._id).to.equal(1);
+    expect(projection.visibleIdentityId).to.equal(1);
+    expect(mockModel.aggregate.calledOnce).to.equal(true);
     expect(result.data).to.have.length(1);
     expect(result.data[0].publicId).to.equal("post-1");
     expect(decodedCursor?._id).to.equal(personalizedId.toString());

@@ -11,6 +11,9 @@ import { asUserPublicId } from "@/types/branded";
 import { CoreFeed, FeedPost, PaginationResult, PostDTO } from "@/types";
 import { TOKENS } from "@/types/tokens";
 import type { IFeedReadDao } from "@/repositories/interfaces";
+import { decodeFeedCursor, FEED_CURSOR_ORDER } from "@/utils/feedCursor";
+
+type CachedNewFeed = CoreFeed & { headCursor?: string };
 
 @injectable()
 export class FeedReadService {
@@ -159,18 +162,27 @@ export class FeedReadService {
   ): Promise<PaginationResult<PostDTO> & { nextCursor?: string }> {
     const safePage = Math.max(1, Math.floor(page || 1));
     const safeLimit = Math.min(100, Math.max(1, Math.floor(limit || 20)));
+    if (cursor) {
+      decodeFeedCursor(cursor, {
+        feed: "new",
+        orders: [FEED_CURSOR_ORDER.NEW],
+        source: "mongo",
+      });
+    }
+
+    if (forceRefresh) {
+      return this.getNewFeedDelta(safePage, safeLimit);
+    }
+
     const key = cursor
       ? CacheKeyBuilder.getNewFeedCursorKey(cursor, safeLimit)
       : CacheKeyBuilder.getNewFeedKey(safePage, safeLimit);
 
-    let cached: CoreFeed | null = null;
-    if (!forceRefresh) {
-      cached = await this.redisService.getWithTags<CoreFeed>(key);
-    }
+    let cached = await this.redisService.getWithTags<CachedNewFeed>(key);
 
     const isCacheHit = !!cached;
     if (!cached) {
-      let core: CoreFeed;
+      let core: CachedNewFeed;
       const useCursorFlow = Boolean(cursor) || safePage === 1;
 
       if (useCursorFlow) {
@@ -187,6 +199,7 @@ export class FeedReadService {
           total: 0,
           page: safePage,
           totalPages: 0,
+          headCursor: coreCursor.prevCursor,
         };
       } else {
         const skip = (safePage - 1) * safeLimit;
@@ -225,12 +238,50 @@ export class FeedReadService {
     );
 
     return {
-      ...cached,
+      ...this.withoutHeadCursor(cached),
       data: this.mapToPostDTOArray(enriched),
       total: cached.total ?? 0,
       page: cached.page ?? safePage,
       totalPages: cached.totalPages ?? 0,
     };
+  }
+
+  private async getNewFeedDelta(
+    page: number,
+    limit: number,
+  ): Promise<PaginationResult<PostDTO> & { nextCursor?: string }> {
+    const firstPageKey = CacheKeyBuilder.getNewFeedKey(1, limit);
+    const visiblePage =
+      await this.redisService.getWithTags<CachedNewFeed>(firstPageKey);
+    const result = await this.feedReadDao.getNewFeedWithCursor({
+      limit,
+      cursor: visiblePage?.headCursor,
+      direction: visiblePage?.headCursor ? "backward" : "forward",
+    });
+    const enriched = await this.feedEnrichmentService.enrichFeedWithCurrentData(
+      result.data as FeedPost[],
+    );
+
+    return {
+      data: this.mapToPostDTOArray(enriched),
+      limit,
+      page,
+      total: 0,
+      totalPages: 0,
+      hasMore: result.hasMore,
+      nextCursor: result.nextCursor,
+      prevCursor: result.prevCursor,
+    } as PaginationResult<PostDTO> & {
+      hasMore: boolean;
+      nextCursor?: string;
+      prevCursor?: string;
+    };
+  }
+
+  private withoutHeadCursor(feed: CachedNewFeed): CoreFeed {
+    const publicFeed = { ...feed };
+    delete publicFeed.headCursor;
+    return publicFeed;
   }
 
   private mapToPostDTOArray(entries: FeedPost[]): PostDTO[] {

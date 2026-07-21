@@ -7,8 +7,15 @@ import { RedisNotificationModule } from "./redis/redis-notification.module";
 import { RedisFeedModule } from "./redis/redis-feed.module";
 import { RedisStreamModule } from "./redis/redis-stream.module";
 import {
+  CompareAndRotateSessionInput,
+  CompareAndRotateSessionResult,
+  PatchSessionMetadataInput,
   RedisSessionModule,
+  RefreshSessionRevocationOutcome,
+  RevokeRefreshSessionInput,
+  SessionMetadataPatchOutcome,
   SessionWithTtl,
+  TouchSessionInput,
 } from "./redis/redis-session.module";
 import { RedisFeedType } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
@@ -28,6 +35,7 @@ import {
   RedisResilienceModule,
   ResilienceConfig,
 } from "./redis/redis-resilience.module";
+import { FeedCursorSnapshot } from "@/utils/feedCursor";
 
 /**
  * The service is much more of a facade now than it used to be.
@@ -72,7 +80,7 @@ export class RedisService {
     );
     this.presenceModule = new RedisPresenceModule(client);
     this.notificationModule = new RedisNotificationModule(client);
-    this.feedModule = new RedisFeedModule(client);
+    this.feedModule = new RedisFeedModule(client, metricsService);
     this.streamModule = new RedisStreamModule(client);
     this.sessionModule = new RedisSessionModule(client);
 
@@ -250,12 +258,28 @@ export class RedisService {
     return this.sessionModule.saveSession(session, ttlSeconds);
   }
 
-  async updateAuthSession<T>(
-    sid: string,
-    session: T,
-    ttlSeconds: number,
-  ): Promise<void> {
-    return this.sessionModule.updateSession(sid, session, ttlSeconds);
+  async compareAndRotateAuthSession<T>(
+    input: CompareAndRotateSessionInput,
+  ): Promise<CompareAndRotateSessionResult<T>> {
+    return this.sessionModule.compareAndRotateSession<T>(input);
+  }
+
+  async touchAuthSession(
+    input: TouchSessionInput,
+  ): Promise<SessionMetadataPatchOutcome> {
+    return this.sessionModule.touchSession(input);
+  }
+
+  async markAuthSessionEmailVerified(
+    input: PatchSessionMetadataInput,
+  ): Promise<SessionMetadataPatchOutcome> {
+    return this.sessionModule.markSessionEmailVerified(input);
+  }
+
+  async revokeAuthSessionByRefreshToken(
+    input: RevokeRefreshSessionInput,
+  ): Promise<RefreshSessionRevocationOutcome> {
+    return this.sessionModule.revokeRefreshSession(input);
   }
 
   async removeAuthSession(sid: string, publicId: string): Promise<void> {
@@ -288,18 +312,6 @@ export class RedisService {
     sessionIds: string[],
   ): Promise<Array<SessionWithTtl<T>>> {
     return this.sessionModule.getSessionsWithTtl<T>(sessionIds);
-  }
-
-  async updateAuthSessions<T>(
-    publicId: string,
-    updates: Array<SessionWithTtl<T>>,
-    staleSessionIds: string[] = [],
-  ): Promise<void> {
-    return this.sessionModule.updateSessions(
-      publicId,
-      updates,
-      staleSessionIds,
-    );
   }
 
   async addToFeed(
@@ -343,6 +355,8 @@ export class RedisService {
     ids: string[];
     hasMore: boolean;
     nextCursor?: string;
+    snapshotId?: string;
+    consumedOffset?: number;
   }> {
     return this.feedModule.getFeedWithCursor(userId, limit, cursor, feedType);
   }
@@ -451,8 +465,30 @@ export class RedisService {
     ids: string[];
     hasMore: boolean;
     nextCursor?: string;
+    snapshotId?: string;
+    consumedOffset?: number;
   }> {
     return this.feedModule.getTrendingFeedWithCursor(limit, cursor, key);
+  }
+
+  async getOrCreateFeedCursorSnapshot(
+    contextKey: string,
+    build: () => Promise<FeedCursorSnapshot>,
+  ): Promise<{ id: string; snapshot: FeedCursorSnapshot }> {
+    return this.feedModule.getOrCreateFeedCursorSnapshot(contextKey, build);
+  }
+
+  async getFeedCursorSnapshot(id: string): Promise<FeedCursorSnapshot | null> {
+    return this.feedModule.getFeedCursorSnapshot(id);
+  }
+
+  async requireFeedCursorSnapshot(
+    id: string,
+    expected: Pick<FeedCursorSnapshot, "feed" | "order" | "source"> & {
+      scope?: string;
+    },
+  ): Promise<FeedCursorSnapshot> {
+    return this.feedModule.requireFeedCursorSnapshot(id, expected);
   }
 
   async xPendingRange(

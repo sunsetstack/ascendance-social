@@ -68,6 +68,18 @@ export class PostReadRepository
     return doc ? asMongoId(String(doc._id)) : null;
   }
 
+  async findInternalIdsByPublicIds(
+    publicIds: PostPublicId[],
+  ): Promise<MongoId[]> {
+    if (publicIds.length === 0) return [];
+    const docs = await this.model
+      .find(withActivePostFilter({ publicId: { $in: [...new Set(publicIds)] } }))
+      .select("_id")
+      .lean()
+      .exec();
+    return docs.map((doc) => asMongoId(String(doc._id)));
+  }
+
   async findOneByPublicId(publicId: PostPublicId): Promise<IPost | null> {
     try {
       const session = this.getSession();

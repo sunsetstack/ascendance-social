@@ -3,6 +3,10 @@ import { expect } from "chai";
 import sinon from "sinon";
 import mongoose from "mongoose";
 import { UnitOfWork, sessionALS } from "@/database/UnitOfWork";
+import {
+  isRetryableTransactionBodyError,
+  isUnknownTransactionCommitResult,
+} from "@/database/transaction-retry";
 
 describe("UnitOfWork", () => {
   let unitOfWork: UnitOfWork;
@@ -62,13 +66,30 @@ describe("UnitOfWork", () => {
         "Database connection not established",
       );
     });
+
+    for (const [name, value] of [
+      ["MAX_CONCURRENT_TRANSACTIONS", "abc"],
+      ["MAX_CONCURRENT_TRANSACTIONS", "0"],
+      ["MAX_CONCURRENT_TRANSACTIONS", "-5"],
+      ["MAX_CONCURRENT_READS", "0"],
+    ] as const) {
+      it(`rejects ${name}=${value}`, () => {
+        process.env.MAX_CONCURRENT_TRANSACTIONS = "1";
+        process.env.MAX_CONCURRENT_READS = "4";
+        process.env[name] = value;
+
+        expect(() => new UnitOfWork()).to.throw(
+          `${name} must be a positive integer`,
+        );
+      });
+    }
   });
 
   describe("isRetryableError", () => {
-    it("should identify WriteConflict (code 112) as retryable", () => {
+    it("does not identify an unlabeled WriteConflict code as retryable", () => {
       const error = { code: 112, message: "WriteConflict" };
       const result = (unitOfWork as any).isRetryableError(error);
-      expect(result).to.be.true;
+      expect(result).to.be.false;
     });
 
     it("should identify TransientTransactionError label as retryable", () => {
@@ -80,19 +101,97 @@ describe("UnitOfWork", () => {
       expect(result).to.be.true;
     });
 
-    it("should identify UnknownTransactionCommitResult label as retryable", () => {
+    it("does not identify UnknownTransactionCommitResult as a body retry", () => {
       const error = {
         errorLabels: ["UnknownTransactionCommitResult"],
         message: "Unknown",
       };
       const result = (unitOfWork as any).isRetryableError(error);
-      expect(result).to.be.true;
+      expect(result).to.be.false;
     });
 
-    it("should identify network errors as retryable", () => {
+    it("identifies UnknownTransactionCommitResult for commit-only retry", () => {
+      const error = {
+        errorLabels: ["UnknownTransactionCommitResult"],
+        message: "Unknown",
+      };
+
+      expect(isUnknownTransactionCommitResult(error)).to.be.true;
+    });
+
+    it("does not identify retry-looking messages as transaction evidence", () => {
       const error = { message: "ECONNRESET connection lost" };
       const result = (unitOfWork as any).isRetryableError(error);
-      expect(result).to.be.true;
+      expect(result).to.be.false;
+    });
+
+    it("finds an unknown commit label beneath an outer transient label", () => {
+      const unknown = Object.assign(new Error("unknown commit"), {
+        errorLabels: ["UnknownTransactionCommitResult"],
+      });
+      const middle = new Error("middle", { cause: unknown });
+      const outer = Object.assign(new Error("outer", { cause: middle }), {
+        errorLabels: ["TransientTransactionError"],
+      });
+
+      expect(isUnknownTransactionCommitResult(outer)).to.be.true;
+      expect(isRetryableTransactionBodyError(outer)).to.be.false;
+    });
+
+    it("finds an unknown commit label several causes deep", () => {
+      const unknown = Object.assign(new Error("deep unknown"), {
+        errorLabels: ["UnknownTransactionCommitResult"],
+      });
+      const error = new Error("outer", {
+        cause: new Error("middle", {
+          cause: new Error("inner", { cause: unknown }),
+        }),
+      });
+
+      expect(isUnknownTransactionCommitResult(error)).to.be.true;
+      expect(isRetryableTransactionBodyError(error)).to.be.false;
+    });
+
+    it("handles cyclic cause chains and keeps unknown commit precedence", () => {
+      type ErrorWithMutableCause = Error & {
+        cause?: unknown;
+        errorLabels?: string[];
+      };
+      const transient = Object.assign(new Error("transient"), {
+        errorLabels: ["TransientTransactionError"],
+      }) as ErrorWithMutableCause;
+      const unknown = Object.assign(new Error("unknown"), {
+        errorLabels: ["UnknownTransactionCommitResult"],
+      }) as ErrorWithMutableCause;
+      transient.cause = unknown;
+      unknown.cause = transient;
+
+      expect(isUnknownTransactionCommitResult(transient)).to.be.true;
+      expect(isRetryableTransactionBodyError(transient)).to.be.false;
+    });
+
+    it("does not identify non-Error retry-looking text as retryable", () => {
+      expect(isRetryableTransactionBodyError("network error; please retry")).to
+        .be.false;
+    });
+
+    it("keeps a direct transient label body-retryable", () => {
+      const transient = Object.assign(new Error("transient"), {
+        errorLabels: ["TransientTransactionError"],
+      });
+
+      expect(isRetryableTransactionBodyError(transient)).to.be.true;
+    });
+
+    it("lets an outer unknown label override a nested transient label", () => {
+      const transient = Object.assign(new Error("transient"), {
+        errorLabels: ["TransientTransactionError"],
+      });
+      const unknown = Object.assign(new Error("unknown", { cause: transient }), {
+        errorLabels: ["UnknownTransactionCommitResult"],
+      });
+
+      expect(isRetryableTransactionBodyError(unknown)).to.be.false;
     });
 
     it("should not identify validation errors as retryable", () => {

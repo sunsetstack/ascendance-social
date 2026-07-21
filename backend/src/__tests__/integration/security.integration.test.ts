@@ -71,37 +71,120 @@ describe("Security - NoSQL Injection & XSS Prevention", () => {
 		expect(sanitized.hasOwnProperty("prototype")).to.be.false;
 	});
 
-	it("should have CreatePostCommandHandler using sanitizers", () => {
+	it("sanitizes post content at the CreatePost application boundary", async () => {
 		const { CreatePostCommandHandler } = require("@/application/commands/post/createPost/createPost.handler");
-
-		expect(CreatePostCommandHandler).to.exist;
-
-		// verify handler file imports sanitizers
-		const handlerSource = require("fs").readFileSync(
-			require("path").join(__dirname, "@/application/commands/post/createPost/createPost.handler.ts"),
-			"utf8"
+		const { CreatePostCommand } = require("@/application/commands/post/createPost/createPost.command");
+		const { asUserPublicId, asPostPublicId } = require("@/types/branded");
+		const { Types } = require("mongoose");
+		const userPublicId = asUserPublicId("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d");
+		const postPublicId = asPostPublicId("b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e");
+		const userId = new Types.ObjectId();
+		let createdPayload: any;
+		const pendingPost = { _id: new Types.ObjectId(), publicId: postPublicId };
+		const activePost = { ...pendingPost, status: "active" };
+		const handler = new CreatePostCommandHandler(
+			{ executeInTransaction: async (operation: () => Promise<unknown>) => operation() },
+			{ findByPublicId: async () => activePost },
+			{
+				create: async (payload: unknown) => {
+					createdPayload = payload;
+					return pendingPost;
+				},
+				activatePendingPost: async () => activePost,
+				updatePostStatus: async () => undefined,
+			},
+			{
+				findByPublicId: async () => ({
+					_id: userId,
+					id: userId.toString(),
+					publicId: userPublicId,
+					handle: "security-test",
+					username: "Security Test",
+					avatar: "",
+				}),
+				findUsersByHandles: async () => [],
+			},
+			{ update: async () => undefined },
+			{},
+			{},
+			{
+				collectTagNames: () => [],
+				ensureTagsExist: async () => [],
+				incrementUsage: async () => undefined,
+				trackUsageActivity: async () => undefined,
+			},
+			{},
+			{ invalidateByTags: async () => undefined },
+			{ toPostDTO: () => ({ body: createdPayload.body }) },
+			{ queueTransactional: async () => undefined, queueDurable: async () => undefined },
 		);
 
-		expect(handlerSource).to.include("sanitizeForMongo");
-		expect(handlerSource).to.include("isValidPublicId");
-		expect(handlerSource).to.include("sanitizeTextInput");
+		const result = await handler.execute(
+			new CreatePostCommand(userPublicId, '<script>alert("XSS")</script>Safe content'),
+		);
+
+		expect(createdPayload.body).to.equal("Safe content");
+		expect(result.body).to.equal("Safe content");
 	});
 
-	it("should have CreateCommentCommandHandler using sanitizers", () => {
+	it("sanitizes comment content at the CreateComment application boundary", async () => {
 		const {
 			CreateCommentCommandHandler,
 		} = require("@/application/commands/comments/createComment/create-comment.handler");
-
-		expect(CreateCommentCommandHandler).to.exist;
-
-		// verify handler uses sanitizers
-		const handlerSource = require("fs").readFileSync(
-			require("path").join(__dirname, "@/application/commands/comments/createComment/create-comment.handler.ts"),
-			"utf8"
+		const {
+			CreateCommentCommand,
+		} = require("@/application/commands/comments/createComment/createComment.command");
+		const { asUserPublicId, asPostPublicId } = require("@/types/branded");
+		const { Types } = require("mongoose");
+		const userPublicId = asUserPublicId("a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d");
+		const postPublicId = asPostPublicId("b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e");
+		const userId = new Types.ObjectId();
+		const postId = new Types.ObjectId();
+		const commentId = new Types.ObjectId();
+		let createdPayload: any;
+		const transformedComment = { _id: commentId, content: "Safe content" };
+		const handler = new CreateCommentCommandHandler(
+			{ executeInTransaction: async (operation: () => Promise<unknown>) => operation() },
+			{
+				findByPublicId: async () => ({
+					_id: postId,
+					publicId: postPublicId,
+					user: { publicId: userPublicId },
+					tags: [],
+					body: "post",
+				}),
+			},
+			{ updateCommentCount: async () => undefined },
+			{
+				create: async (payload: unknown) => {
+					createdPayload = payload;
+					return { _id: commentId, ...(payload as object) };
+				},
+				findByIdTransformed: async () => transformedComment,
+			},
+			{
+				findByPublicId: async () => ({
+					_id: userId,
+					publicId: userPublicId,
+					handle: "security-test",
+					username: "Security Test",
+					avatar: "",
+				}),
+				findUsersByHandles: async () => [],
+			},
+			{ queueTransactional: async () => undefined },
 		);
 
-		expect(handlerSource).to.include("sanitizeForMongo");
-		expect(handlerSource).to.include("isValidPublicId");
+		const result = await handler.execute(
+			new CreateCommentCommand(
+				userPublicId,
+				postPublicId,
+				'<script>alert("XSS")</script>Safe content',
+			),
+		);
+
+		expect(createdPayload.content).to.equal("Safe content");
+		expect(result).to.equal(transformedComment);
 	});
 
 	it("should strip path traversal attacks", () => {

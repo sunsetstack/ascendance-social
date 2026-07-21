@@ -29,6 +29,7 @@ import { PostUploadedEvent } from "@/application/events/post/post.event";
 import { TOKENS } from "@/types/tokens";
 
 const MAX_BODY_LENGTH = 300;
+const REPOST_UNIQUE_INDEX_KEYS = ["user", "repostOf", "type"] as const;
 
 @injectable()
 export class RepostPostCommandHandler implements ICommandHandler<
@@ -205,7 +206,7 @@ export class RepostPostCommandHandler implements ICommandHandler<
         return newPost;
       })) as IPost;
     } catch (error) {
-      if (!this.isDuplicateRepostError(error)) {
+      if (!this.isDuplicateRepostError(error, user._id, targetPost._id)) {
         throw error;
       }
 
@@ -221,14 +222,127 @@ export class RepostPostCommandHandler implements ICommandHandler<
     }
   }
 
-  private isDuplicateRepostError(error: unknown): boolean {
-    if (!error || typeof error !== "object") return false;
-    const maybeError = error as { name?: string; code?: number; message?: string };
+  private isDuplicateRepostError(
+    error: unknown,
+    requestedUser: unknown,
+    requestedRepostOf: unknown,
+  ): boolean {
+    const duplicate = this.findRawDuplicateKeyError(error);
+    if (!duplicate) return false;
+
+    const keyPattern = duplicate.keyPattern;
+    if (!keyPattern || typeof keyPattern !== "object") return false;
+    if (!this.hasExactKeySequence(keyPattern, REPOST_UNIQUE_INDEX_KEYS)) {
+      return false;
+    }
+
+    const pattern = keyPattern as Record<string, unknown>;
+    if (
+      pattern.user !== 1 ||
+      pattern.repostOf !== 1 ||
+      pattern.type !== 1
+    ) {
+      return false;
+    }
+
+    if (!duplicate.keyValue || typeof duplicate.keyValue !== "object") {
+      return false;
+    }
+    if (
+      !this.hasExactKeySequence(
+        duplicate.keyValue,
+        REPOST_UNIQUE_INDEX_KEYS,
+      )
+    ) {
+      return false;
+    }
+
+    const keyValue = duplicate.keyValue as Record<string, unknown>;
     return (
-      maybeError.name === "DuplicateError" ||
-      maybeError.code === 11000 ||
-      Boolean(maybeError.message?.toLowerCase().includes("duplicate"))
+      this.mongoIdentifierEquals(keyValue.user, requestedUser) &&
+      this.mongoIdentifierEquals(keyValue.repostOf, requestedRepostOf) &&
+      keyValue.type === "repost"
     );
+  }
+
+  private hasExactKeySequence(
+    value: object,
+    expectedKeys: readonly string[],
+  ): boolean {
+    const ownKeys = Reflect.ownKeys(value);
+    if (
+      ownKeys.length !== expectedKeys.length ||
+      ownKeys.some((key, index) => key !== expectedKeys[index])
+    ) {
+      return false;
+    }
+
+    let prototype = Object.getPrototypeOf(value) as object | null;
+    while (prototype !== null) {
+      if (
+        Reflect.ownKeys(prototype).some((key) =>
+          Object.prototype.propertyIsEnumerable.call(prototype, key),
+        )
+      ) {
+        return false;
+      }
+      prototype = Object.getPrototypeOf(prototype) as object | null;
+    }
+
+    return true;
+  }
+
+  private findRawDuplicateKeyError(
+    error: unknown,
+  ): { keyPattern?: unknown; keyValue?: unknown } | undefined {
+    const visited = new Set<object>();
+    let current = error;
+
+    while (current !== null && typeof current === "object") {
+      if (visited.has(current)) return undefined;
+      visited.add(current);
+
+      const candidate = current as {
+        code?: unknown;
+        keyPattern?: unknown;
+        keyValue?: unknown;
+        cause?: unknown;
+      };
+      if (candidate.code === 11000) return candidate;
+      current = candidate.cause;
+    }
+
+    return undefined;
+  }
+
+  private mongoIdentifierEquals(actual: unknown, expected: unknown): boolean {
+    const canonicalize = (value: unknown): string | undefined => {
+      if (value instanceof mongoose.Types.ObjectId) {
+        return value.toHexString();
+      }
+      if (typeof value === "string") {
+        return mongoose.Types.ObjectId.isValid(value)
+          ? new mongoose.Types.ObjectId(value).toHexString()
+          : value;
+      }
+      if (
+        value !== null &&
+        typeof value === "object" &&
+        "toHexString" in value &&
+        typeof (value as { toHexString?: unknown }).toHexString === "function"
+      ) {
+        try {
+          return (value as { toHexString(): string }).toHexString();
+        } catch {
+          return undefined;
+        }
+      }
+      return undefined;
+    };
+
+    const actualValue = canonicalize(actual);
+    const expectedValue = canonicalize(expected);
+    return actualValue !== undefined && actualValue === expectedValue;
   }
 
   private resolvePostOwnerPublicId(post: IPost): string {
