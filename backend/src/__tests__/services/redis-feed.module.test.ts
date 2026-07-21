@@ -46,9 +46,53 @@ describe("RedisFeedModule", () => {
     expect(zRangeWithScores.firstCall.args).to.deep.equal([
       "trending:posts",
       0,
-      50_000,
+      5_000,
       { REV: true },
     ]);
+    expect(expire.notCalled).to.equal(true);
+  });
+
+  it("coalesces concurrent snapshot builds for the same generation", async () => {
+    const store = new Map<string, string>();
+    const get = sinon.stub().callsFake(async (key: string) => store.get(key) ?? null);
+    const set = sinon.stub().callsFake(async (key: string, value: string) => {
+      if (store.has(key)) return null;
+      store.set(key, value);
+      return "OK";
+    });
+    let releaseBuild!: () => void;
+    const buildStarted = new Promise<void>((resolve) => {
+      releaseBuild = resolve;
+    });
+    const build = sinon.stub().callsFake(async () => {
+      await buildStarted;
+      return {
+        version: 1,
+        feed: "trending" as const,
+        order: "trending-score-id-desc-v1" as const,
+        source: "redis" as const,
+        entries: [],
+      };
+    });
+    const metrics = {
+      recordFeedCursorSnapshotAccess: sinon.spy(),
+      recordFeedCursorSnapshotCreation: sinon.spy(),
+      recordFeedCursorSnapshotBuildCollision: sinon.spy(),
+    };
+    const module = new RedisFeedModule({ get, set } as any, metrics as any);
+
+    const first = module.getOrCreateFeedCursorSnapshot("same-feed", build);
+    await Promise.resolve();
+    const second = module.getOrCreateFeedCursorSnapshot("same-feed", build);
+    releaseBuild();
+
+    const [firstSnapshot, secondSnapshot] = await Promise.all([first, second]);
+    expect(build.calledOnce).to.equal(true);
+    expect(firstSnapshot).to.deep.equal(secondSnapshot);
+    expect(metrics.recordFeedCursorSnapshotBuildCollision.calledOnce).to.equal(
+      true,
+    );
+    expect(metrics.recordFeedCursorSnapshotCreation.calledOnce).to.equal(true);
   });
 
   it("adds posts to many feeds in de-duped Redis batches", async () => {

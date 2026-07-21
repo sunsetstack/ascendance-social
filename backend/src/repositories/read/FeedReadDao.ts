@@ -26,6 +26,7 @@ import {
   FeedCursorSnapshot,
   FeedCursorSnapshotEntry,
   hashFeedCursorScope,
+  MAX_FEED_CURSOR_SNAPSHOT_ITEMS,
 } from "@/utils/feedCursor";
 import {
   ACTIVE_POST_FILTER,
@@ -154,7 +155,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       );
       return { data, hasMore, nextCursor };
     } catch (error: unknown) {
-      if (isAppError(error) && error.statusCode === 400) throw error;
+      if (isAppError(error)) throw error;
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to generate cursor feed",
@@ -523,7 +524,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       return { data, hasMore, nextCursor, prevCursor };
     } catch (error: unknown) {
-      if (isAppError(error) && error.statusCode === 400) throw error;
+      if (isAppError(error)) throw error;
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to build cursor-paginated feed",
@@ -611,7 +612,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
                   { $sort: { trendScore: -1, _id: -1 } },
                   ...this.getVisibleIdentityStages(),
                   { $sort: { trendScore: -1, _id: -1 } },
-                  { $limit: 50_001 },
+                  { $limit: MAX_FEED_CURSOR_SNAPSHOT_ITEMS + 1 },
                   {
                     $project: {
                       _id: 1,
@@ -655,7 +656,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         consumedOffset: page.nextOffset,
       };
     } catch (error: unknown) {
-      if (isAppError(error) && error.statusCode === 400) throw error;
+      if (isAppError(error)) throw error;
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to build cursor-paginated trending feed",
@@ -756,7 +757,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
                   { $sort: { rankScore: -1, _id: -1 } },
                   ...this.getVisibleIdentityStages(),
                   { $sort: { rankScore: -1, _id: -1 } },
-                  { $limit: 50_001 },
+                  { $limit: MAX_FEED_CURSOR_SNAPSHOT_ITEMS + 1 },
                   {
                     $project: {
                       _id: 1,
@@ -799,7 +800,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         consumedOffset: page.nextOffset,
       };
     } catch (error: unknown) {
-      if (isAppError(error) && error.statusCode === 400) throw error;
+      if (isAppError(error)) throw error;
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to build cursor-paginated ranked feed",
@@ -1019,7 +1020,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
     scoreField: "rankScore" | "trendScore",
     scope?: string,
   ): FeedCursorSnapshot {
-    if (results.length > 50_000) {
+    if (results.length > MAX_FEED_CURSOR_SNAPSHOT_ITEMS) {
       throw Errors.internal("Feed cursor snapshot contains too many items");
     }
     return {

@@ -105,7 +105,7 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
             };
           }
         } catch (error) {
-          if (isAppError(error) && error.statusCode === 400) throw error;
+          if (isAppError(error)) throw error;
           redisLogger.warn("Failed to get feed from Redis cursor", {
             error,
           });
@@ -175,7 +175,7 @@ export class GetForYouFeedQueryHandler implements IQueryHandler<
         hasMore: result.hasMore,
       };
     } catch (error) {
-      if (isAppError(error) && error.statusCode === 400) throw error;
+      if (isAppError(error)) throw error;
       errorLogger.error("For You feed error", {
         userId,
         error: error instanceof Error ? error.message : String(error),

@@ -128,12 +128,17 @@ describe("GetForYouFeedQueryHandler", () => {
 		expect(mockRedisService.addToFeed.called).to.be.false;
 	});
 
-	it("wraps errors as FeedError", async () => {
+	it("preserves not-found errors", async () => {
 		mockRedisService.getFeedWithCursor.resolves({ ids: [], hasMore: false, nextCursor: undefined });
 		mockUserReadRepository.findByPublicId.resolves(null);
 
-		await expect(handler.execute(new GetForYouFeedQuery("viewer", 1, 10))).to.be.rejectedWith(
-			"Could not generate For You feed.",
-		);
+		const error = await handler
+			.execute(new GetForYouFeedQuery("viewer", 1, 10))
+			.then(
+				() => undefined,
+				(reason) => reason,
+			);
+
+		expect(error).to.include({ statusCode: 404, message: "User not found" });
 	});
 });

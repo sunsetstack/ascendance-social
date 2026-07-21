@@ -7,6 +7,7 @@ import { io as createClient, Socket as ClientSocket } from "socket.io-client";
 import { WebSocketServer } from "@/server/socketServer";
 import { EventRegistry } from "@/application/common/events/event-registry";
 import { MetricsService } from "@/metrics/metrics.service";
+import { authCookieNames } from "@/config/cookieConfig";
 
 describe("Socket room membership integration", () => {
   let httpServer: HttpServer;
@@ -19,9 +20,53 @@ describe("Socket room membership integration", () => {
     isConversationActive: sinon.SinonStub;
   };
   let metricsService: sinon.SinonStubbedInstance<MetricsService>;
+  let authCalls: sinon.SinonStub;
+  const originalNodeEnv = process.env.NODE_ENV;
+  const originalAllowedOrigins = process.env.ALLOWED_ORIGINS;
+
+  async function startServer(): Promise<void> {
+    const authMiddlewareService = {
+      required: () => authCalls,
+    };
+
+    httpServer = createServer();
+
+    webSocketServer = new WebSocketServer(
+      redisService as any,
+      authMiddlewareService as any,
+      metricsService as any,
+    );
+
+    webSocketServer.initialize(httpServer);
+
+    await new Promise<void>((resolve) => {
+      httpServer.listen(0, resolve);
+    });
+  }
 
   beforeEach(async () => {
     client = null;
+    process.env.NODE_ENV = "production";
+    process.env.ALLOWED_ORIGINS = "https://app.example.com";
+    authCalls = sinon.stub();
+    authCalls.callsFake(
+      (req: any, _res: any, next: (error?: unknown) => void): void => {
+        if (
+          req.cookies?.[authCookieNames.accessToken] !== "test-access-token"
+        ) {
+          next(new Error("Missing test access token"));
+          return;
+        }
+
+        req.decodedUser = {
+          id: "internal-user-1",
+          publicId: "user-123",
+        };
+
+        next();
+      },
+    );
+
     redisService = {
       waitForConnection: sinon.stub().resolves(false),
       markConversationPresence: sinon.stub().resolves(),
@@ -30,29 +75,7 @@ describe("Socket room membership integration", () => {
     };
     metricsService = sinon.createStubInstance(MetricsService);
 
-    const authMiddlewareService = {
-      required:
-        () =>
-        (req: any, _res: any, next: (error?: unknown) => void): void => {
-          req.decodedUser = {
-            id: "internal-user-1",
-            publicId: "user-123",
-          };
-          next();
-        },
-    };
-
-    httpServer = createServer();
-    webSocketServer = new WebSocketServer(
-      redisService as any,
-      authMiddlewareService as any,
-      metricsService as any,
-    );
-    webSocketServer.initialize(httpServer);
-
-    await new Promise<void>((resolve) => {
-      httpServer.listen(0, resolve);
-    });
+    await startServer();
   });
 
   afterEach(async () => {
@@ -66,6 +89,13 @@ describe("Socket room membership integration", () => {
     await new Promise<void>((resolve) => {
       httpServer.close(() => resolve());
     });
+
+    process.env.NODE_ENV = originalNodeEnv;
+    if (originalAllowedOrigins === undefined) {
+      delete process.env.ALLOWED_ORIGINS;
+    } else {
+      process.env.ALLOWED_ORIGINS = originalAllowedOrigins;
+    }
 
     sinon.restore();
   });
@@ -83,7 +113,10 @@ describe("Socket room membership integration", () => {
       userId: "user-123",
     });
 
-    const roomSockets = await webSocketServer.getIO().in("user-123").fetchSockets();
+    const roomSockets = await webSocketServer
+      .getIO()
+      .in("user-123")
+      .fetchSockets();
     expect(roomSockets).to.have.lengthOf(1);
     expect(
       metricsService.recordSocketEventEmitted.calledWith(
@@ -91,6 +124,119 @@ describe("Socket room membership integration", () => {
         "socket",
       ),
     ).to.be.true;
+  });
+
+  it("accepts an exact origin and authenticates for websocket and polling", async () => {
+    for (const transport of ["websocket", "polling"] as const) {
+      const connected = await connectClientWithInitialJoin({
+        origin: "https://app.example.com",
+        transports: [transport],
+      });
+      client = connected.socket;
+
+      expect(connected.joinResponse).to.include({
+        success: true,
+        userId: "user-123",
+      });
+      expect(authCalls.calledOnce).to.equal(true);
+      expect(
+        await webSocketServer.getIO().in("user-123").fetchSockets(),
+      ).to.have.lengthOf(1);
+
+      client.disconnect();
+      client = null;
+      authCalls.resetHistory();
+    }
+  });
+
+  it("rejects an untrusted origin before authentication or room joining", async () => {
+    const rejectedClient = createSocket({ origin: "https://evil.example" });
+    client = rejectedClient;
+
+    await expectConnectionRejected(rejectedClient);
+
+    expect(authCalls.called).to.equal(false);
+    expect(
+      await webSocketServer.getIO().in("user-123").fetchSockets(),
+    ).to.have.lengthOf(0);
+  });
+
+  it("rejects a trusted origin used as an attacker-controlled hostname", async () => {
+    const rejectedClient = createSocket({
+      origin: "https://app.example.com.attacker.test",
+    });
+    client = rejectedClient;
+
+    await expectConnectionRejected(rejectedClient);
+
+    expect(authCalls.called).to.equal(false);
+  });
+
+  it("rejects Origin null", async () => {
+    const rejectedClient = createSocket({ origin: "null" });
+    client = rejectedClient;
+
+    await expectConnectionRejected(rejectedClient);
+
+    expect(authCalls.called).to.equal(false);
+  });
+
+  it("rejects missing Origin when an ambient auth cookie is present", async () => {
+    for (const transport of ["websocket", "polling"] as const) {
+      const rejectedClient = createSocket({
+        cookie: `${authCookieNames.accessToken}=ambient-token`,
+        transports: [transport],
+      });
+      client = rejectedClient;
+
+      await expectConnectionRejected(rejectedClient);
+
+      expect(authCalls.called).to.equal(false);
+      client = null;
+      authCalls.resetHistory();
+    }
+  });
+
+  it("fails closed when production has no configured origins", async () => {
+    // Shut down the server created by beforeEach.
+    webSocketServer.getIO().close();
+
+    await new Promise<void>((resolve) => {
+      httpServer.close(() => resolve());
+    });
+
+    // Configure the environment before initializing the replacement server.
+    process.env.NODE_ENV = "production";
+    delete process.env.ALLOWED_ORIGINS;
+
+    httpServer = createServer();
+
+    webSocketServer = new WebSocketServer(
+      redisService as any,
+      {
+        required: () => authCalls,
+      } as any,
+      metricsService as any,
+    );
+
+    webSocketServer.initialize(httpServer);
+
+    await new Promise<void>((resolve) => {
+      httpServer.listen(0, resolve);
+    });
+
+    const rejectedClient = createSocket({
+      origin: "https://app.example.com",
+      cookie: `${authCookieNames.accessToken}=test-access-token`,
+    });
+    client = rejectedClient;
+
+    await expectConnectionRejected(rejectedClient);
+
+    expect(authCalls.called).to.equal(false);
+    expect(
+      await webSocketServer.getIO().in("user-123").fetchSockets(),
+    ).to.have.lengthOf(0);
   });
 
   it("rejects manual joins for another user's room", async () => {
@@ -142,27 +288,53 @@ describe("Socket room membership integration", () => {
     );
   });
 
-  async function connectClientWithInitialJoin<T = unknown>(): Promise<{
+  async function connectClientWithInitialJoin<T = unknown>(
+    options: SocketOptions = {},
+  ): Promise<{
     socket: ClientSocket;
     joinResponse: T;
   }> {
-    const socket = createSocket();
+    const socket = createSocket({
+      origin: "https://app.example.com",
+      cookie: `${authCookieNames.accessToken}=test-access-token`,
+      ...options,
+    });
+
     const joinResponsePromise = onceSocketEvent<T>(
       socket,
       EventRegistry.socketServerEvents.joinResponse,
     );
+
     await connectSocket(socket);
+
     return {
       socket,
       joinResponse: await joinResponsePromise,
     };
   }
 
-  function createSocket(): ClientSocket {
+  interface SocketOptions {
+    origin?: string;
+    cookie?: string;
+    transports?: Array<"websocket" | "polling">;
+  }
+
+  function createSocket(options: SocketOptions = {}): ClientSocket {
     const address = httpServer.address() as AddressInfo;
+    const extraHeaders: Record<string, string> = {};
+    if (options.origin !== undefined) {
+      extraHeaders.Origin = options.origin;
+    }
+    if (options.cookie !== undefined) {
+      extraHeaders.Cookie = options.cookie;
+    }
+
     return createClient(`http://127.0.0.1:${address.port}`, {
       autoConnect: false,
-      transports: ["websocket"],
+      reconnection: false,
+      timeout: 1_000,
+      transports: options.transports ?? ["websocket"],
+      extraHeaders,
     });
   }
 
@@ -174,6 +346,17 @@ describe("Socket room membership integration", () => {
 
     socket.connect();
     await connected;
+  }
+
+  async function expectConnectionRejected(socket: ClientSocket): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      socket.once("connect", () => {
+        reject(new Error("Socket unexpectedly connected"));
+      });
+      socket.once("connect_error", () => resolve());
+      socket.connect();
+    });
+    socket.disconnect();
   }
 
   function onceSocketEvent<T = unknown>(

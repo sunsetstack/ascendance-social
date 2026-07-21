@@ -86,7 +86,7 @@ export class GetPersonalizedFeedQueryHandler implements IQueryHandler<
         prevCursor: coreFeed.prevCursor,
       };
     } catch (error) {
-      if (isAppError(error) && error.statusCode === 400) throw error;
+      if (isAppError(error)) throw error;
       logger.error("Failed to generate personalized feed", { error });
       throw Errors.internal(
         `Could not generate personalized feed for user ${userId}: ${(error as Error).message}`,

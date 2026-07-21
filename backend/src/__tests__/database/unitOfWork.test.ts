@@ -66,6 +66,23 @@ describe("UnitOfWork", () => {
         "Database connection not established",
       );
     });
+
+    for (const [name, value] of [
+      ["MAX_CONCURRENT_TRANSACTIONS", "abc"],
+      ["MAX_CONCURRENT_TRANSACTIONS", "0"],
+      ["MAX_CONCURRENT_TRANSACTIONS", "-5"],
+      ["MAX_CONCURRENT_READS", "0"],
+    ] as const) {
+      it(`rejects ${name}=${value}`, () => {
+        process.env.MAX_CONCURRENT_TRANSACTIONS = "1";
+        process.env.MAX_CONCURRENT_READS = "4";
+        process.env[name] = value;
+
+        expect(() => new UnitOfWork()).to.throw(
+          `${name} must be a positive integer`,
+        );
+      });
+    }
   });
 
   describe("isRetryableError", () => {

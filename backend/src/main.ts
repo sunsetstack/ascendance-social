@@ -22,6 +22,7 @@ import { Server } from "./server/server";
 import { WebSocketServer } from "./server/socketServer";
 import { RealTimeFeedService } from "./services/feed/real-time-feed.service";
 import { MetricsService } from "./metrics/metrics.service";
+import { startMetricsHttpServer } from "./metrics/metrics-http.server";
 import { TrendingWorker } from "./workers/_impl/trending.worker.impl";
 import { ProfileSyncWorker } from "./workers/_impl/profile-sync.worker.impl";
 import { NewFeedWarmCacheWorker } from "./workers/_impl/newFeedWarmCache.worker.impl";
@@ -29,6 +30,7 @@ import { IpMonitorWorker } from "./workers/_impl/ip-monitor.worker.impl";
 import { OutboxWorker } from "./workers/outbox.worker";
 import { initializeBackendRuntime } from "./runtime/backend-runtime";
 import { registerGlobalProcessHandlers } from "./runtime/process-handlers";
+import { TOKENS } from "./types";
 
 registerGlobalProcessHandlers();
 
@@ -53,6 +55,22 @@ function resolvePort(): number {
   return port;
 }
 
+function resolveMetricsPort(): number | undefined {
+  const rawPort = process.env.METRICS_PORT;
+
+  if (!rawPort) {
+    return undefined;
+  }
+
+  const port = Number.parseInt(rawPort, 10);
+
+  if (Number.isNaN(port) || port <= 0 || port > 65535) {
+    throw new Error(`Invalid METRICS_PORT value: ${rawPort}`);
+  }
+
+  return port;
+}
+
 async function bootstrap(): Promise<void> {
   try {
     logger.info("Backend startup started", {
@@ -62,7 +80,25 @@ async function bootstrap(): Promise<void> {
     });
 
     await initializeBackendRuntime();
-    const metricsService = container.resolve<MetricsService>("MetricsService");
+
+    const metricsService = container.resolve<MetricsService>(
+      TOKENS.Services.Metrics,
+    );
+
+    const metricsPort = resolveMetricsPort();
+
+    if (metricsPort !== undefined) {
+      startMetricsHttpServer(metricsService, {
+        port: metricsPort,
+        host: "0.0.0.0",
+      });
+
+      logger.info("Standalone metrics server started", {
+        event: "metrics.http.started",
+        host: "0.0.0.0",
+        port: metricsPort,
+      });
+    }
 
     // Start workers in-process, same event loop, I/O bound, no need for threads
     await startInProcessWorkers(metricsService);
@@ -80,6 +116,7 @@ async function bootstrap(): Promise<void> {
 
       // Initialize realtime feed service
       container.resolve<RealTimeFeedService>("RealTimeFeedService");
+
       logger.info("Real-time feed service initialized", {
         event: "realtime_feed.initialized",
       });

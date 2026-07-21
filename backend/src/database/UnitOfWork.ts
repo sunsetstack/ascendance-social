@@ -71,6 +71,17 @@ function resolveAttemptLimit(value: number | undefined, fallback: number): numbe
   return Math.max(1, Math.floor(value));
 }
 
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return value;
+}
+
 function resolveTransactionConfig(
   config?: TransactionConfig,
 ): ResolvedTransactionConfig {
@@ -107,14 +118,13 @@ export class UnitOfWork {
     if (mongoose.connection.readyState !== 1) {
       throw Errors.database("Database connection not established");
     }
-    // allow up to 50 concurrent transactions
-    const maxConcurrent = parseInt(
-      process.env.MAX_CONCURRENT_TRANSACTIONS || "50",
-      10,
+    const maxConcurrent = readPositiveIntegerEnv(
+      "MAX_CONCURRENT_TRANSACTIONS",
+      50,
     );
-    const maxConcurrentReads = parseInt(
-      process.env.MAX_CONCURRENT_READS || String(maxConcurrent * 4),
-      10,
+    const maxConcurrentReads = readPositiveIntegerEnv(
+      "MAX_CONCURRENT_READS",
+      maxConcurrent * 4,
     );
     this.transactionSemaphore = new TransactionSemaphore(maxConcurrent);
     this.readSemaphore = new TransactionSemaphore(maxConcurrentReads);
