@@ -77,3 +77,16 @@ export const markNotificationAsRead = async (
     throw new Error(`markNotificationAsRead failed: ${errorMessage(error)}`);
   }
 };
+
+export const markAllNotificationsAsRead = async (): Promise<number> => {
+  try {
+    const response = await unwrap<{ modifiedCount: number }>(
+      axiosClient.post("/api/notifications/read-all"),
+    );
+    return response.modifiedCount;
+  } catch (error) {
+    throw new Error(
+      `markAllNotificationsAsRead failed: ${errorMessage(error)}`,
+    );
+  }
+};
