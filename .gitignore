@@ -26,6 +26,7 @@ notes.md
 tsconfig.test.tsbuildinfo
 docs/
 docker-compose-dev.yml
+docker-compose.test.yml
 *pull-audit-archives.ps1
 .vscode
 backend/audit/logs/*
