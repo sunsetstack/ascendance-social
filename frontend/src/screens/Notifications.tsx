@@ -22,6 +22,7 @@ import {
   ExpandMore as ExpandMoreIcon,
   AlternateEmail as AlternateEmailIcon,
   ChatBubbleOutline as ChatBubbleOutlineIcon,
+  DoneAll as DoneAllIcon,
   Security as SecurityIcon,
 } from "@mui/icons-material";
 import { useNotifications } from "../hooks/notifications/useNotification";
@@ -39,10 +40,13 @@ const Notifications: React.FC = () => {
     notifications,
     isLoading,
     markAsRead,
+    markAllAsRead,
+    isMarkingAllAsRead,
     hasNextPage,
     fetchNextPage,
     isFetchingNextPage,
   } = useNotifications();
+  const unreadCount = notifications.filter((notification) => !notification.isRead).length;
 
   const observerTarget = useRef<HTMLDivElement>(null);
 
@@ -172,18 +176,39 @@ const Notifications: React.FC = () => {
         pb: { xs: `${BOTTOM_NAV_HEIGHT + 24}px`, md: 3 },
       }}
     >
-      <Typography
-        variant="h4"
+      <Box
         sx={{
+          display: "flex",
+          flexDirection: { xs: "column", sm: "row" },
+          alignItems: { xs: "flex-start", sm: "center" },
+          justifyContent: "space-between",
+          gap: 1,
           mb: 3,
-          fontWeight: 700,
-          backgroundClip: "text",
-          WebkitBackgroundClip: "text",
-          color: "transparent",
         }}
       >
-        Notifications
-      </Typography>
+        <Typography
+          variant="h4"
+          sx={{
+            fontWeight: 700,
+            backgroundClip: "text",
+            WebkitBackgroundClip: "text",
+            color: "transparent",
+          }}
+        >
+          Notifications
+        </Typography>
+        {unreadCount > 0 && (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<DoneAllIcon />}
+            onClick={markAllAsRead}
+            disabled={isMarkingAllAsRead}
+          >
+            {isMarkingAllAsRead ? "Marking…" : "Mark all as read"}
+          </Button>
+        )}
+      </Box>
 
       {notifications.length === 0 ? (
         <Box

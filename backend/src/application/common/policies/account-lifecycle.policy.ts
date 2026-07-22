@@ -3,10 +3,10 @@ import { createHash } from "node:crypto";
 export const DELETED_ACCOUNT_COMMENT = "This user no-longer exists";
 
 export const BANNED_ACCOUNT_COMMENT =
-  "This comment was removed because the user was banned";
+  "User got binned. Can't view comment, comment binned too.";
 
 export const UNAVAILABLE_MESSAGE_SENDER =
-  "User is on a vacation. Don't expect a reply soon";
+  "User is taking a hike. Don't expect a reply soon";
 
 export const DEFAULT_ACCOUNT_AVATAR =
   "https://res.cloudinary.com/dfyqaqnj7/image/upload/v1737562142/defaultAvatar_evsmmj.jpg";

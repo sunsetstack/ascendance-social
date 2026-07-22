@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import {
   fetchNotifications,
+  markAllNotificationsAsRead,
   markNotificationAsRead,
 } from "../../api/notificationApi";
 import { Notification, NotificationPage } from "../../types";
@@ -85,6 +86,44 @@ export const useNotifications = () => {
     onSuccess: () => {},
   });
 
+  const markAllReadMutation = useMutation({
+    mutationFn: markAllNotificationsAsRead,
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["notifications"] });
+      const previous = queryClient.getQueryData<InfiniteData<NotificationPage>>(
+        ["notifications"],
+      );
+
+      queryClient.setQueryData<InfiniteData<NotificationPage>>(
+        ["notifications"],
+        (old) => {
+          if (!old?.pages) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              data: page.data.map((notification) => ({
+                ...notification,
+                isRead: true,
+              })),
+            })),
+          };
+        },
+      );
+
+      return { previous };
+    },
+    onError: (
+      _err,
+      _variables,
+      context: { previous?: InfiniteData<NotificationPage> } | undefined,
+    ) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["notifications"], context.previous);
+      }
+    },
+  });
+
   // This handles real-time notifications with WebSocket
   useEffect(() => {
     if (!socket || !isVerified) return;
@@ -152,13 +191,34 @@ export const useNotifications = () => {
       );
     };
 
+    const handleAllRead = () => {
+      queryClient.setQueryData<InfiniteData<NotificationPage>>(
+        ["notifications"],
+        (old) => {
+          if (!old?.pages) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page) => ({
+              ...page,
+              data: page.data.map((notification) => ({
+                ...notification,
+                isRead: true,
+              })),
+            })),
+          };
+        },
+      );
+    };
+
     socket.on("new_notification", handleNew);
 
     socket.on("notification_read", handleRead);
+    socket.on("all_notifications_read", handleAllRead);
 
     return () => {
       socket.off("new_notification", handleNew);
       socket.off("notification_read", handleRead);
+      socket.off("all_notifications_read", handleAllRead);
     };
   }, [socket, queryClient, isVerified, shouldHandleEvent]);
 
@@ -170,5 +230,7 @@ export const useNotifications = () => {
     hasNextPage: notificationsQuery.hasNextPage,
     fetchNextPage: notificationsQuery.fetchNextPage,
     markAsRead: (id: string) => markReadMutation.mutate(id),
+    markAllAsRead: () => markAllReadMutation.mutate(),
+    isMarkingAllAsRead: markAllReadMutation.isPending,
   };
 };

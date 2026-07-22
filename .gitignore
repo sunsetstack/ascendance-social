@@ -16,6 +16,10 @@ backend/src/NOTES.txt
 backend/errors.log
 backend/redis.log
 backend/uploads
+backend/tmp
+backend/audit/logs/*
+backend/audit/archives/*
+backend/audit-logs/*
 /uploads
 dist
 migrate-atlas-to-local.ts
@@ -29,9 +33,6 @@ docker-compose-dev.yml
 docker-compose.test.yml
 *pull-audit-archives.ps1
 .vscode
-backend/audit/logs/*
-backend/audit/archives/*
-backend/audit-logs/*
 *ascendance-audit-seal.service
 *ascendance-audit-seal.timer
 */pdfs

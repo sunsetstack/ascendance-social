@@ -1,4 +1,6 @@
 import "@/runtime/bootstrap-env";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import mongoose, { PipelineStage } from "mongoose";
 import Post from "@/models/post.model";
 import User from "@/models/user.model";
@@ -227,7 +229,9 @@ const getFavoriteTagIds = async (
   if (preferences.length === 0) return [];
 
   const tagNames = preferences.map((preference) => preference.tag);
-  const tags = await Tag.find({ tag: { $in: tagNames } }).select("_id").lean();
+  const tags = await Tag.find({ tag: { $in: tagNames } })
+    .select("_id")
+    .lean();
   return tags.map((tag) => tag._id as mongoose.Types.ObjectId);
 };
 
@@ -297,8 +301,10 @@ const summarizeExplain = (name: string, explain: unknown): ExplainReport => {
   const totals = metrics.reduce<ExplainTotals>(
     (acc, metric) => ({
       nReturned: Math.max(acc.nReturned, metric.nReturned ?? 0),
-      totalKeysExamined: acc.totalKeysExamined + (metric.totalKeysExamined ?? 0),
-      totalDocsExamined: acc.totalDocsExamined + (metric.totalDocsExamined ?? 0),
+      totalKeysExamined:
+        acc.totalKeysExamined + (metric.totalKeysExamined ?? 0),
+      totalDocsExamined:
+        acc.totalDocsExamined + (metric.totalDocsExamined ?? 0),
       executionTimeMillis: Math.max(
         acc.executionTimeMillis,
         metric.executionTimeMillis ?? 0,
@@ -326,6 +332,16 @@ const explainAggregation = async (
   pipeline: PipelineStage[],
 ): Promise<ExplainReport> => {
   const explain = await Post.aggregate(pipeline).explain("executionStats");
+
+  const outputDirectory = path.resolve("tmp/feed-explain");
+  await mkdir(outputDirectory, { recursive: true });
+
+  await writeFile(
+    path.join(outputDirectory, `${name}.json`),
+    JSON.stringify(explain, null, 2),
+    "utf8",
+  );
+
   return summarizeExplain(name, explain);
 };
 
@@ -340,9 +356,14 @@ const main = async (): Promise<void> => {
   ]);
 
   const reports: ExplainReport[] = [];
-  reports.push(await explainAggregation("new_feed_cursor", buildNewFeedPipeline()));
   reports.push(
-    await explainAggregation("trending_feed_cursor", buildTrendingFeedPipeline()),
+    await explainAggregation("new_feed_cursor", buildNewFeedPipeline()),
+  );
+  reports.push(
+    await explainAggregation(
+      "trending_feed_cursor",
+      buildTrendingFeedPipeline(),
+    ),
   );
   reports.push(
     await explainAggregation(

@@ -438,6 +438,10 @@ export const AdminDashboard: React.FC = () => {
   const [banReason, setBanReason] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteReason, setDeleteReason] = useState("");
+  const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
+  const [deleteAllReason, setDeleteAllReason] = useState("");
+  const [isDeletingSelectedUsers, setIsDeletingSelectedUsers] =
+    useState(false);
   const [imagePage, setImagePage] = useState(0);
   const [logsPage, setLogsPage] = useState(0);
   const [logsRowsPerPage, setLogsRowsPerPage] = useState(50);
@@ -632,6 +636,42 @@ export const AdminDashboard: React.FC = () => {
         },
       },
     );
+  };
+
+  const handleDeleteAllUsers = async (): Promise<void> => {
+    const publicIds = Array.from(selectedUserIds);
+    const reason = deleteAllReason.trim();
+    if (publicIds.length === 0 || !reason) return;
+
+    setIsDeletingSelectedUsers(true);
+    try {
+      const results = await Promise.allSettled(
+        publicIds.map((publicId) =>
+          deleteUserMutation.mutateAsync({ publicId, reason }),
+        ),
+      );
+      const deletedUserIds = new Set(
+        results.flatMap((result, index) => {
+          const publicId = publicIds[index];
+          return result.status === "fulfilled" && publicId ? [publicId] : [];
+        }),
+      );
+
+      if (deletedUserIds.size > 0) {
+        setSelectedUserIds((current) => {
+          const next = new Set(current);
+          deletedUserIds.forEach((publicId) => next.delete(publicId));
+          return next;
+        });
+      }
+
+      if (deletedUserIds.size === publicIds.length) {
+        setDeleteAllDialogOpen(false);
+        setDeleteAllReason("");
+      }
+    } finally {
+      setIsDeletingSelectedUsers(false);
+    }
   };
 
   return (
@@ -953,6 +993,22 @@ export const AdminDashboard: React.FC = () => {
           <Panel
             title="People"
             description="Search accounts, review their activity, and apply account controls."
+            action={
+              selectedUserIds.size > 0 ? (
+                <Button
+                  variant="contained"
+                  color="error"
+                  size="small"
+                  startIcon={<DeleteIcon />}
+                  onClick={() => {
+                    setDeleteAllReason("");
+                    setDeleteAllDialogOpen(true);
+                  }}
+                >
+                  Delete all
+                </Button>
+              ) : undefined
+            }
           >
             <Stack
               direction={{ xs: "column", md: "row" }}
@@ -2106,6 +2162,47 @@ export const AdminDashboard: React.FC = () => {
             disabled={!deleteReason.trim() || deleteUserMutation.isPending}
           >
             {deleteUserMutation.isPending ? "Deleting…" : "Delete account"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={deleteAllDialogOpen}
+        onClose={() => setDeleteAllDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Permanently delete {selectedUserIds.size} selected account
+          {selectedUserIds.size === 1 ? "" : "s"}
+        </DialogTitle>
+        <DialogContent>
+          <Alert severity="error" sx={{ mt: 1, mb: 2 }}>
+            This permanently removes the selected accounts and their owned
+            content. The reason and 30-day evidence snapshots remain in the
+            audit trail.
+          </Alert>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Reason"
+            fullWidth
+            multiline
+            rows={3}
+            value={deleteAllReason}
+            onChange={(event) => setDeleteAllReason(event.target.value)}
+            placeholder="Provide a reason for the audit trail"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteAllDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={handleDeleteAllUsers}
+            variant="contained"
+            color="error"
+            disabled={!deleteAllReason.trim() || isDeletingSelectedUsers}
+          >
+            {isDeletingSelectedUsers ? "Deleting…" : "Delete all"}
           </Button>
         </DialogActions>
       </Dialog>
