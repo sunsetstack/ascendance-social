@@ -98,6 +98,9 @@ const Discovery: React.FC = () => {
   });
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+    if (newValue !== activeTab) {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
     setActiveTab(newValue);
   };
 

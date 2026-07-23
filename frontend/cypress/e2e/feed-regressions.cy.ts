@@ -64,6 +64,48 @@ describe("Feed rendering regressions", () => {
 		cy.contains("Original body").should("be.visible");
 	});
 
+	it("resets document scroll when switching from Latest to Trending", () => {
+		const emptyPage = {
+			statusCode: 200,
+			body: {
+				data: [],
+				page: 1,
+				limit: 10,
+				total: 0,
+				totalPages: 0,
+				hasMore: false,
+			},
+		};
+
+		cy.intercept("GET", "/api/users/me", {
+			statusCode: 401,
+			body: { message: "Authentication required" },
+		}).as("currentUser");
+		cy.intercept("POST", "/api/users/refresh", {
+			statusCode: 401,
+			body: { message: "Authentication required" },
+		});
+		cy.intercept({ method: "GET", pathname: "/api/feed/new" }, emptyPage).as("latestFeed");
+		cy.intercept({ method: "GET", pathname: "/api/feed/trending" }, emptyPage).as("trendingFeed");
+
+		cy.visit("/discover");
+		cy.wait("@currentUser");
+		cy.wait("@latestFeed");
+		cy.document().then((document) => {
+			const spacer = document.createElement("div");
+			spacer.style.height = "2000px";
+			document.body.appendChild(spacer);
+		});
+		cy.window().then((window) => {
+			window.scrollTo({ top: 500, behavior: "auto" });
+		});
+		cy.window().its("scrollY").should("be.greaterThan", 0);
+
+		cy.get('[role="tab"]').contains("Trending").click();
+		cy.wait("@trendingFeed");
+		cy.window().its("scrollY").should("equal", 0);
+	});
+
 	it("does not render a community placeholder for standalone profile posts", () => {
 		const profile = {
 			publicId: "profile-user",
