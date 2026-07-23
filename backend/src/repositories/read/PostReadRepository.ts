@@ -203,7 +203,6 @@ export class PostReadRepository
         {
           $project: {
             ...getStandardProjectionFields(),
-            inputOrder: 0,
           },
         },
       ];

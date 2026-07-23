@@ -56,4 +56,19 @@ describe("PostReadRepository", () => {
       secondId.toString(),
     ]);
   });
+
+  it("does not mix exclusion with the standard inclusion projection", async () => {
+    const postId = new Types.ObjectId();
+    mockModel.aggregate.returns({
+      exec: sinon.stub().resolves([]),
+    });
+
+    await repository.findPostsByIds([asMongoId(postId.toString())]);
+
+    const pipeline = mockModel.aggregate.firstCall.args[0] as any[];
+    const projectStage = pipeline.find((stage) => "$project" in stage);
+
+    expect(projectStage).to.exist;
+    expect(projectStage.$project).not.to.have.property("inputOrder");
+  });
 });
