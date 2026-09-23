@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Alert,
   Avatar,
@@ -71,12 +71,74 @@ import {
   useTelemetryMetrics,
   useUnbanUser,
 } from "../hooks/admin/useAdmin";
-import type { AuthActivityLog, RequestLog } from "../api/adminApi";
+import type { AuthActivityLog, ClientFingerprint, RequestLog, VisitorObservation } from "../api/adminApi";
 import { AdminUserDTO, IPost } from "../types";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useAuth } from "../hooks/context/useAuth";
 import { buildAvatarUrl, transformCloudinaryUrl } from "../lib/media";
 
 const MIN_TELEMETRY_SAMPLES = 20;
+const ADMIN_TAB_PARAMS = [
+  "overview",
+  "people",
+  "content",
+  "experience",
+  "requests",
+  "security",
+] as const;
+const LOG_PAGE_SIZES = [25, 50, 100] as const;
+const LOG_SEARCH_PARAM_KEYS = [
+  "tab",
+  "requestPage",
+  "requestLimit",
+  "requestMethod",
+  "requestStatus",
+  "requestSearch",
+  "requestUserId",
+  "requestCorrelationId",
+  "requestIp",
+  "requestAuthState",
+  "requestFrom",
+  "requestTo",
+  "securityPage",
+  "securityLimit",
+  "securityAction",
+  "securityStatus",
+  "securitySearch",
+  "securityUserId",
+  "securityCorrelationId",
+  "securityIp",
+  "securityAuthState",
+  "securityFrom",
+  "securityTo",
+] as const;
+const AUTH_STATE_OPTIONS = ["anonymous", "auth_failed", "authenticated", "unknown"] as const;
+const AUTH_ACTION_OPTIONS = [
+  "register",
+  "login",
+  "refresh",
+  "logout",
+  "password_reset_requested",
+  "password_reset",
+  "email_verify",
+] as const;
+
+const getLocalDateBoundaryIso = (
+  value: string,
+  endOfDay = false,
+): string | undefined => {
+  if (!value) return undefined;
+  const time = endOfDay ? "23:59:59.999" : "00:00:00.000";
+  const date = new Date(`${value}T${time}`);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+};
+
+const parseStatusCodeFilter = (value: string): number | undefined => {
+  const statusCode = Number(value);
+  return Number.isInteger(statusCode) && statusCode >= 100 && statusCode <= 599
+    ? statusCode
+    : undefined;
+};
 
 type AdminLog = RequestLog | AuthActivityLog;
 type MetricTone = "primary" | "success" | "warning" | "error";
@@ -94,6 +156,22 @@ interface MetricCardProps {
   icon: React.ReactNode;
   tone?: MetricTone;
 }
+
+const QueryErrorState: React.FC<{
+  message: string;
+  onRetry: () => void;
+}> = ({ message, onRetry }) => (
+  <Alert
+    severity="error"
+    action={
+      <Button color="inherit" size="small" onClick={onRetry}>
+        Retry
+      </Button>
+    }
+  >
+    {message}
+  </Alert>
+);
 
 interface PanelProps {
   title: string;
@@ -130,14 +208,32 @@ const getStatusColor = (
 };
 
 const getLogIdentity = (log: AdminLog): string =>
-  log.authUsername ||
-  log.authHandle ||
-  log.authEmail ||
-  log.userId ||
-  "Anonymous";
+  log.userId || "Unauthenticated or restricted";
+
+const getPageParam = (value: string | null): number => {
+  const page = Number(value);
+  return Number.isInteger(page) && page > 0 ? page - 1 : 0;
+};
+
+const getLogLimitParam = (value: string | null): number => {
+  const limit = Number(value);
+  return LOG_PAGE_SIZES.includes(limit as (typeof LOG_PAGE_SIZES)[number])
+    ? limit
+    : 50;
+};
+
+const getAdminTabParam = (value: string | null): number => {
+  const tab = ADMIN_TAB_PARAMS.indexOf(
+    value as (typeof ADMIN_TAB_PARAMS)[number],
+  );
+  return tab >= 0 ? tab : 0;
+};
 
 const getLogKey = (log: AdminLog, index: number): string =>
   log.correlationId || log.clientRequestId || `${log.timestamp}-${index}`;
+
+const formatLogObject = (value?: ClientFingerprint | VisitorObservation): string | undefined =>
+  value ? JSON.stringify(value) : undefined;
 
 const describeActivity = (action: string, targetType: string): string => {
   const labels: Record<string, string> = {
@@ -324,7 +420,10 @@ const DetailValue: React.FC<{
 const LogDetailsDialog: React.FC<{
   log: AdminLog | null;
   onClose: () => void;
-}> = ({ log, onClose }) => {
+  onOpenAccount: (publicId: string) => void;
+  onOpenCorrelation: (view: "requests" | "security", correlationId: string) => void;
+  onOpenIp: (view: "requests" | "security", ip: string) => void;
+}> = ({ log, onClose, onOpenAccount, onOpenCorrelation, onOpenIp }) => {
   if (!log) return null;
 
   return (
@@ -335,11 +434,14 @@ const LogDetailsDialog: React.FC<{
           <Grid item xs={12} sm={6}>
             <DetailValue
               label="Timestamp"
-              value={new Date(log.timestamp).toLocaleString()}
+              value={new Date(log.timestamp).toISOString()}
             />
           </Grid>
           <Grid item xs={12} sm={6}>
-            <DetailValue label="Actor" value={getLogIdentity(log)} />
+            <DetailValue label="Account public ID" value={log.userId || "Unavailable"} />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <DetailValue label="Observed client IP" value={log.ip} />
           </Grid>
           {"method" in log ? (
             <Grid item xs={12} sm={6}>
@@ -369,16 +471,7 @@ const LogDetailsDialog: React.FC<{
             <DetailValue label="Authentication source" value={log.authSource} />
           </Grid>
           <Grid item xs={12} sm={6}>
-            <DetailValue label="IP address" value={log.ip} />
-          </Grid>
-          <Grid item xs={12} sm={6}>
             <DetailValue label="Correlation ID" value={log.correlationId} />
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <DetailValue label="Session ID" value={log.sessionId} />
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <DetailValue label="Token family" value={log.tokenFamilyId} />
           </Grid>
           <Grid item xs={12} sm={6}>
             <DetailValue
@@ -404,18 +497,42 @@ const LogDetailsDialog: React.FC<{
               value={log.refreshRotated}
             />
           </Grid>
-          <Grid item xs={12} sm={6}>
-            <DetailValue label="Origin" value={log.origin} />
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <DetailValue label="Referrer" value={log.referer} />
-          </Grid>
-          <Grid item xs={12}>
-            <DetailValue label="User agent" value={log.userAgent} />
-          </Grid>
+          <Grid item xs={12} sm={6}><DetailValue label="Request user-agent" value={log.userAgent} /></Grid>
+          <Grid item xs={12} sm={6}><DetailValue label="Request origin" value={log.origin} /></Grid>
+          <Grid item xs={12} sm={6}><DetailValue label="Request referrer" value={log.referer} /></Grid>
+          <Grid item xs={12} sm={6}><DetailValue label="Fingerprint schema" value={log.clientFingerprintSchemaVersion} /></Grid>
+          <Grid item xs={12} sm={6}><DetailValue label="Observed scheme (Express/proxy)" value={log.clientFingerprint?.protocol} /></Grid>
+          <Grid item xs={12}><DetailValue label="Request-header fingerprint" value={formatLogObject(log.clientFingerprint)} /></Grid>
+          <Grid item xs={12}><DetailValue label="Client-reported visitor observation" value={formatLogObject(log.visitorObservation)} /></Grid>
+          <Grid item xs={12} sm={6}><DetailValue label="Request aborted" value={log.aborted} /></Grid>
         </Grid>
+        <Alert severity="info" sx={{ mt: 2.5 }}>
+          IP, request-header, and client-reported evidence is available only for
+          unauthenticated or legacy records. It does not establish account ownership.
+        </Alert>
       </DialogContent>
       <DialogActions>
+        {log.userId ? (
+          <Button onClick={() => onOpenAccount(log.userId!)}>
+            View account
+          </Button>
+        ) : null}
+        {log.ip && log.ip !== "[restricted]" ? (
+          <>
+            <Button onClick={() => onOpenIp("requests", log.ip!)}>Requests from IP</Button>
+            <Button onClick={() => onOpenIp("security", log.ip!)}>Security activity from IP</Button>
+          </>
+        ) : null}
+        {log.correlationId ? (
+          <>
+            <Button onClick={() => onOpenCorrelation("requests", log.correlationId!)}>
+              Matching requests
+            </Button>
+            <Button onClick={() => onOpenCorrelation("security", log.correlationId!)}>
+              Matching security activity
+            </Button>
+          </>
+        ) : null}
         <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>
@@ -424,8 +541,15 @@ const LogDetailsDialog: React.FC<{
 
 export const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const serializedSearchParams = searchParams.toString();
+  const applyingUrlState = useRef(false);
+  const nextUrlUpdateReplaces = useRef(true);
   const theme = useTheme();
-  const [currentTab, setCurrentTab] = useState(0);
+  const { user: currentUser } = useAuth();
+  const [currentTab, setCurrentTab] = useState(() =>
+    getAdminTabParam(searchParams.get("tab")),
+  );
   const [userPage, setUserPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [userSearch, setUserSearch] = useState("");
@@ -444,20 +568,36 @@ export const AdminDashboard: React.FC = () => {
   const [isDeletingSelectedUsers, setIsDeletingSelectedUsers] =
     useState(false);
   const [imagePage, setImagePage] = useState(0);
-  const [logsPage, setLogsPage] = useState(0);
-  const [logsRowsPerPage, setLogsRowsPerPage] = useState(50);
-  const [logsMethodFilter, setLogsMethodFilter] = useState("");
-  const [logsStatusFilter, setLogsStatusFilter] = useState("");
-  const [logsSearch, setLogsSearch] = useState("");
-  const [logsStartDate, setLogsStartDate] = useState("");
-  const [logsEndDate, setLogsEndDate] = useState("");
-  const [authLogsPage, setAuthLogsPage] = useState(0);
-  const [authLogsRowsPerPage, setAuthLogsRowsPerPage] = useState(50);
-  const [authLogsActionFilter, setAuthLogsActionFilter] = useState("");
-  const [authLogsStatusFilter, setAuthLogsStatusFilter] = useState("");
-  const [authLogsSearch, setAuthLogsSearch] = useState("");
-  const [authLogsStartDate, setAuthLogsStartDate] = useState("");
-  const [authLogsEndDate, setAuthLogsEndDate] = useState("");
+  const [logsPage, setLogsPage] = useState(() => getPageParam(searchParams.get("requestPage")));
+  const [logsRowsPerPage, setLogsRowsPerPage] = useState(() => getLogLimitParam(searchParams.get("requestLimit")));
+  const [logsMethodFilter, setLogsMethodFilter] = useState(() => searchParams.get("requestMethod") || "");
+  const [logsStatusInput, setLogsStatusInput] = useState(() => searchParams.get("requestStatus") || "");
+  const [logsStatusFilter, setLogsStatusFilter] = useState(() => searchParams.get("requestStatus") || "");
+  const [logsSearch, setLogsSearch] = useState(() => searchParams.get("requestSearch") || "");
+  const [logsUserId, setLogsUserId] = useState(() => searchParams.get("requestUserId") || "");
+  const [logsCorrelationId, setLogsCorrelationId] = useState(() => searchParams.get("requestCorrelationId") || "");
+  const [logsIp, setLogsIp] = useState(() => searchParams.get("requestIp") || "");
+  const [logsAuthState, setLogsAuthState] = useState(() => searchParams.get("requestAuthState") || "");
+  const [logsStartDate, setLogsStartDate] = useState(() => searchParams.get("requestFrom") || "");
+  const [logsEndDate, setLogsEndDate] = useState(() => searchParams.get("requestTo") || "");
+  const [logsSnapshotAt, setLogsSnapshotAt] = useState(() =>
+    new Date().toISOString(),
+  );
+  const [authLogsPage, setAuthLogsPage] = useState(() => getPageParam(searchParams.get("securityPage")));
+  const [authLogsRowsPerPage, setAuthLogsRowsPerPage] = useState(() => getLogLimitParam(searchParams.get("securityLimit")));
+  const [authLogsActionFilter, setAuthLogsActionFilter] = useState(() => searchParams.get("securityAction") || "");
+  const [authLogsStatusInput, setAuthLogsStatusInput] = useState(() => searchParams.get("securityStatus") || "");
+  const [authLogsStatusFilter, setAuthLogsStatusFilter] = useState(() => searchParams.get("securityStatus") || "");
+  const [authLogsSearch, setAuthLogsSearch] = useState(() => searchParams.get("securitySearch") || "");
+  const [authLogsUserId, setAuthLogsUserId] = useState(() => searchParams.get("securityUserId") || "");
+  const [authLogsCorrelationId, setAuthLogsCorrelationId] = useState(() => searchParams.get("securityCorrelationId") || "");
+  const [authLogsIp, setAuthLogsIp] = useState(() => searchParams.get("securityIp") || "");
+  const [authLogsAuthState, setAuthLogsAuthState] = useState(() => searchParams.get("securityAuthState") || "");
+  const [authLogsStartDate, setAuthLogsStartDate] = useState(() => searchParams.get("securityFrom") || "");
+  const [authLogsEndDate, setAuthLogsEndDate] = useState(() => searchParams.get("securityTo") || "");
+  const [authLogsSnapshotAt, setAuthLogsSnapshotAt] = useState(() =>
+    new Date().toISOString(),
+  );
   const [selectedLog, setSelectedLog] = useState<AdminLog | null>(null);
   const debouncedUserSearch = useDebouncedValue(userSearch);
   const debouncedLogsSearch = useDebouncedValue(logsSearch);
@@ -466,11 +606,13 @@ export const AdminDashboard: React.FC = () => {
   const {
     data: stats,
     isLoading: statsLoading,
+    isError: statsError,
     refetch: refetchStats,
   } = useDashboardStats(currentTab === 0);
   const {
     data: usersData,
     isLoading: usersLoading,
+    isError: usersError,
     refetch: refetchUsers,
   } = useAdminUsers(
     {
@@ -485,18 +627,23 @@ export const AdminDashboard: React.FC = () => {
   const {
     data: imagesData,
     isLoading: imagesLoading,
+    isError: imagesError,
     refetch: refetchImages,
   } = useAdminImages(
     { page: imagePage + 1, limit: rowsPerPage },
     currentTab === 2,
   );
   const visibleUsers = usersData?.data ?? [];
-  const selectedVisibleUserCount = visibleUsers.reduce(
+  const selectableVisibleUsers = visibleUsers.filter(
+    (user) => user.publicId !== currentUser?.publicId,
+  );
+  const selectedVisibleUserCount = selectableVisibleUsers.reduce(
     (count, user) => count + (selectedUserIds.has(user.publicId) ? 1 : 0),
     0,
   );
   const allVisibleUsersSelected =
-    visibleUsers.length > 0 && selectedVisibleUserCount === visibleUsers.length;
+    selectableVisibleUsers.length > 0 &&
+    selectedVisibleUserCount === selectableVisibleUsers.length;
   const someVisibleUsersSelected =
     selectedVisibleUserCount > 0 && !allVisibleUsersSelected;
 
@@ -515,7 +662,7 @@ export const AdminDashboard: React.FC = () => {
   const toggleVisibleUserSelection = () => {
     setSelectedUserIds((current) => {
       const next = new Set(current);
-      visibleUsers.forEach((user) => {
+      selectableVisibleUsers.forEach((user) => {
         if (allVisibleUsersSelected) {
           next.delete(user.publicId);
         } else {
@@ -525,49 +672,198 @@ export const AdminDashboard: React.FC = () => {
       return next;
     });
   };
-  const { data: activityData, refetch: refetchActivity } = useRecentActivity(
-    { page: 1, limit: 8 },
-    currentTab === 0,
-  );
+  const {
+    data: activityData,
+    isLoading: activityLoading,
+    isError: activityError,
+    refetch: refetchActivity,
+  } = useRecentActivity({ page: 1, limit: 8 }, currentTab === 0);
   const {
     data: telemetryData,
     isLoading: telemetryLoading,
+    isError: telemetryError,
     refetch: refetchTelemetry,
   } = useTelemetryMetrics(currentTab === 3);
   const {
     data: requestLogsData,
     isLoading: logsLoading,
+    isError: logsError,
     refetch: refetchRequestLogs,
   } = useRequestLogs(
     {
       page: logsPage + 1,
       limit: logsRowsPerPage,
+      userId: logsUserId || undefined,
+      correlationId: logsCorrelationId || undefined,
+      ip: logsIp || undefined,
+      authState: logsAuthState || undefined,
       method: logsMethodFilter || undefined,
-      statusCode: logsStatusFilter ? parseInt(logsStatusFilter, 10) : undefined,
+      statusCode: parseStatusCodeFilter(logsStatusFilter),
       search: debouncedLogsSearch || undefined,
-      startDate: logsStartDate || undefined,
-      endDate: logsEndDate || undefined,
+      startDate: getLocalDateBoundaryIso(logsStartDate),
+      endDate: getLocalDateBoundaryIso(logsEndDate, true),
+      snapshotAt: logsSnapshotAt,
     },
     currentTab === 4,
   );
   const {
     data: authActivityLogsData,
     isLoading: authLogsLoading,
+    isError: authLogsError,
     refetch: refetchAuthLogs,
   } = useAuthActivityLogs(
     {
       page: authLogsPage + 1,
       limit: authLogsRowsPerPage,
+      userId: authLogsUserId || undefined,
+      correlationId: authLogsCorrelationId || undefined,
+      ip: authLogsIp || undefined,
+      authState: authLogsAuthState || undefined,
       action: authLogsActionFilter || undefined,
-      statusCode: authLogsStatusFilter
-        ? parseInt(authLogsStatusFilter, 10)
-        : undefined,
+      statusCode: parseStatusCodeFilter(authLogsStatusFilter),
       search: debouncedAuthLogsSearch || undefined,
-      startDate: authLogsStartDate || undefined,
-      endDate: authLogsEndDate || undefined,
+      startDate: getLocalDateBoundaryIso(authLogsStartDate),
+      endDate: getLocalDateBoundaryIso(authLogsEndDate, true),
+      snapshotAt: authLogsSnapshotAt,
     },
     currentTab === 5,
   );
+
+  const usersTotalPages = usersData?.totalPages;
+  const imagesTotalPages = imagesData?.totalPages;
+
+  React.useEffect(() => {
+    if (
+      usersTotalPages !== undefined &&
+      userPage > Math.max(0, usersTotalPages - 1)
+    ) {
+      setUserPage(Math.max(0, usersTotalPages - 1));
+      setSelectedUserIds(new Set());
+    }
+  }, [userPage, usersTotalPages]);
+
+  React.useEffect(() => {
+    if (
+      imagesTotalPages !== undefined &&
+      imagePage > Math.max(0, imagesTotalPages - 1)
+    ) {
+      setImagePage(Math.max(0, imagesTotalPages - 1));
+    }
+  }, [imagePage, imagesTotalPages]);
+
+  React.useEffect(() => {
+    const requestLimit = getLogLimitParam(searchParams.get("requestLimit"));
+    const securityLimit = getLogLimitParam(searchParams.get("securityLimit"));
+    applyingUrlState.current = true;
+    setCurrentTab(getAdminTabParam(searchParams.get("tab")));
+    setLogsPage(getPageParam(searchParams.get("requestPage")));
+    setLogsRowsPerPage(requestLimit);
+    setLogsMethodFilter(searchParams.get("requestMethod") || "");
+    setLogsStatusInput(searchParams.get("requestStatus") || "");
+    setLogsStatusFilter(searchParams.get("requestStatus") || "");
+    setLogsSearch(searchParams.get("requestSearch") || "");
+    setLogsUserId(searchParams.get("requestUserId") || "");
+    setLogsCorrelationId(searchParams.get("requestCorrelationId") || "");
+    setLogsIp(searchParams.get("requestIp") || "");
+    setLogsAuthState(searchParams.get("requestAuthState") || "");
+    setLogsStartDate(searchParams.get("requestFrom") || "");
+    setLogsEndDate(searchParams.get("requestTo") || "");
+    setAuthLogsPage(getPageParam(searchParams.get("securityPage")));
+    setAuthLogsRowsPerPage(securityLimit);
+    setAuthLogsActionFilter(searchParams.get("securityAction") || "");
+    setAuthLogsStatusInput(searchParams.get("securityStatus") || "");
+    setAuthLogsStatusFilter(searchParams.get("securityStatus") || "");
+    setAuthLogsSearch(searchParams.get("securitySearch") || "");
+    setAuthLogsUserId(searchParams.get("securityUserId") || "");
+    setAuthLogsCorrelationId(searchParams.get("securityCorrelationId") || "");
+    setAuthLogsIp(searchParams.get("securityIp") || "");
+    setAuthLogsAuthState(searchParams.get("securityAuthState") || "");
+    setAuthLogsStartDate(searchParams.get("securityFrom") || "");
+    setAuthLogsEndDate(searchParams.get("securityTo") || "");
+
+    if (
+      (searchParams.has("requestLimit") &&
+        searchParams.get("requestLimit") !== String(requestLimit)) ||
+      (searchParams.has("securityLimit") &&
+        searchParams.get("securityLimit") !== String(securityLimit))
+    ) {
+      const normalized = new URLSearchParams(searchParams);
+      if (normalized.has("requestLimit")) {
+        normalized.set("requestLimit", String(requestLimit));
+      }
+      if (normalized.has("securityLimit")) {
+        normalized.set("securityLimit", String(securityLimit));
+      }
+      setSearchParams(normalized, { replace: true });
+    }
+  }, [serializedSearchParams]);
+
+  React.useEffect(() => {
+    if (applyingUrlState.current) {
+      applyingUrlState.current = false;
+      return;
+    }
+
+    const next = new URLSearchParams(searchParams);
+    LOG_SEARCH_PARAM_KEYS.forEach((key) => next.delete(key));
+    const set = (key: string, value: string | number, fallback?: string | number): void => {
+      if (value !== "" && value !== fallback) next.set(key, String(value));
+    };
+
+    next.set("tab", ADMIN_TAB_PARAMS[currentTab]);
+    set("requestPage", logsPage + 1, 1);
+    set("requestLimit", logsRowsPerPage, 50);
+    set("requestMethod", logsMethodFilter);
+    set("requestStatus", logsStatusFilter);
+    set("requestSearch", logsSearch);
+    set("requestUserId", logsUserId);
+    set("requestCorrelationId", logsCorrelationId);
+    set("requestIp", logsIp);
+    set("requestAuthState", logsAuthState);
+    set("requestFrom", logsStartDate);
+    set("requestTo", logsEndDate);
+    set("securityPage", authLogsPage + 1, 1);
+    set("securityLimit", authLogsRowsPerPage, 50);
+    set("securityAction", authLogsActionFilter);
+    set("securityStatus", authLogsStatusFilter);
+    set("securitySearch", authLogsSearch);
+    set("securityUserId", authLogsUserId);
+    set("securityCorrelationId", authLogsCorrelationId);
+    set("securityIp", authLogsIp);
+    set("securityAuthState", authLogsAuthState);
+    set("securityFrom", authLogsStartDate);
+    set("securityTo", authLogsEndDate);
+    if (next.toString() !== serializedSearchParams) {
+      setSearchParams(next, { replace: nextUrlUpdateReplaces.current });
+    }
+    nextUrlUpdateReplaces.current = true;
+  }, [
+    authLogsActionFilter,
+    authLogsCorrelationId,
+    authLogsIp,
+    authLogsAuthState,
+    authLogsEndDate,
+    authLogsPage,
+    authLogsRowsPerPage,
+    authLogsSearch,
+    authLogsStartDate,
+    authLogsStatusFilter,
+    authLogsUserId,
+    currentTab,
+    logsCorrelationId,
+    logsIp,
+    logsAuthState,
+    logsEndDate,
+    logsMethodFilter,
+    logsPage,
+    logsRowsPerPage,
+    logsSearch,
+    logsStartDate,
+    logsStatusFilter,
+    logsUserId,
+    serializedSearchParams,
+    setSearchParams,
+  ]);
 
   const banUserMutation = useBanUser();
   const unbanUserMutation = useUnbanUser();
@@ -590,7 +886,98 @@ export const AdminDashboard: React.FC = () => {
   const telemetryIsReliable =
     (telemetryData?.ttfi.count ?? 0) >= MIN_TELEMETRY_SAMPLES;
 
+  const resetUserSelection = (): void => {
+    setSelectedUserIds(new Set());
+  };
+
+  const resetLogsQuery = (): void => {
+    setLogsPage(0);
+    setLogsSnapshotAt(new Date().toISOString());
+  };
+
+  const resetAuthLogsQuery = (): void => {
+    setAuthLogsPage(0);
+    setAuthLogsSnapshotAt(new Date().toISOString());
+  };
+
+  const selectTab = (tab: number): void => {
+    nextUrlUpdateReplaces.current = false;
+    if (tab === 4 && currentTab !== 4) {
+      setLogsSnapshotAt(new Date().toISOString());
+    }
+    if (tab === 5 && currentTab !== 5) {
+      setAuthLogsSnapshotAt(new Date().toISOString());
+    }
+    setCurrentTab(tab);
+  };
+
+  const openLogAccount = (publicId: string): void => {
+    navigate(`/admin/users/${publicId}`);
+  };
+
+  const openCorrelationView = (
+    view: "requests" | "security",
+    correlationId: string,
+  ): void => {
+    setSelectedLog(null);
+    nextUrlUpdateReplaces.current = false;
+    if (view === "requests") {
+      setLogsCorrelationId(correlationId);
+      setLogsUserId("");
+      setLogsIp("");
+      setLogsAuthState("");
+      setLogsMethodFilter("");
+      setLogsStatusInput("");
+      setLogsStatusFilter("");
+      setLogsSearch("");
+      setLogsStartDate("");
+      setLogsEndDate("");
+      setLogsPage(0);
+      setLogsSnapshotAt(new Date().toISOString());
+      setCurrentTab(4);
+      return;
+    }
+    setAuthLogsCorrelationId(correlationId);
+    setAuthLogsUserId("");
+    setAuthLogsIp("");
+    setAuthLogsAuthState("");
+    setAuthLogsActionFilter("");
+    setAuthLogsStatusInput("");
+    setAuthLogsStatusFilter("");
+    setAuthLogsSearch("");
+    setAuthLogsStartDate("");
+    setAuthLogsEndDate("");
+    setAuthLogsPage(0);
+    setAuthLogsSnapshotAt(new Date().toISOString());
+    setCurrentTab(5);
+  };
+
+  const openIpView = (view: "requests" | "security", ip: string): void => {
+    setSelectedLog(null);
+    nextUrlUpdateReplaces.current = false;
+    if (view === "requests") {
+      setLogsIp(ip); setLogsUserId(""); setLogsCorrelationId(""); setLogsAuthState("");
+      setLogsMethodFilter(""); setLogsStatusInput(""); setLogsStatusFilter(""); setLogsSearch("");
+      setLogsStartDate(""); setLogsEndDate(""); resetLogsQuery(); setCurrentTab(4);
+      return;
+    }
+    setAuthLogsIp(ip); setAuthLogsUserId(""); setAuthLogsCorrelationId(""); setAuthLogsAuthState("");
+    setAuthLogsActionFilter(""); setAuthLogsStatusInput(""); setAuthLogsStatusFilter(""); setAuthLogsSearch("");
+    setAuthLogsStartDate(""); setAuthLogsEndDate(""); resetAuthLogsQuery(); setCurrentTab(5);
+  };
+
   const handleRefresh = (): void => {
+    if (currentTab === 4) {
+      setLogsSnapshotAt(new Date().toISOString());
+      return;
+    }
+    if (currentTab === 5) {
+      setAuthLogsSnapshotAt(new Date().toISOString());
+      return;
+    }
+    if (currentTab === 1) {
+      resetUserSelection();
+    }
     const refreshers = [
       [refetchStats, refetchActivity],
       [refetchUsers],
@@ -630,10 +1017,16 @@ export const AdminDashboard: React.FC = () => {
 
   const handleDeleteUser = (): void => {
     if (!selectedUser || !deleteReason.trim()) return;
+    const publicId = selectedUser.publicId;
     deleteUserMutation.mutate(
-      { publicId: selectedUser.publicId, reason: deleteReason.trim() },
+      { publicId, reason: deleteReason.trim() },
       {
         onSuccess: () => {
+          setSelectedUserIds((current) => {
+            const next = new Set(current);
+            next.delete(publicId);
+            return next;
+          });
           setDeleteDialogOpen(false);
           setSelectedUser(null);
           setDeleteReason("");
@@ -736,7 +1129,7 @@ export const AdminDashboard: React.FC = () => {
 
       <Tabs
         value={currentTab}
-        onChange={(_, newValue) => setCurrentTab(newValue)}
+        onChange={(_, newValue) => selectTab(newValue)}
         variant="scrollable"
         scrollButtons="auto"
         allowScrollButtonsMobile
@@ -769,7 +1162,12 @@ export const AdminDashboard: React.FC = () => {
       </Tabs>
 
       <TabPanel value={currentTab} index={0}>
-        {statsLoading ? (
+        {statsError ? (
+          <QueryErrorState
+            message="Unable to load the admin overview."
+            onRetry={() => void refetchStats()}
+          />
+        ) : statsLoading ? (
           <Box sx={{ display: "grid", placeItems: "center", minHeight: 320 }}>
             <CircularProgress />
           </Box>
@@ -822,7 +1220,7 @@ export const AdminDashboard: React.FC = () => {
                 title="Platform pulse"
                 description="A compact health readout built from the last 24 hours of request data."
                 action={
-                  <Button size="small" onClick={() => setCurrentTab(4)}>
+                  <Button size="small" onClick={() => selectTab(4)}>
                     Open requests
                   </Button>
                 }
@@ -876,7 +1274,7 @@ export const AdminDashboard: React.FC = () => {
                     fullWidth
                     variant="outlined"
                     startIcon={<ManageAccountsIcon />}
-                    onClick={() => setCurrentTab(1)}
+                    onClick={() => selectTab(1)}
                   >
                     Review people
                   </Button>
@@ -884,7 +1282,7 @@ export const AdminDashboard: React.FC = () => {
                     fullWidth
                     variant="outlined"
                     startIcon={<ArticleIcon />}
-                    onClick={() => setCurrentTab(2)}
+                    onClick={() => selectTab(2)}
                   >
                     Review posts
                   </Button>
@@ -892,7 +1290,7 @@ export const AdminDashboard: React.FC = () => {
                     fullWidth
                     variant="outlined"
                     startIcon={<SecurityIcon />}
-                    onClick={() => setCurrentTab(5)}
+                    onClick={() => selectTab(5)}
                   >
                     Inspect security activity
                   </Button>
@@ -938,7 +1336,18 @@ export const AdminDashboard: React.FC = () => {
                 description="The latest visible community actions."
               >
                 <Box sx={{ px: { xs: 2, sm: 2.5 }, py: 0.5 }}>
-                  {activityData?.data.length ? (
+                  {activityLoading ? (
+                    <Box
+                      sx={{ display: "grid", placeItems: "center", minHeight: 120 }}
+                    >
+                      <CircularProgress size={24} />
+                    </Box>
+                  ) : activityError ? (
+                    <QueryErrorState
+                      message="Unable to load recent activity."
+                      onRetry={() => void refetchActivity()}
+                    />
+                  ) : activityData?.data.length ? (
                     activityData.data.map((activity, index) => (
                       <Stack
                         key={`${activity.userId}-${activity.timestamp}-${index}`}
@@ -1035,6 +1444,7 @@ export const AdminDashboard: React.FC = () => {
                 onChange={(event) => {
                   setUserSearch(event.target.value);
                   setUserPage(0);
+                  resetUserSelection();
                 }}
                 InputProps={{
                   startAdornment: (
@@ -1055,6 +1465,7 @@ export const AdminDashboard: React.FC = () => {
                 onChange={(event) => {
                   setSortBy(event.target.value);
                   setUserPage(0);
+                  resetUserSelection();
                 }}
                 SelectProps={{ native: true }}
                 sx={{ minWidth: 150 }}
@@ -1072,6 +1483,7 @@ export const AdminDashboard: React.FC = () => {
                 onChange={(event) => {
                   setSortOrder(event.target.value as "asc" | "desc");
                   setUserPage(0);
+                  resetUserSelection();
                 }}
                 SelectProps={{ native: true }}
                 sx={{ minWidth: 130 }}
@@ -1086,6 +1498,7 @@ export const AdminDashboard: React.FC = () => {
                   setSortBy("createdAt");
                   setSortOrder("desc");
                   setUserPage(0);
+                  resetUserSelection();
                 }}
               >
                 Reset
@@ -1093,7 +1506,12 @@ export const AdminDashboard: React.FC = () => {
             </Stack>
           </Panel>
 
-          {usersLoading ? (
+          {usersError ? (
+            <QueryErrorState
+              message="Unable to load accounts."
+              onRetry={() => void refetchUsers()}
+            />
+          ) : usersLoading ? (
             <Box sx={{ display: "grid", placeItems: "center", minHeight: 260 }}>
               <CircularProgress />
             </Box>
@@ -1128,7 +1546,8 @@ export const AdminDashboard: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {visibleUsers.map((user) => (
+                    {visibleUsers.length ? (
+                      visibleUsers.map((user) => (
                       <TableRow
                         key={user.publicId}
                         hover
@@ -1143,6 +1562,7 @@ export const AdminDashboard: React.FC = () => {
                         >
                           <Checkbox
                             checked={selectedUserIds.has(user.publicId)}
+                            disabled={user.publicId === currentUser?.publicId}
                             onChange={(event) =>
                               toggleUserSelection(
                                 user.publicId,
@@ -1205,15 +1625,15 @@ export const AdminDashboard: React.FC = () => {
                             justifyContent="flex-end"
                           >
                             {user.isBanned ? (
-                              <Tooltip title="Restore account">
+                              <Tooltip title="Re-enable account access (content remains removed)">
                                 <IconButton
-                                  aria-label="Restore account"
+                                  aria-label="Re-enable account access"
                                   size="small"
                                   color="success"
                                   onClick={() => {
                                     if (
                                       window.confirm(
-                                        `Restore ${user.username}'s account?`,
+                                        `Re-enable ${user.username}'s account? Content removed during the ban is not restored.`,
                                       )
                                     ) {
                                       unbanUserMutation.mutate(user.publicId);
@@ -1229,6 +1649,7 @@ export const AdminDashboard: React.FC = () => {
                                   aria-label="Ban account"
                                   size="small"
                                   color="error"
+                                  disabled={user.publicId === currentUser?.publicId}
                                   onClick={() => openBanDialog(user)}
                                 >
                                   <BlockIcon />
@@ -1240,6 +1661,7 @@ export const AdminDashboard: React.FC = () => {
                                 <IconButton
                                   aria-label="Remove administrator access"
                                   size="small"
+                                  disabled={user.publicId === currentUser?.publicId}
                                   onClick={() => {
                                     if (
                                       window.confirm(
@@ -1278,6 +1700,7 @@ export const AdminDashboard: React.FC = () => {
                                 aria-label="Permanently delete account"
                                 size="small"
                                 color="error"
+                                disabled={user.publicId === currentUser?.publicId}
                                 onClick={() => openDeleteDialog(user)}
                               >
                                 <DeleteIcon />
@@ -1286,7 +1709,19 @@ export const AdminDashboard: React.FC = () => {
                           </Stack>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={7}>
+                          <Typography
+                            color="text.secondary"
+                            sx={{ py: 4, textAlign: "center" }}
+                          >
+                            No accounts match these filters.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -1294,11 +1729,15 @@ export const AdminDashboard: React.FC = () => {
                 component="div"
                 count={usersData?.total ?? 0}
                 page={userPage}
-                onPageChange={(_, page) => setUserPage(page)}
+                onPageChange={(_, page) => {
+                  setUserPage(page);
+                  resetUserSelection();
+                }}
                 rowsPerPage={rowsPerPage}
                 onRowsPerPageChange={(event) => {
                   setRowsPerPage(parseInt(event.target.value, 10));
                   setUserPage(0);
+                  resetUserSelection();
                 }}
                 rowsPerPageOptions={[10, 25, 50]}
               />
@@ -1318,7 +1757,12 @@ export const AdminDashboard: React.FC = () => {
           >
             <Box sx={{ display: "none" }} />
           </Panel>
-          {imagesLoading ? (
+          {imagesError ? (
+            <QueryErrorState
+              message="Unable to load posts."
+              onRetry={() => void refetchImages()}
+            />
+          ) : imagesLoading ? (
             <Box sx={{ display: "grid", placeItems: "center", minHeight: 260 }}>
               <CircularProgress />
             </Box>
@@ -1343,7 +1787,8 @@ export const AdminDashboard: React.FC = () => {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {imagesData?.data.map((post: IPost) => {
+                    {imagesData?.data.length ? (
+                      imagesData.data.map((post: IPost) => {
                       const imageUrl = post.image?.url || post.url;
                       const hasImage = Boolean(imageUrl);
                       const contentPreview = post.body
@@ -1434,8 +1879,20 @@ export const AdminDashboard: React.FC = () => {
                             </Tooltip>
                           </TableCell>
                         </TableRow>
-                      );
-                    })}
+                        );
+                      })
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6}>
+                          <Typography
+                            color="text.secondary"
+                            sx={{ py: 4, textAlign: "center" }}
+                          >
+                            No posts are available.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -1457,7 +1914,12 @@ export const AdminDashboard: React.FC = () => {
       </TabPanel>
 
       <TabPanel value={currentTab} index={3}>
-        {telemetryLoading ? (
+        {telemetryError ? (
+          <QueryErrorState
+            message="Unable to load experience telemetry."
+            onRetry={() => void refetchTelemetry()}
+          />
+        ) : telemetryLoading ? (
           <Box sx={{ display: "grid", placeItems: "center", minHeight: 320 }}>
             <CircularProgress />
           </Box>
@@ -1665,7 +2127,7 @@ export const AdminDashboard: React.FC = () => {
         <Stack spacing={2.5}>
           <Panel
             title="Request traces"
-            description="Start with route, status, latency, and actor. Open a row only when you need sensitive diagnostic identifiers."
+            description="Filter by route, outcome, public account ID, or correlation ID. Restricted evidence is unavailable here."
           >
             <Stack
               direction={{ xs: "column", lg: "row" }}
@@ -1675,10 +2137,11 @@ export const AdminDashboard: React.FC = () => {
               <TextField
                 size="small"
                 label="Search requests"
+                placeholder="Route or safe diagnostic ID"
                 value={logsSearch}
                 onChange={(event) => {
                   setLogsSearch(event.target.value);
-                  setLogsPage(0);
+                  resetLogsQuery();
                 }}
                 InputProps={{
                   startAdornment: (
@@ -1697,7 +2160,7 @@ export const AdminDashboard: React.FC = () => {
                 value={logsMethodFilter}
                 onChange={(event) => {
                   setLogsMethodFilter(event.target.value);
-                  setLogsPage(0);
+                  resetLogsQuery();
                 }}
                 SelectProps={{ native: true }}
                 sx={{ minWidth: 125 }}
@@ -1708,26 +2171,49 @@ export const AdminDashboard: React.FC = () => {
                 <option value="PUT">PUT</option>
                 <option value="PATCH">PATCH</option>
                 <option value="DELETE">DELETE</option>
+                <option value="HEAD">HEAD</option>
+                <option value="OPTIONS">OPTIONS</option>
               </TextField>
               <TextField
-                select
+                type="number"
                 size="small"
-                value={logsStatusFilter}
+                label="Status"
+                value={logsStatusInput}
                 onChange={(event) => {
-                  setLogsStatusFilter(event.target.value);
-                  setLogsPage(0);
+                  const value = event.target.value;
+                  setLogsStatusInput(value);
+                  if (value === "" || parseStatusCodeFilter(value)) {
+                    setLogsStatusFilter(value);
+                    resetLogsQuery();
+                  }
                 }}
-                SelectProps={{ native: true }}
+                inputProps={{ min: 100, max: 599 }}
                 sx={{ minWidth: 130 }}
-              >
-                <option value="">Status: all</option>
-                <option value="200">200 OK</option>
-                <option value="201">201 Created</option>
-                <option value="400">400 Bad Request</option>
-                <option value="401">401 Unauthorized</option>
-                <option value="403">403 Forbidden</option>
-                <option value="404">404 Not Found</option>
-                <option value="500">500 Server error</option>
+              />
+              <TextField
+                size="small"
+                label="Account public ID"
+                value={logsUserId}
+                onChange={(event) => {
+                  setLogsUserId(event.target.value);
+                  resetLogsQuery();
+                }}
+                sx={{ minWidth: 190 }}
+              />
+              <TextField
+                size="small"
+                label="Correlation ID"
+                value={logsCorrelationId}
+                onChange={(event) => {
+                  setLogsCorrelationId(event.target.value);
+                  resetLogsQuery();
+                }}
+                sx={{ minWidth: 190 }}
+              />
+              <TextField size="small" label="Observed IP" value={logsIp} onChange={(event) => { setLogsIp(event.target.value); resetLogsQuery(); }} sx={{ minWidth: 160 }} />
+              <TextField select size="small" label="Auth state" value={logsAuthState} onChange={(event) => { setLogsAuthState(event.target.value); resetLogsQuery(); }} SelectProps={{ native: true }} sx={{ minWidth: 150 }}>
+                <option value="">All states</option>
+                {AUTH_STATE_OPTIONS.map((state) => <option key={state} value={state}>{state}</option>)}
               </TextField>
               <TextField
                 type="date"
@@ -1736,7 +2222,7 @@ export const AdminDashboard: React.FC = () => {
                 value={logsStartDate}
                 onChange={(event) => {
                   setLogsStartDate(event.target.value);
-                  setLogsPage(0);
+                  resetLogsQuery();
                 }}
                 InputLabelProps={{ shrink: true }}
                 sx={{ minWidth: 145 }}
@@ -1748,7 +2234,7 @@ export const AdminDashboard: React.FC = () => {
                 value={logsEndDate}
                 onChange={(event) => {
                   setLogsEndDate(event.target.value);
-                  setLogsPage(0);
+                  resetLogsQuery();
                 }}
                 InputLabelProps={{ shrink: true }}
                 sx={{ minWidth: 145 }}
@@ -1762,7 +2248,12 @@ export const AdminDashboard: React.FC = () => {
               overflow: "hidden",
             }}
           >
-            {logsLoading ? (
+            {logsError ? (
+              <QueryErrorState
+                message="Unable to load request traces."
+                onRetry={() => void refetchRequestLogs()}
+              />
+            ) : logsLoading ? (
               <Box
                 sx={{ display: "grid", placeItems: "center", minHeight: 260 }}
               >
@@ -1778,7 +2269,7 @@ export const AdminDashboard: React.FC = () => {
                         <TableCell>Request</TableCell>
                         <TableCell>Status</TableCell>
                         <TableCell>Latency</TableCell>
-                        <TableCell>Actor</TableCell>
+                        <TableCell>Account</TableCell>
                         <TableCell align="right">Details</TableCell>
                       </TableRow>
                     </TableHead>
@@ -1906,7 +2397,7 @@ export const AdminDashboard: React.FC = () => {
         <Stack spacing={2.5}>
           <Panel
             title="Security activity"
-            description="Authentication events and session outcomes. Identifiers stay in row details to keep the primary review surface focused."
+            description="Authentication outcomes linked by public account ID or correlation ID. Restricted evidence is unavailable here."
           >
             <Stack
               direction={{ xs: "column", lg: "row" }}
@@ -1916,10 +2407,11 @@ export const AdminDashboard: React.FC = () => {
               <TextField
                 size="small"
                 label="Search security activity"
+                placeholder="Event, route, or safe diagnostic ID"
                 value={authLogsSearch}
                 onChange={(event) => {
                   setAuthLogsSearch(event.target.value);
-                  setAuthLogsPage(0);
+                  resetAuthLogsQuery();
                 }}
                 InputProps={{
                   startAdornment: (
@@ -1933,34 +2425,64 @@ export const AdminDashboard: React.FC = () => {
                 sx={{ flexGrow: 1, minWidth: { lg: 230 } }}
               />
               <TextField
+                select
                 size="small"
                 label="Event"
-                placeholder="refresh, login…"
                 value={authLogsActionFilter}
                 onChange={(event) => {
                   setAuthLogsActionFilter(event.target.value);
-                  setAuthLogsPage(0);
-                }}
-                sx={{ minWidth: 150 }}
-              />
-              <TextField
-                select
-                size="small"
-                value={authLogsStatusFilter}
-                onChange={(event) => {
-                  setAuthLogsStatusFilter(event.target.value);
-                  setAuthLogsPage(0);
+                  resetAuthLogsQuery();
                 }}
                 SelectProps={{ native: true }}
-                sx={{ minWidth: 125 }}
+                sx={{ minWidth: 150 }}
               >
-                <option value="">Status: all</option>
-                <option value="200">200 OK</option>
-                <option value="201">201 Created</option>
-                <option value="400">400 Bad Request</option>
-                <option value="401">401 Unauthorized</option>
-                <option value="403">403 Forbidden</option>
-                <option value="500">500 Server error</option>
+                <option value="">All events</option>
+                {AUTH_ACTION_OPTIONS.map((action) => (
+                  <option key={action} value={action}>
+                    {action.replace(/_/g, " ")}
+                  </option>
+                ))}
+              </TextField>
+              <TextField
+                type="number"
+                size="small"
+                label="Status"
+                value={authLogsStatusInput}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setAuthLogsStatusInput(value);
+                  if (value === "" || parseStatusCodeFilter(value)) {
+                    setAuthLogsStatusFilter(value);
+                    resetAuthLogsQuery();
+                  }
+                }}
+                inputProps={{ min: 100, max: 599 }}
+                sx={{ minWidth: 125 }}
+              />
+              <TextField
+                size="small"
+                label="Account public ID"
+                value={authLogsUserId}
+                onChange={(event) => {
+                  setAuthLogsUserId(event.target.value);
+                  resetAuthLogsQuery();
+                }}
+                sx={{ minWidth: 190 }}
+              />
+              <TextField
+                size="small"
+                label="Correlation ID"
+                value={authLogsCorrelationId}
+                onChange={(event) => {
+                  setAuthLogsCorrelationId(event.target.value);
+                  resetAuthLogsQuery();
+                }}
+                sx={{ minWidth: 190 }}
+              />
+              <TextField size="small" label="Observed IP" value={authLogsIp} onChange={(event) => { setAuthLogsIp(event.target.value); resetAuthLogsQuery(); }} sx={{ minWidth: 160 }} />
+              <TextField select size="small" label="Auth state" value={authLogsAuthState} onChange={(event) => { setAuthLogsAuthState(event.target.value); resetAuthLogsQuery(); }} SelectProps={{ native: true }} sx={{ minWidth: 150 }}>
+                <option value="">All states</option>
+                {AUTH_STATE_OPTIONS.map((state) => <option key={state} value={state}>{state}</option>)}
               </TextField>
               <TextField
                 type="date"
@@ -1969,7 +2491,7 @@ export const AdminDashboard: React.FC = () => {
                 value={authLogsStartDate}
                 onChange={(event) => {
                   setAuthLogsStartDate(event.target.value);
-                  setAuthLogsPage(0);
+                  resetAuthLogsQuery();
                 }}
                 InputLabelProps={{ shrink: true }}
                 sx={{ minWidth: 145 }}
@@ -1981,7 +2503,7 @@ export const AdminDashboard: React.FC = () => {
                 value={authLogsEndDate}
                 onChange={(event) => {
                   setAuthLogsEndDate(event.target.value);
-                  setAuthLogsPage(0);
+                  resetAuthLogsQuery();
                 }}
                 InputLabelProps={{ shrink: true }}
                 sx={{ minWidth: 145 }}
@@ -1995,7 +2517,12 @@ export const AdminDashboard: React.FC = () => {
               overflow: "hidden",
             }}
           >
-            {authLogsLoading ? (
+            {authLogsError ? (
+              <QueryErrorState
+                message="Unable to load security activity."
+                onRetry={() => void refetchAuthLogs()}
+              />
+            ) : authLogsLoading ? (
               <Box
                 sx={{ display: "grid", placeItems: "center", minHeight: 260 }}
               >
@@ -2011,7 +2538,7 @@ export const AdminDashboard: React.FC = () => {
                         <TableCell>Event</TableCell>
                         <TableCell>Route</TableCell>
                         <TableCell>Status</TableCell>
-                        <TableCell>Actor</TableCell>
+                        <TableCell>Account</TableCell>
                         <TableCell align="right">Details</TableCell>
                       </TableRow>
                     </TableHead>
@@ -2240,6 +2767,9 @@ export const AdminDashboard: React.FC = () => {
       <LogDetailsDialog
         log={selectedLog}
         onClose={() => setSelectedLog(null)}
+        onOpenAccount={openLogAccount}
+        onOpenCorrelation={openCorrelationView}
+        onOpenIp={openIpView}
       />
     </Container>
   );

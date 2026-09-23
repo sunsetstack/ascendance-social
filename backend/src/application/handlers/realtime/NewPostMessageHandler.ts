@@ -9,6 +9,7 @@ import {
 } from "@/application/common/events/event-registry";
 import { MetricsService } from "@/metrics/metrics.service";
 import { TOKENS } from "@/types/tokens";
+import { emitToAuthenticatedUser } from "@/server/socket-security";
 
 @injectable()
 export class NewPostMessageHandler implements IRealtimeMessageHandler {
@@ -27,7 +28,7 @@ export class NewPostMessageHandler implements IRealtimeMessageHandler {
     // TARGETED NOTIFICATIONS: notify specific users about content in their personalized feeds
     if (message.affectedUsers && message.affectedUsers.length > 0) {
       for (const userId of message.affectedUsers) {
-        io.to(userId).emit(EventRegistry.socketServerEvents.feedUpdate, {
+        await emitToAuthenticatedUser(io, userId, EventRegistry.socketServerEvents.feedUpdate, {
           eventId:
             message.eventId ??
             buildRealtimeEventId(
@@ -48,7 +49,7 @@ export class NewPostMessageHandler implements IRealtimeMessageHandler {
     }
 
     // also notify the uploader
-    io.to(authorId).emit(EventRegistry.socketServerEvents.feedUpdate, {
+    await emitToAuthenticatedUser(io, authorId, EventRegistry.socketServerEvents.feedUpdate, {
       eventId:
         message.eventId ??
         buildRealtimeEventId(EventRegistry.realtimeMessageTypes.newPost, postId),

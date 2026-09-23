@@ -3,6 +3,8 @@ import { fetchUserFavorites } from "../../api/favoritesApi";
 import { mapImage } from "../../lib/mappers";
 import { useAuth } from "../context/useAuth";
 import { IImage } from "../../types";
+import { feedIdentities } from "../../features/feed/feedIdentity";
+import { useIsFeedRestoreNavigation } from "../../features/feed/feedRestoration";
 
 interface FavoritesPage {
 	data: IImage[];
@@ -13,11 +15,13 @@ interface FavoritesPage {
 }
 
 export const useFavorites = (options?: { limit?: number }) => {
-	const { isLoggedIn } = useAuth();
+	const { isLoggedIn, user } = useAuth();
 	const pageSize = options?.limit ?? 12;
+	const feedId = feedIdentities.favorites(user?.publicId);
+	const isRestoreNavigation = useIsFeedRestoreNavigation(feedId);
 
 	return useInfiniteQuery<FavoritesPage, Error>({
-		queryKey: ["favorites", "user"],
+		queryKey: ["favorites", "user", feedId, pageSize],
 		queryFn: async ({ pageParam = 1 }) => {
 			const response = await fetchUserFavorites(pageParam as number, pageSize);
 			return {
@@ -30,5 +34,6 @@ export const useFavorites = (options?: { limit?: number }) => {
 		enabled: isLoggedIn,
 		staleTime: 0,
 		refetchOnWindowFocus: false,
+		...(isRestoreNavigation ? { refetchOnMount: false } : {}),
 	});
 };

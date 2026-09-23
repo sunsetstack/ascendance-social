@@ -12,6 +12,14 @@ import { logger } from "@/utils/winston";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
 import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
+import { createHash } from "node:crypto";
+import { UnitOfWork } from "@/database/UnitOfWork";
+
+export interface FeedInteractionIdentity {
+  eventId: string;
+  timestamp: Date;
+  activityId?: string;
+}
 
 @injectable()
 export class FeedInteractionService {
@@ -25,6 +33,7 @@ export class FeedInteractionService {
     @inject(TOKENS.Repositories.UserAction)
     private userActionRepository: UserActionRepository,
     @inject(TOKENS.Services.Redis) private redisService: RedisService,
+    @inject(TOKENS.Repositories.UnitOfWork) private unitOfWork: UnitOfWork,
   ) {}
 
   public async recordInteraction(
@@ -32,6 +41,7 @@ export class FeedInteractionService {
     actionType: string,
     targetIdentifier: string,
     tags: string[],
+    identity: FeedInteractionIdentity,
   ): Promise<void> {
     logger.info("Recording feed interaction", {
       event: "feed.interaction.recording",
@@ -55,44 +65,45 @@ export class FeedInteractionService {
       if (post) internalTargetId = String(post._id);
     }
 
-    await this.userActionRepository.logAction(
-      String(user._id),
-      actionType,
-      internalTargetId,
-    );
+    const activityId =
+      identity.activityId ??
+      createHash("sha256")
+        .update(`feed-interaction:${identity.eventId}`)
+        .digest("hex")
+        .slice(0, 24);
+    await this.unitOfWork.executeInTransaction(async () => {
+      const claimed = await this.userActionRepository.claimFeedEffects(
+        activityId,
+        String(user._id),
+        actionType,
+        internalTargetId,
+        identity.timestamp,
+      );
+      if (!claimed) return;
 
-    let scoreIncrement = 0;
-    if (actionType === "like" || actionType === "unlike") {
-      scoreIncrement = this.getScoreIncrementForAction(actionType);
-    }
-
-    if (scoreIncrement !== 0) {
-      await Promise.all(
-        tags.map((tag) =>
-          this.userPreferenceRepository.incrementTagScore(
+      if (actionType === "like" || actionType === "unlike") {
+        for (const tag of new Set(tags)) {
+          await this.userPreferenceRepository.incrementTagScore(
             String(user._id),
             tag,
-            scoreIncrement,
-          ),
-        ),
-      );
-    }
+            this.getScoreIncrementForAction(actionType),
+          );
+        }
+      }
+    });
 
     await this.redisService.invalidateFeed(userPublicId, "for_you");
 
     const invalidationTags = [CacheKeyBuilder.getUserFeedTag(userPublicId)];
     await this.redisService.invalidateByTags(invalidationTags);
 
-    const timestamp = new Date().toISOString();
+    const timestamp = identity.timestamp.toISOString();
     await this.redisService.publish(
       EventRegistry.redisChannels.feedUpdates,
       JSON.stringify({
         eventId: buildRealtimeEventId(
           EventRegistry.realtimeMessageTypes.interaction,
-          actionType,
-          userPublicId,
-          targetIdentifier,
-          timestamp,
+          identity.eventId,
         ),
         type: EventRegistry.realtimeMessageTypes.interaction,
         userId: userPublicId,

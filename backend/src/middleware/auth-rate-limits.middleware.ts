@@ -1,6 +1,6 @@
 import rateLimit from "express-rate-limit";
 import { getRateLimitStoreOptions } from "@/config/rateLimit";
-import { getClientIp } from "@/utils/request-ip";
+import { getIpRateLimitKey } from "@/utils/request-ip";
 
 const isTestEnv = process.env.NODE_ENV === "test";
 
@@ -12,7 +12,7 @@ export const adminRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) =>
-    `admin-${req.decodedUser?.publicId || getClientIp(req)}`,
+    `admin-${req.decodedUser?.publicId || getIpRateLimitKey(req)}`,
 });
 
 export const registerIpRateLimit = rateLimit({
@@ -22,7 +22,7 @@ export const registerIpRateLimit = rateLimit({
   message: "Too many registration attempts, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `register-ip:${getClientIp(req)}`,
+  keyGenerator: (req) => `register-ip:${getIpRateLimitKey(req)}`,
 });
 
 export const loginIpRateLimit = rateLimit({
@@ -32,7 +32,7 @@ export const loginIpRateLimit = rateLimit({
   message: "Too many login attempts, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `login-ip:${getClientIp(req)}`,
+  keyGenerator: (req) => `login-ip:${getIpRateLimitKey(req)}`,
 });
 
 export const loginEmailRateLimit = rateLimit({
@@ -60,7 +60,7 @@ export const forgotPasswordIpRateLimit = rateLimit({
   message: "Too many password reset requests, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `forgot-password-ip:${getClientIp(req)}`,
+  keyGenerator: (req) => `forgot-password-ip:${getIpRateLimitKey(req)}`,
 });
 
 export const forgotPasswordEmailRateLimit = rateLimit({
@@ -91,7 +91,7 @@ export const resetPasswordIpRateLimit = rateLimit({
   message: "Too many password reset attempts, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `reset-password-ip:${getClientIp(req)}`,
+  keyGenerator: (req) => `reset-password-ip:${getIpRateLimitKey(req)}`,
 });
 
 export const verifyEmailIpRateLimit = rateLimit({
@@ -103,7 +103,7 @@ export const verifyEmailIpRateLimit = rateLimit({
   message: "Too many email verification attempts, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => `verify-email-ip:${getClientIp(req)}`,
+  keyGenerator: (req) => `verify-email-ip:${getIpRateLimitKey(req)}`,
 });
 
 export const verifyEmailAddressRateLimit = rateLimit({

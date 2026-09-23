@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Link as RouterLink } from "react-router-dom";
 import {
   Box,
+  Alert,
   Container,
   Typography,
   Card,
@@ -50,12 +51,24 @@ const AdminUserDetail: React.FC = () => {
   const [commentsPage, setCommentsPage] = React.useState(1);
   const [likesPage, setLikesPage] = React.useState(1);
 
-  const { data: user, isLoading: userLoading } = useAdminUser(id);
-  const { data: stats, isLoading: statsLoading } = useUserStats(id);
+  const {
+    data: user,
+    isLoading: userLoading,
+    isError: userError,
+    refetch: refetchUser,
+  } = useAdminUser(id);
+  const {
+    data: stats,
+    isLoading: statsLoading,
+    isError: statsError,
+    refetch: refetchStats,
+  } = useUserStats(id);
 
   const {
     data: postsData,
     isLoading: postsLoading,
+    isError: postsError,
+    refetch: refetchPosts,
   } = useUserPostsPage(user?.publicId || "", postsPage, {
     enabled: !!user?.publicId && activeTab === 0,
     limit: pageSize,
@@ -65,6 +78,8 @@ const AdminUserDetail: React.FC = () => {
   const {
     data: commentsData,
     isLoading: commentsLoading,
+    isError: commentsError,
+    refetch: refetchComments,
   } = useUserCommentsPage(user?.publicId || "", commentsPage, {
     enabled: !!user?.publicId && activeTab === 1,
     limit: pageSize,
@@ -74,11 +89,44 @@ const AdminUserDetail: React.FC = () => {
   const {
     data: likesData,
     isLoading: likesLoading,
+    isError: likesError,
+    refetch: refetchLikes,
   } = useUserLikedPostsPage(user?.publicId || "", likesPage, {
     enabled: !!user?.publicId && activeTab === 2,
     limit: pageSize,
     sortOrder: sortOrder,
   });
+
+  const postsTotalPages = postsData?.totalPages;
+  const commentsTotalPages = commentsData?.totalPages;
+  const likesTotalPages = likesData?.totalPages;
+
+  React.useEffect(() => {
+    if (
+      postsTotalPages !== undefined &&
+      postsPage > Math.max(1, postsTotalPages)
+    ) {
+      setPostsPage(Math.max(1, postsTotalPages));
+    }
+  }, [postsPage, postsTotalPages]);
+
+  React.useEffect(() => {
+    if (
+      commentsTotalPages !== undefined &&
+      commentsPage > Math.max(1, commentsTotalPages)
+    ) {
+      setCommentsPage(Math.max(1, commentsTotalPages));
+    }
+  }, [commentsPage, commentsTotalPages]);
+
+  React.useEffect(() => {
+    if (
+      likesTotalPages !== undefined &&
+      likesPage > Math.max(1, likesTotalPages)
+    ) {
+      setLikesPage(Math.max(1, likesTotalPages));
+    }
+  }, [likesPage, likesTotalPages]);
 
   const removeFavoriteMutation = useRemoveUserFavoriteAdmin();
 
@@ -97,6 +145,30 @@ const AdminUserDetail: React.FC = () => {
       <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}>
         <CircularProgress />
       </Box>
+    );
+  }
+
+  if (userError || statsError) {
+    return (
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Alert
+          severity="error"
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => {
+                void refetchUser();
+                void refetchStats();
+              }}
+            >
+              Retry
+            </Button>
+          }
+        >
+          Unable to load this account.
+        </Alert>
+      </Container>
     );
   }
 
@@ -167,12 +239,30 @@ const AdminUserDetail: React.FC = () => {
                         : "N/A"}
                     </Typography>
                   </Box>
-                  <Box sx={{ mt: 1 }}>
-                    <Typography variant="caption" color="text.secondary">
-                      ID: {user.publicId}
-                    </Typography>
-                  </Box>
-                </Box>
+                   <Box sx={{ mt: 1 }}>
+                     <Typography variant="caption" color="text.secondary">
+                       ID: {user.publicId}
+                     </Typography>
+                   </Box>
+                   <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1.5 }}>
+                     <Button
+                       component={RouterLink}
+                       to={`/admin?tab=requests&requestUserId=${encodeURIComponent(user.publicId)}`}
+                       size="small"
+                       variant="outlined"
+                     >
+                       Request traces
+                     </Button>
+                     <Button
+                       component={RouterLink}
+                       to={`/admin?tab=security&securityUserId=${encodeURIComponent(user.publicId)}`}
+                       size="small"
+                       variant="outlined"
+                     >
+                       Security activity
+                     </Button>
+                   </Stack>
+                 </Box>
               </Box>
             </CardContent>
           </Card>
@@ -270,7 +360,12 @@ const AdminUserDetail: React.FC = () => {
               <Select
                 value={sortOrder}
                 label="Sort Order"
-                onChange={(e) => setSortOrder(e.target.value as "asc" | "desc")}
+                onChange={(e) => {
+                  setSortOrder(e.target.value as "asc" | "desc");
+                  setPostsPage(1);
+                  setCommentsPage(1);
+                  setLikesPage(1);
+                }}
                 startAdornment={<SortIcon sx={{ mr: 1, color: "text.secondary" }} />}
               >
                 <MenuItem value="desc">Newest First</MenuItem>
@@ -312,7 +407,18 @@ const AdminUserDetail: React.FC = () => {
         <Box sx={{ p: 2 }}>
           {activeTab === 0 && (
             <Box>
-              {postsLoading ? (
+              {postsError ? (
+                <Alert
+                  severity="error"
+                  action={
+                    <Button color="inherit" size="small" onClick={() => void refetchPosts()}>
+                      Retry
+                    </Button>
+                  }
+                >
+                  Unable to load posts.
+                </Alert>
+              ) : postsLoading ? (
                 <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}><CircularProgress /></Box>
               ) : postsData?.data.length === 0 ? (
                 <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
@@ -343,7 +449,18 @@ const AdminUserDetail: React.FC = () => {
 
           {activeTab === 1 && (
             <Box>
-              {commentsLoading ? (
+              {commentsError ? (
+                <Alert
+                  severity="error"
+                  action={
+                    <Button color="inherit" size="small" onClick={() => void refetchComments()}>
+                      Retry
+                    </Button>
+                  }
+                >
+                  Unable to load comments.
+                </Alert>
+              ) : commentsLoading ? (
                 <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}><CircularProgress /></Box>
               ) : commentsData?.comments.length === 0 ? (
                 <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
@@ -371,7 +488,18 @@ const AdminUserDetail: React.FC = () => {
 
           {activeTab === 2 && (
             <Box>
-              {likesLoading ? (
+              {likesError ? (
+                <Alert
+                  severity="error"
+                  action={
+                    <Button color="inherit" size="small" onClick={() => void refetchLikes()}>
+                      Retry
+                    </Button>
+                  }
+                >
+                  Unable to load liked posts.
+                </Alert>
+              ) : likesLoading ? (
                 <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}><CircularProgress /></Box>
               ) : likesData?.data.length === 0 ? (
                 <Typography color="text.secondary" align="center" sx={{ py: 4 }}>

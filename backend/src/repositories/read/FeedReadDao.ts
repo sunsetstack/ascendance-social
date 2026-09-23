@@ -461,18 +461,22 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
 
       let results = await this.model.aggregate(pipeline).exec();
 
-      if (direction === "backward") {
-        results = results.reverse();
-      }
-
       const hasMore = results.length > limit;
       if (hasMore) {
         results = results.slice(0, limit);
       }
 
+      if (direction === "backward") {
+        results = results.reverse();
+      }
+
       const nextCursor =
         hasMore && results.length > 0
-          ? this.buildNewCursor(results, decodedCursor, results.length - 1)
+          ? this.buildNewCursor(
+              results,
+              decodedCursor,
+              direction === "backward" ? 0 : results.length - 1,
+            )
           : undefined;
       const prevCursor =
         results.length > 0

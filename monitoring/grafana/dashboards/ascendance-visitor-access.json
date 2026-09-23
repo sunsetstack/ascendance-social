@@ -1,0 +1,57 @@
+{
+  "annotations": { "list": [] },
+  "description": "Unsampled ingress-access observations from Caddy and nginx. Records describe a request at a proxy layer; they do not identify a person, account, or registration state. The default view is nginx-origin observations to avoid counting the same proxied request twice. Cloudflare-only requests are absent unless Cloudflare edge Logpush is configured separately.",
+  "editable": false,
+  "graphTooltip": 0,
+  "id": null,
+  "panels": [
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Factual proxy-observation count by status.\n\n```logql\nsum by (status) (count_over_time({compose_project=\"ascendance-social\", service_name=~\"frontend|caddy\"} | json | __error__=\"\" | event=\"ingress.access\" | source_layer=~\"$sourceLayer\" | client_ip=~\"$clientIp\" | request_path=~\"$path\" [$__interval]))\n```",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 12, "lineWidth": 1 }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "expr": "sum by (status) (count_over_time({compose_project=\"ascendance-social\", service_name=~\"frontend|caddy\"} | json | __error__=\"\" | event=\"ingress.access\" | source_layer=~\"$sourceLayer\" | client_ip=~\"$clientIp\" | request_path=~\"$path\" [$__interval]))", "legendFormat": "HTTP {{status}}", "queryType": "range", "refId": "A" }],
+      "title": "Proxy observations by status",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Factual proxy-observation count by original request path. Use this to investigate bursts; it does not label visitors or infer intent.\n\n```logql\nsum by (request_path) (count_over_time({compose_project=\"ascendance-social\", service_name=~\"frontend|caddy\"} | json | __error__=\"\" | event=\"ingress.access\" | source_layer=~\"$sourceLayer\" | client_ip=~\"$clientIp\" | request_path=~\"$path\" [$__interval]))\n```",
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "bars", "fillOpacity": 35, "lineWidth": 1 }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] } }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "expr": "sum by (request_path) (count_over_time({compose_project=\"ascendance-social\", service_name=~\"frontend|caddy\"} | json | __error__=\"\" | event=\"ingress.access\" | source_layer=~\"$sourceLayer\" | client_ip=~\"$clientIp\" | request_path=~\"$path\" [$__interval]))", "legendFormat": "{{request_path}}", "queryType": "range", "refId": "A" }],
+      "title": "Proxy observations by path",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "description": "Raw evidence records. Expand a row for plaintext observed client IP, peer IP, original path, method, status, timing, proxy outcome, selected browser headers, origin, safe referrer path, CF-Ray, and source/protocol attribution. Caddy redirect/proxy records are a separate source layer from nginx origin records.",
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 8 },
+      "id": 3,
+      "options": { "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLines": true },
+      "targets": [{ "direction": "backward", "expr": "{compose_project=\"ascendance-social\", service_name=~\"frontend|caddy\"} | json | __error__=\"\" | event=\"ingress.access\" | source_layer=~\"$sourceLayer\" | client_ip=~\"$clientIp\" | request_path=~\"$path\"", "maxLines": 500, "queryType": "range", "refId": "A" }],
+      "title": "Ingress access evidence",
+      "type": "logs"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["ascendance", "ingress", "visitor-access"],
+  "templating": {
+    "list": [
+      { "current": { "selected": true, "text": "nginx origin", "value": "nginx_origin" }, "hide": 0, "label": "Source layer", "name": "sourceLayer", "options": [{ "selected": true, "text": "nginx origin", "value": "nginx_origin" }, { "selected": false, "text": "Caddy origin ingress", "value": "caddy_ingress" }], "query": "nginx origin : nginx_origin,Caddy origin ingress : caddy_ingress", "type": "custom" },
+      { "current": { "selected": true, "text": ".*", "value": ".*" }, "hide": 0, "label": "Observed client IP regex", "name": "clientIp", "query": ".*", "type": "textbox" },
+      { "current": { "selected": true, "text": ".*", "value": ".*" }, "hide": 0, "label": "Original path regex", "name": "path", "query": ".*", "type": "textbox" }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "title": "Ascendance Visitor Access",
+  "uid": "ascendance-visitor-access",
+  "version": 0
+}

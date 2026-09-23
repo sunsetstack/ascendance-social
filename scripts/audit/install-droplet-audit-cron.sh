@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ASCENDANCE_DIR="${ASCENDANCE_DIR:-/opt/ascendance-social}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose-prod.yml}"
+BACKEND_SERVICE="${BACKEND_SERVICE:-backend}"
 BACKEND_CONTAINER="${BACKEND_CONTAINER:-backend}"
 NODE_CONTAINER_UID="${NODE_CONTAINER_UID:-}"
 NODE_CONTAINER_GID="${NODE_CONTAINER_GID:-}"
@@ -9,6 +11,9 @@ CRON_SCHEDULE="${CRON_SCHEDULE:-15 0 * * *}"
 CRON_MARKER="ascendance-audit-seal"
 OPS_LOG_DIR="${OPS_LOG_DIR:-$ASCENDANCE_DIR/backend/audit}"
 CRON_LOG="${CRON_LOG:-$OPS_LOG_DIR/audit-seal-cron.log}"
+SEAL_WRAPPER="${SEAL_WRAPPER:-$ASCENDANCE_DIR/scripts/audit/seal-audit-docker.sh}"
+SEAL_ENV_FILE="${SEAL_ENV_FILE:-$OPS_LOG_DIR/audit-seal.env}"
+AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64="${AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64:-}"
 
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -53,6 +58,34 @@ verify_backend() {
   fi
 }
 
+prepare_seal_env() {
+  if [[ -f "$SEAL_ENV_FILE" ]]; then
+    if ! grep -Eq '^AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64=[^[:space:]]' "$SEAL_ENV_FILE"; then
+      echo "$SEAL_ENV_FILE must define AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64" >&2
+      exit 1
+    fi
+    chmod 0600 "$SEAL_ENV_FILE"
+    return 0
+  fi
+
+  if [[ -z "$AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64" ]]; then
+    echo "Set AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64 or create $SEAL_ENV_FILE before installing the audit cron job" >&2
+    exit 1
+  fi
+
+  local temp_file
+  temp_file="$(mktemp)"
+  cat >"$temp_file" <<EOF
+ASCENDANCE_DIR=$ASCENDANCE_DIR
+COMPOSE_FILE=$COMPOSE_FILE
+BACKEND_SERVICE=$BACKEND_SERVICE
+HOST_ARCHIVE_DIR=$ASCENDANCE_DIR/backend/audit/archives
+AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64=$AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64
+EOF
+  install -m 0600 "$temp_file" "$SEAL_ENV_FILE"
+  rm -f "$temp_file"
+}
+
 verify_timer_not_active() {
   if command -v systemctl >/dev/null 2>&1 && \
     systemctl is-active --quiet ascendance-audit-seal.timer 2>/dev/null; then
@@ -64,7 +97,11 @@ verify_timer_not_active() {
 
 install_cron() {
   local cron_command
-  cron_command="cd '$ASCENDANCE_DIR' && docker exec '$BACKEND_CONTAINER' node backend/dist/scripts/seal-audit-archive.js >> '$CRON_LOG' 2>&1"
+  if [[ ! -f "$SEAL_WRAPPER" ]]; then
+    echo "Audit sealing wrapper is missing: $SEAL_WRAPPER" >&2
+    exit 1
+  fi
+  cron_command="set -a; . '$SEAL_ENV_FILE'; set +a; bash '$SEAL_WRAPPER' >> '$CRON_LOG' 2>&1"
 
   local existing_cron
   existing_cron="$(
@@ -89,14 +126,16 @@ main() {
   resolve_container_identity
   prepare_audit_dirs
   prepare_ops_logs
+  prepare_seal_env
   install_cron
 
   echo "Installed user cron job:"
   crontab -l | grep "$CRON_MARKER"
   echo
   echo "Log file: $CRON_LOG"
+  echo "Secret config: $SEAL_ENV_FILE (mode 0600)"
   echo "Run manually with:"
-  echo "cd '$ASCENDANCE_DIR' && docker exec '$BACKEND_CONTAINER' node backend/dist/scripts/seal-audit-archive.js"
+  echo "set -a; . '$SEAL_ENV_FILE'; set +a; bash '$SEAL_WRAPPER'"
 }
 
 main "$@"

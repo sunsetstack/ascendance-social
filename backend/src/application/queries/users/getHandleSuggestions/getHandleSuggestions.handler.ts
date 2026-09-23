@@ -5,7 +5,6 @@ import { inject, injectable } from "tsyringe";
 import type { IUserReadRepository } from "@/repositories/interfaces";
 import { DTOService, HandleSuggestionDTO } from "@/services/dto.service";
 import { Errors, wrapError } from "@/utils/errors";
-import { logger } from "@/utils/winston";
 import { FollowRepository } from "@/repositories/follow.repository";
 import { escapeRegex } from "@/utils/sanitizers";
 import { IUser } from "@/types";
@@ -49,15 +48,12 @@ export class GetHandleSuggestionsQueryHandler implements IQueryHandler<
 
       return this.getSearchSuggestions(handleRegex, limit);
     } catch (error) {
-      logger.error("Failed to fetch handle suggestions", {
-        event: "handle_suggestions.fetch_failed",
-        context: query.context,
-        error,
-      });
       if (error instanceof Error) {
         throw wrapError(error);
       }
-      throw Errors.internal("Failed to fetch handle suggestions");
+      throw Errors.internal("Failed to fetch handle suggestions", {
+        cause: error,
+      });
     }
   }
 

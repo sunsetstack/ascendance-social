@@ -1,3 +1,4 @@
+import { broadcastToAuthenticatedSockets } from "@/server/socket-security";
 import { Server as SocketIOServer } from "socket.io";
 import { inject, injectable } from "tsyringe";
 import { IRealtimeMessageHandler } from "./IRealtimeMessageHandler.interface";
@@ -25,7 +26,7 @@ export class InteractionMessageHandler implements IRealtimeMessageHandler {
     // notify the content owner about the interaction
     // this would require looking up the owner of the target content
 
-    io.emit(EventRegistry.socketServerEvents.feedInteraction, {
+    await broadcastToAuthenticatedSockets(io, EventRegistry.socketServerEvents.feedInteraction, {
       eventId:
         message.eventId ??
         buildRealtimeEventId(

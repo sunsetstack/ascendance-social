@@ -117,6 +117,9 @@ export const useUpdateComment = () => {
 			queryClient.invalidateQueries({
 				queryKey: ["comments", "post", updatedComment.postPublicId],
 			});
+			queryClient.invalidateQueries({
+				queryKey: ["userCommentsPage"],
+			});
 		},
 		onError: (error: Error) => {
 			devError("Error updating comment:", error);
@@ -152,6 +155,9 @@ export const useDeleteComment = () => {
 			});
 			queryClient.invalidateQueries({
 				queryKey: ["newFeed"],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["userCommentsPage"],
 			});
 
 			// Invalidate thread view queries

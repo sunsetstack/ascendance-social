@@ -6,12 +6,14 @@ import { buildMediaUrl, buildResponsiveCloudinarySrcSet, transformCloudinaryUrl 
 
 interface MediaCardProps {
 	post: IPost;
+	onOpen?: (postPublicId: string) => void;
 }
 
-const MediaCard: React.FC<MediaCardProps> = ({ post }) => {
+const MediaCard: React.FC<MediaCardProps> = ({ post, onOpen }) => {
 	const navigate = useNavigate();
 
 	const handleClick = () => {
+		onOpen?.(post.publicId);
 		navigate(`/posts/${post.publicId}`);
 	};
 
@@ -35,6 +37,7 @@ const MediaCard: React.FC<MediaCardProps> = ({ post }) => {
 					transform: "scale(1.05)",
 				},
 			}}
+			data-feed-card-id={post.publicId}
 			onClick={handleClick}
 		>
 			<img

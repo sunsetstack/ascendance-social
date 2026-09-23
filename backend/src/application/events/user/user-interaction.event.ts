@@ -1,10 +1,12 @@
 import { UserPublicId, PostPublicId, MongoId } from "@/types/branded";
 import { IEvent } from "@/application/common/interfaces/event.interface";
 import { EventRegistry } from "@/application/common/events/event-registry";
+import { randomUUID } from "node:crypto";
 
 export class UserInteractedWithPostEvent implements IEvent {
   static readonly type = EventRegistry.domain.UserInteractedWithPost;
   readonly type = UserInteractedWithPostEvent.type;
+  readonly eventId: string = randomUUID();
   readonly timestamp: Date = new Date();
 
   constructor(
@@ -17,6 +19,7 @@ export class UserInteractedWithPostEvent implements IEvent {
     public readonly postId: PostPublicId,
     public readonly tags: string[],
     public readonly postOwnerId: UserPublicId,
+    public readonly activityId?: string,
   ) {}
 }
 

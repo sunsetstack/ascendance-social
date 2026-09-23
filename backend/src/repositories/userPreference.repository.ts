@@ -45,13 +45,13 @@ export class UserPreferenceRepository extends BaseRepository<IUserPreference> {
     increment: number,
   ): Promise<IUserPreference> {
     try {
-      return this.model.findOneAndUpdate(
+      return await this.model.findOneAndUpdate(
         { userId, tag },
         {
           $inc: { score: increment },
           $set: { lastInteraction: new Date() },
         },
-        { upsert: true, new: true },
+        { upsert: true, new: true, session: this.getSession() },
       );
     } catch (error) {
       logger.error("[UserPreferenceRepository] Failed to increment tag score", {

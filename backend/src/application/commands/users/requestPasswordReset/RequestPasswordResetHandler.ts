@@ -28,12 +28,15 @@ export class RequestPasswordResetHandler implements ICommandHandler<
       return;
     }
 
-    // Generate a reset token
     const resetToken = crypto.randomBytes(32).toString("hex");
+    const resetTokenHash = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
     const resetTokenExpires = Date.now() + 3600000; // 1 hour
 
     await this.userWriteRepository.update(user.id, {
-      resetToken,
+      resetToken: resetTokenHash,
       resetTokenExpires,
     });
 

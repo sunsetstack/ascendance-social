@@ -22,6 +22,7 @@ import { ImageService } from "@/services/image.service";
 import { RedisService } from "@/services/redis.service";
 import { DTOService } from "@/services/dto.service";
 import { UnitOfWork } from "@/database/UnitOfWork";
+import { AmbiguousTransactionCommitError } from "@/database/transaction-errors";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { PostUploadedEvent } from "@/application/events/post/post.event";
 import { ImageAssetCleanupRequestedEvent } from "@/application/events/image/image.event";
@@ -155,7 +156,7 @@ export class CreatePostCommandHandler implements ICommandHandler<
       return await this.finalizePost(txResult);
     } catch (error) {
       // Only compensate if the post never became active.
-      if (!activated) {
+      if (!activated && !(error instanceof AmbiguousTransactionCommitError)) {
         if (uploadResult) {
           await this.requestUploadedAssetCleanup(uploadResult.publicId);
         }

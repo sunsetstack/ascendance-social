@@ -1,10 +1,15 @@
 import { ICommand } from "@/application/common/interfaces/command.interface";
+import type { ClientFingerprint } from "@/types";
 
 export interface LogAuthActivityPayload {
   action: string;
   ip: string;
   origin?: string;
+  referer?: string;
   userAgent?: string;
+  clientFingerprint?: ClientFingerprint;
+  clientFingerprintSchemaVersion?: number;
+  aborted?: boolean;
   route?: string;
   statusCode?: number;
   responseTimeMs?: number;

@@ -12,6 +12,7 @@ interface PostCardRepostPreviewProps {
 	repostImageSrcSet?: string;
 	repostImageWidth?: number;
 	repostImageHeight?: number;
+	onOpen?: (postPublicId: string) => void;
 }
 
 export const PostCardRepostPreview: React.FC<PostCardRepostPreviewProps> = ({
@@ -21,6 +22,7 @@ export const PostCardRepostPreview: React.FC<PostCardRepostPreviewProps> = ({
 	repostImageSrcSet,
 	repostImageWidth,
 	repostImageHeight,
+	onOpen,
 }) => {
 	const navigate = useNavigate();
 	const { t } = useTranslation();
@@ -45,6 +47,7 @@ export const PostCardRepostPreview: React.FC<PostCardRepostPreviewProps> = ({
 			onClick={(event) => {
 				event.stopPropagation();
 				if (post.repostOf?.publicId) {
+					onOpen?.(post.publicId);
 					navigate(`/posts/${post.repostOf.publicId}`);
 				}
 			}}

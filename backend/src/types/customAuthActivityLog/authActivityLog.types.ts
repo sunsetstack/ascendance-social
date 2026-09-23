@@ -1,4 +1,5 @@
 import { Document } from "mongoose";
+import type { ClientFingerprint } from "../customRequestLog/clientEvidence.types";
 
 export interface IAuthActivityLog extends Document {
   timestamp: Date;
@@ -21,6 +22,9 @@ export interface IAuthActivityLog extends Document {
     origin?: string;
     referer?: string;
     userAgent?: string;
+    clientFingerprint?: ClientFingerprint;
+    clientFingerprintSchemaVersion?: number;
+    aborted?: boolean;
     route?: string;
     statusCode?: number;
     responseTimeMs?: number;

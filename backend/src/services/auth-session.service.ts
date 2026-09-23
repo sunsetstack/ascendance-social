@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { inject, injectable } from "tsyringe";
 import { AuthSessionRecord } from "@/types";
 import type { AuthSessionStore } from "@/application/ports/auth-session-store";
+import type { UserAuthenticationLookup } from "@/application/ports/user-authentication-lookup";
 import {
   asSessionId,
   asUserPublicId,
@@ -9,6 +10,8 @@ import {
 } from "@/types/branded";
 import { Errors } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
+import { EventRegistry } from "@/application/common/events/event-registry";
+import { RedisService } from "@/services/redis.service";
 
 const SESSION_ID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -25,6 +28,7 @@ export interface CreateSessionInput extends SessionContext {
   sid: string;
   publicId: string;
   isEmailVerified: boolean;
+  authVersion?: number;
   refreshToken: string;
   ttlSeconds: number;
 }
@@ -40,6 +44,10 @@ export class AuthSessionService {
   constructor(
     @inject(TOKENS.Services.AuthSessionStore)
     private readonly authSessionStore: AuthSessionStore,
+    @inject(TOKENS.Repositories.UserAuthenticationLookup)
+    private readonly userReadRepository: UserAuthenticationLookup,
+    @inject(TOKENS.Services.Redis)
+    private readonly redisService?: RedisService,
   ) {}
 
   /**
@@ -69,6 +77,7 @@ export class AuthSessionService {
       sid: asSessionId(input.sid),
       publicId: asUserPublicId(input.publicId),
       isEmailVerified: input.isEmailVerified,
+      authVersion: input.authVersion ?? 0,
       refreshTokenHash: asRefreshTokenHash(
         this.hashRefreshToken(input.refreshToken),
       ),
@@ -120,6 +129,7 @@ export class AuthSessionService {
     ) {
       throw Errors.authentication("Session is invalid or expired");
     }
+    await this.assertCurrentAuthVersion(session);
     await this.touchSessionOnAccess(session);
     return session;
   }
@@ -239,12 +249,16 @@ export class AuthSessionService {
     } catch {
       throw Errors.authentication("Session is invalid or expired");
     }
-    if (!session) return;
+    if (!session) {
+      await this.publishSessionRevocation(sid);
+      return;
+    }
     if (session.sid !== sid || typeof session.publicId !== "string") {
       throw Errors.authentication("Session is invalid or expired");
     }
 
     await this.authSessionStore.remove(sid, session.publicId);
+    await this.publishSessionRevocation(sid);
   }
 
   async revokeSessionByRefreshToken(refreshToken: string): Promise<void> {
@@ -261,11 +275,15 @@ export class AuthSessionService {
 
     switch (outcome) {
       case "revoked":
+        await this.publishSessionRevocation(sid);
         return;
       case "mismatch":
+        await this.publishSessionRevocation(sid);
         throw Errors.authentication("Refresh token reuse detected");
       case "missing":
       case "inactive":
+        await this.publishSessionRevocation(sid);
+        throw Errors.authentication("Session is invalid or expired");
       case "identity_mismatch":
       case "invalid_record":
         throw Errors.authentication("Session is invalid or expired");
@@ -282,6 +300,12 @@ export class AuthSessionService {
   async revokeAllSessionsForUser(publicId: string): Promise<void> {
     const sessionIds = await this.authSessionStore.getUserSessionIds(publicId);
     await this.authSessionStore.deleteUserSessions(publicId, sessionIds);
+    if (this.redisService) {
+      await this.redisService.publish(
+        EventRegistry.redisChannels.sessionRevocations,
+        { publicId },
+      );
+    }
   }
 
   async markUserEmailVerified(publicId: string): Promise<void> {
@@ -315,6 +339,13 @@ export class AuthSessionService {
       .createHash("sha256")
       .update(refreshToken, "utf8")
       .digest("hex");
+  }
+
+  private async publishSessionRevocation(sid: string): Promise<void> {
+    if (!this.redisService) return;
+    await this.redisService.publish(EventRegistry.redisChannels.sessionRevocations, {
+      sid,
+    });
   }
 
   /**
@@ -453,6 +484,22 @@ export class AuthSessionService {
       );
     }
     throw Errors.authentication("Session is invalid or expired");
+  }
+
+  private async assertCurrentAuthVersion(
+    session: AuthSessionRecord,
+  ): Promise<void> {
+    const user = await this.userReadRepository.findByPublicId(session.publicId);
+    const currentAuthVersion = user?.authVersion ?? 0;
+    if (!user || session.authVersion !== currentAuthVersion) {
+      try {
+        await this.authSessionStore.remove(session.sid, session.publicId);
+        await this.publishSessionRevocation(session.sid);
+      } catch {
+        // The version mismatch already rejects the request; Redis cleanup is best effort here.
+      }
+      throw Errors.authentication("Session is invalid or expired");
+    }
   }
 
   /**

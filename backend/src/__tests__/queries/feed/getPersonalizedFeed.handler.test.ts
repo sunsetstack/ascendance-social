@@ -1,14 +1,10 @@
 import { describe, beforeEach, afterEach, it } from "mocha";
-import * as chai from "chai";
 import { expect } from "chai";
-import chaiAsPromised from "chai-as-promised";
 import sinon, { SinonStub } from "sinon";
 
 import { GetPersonalizedFeedQueryHandler } from "@/application/queries/feed/getPersonalizedFeed/getPersonalizedFeed.handler";
 import { GetPersonalizedFeedQuery } from "@/application/queries/feed/getPersonalizedFeed/getPersonalizedFeed.query";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
-
-chai.use(chaiAsPromised);
 
 describe("GetPersonalizedFeedQueryHandler", () => {
 	let handler: GetPersonalizedFeedQueryHandler;
@@ -75,11 +71,19 @@ describe("GetPersonalizedFeedQueryHandler", () => {
 		expect(result.data[0].publicId).to.equal("p2");
 	});
 
-	it("wraps errors as UnknownError", async () => {
-		mockRedisService.getWithTags.rejects(new Error("boom"));
+	it("wraps errors as InternalServerError and preserves the cause", async () => {
+		const cause = new Error("boom");
+		mockRedisService.getWithTags.rejects(cause);
 
-		await expect(handler.execute(new GetPersonalizedFeedQuery("viewer", 1, 10))).to.be.rejectedWith(
+		const error = await handler
+			.execute(new GetPersonalizedFeedQuery("viewer", 1, 10))
+			.catch((caught: unknown) => caught);
+
+		expect(error).to.be.instanceOf(Error);
+		expect((error as Error).name).to.equal("InternalServerError");
+		expect((error as Error).message).to.equal(
 			"Could not generate personalized feed for user viewer: boom",
 		);
+		expect((error as Error & { cause?: unknown }).cause).to.equal(cause);
 	});
 });

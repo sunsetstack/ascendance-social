@@ -9,6 +9,7 @@ import {
 } from "@/application/common/events/event-registry";
 import { MetricsService } from "@/metrics/metrics.service";
 import { TOKENS } from "@/types/tokens";
+import { emitToAuthenticatedUser } from "@/server/socket-security";
 
 @injectable()
 export class MessageSentHandler implements IRealtimeMessageHandler {
@@ -33,7 +34,7 @@ export class MessageSentHandler implements IRealtimeMessageHandler {
     uniqueRecipients.delete("");
 
     for (const userId of uniqueRecipients) {
-      io.to(userId).emit(EventRegistry.socketServerEvents.messagingUpdate, {
+      await emitToAuthenticatedUser(io, userId, EventRegistry.socketServerEvents.messagingUpdate, {
         eventId:
           message.eventId ??
           buildRealtimeEventId(

@@ -1,31 +1,49 @@
 {
-        servers {
-                trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
-                trusted_proxies_strict
-                client_ip_headers CF-Connecting-IP X-Forwarded-For
-        }
+	servers {
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		client_ip_headers CF-Connecting-IP
+	}
 }
 
 {$DOMAIN_NAME}, www.{$DOMAIN_NAME} {
-        tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
+	tls /etc/caddy/certs/cert.pem /etc/caddy/certs/key.pem
 
-        log {
-                output stdout
-                format json
-        }
+	# Keep Caddy ingress/proxy records separate from nginx-origin records. Headers and the
+	# original URI are removed from Caddy's default access object; selected safe
+	# request fields below are appended explicitly.
+	log ingress_caddy {
+		output stdout
+		format filter {
+			request>uri delete
+			request>headers delete
+			wrap json
+		}
+	}
+	log_append <event ingress.access
+	log_append <source_layer caddy_ingress
+	log_append <request_path {http.request.uri.path}
+	log_append <client_ip {client_ip}
+	log_append <peer_ip {remote_host}
+	log_append <client_ip_source caddy_trusted_proxies
+	log_append <origin_protocol {http.request.proto}
+	log_append <user_agent {http.request.header.User-Agent}
+	log_append <accept {http.request.header.Accept}
+	log_append <accept_language {http.request.header.Accept-Language}
+	log_append <accept_encoding {http.request.header.Accept-Encoding}
+	log_append <sec_ch_ua {http.request.header.Sec-CH-UA}
+	log_append <sec_fetch_site {http.request.header.Sec-Fetch-Site}
+	log_append <sec_fetch_mode {http.request.header.Sec-Fetch-Mode}
+	log_append <sec_fetch_dest {http.request.header.Sec-Fetch-Dest}
+	log_append <cf_ray {http.request.header.CF-Ray}
 
-        @www host www.{$DOMAIN_NAME}
-        redir @www https://{$DOMAIN_NAME}{uri} permanent
-
-        header {
-                Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        }
-
-        reverse_proxy frontend:80 {
-                header_up Host {http.request.host}
-                header_up X-Forwarded-Proto {http.request.scheme}
-                header_up X-Forwarded-For {client_ip}
-                header_up CF-Connecting-IP {client_ip}
-                header_up X-Real-IP {client_ip}
-        }
+	@www host www.{$DOMAIN_NAME}
+	@notCloudflare not remote_ip 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	route {
+		respond @notCloudflare 403
+		redir @www https://{$DOMAIN_NAME}{uri} permanent
+		reverse_proxy frontend:80 {
+			header_up CF-Connecting-IP {client_ip}
+		}
+	}
 }

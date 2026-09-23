@@ -1,7 +1,7 @@
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { inject, injectable } from "tsyringe";
 import { LikeActionCommand } from "./likeAction.command";
-import { IPost, PopulatedPostUser } from "@/types/index";
+import { IPost, IUserAction, PopulatedPostUser } from "@/types/index";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { UserInteractedWithPostEvent } from "@/application/events/user/user-interaction.event";
 import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRepository";
@@ -48,8 +48,6 @@ export class LikeActionCommandHandler implements ICommandHandler<
    * @returns The updated image object.
    */
   async execute(command: LikeActionCommand): Promise<IPost> {
-    let isLikeAction = true;
-
     const existingPost = await this.postReadRepository.findById(command.postId);
     if (!existingPost) {
       throw Errors.notFound("Post");
@@ -70,20 +68,18 @@ export class LikeActionCommandHandler implements ICommandHandler<
         command.userId,
       );
 
-      if (existingLike) {
-        await this.handleUnlike(command);
-        isLikeAction = false;
-      } else {
-        await this.handleLike(command, existingPost);
-      }
+      const activity = existingLike
+        ? await this.handleUnlike(command)
+        : await this.handleLike(command, existingPost);
 
       await this.eventBus.queueTransactional(
         new UserInteractedWithPostEvent(
           actorUser.publicId,
-          isLikeAction ? "like" : "unlike",
+          existingLike ? "unlike" : "like",
           existingPost.publicId,
           postTags,
           asUserPublicId(this.resolveOwnerPublicId(existingPost)),
+          String(activity._id),
         ),
       );
     });
@@ -107,7 +103,10 @@ export class LikeActionCommandHandler implements ICommandHandler<
    * Handles the like action by creating a like record, incrementing the like count,
    * logging the user action, and triggering a notification.
    */
-  private async handleLike(command: LikeActionCommand, post: IPost) {
+  private async handleLike(
+    command: LikeActionCommand,
+    post: IPost,
+  ): Promise<IUserAction> {
     const added = await this.postLikeRepository.addLike(
       command.postId,
       command.userId,
@@ -118,7 +117,7 @@ export class LikeActionCommandHandler implements ICommandHandler<
 
     await this.postWriteRepository.updateLikeCount(command.postId, 1);
 
-    await this.userActionRepository.logAction(
+    const activity = await this.userActionRepository.logAction(
       command.userId,
       "like",
       command.postId,
@@ -144,13 +143,14 @@ export class LikeActionCommandHandler implements ICommandHandler<
         }),
       );
     }
+    return activity;
   }
 
   /**
    * Handles the unlike action by removing the like record, decrementing the like count,
    * and logging the user action.
    */
-  private async handleUnlike(command: LikeActionCommand) {
+  private async handleUnlike(command: LikeActionCommand): Promise<IUserAction> {
     const removed = await this.postLikeRepository.removeLike(
       command.postId,
       command.userId,
@@ -161,7 +161,7 @@ export class LikeActionCommandHandler implements ICommandHandler<
 
     await this.postWriteRepository.updateLikeCount(command.postId, -1);
 
-    await this.userActionRepository.logAction(
+    return await this.userActionRepository.logAction(
       command.userId,
       "unlike",
       command.postId,

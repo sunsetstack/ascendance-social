@@ -1,4 +1,5 @@
 import { Document } from "mongoose";
+import type { ClientFingerprint, VisitorObservation } from "./clientEvidence.types";
 
 export interface IRequestLog extends Document {
   timestamp: Date;
@@ -19,8 +20,12 @@ export interface IRequestLog extends Document {
     origin?: string;
     referer?: string;
     userAgent?: string;
+    clientFingerprint?: ClientFingerprint;
+    clientFingerprintSchemaVersion?: number;
+    visitorObservation?: VisitorObservation;
     statusCode: number;
     responseTimeMs: number;
+    aborted?: boolean;
     authState?: string;
     authSource?: string;
     authAction?: string;

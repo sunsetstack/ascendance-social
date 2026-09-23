@@ -99,6 +99,27 @@ export class UserWriteRepository
     }
   }
 
+  async consumePasswordResetToken(
+    resetTokenHash: string,
+    newPassword: string,
+  ): Promise<IUser | null> {
+    try {
+      return await this.updateUser(
+        {
+          resetToken: resetTokenHash,
+          resetTokenExpires: { $gt: new Date() },
+        },
+        {
+          $set: { password: newPassword },
+          $inc: { authVersion: 1 },
+          $unset: { resetToken: 1, resetTokenExpires: 1 },
+        },
+      );
+    } catch (error) {
+      this.handleWriteError(error, "consumePasswordResetToken");
+    }
+  }
+
   async updateAvatar(userId: MongoId, avatarUrl: string): Promise<void> {
     try {
       await this.updateUserById(userId, { $set: { avatar: avatarUrl } });

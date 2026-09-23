@@ -9,6 +9,7 @@ AUDIT_LOG_HOST_DIR="${AUDIT_LOG_HOST_DIR:-$ASCENDANCE_DIR/backend/audit/logs}"
 AUDIT_ARCHIVE_HOST_DIR="${AUDIT_ARCHIVE_HOST_DIR:-$ASCENDANCE_DIR/backend/audit/archives}"
 NODE_CONTAINER_UID="${NODE_CONTAINER_UID:-}"
 NODE_CONTAINER_GID="${NODE_CONTAINER_GID:-}"
+AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64="${AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64:-}"
 SYSTEMD_ENV_DIR="/etc/ascendance"
 SYSTEMD_ENV_FILE="$SYSTEMD_ENV_DIR/audit-seal.env"
 
@@ -71,8 +72,18 @@ write_env_file() {
   "${SUDO[@]}" install -d -m 0750 "$SYSTEMD_ENV_DIR"
 
   if [[ -f "$SYSTEMD_ENV_FILE" ]]; then
+    if ! "${SUDO[@]}" grep -Eq '^AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64=[^[:space:]]' "$SYSTEMD_ENV_FILE"; then
+      echo "$SYSTEMD_ENV_FILE must define AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64" >&2
+      exit 1
+    fi
+    "${SUDO[@]}" chmod 0600 "$SYSTEMD_ENV_FILE"
     echo "Keeping existing $SYSTEMD_ENV_FILE"
     return 0
+  fi
+
+  if [[ -z "$AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64" ]]; then
+    echo "Set AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64 before installing the audit timer" >&2
+    exit 1
   fi
 
   local temp_file
@@ -82,6 +93,7 @@ ASCENDANCE_DIR=$ASCENDANCE_DIR
 COMPOSE_FILE=$COMPOSE_FILE
 BACKEND_SERVICE=$BACKEND_SERVICE
 HOST_ARCHIVE_DIR=$AUDIT_ARCHIVE_HOST_DIR
+AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64=$AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64
 
 # Optional host-side upload after the container seals the archive.
 # Example: gdrive:ascendance-audit
@@ -90,7 +102,7 @@ AUDIT_HOST_RCLONE_BIN=rclone
 AUDIT_HOST_DELETE_LOCAL_ARCHIVE=false
 EOF
 
-  "${SUDO[@]}" install -m 0640 "$temp_file" "$SYSTEMD_ENV_FILE"
+  "${SUDO[@]}" install -m 0600 "$temp_file" "$SYSTEMD_ENV_FILE"
   rm -f "$temp_file"
 }
 

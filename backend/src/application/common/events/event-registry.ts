@@ -49,6 +49,7 @@ export const EventRegistry = {
     messagingUpdates: "messaging_updates",
     notificationUpdates: "notification_updates",
     profileSnapshotUpdates: "profile_snapshot_updates",
+    sessionRevocations: "session_revocations",
   },
   socketClientEvents: {
     join: "join",

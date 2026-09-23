@@ -324,8 +324,8 @@ export class AdminUserController {
       page,
       limit,
       userId,
-      sessionId,
-      tokenFamilyId,
+      ip,
+      correlationId,
       clientRequestId,
       clientBootId,
       previousClientRequestId,
@@ -336,14 +336,15 @@ export class AdminUserController {
       statusCode,
       startDate,
       endDate,
+      snapshotAt,
       search,
     } = req.query;
     const options = {
       page,
       limit,
       userId,
-      sessionId,
-      tokenFamilyId,
+      ip,
+      correlationId,
       clientRequestId,
       clientBootId,
       previousClientRequestId,
@@ -354,6 +355,7 @@ export class AdminUserController {
       statusCode,
       startDate,
       endDate,
+      snapshotAt,
       search,
     };
     const query = new GetRequestLogsQuery(options);
@@ -380,8 +382,8 @@ export class AdminUserController {
       page,
       limit,
       userId,
-      sessionId,
-      tokenFamilyId,
+      ip,
+      correlationId,
       clientRequestId,
       clientBootId,
       previousClientRequestId,
@@ -392,14 +394,15 @@ export class AdminUserController {
       statusCode,
       startDate,
       endDate,
+      snapshotAt,
       search,
     } = req.query;
     const options = {
       page,
       limit,
       userId,
-      sessionId,
-      tokenFamilyId,
+      ip,
+      correlationId,
       clientRequestId,
       clientBootId,
       previousClientRequestId,
@@ -410,6 +413,7 @@ export class AdminUserController {
       statusCode,
       startDate,
       endDate,
+      snapshotAt,
       search,
     };
     const query = new GetAuthActivityLogsQuery(options);

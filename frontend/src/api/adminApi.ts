@@ -185,26 +185,49 @@ export const fetchTelemetryMetrics = async (): Promise<TelemetryMetrics> => {
   return data;
 };
 
+export interface ClientFingerprint {
+  schemaVersion: 1;
+  accept?: string;
+  acceptEncoding?: string;
+  acceptLanguage?: string;
+  secChUa?: string;
+  secChUaMobile?: string;
+  secChUaPlatform?: string;
+  secFetchDest?: string;
+  secFetchMode?: string;
+  secFetchSite?: string;
+  secFetchUser?: string;
+  protocol?: string;
+  protocolSource: "express_proxy_observed";
+}
+
+export interface VisitorObservation {
+  schemaVersion: 1;
+  path: string;
+  referrer?: string;
+  language?: string;
+  languages?: string[];
+  platform?: string;
+  timezone?: string;
+  screen?: { width: number; height: number; colorDepth: number };
+  viewport?: { width: number; height: number };
+  devicePixelRatio?: number;
+  hardwareConcurrency?: number;
+  deviceMemory?: number;
+  maxTouchPoints?: number;
+}
+
 export interface RequestLog {
   timestamp: Date;
   method: string;
   route: string;
-  ip: string;
-  origin?: string;
-  referer?: string;
   statusCode: number;
   responseTimeMs: number;
   correlationId?: string;
   userId?: string;
-  userAgent?: string;
   authState?: string;
   authSource?: string;
   authAction?: string;
-  authEmail?: string;
-  authUsername?: string;
-  authHandle?: string;
-  sessionId?: string;
-  tokenFamilyId?: string;
   clientRequestId?: string;
   clientBootId?: string;
   clientRequestAttempt?: number;
@@ -212,6 +235,14 @@ export interface RequestLog {
   previousClientRequestId?: string;
   causedByClientRequestId?: string;
   refreshRotated?: boolean;
+  ip?: string;
+  userAgent?: string;
+  origin?: string;
+  referer?: string;
+  clientFingerprint?: ClientFingerprint;
+  clientFingerprintSchemaVersion?: number;
+  visitorObservation?: VisitorObservation;
+  aborted?: boolean;
 }
 
 export interface RequestLogsResponse {
@@ -225,29 +256,28 @@ export interface RequestLogsResponse {
 export interface AuthActivityLog {
   timestamp: Date;
   action: string;
-  ip: string;
-  origin?: string;
-  referer?: string;
   route?: string;
   statusCode?: number;
   responseTimeMs?: number;
   userId?: string;
-  authEmail?: string;
-  authUsername?: string;
-  authHandle?: string;
-  userAgent?: string;
   clientRequestId?: string;
   clientBootId?: string;
   clientRequestAttempt?: number;
   axiosRetry?: boolean;
   previousClientRequestId?: string;
   causedByClientRequestId?: string;
-  sessionId?: string;
-  tokenFamilyId?: string;
   correlationId?: string;
   authState?: string;
   authSource?: string;
   refreshRotated?: boolean;
+  ip?: string;
+  userAgent?: string;
+  origin?: string;
+  referer?: string;
+  clientFingerprint?: ClientFingerprint;
+  clientFingerprintSchemaVersion?: number;
+  visitorObservation?: VisitorObservation;
+  aborted?: boolean;
 }
 
 export interface AuthActivityLogsResponse {
@@ -262,8 +292,8 @@ export const fetchRequestLogs = async (params: {
   page?: number;
   limit?: number;
   userId?: string;
-  sessionId?: string;
-  tokenFamilyId?: string;
+  correlationId?: string;
+  ip?: string;
   clientRequestId?: string;
   clientBootId?: string;
   previousClientRequestId?: string;
@@ -274,6 +304,7 @@ export const fetchRequestLogs = async (params: {
   statusCode?: number;
   startDate?: string;
   endDate?: string;
+  snapshotAt?: string;
   search?: string;
 }): Promise<RequestLogsResponse> => {
   const { data } = await axiosClient.get("/api/admin/dashboard/request-logs", {
@@ -286,8 +317,8 @@ export const fetchAuthActivityLogs = async (params: {
   page?: number;
   limit?: number;
   userId?: string;
-  sessionId?: string;
-  tokenFamilyId?: string;
+  correlationId?: string;
+  ip?: string;
   clientRequestId?: string;
   clientBootId?: string;
   previousClientRequestId?: string;
@@ -298,6 +329,7 @@ export const fetchAuthActivityLogs = async (params: {
   statusCode?: number;
   startDate?: string;
   endDate?: string;
+  snapshotAt?: string;
   search?: string;
 }): Promise<AuthActivityLogsResponse> => {
   const { data } = await axiosClient.get("/api/admin/dashboard/auth-activity", {

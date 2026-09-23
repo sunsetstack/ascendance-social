@@ -73,6 +73,10 @@ function collectFiles(req: Request): Express.Multer.File[] {
  */
 const storage = multer.memoryStorage();
 
+type MulterLimits = NonNullable<multer.Options["limits"]> & {
+  fieldArrayIndexLimit: number;
+};
+
 const fileFilter = (
   _req: unknown,
   file: Express.Multer.File,
@@ -112,17 +116,20 @@ export const validateImageUpload: RequestHandler = (req, _res, next) => {
   }
 };
 
+const uploadLimits: MulterLimits = {
+  fileSize: 10 * 1024 * 1024, // 10MB
+  files: 2,
+  fields: 20,
+  parts: 30,
+  fieldArrayIndexLimit: 50,
+  fieldNameSize: 100,
+  fieldSize: 64 * 1024,
+  headerPairs: 100,
+};
+
 const upload = multer({
   storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB
-    files: 2,
-    fields: 20,
-    parts: 30,
-    fieldNameSize: 100,
-    fieldSize: 64 * 1024,
-    headerPairs: 100,
-  },
+  limits: uploadLimits,
   fileFilter,
 });
 

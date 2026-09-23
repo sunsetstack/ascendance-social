@@ -233,6 +233,10 @@ export interface GalleryProps {
   emptyTitle?: string;
   emptyDescription?: string;
   variant?: "feed" | "media";
+  /** Logical feed identity used for anchor restoration and pending updates. */
+  feedId?: string;
+  /** Explicit refresh used by the New posts affordance. */
+  onRefresh?: () => Promise<unknown> | void;
 }
 
 export interface Notification {

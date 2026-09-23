@@ -3,6 +3,7 @@ import { MarkAllAsReadCommand } from "./markAllAsRead.command";
 import { NotificationRepository } from "@/repositories/notification.repository";
 import { RedisService } from "@/services/redis.service";
 import { WebSocketServer } from "@/server/socketServer";
+import { emitToAuthenticatedUser } from "@/server/socket-security";
 import { wrapError } from "@/utils/errors";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
@@ -37,10 +38,11 @@ export class MarkAllAsReadCommandHandler
         if (notificationIds.length > 0) {
           await this.redisService.markNotificationsRead(notificationIds);
         }
-        this.webSocketServer
-          .getIO()
-          .to(userPublicId)
-          .emit(EventRegistry.socketServerEvents.allNotificationsRead);
+        await emitToAuthenticatedUser(
+          this.webSocketServer.getIO(),
+          userPublicId,
+          EventRegistry.socketServerEvents.allNotificationsRead,
+        );
         this.metricsService.recordSocketEventEmitted(
           EventRegistry.socketServerEvents.allNotificationsRead,
           "room",

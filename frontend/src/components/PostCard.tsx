@@ -20,9 +20,14 @@ import { buildPostCardMedia } from "./post-card/postCardMedia";
 interface PostCardProps {
 	post: IPost;
 	prioritizeImage?: boolean;
+	onOpen?: (postPublicId: string) => void;
 }
 
-const PostCard: React.FC<PostCardProps> = ({ post, prioritizeImage = false }) => {
+const PostCard: React.FC<PostCardProps> = ({
+	post,
+	prioritizeImage = false,
+	onOpen,
+}) => {
 	const { t } = useTranslation();
 	const navigate = useNavigate();
 	const theme = useTheme();
@@ -89,7 +94,11 @@ const PostCard: React.FC<PostCardProps> = ({ post, prioritizeImage = false }) =>
 					transform: { xs: "none", sm: "translateY(-1px)" },
 				},
 			}}
-			onClick={() => navigate(`/posts/${post.publicId}`)}
+			data-feed-card-id={post.publicId}
+			onClick={() => {
+				onOpen?.(post.publicId);
+				navigate(`/posts/${post.publicId}`);
+			}}
 		>
 			<PostCardCommunityBadge
 				post={post}
@@ -129,6 +138,7 @@ const PostCard: React.FC<PostCardProps> = ({ post, prioritizeImage = false }) =>
 					repostImageSrcSet={media.repostImageSrcSet}
 					repostImageWidth={post.repostOf?.image?.width}
 					repostImageHeight={post.repostOf?.image?.height}
+					onOpen={onOpen}
 				/>
 			</PostCardHeader>
 		</Box>

@@ -18,6 +18,10 @@ export interface IUserWriteRepository {
     publicId: UserPublicId,
     updateData: UpdateQuery<IUser>,
   ): Promise<IUser | null>;
+  consumePasswordResetToken(
+    resetTokenHash: string,
+    newPassword: string,
+  ): Promise<IUser | null>;
   delete(id: MongoId): Promise<boolean>;
 
   // profile updates

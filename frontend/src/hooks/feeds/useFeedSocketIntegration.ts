@@ -7,6 +7,9 @@ import {
   updatePostLikesInFeedCaches,
 } from "../posts/postCache";
 import { useRecentEventIds } from "../socket/useRecentEventIds";
+import { useAuth } from "../context/useAuth";
+import { feedIdentities } from "../../features/feed/feedIdentity";
+import { feedRestorationStore } from "../../features/feed/feedRestoration";
 
 /**
  * Hook to handle real-time feed updates via WebSocket
@@ -16,6 +19,10 @@ export const useFeedSocketIntegration = () => {
   const socket = useSocket();
   const queryClient = useQueryClient();
   const shouldHandleEvent = useRecentEventIds();
+  const { user } = useAuth();
+  const viewerId = user?.publicId;
+  const homeFeedId = feedIdentities.home(viewerId);
+  const forYouFeedId = feedIdentities.forYou(viewerId);
 
   useEffect(() => {
     if (!socket) return;
@@ -26,15 +33,30 @@ export const useFeedSocketIntegration = () => {
      */
     const handleNewPost = (data: {
       type: "new_post";
+      eventId?: string;
       authorId: string;
-      postId: string;
+      postId?: string;
       tags: string[];
-      affectedUsers: string[];
       timestamp: string;
     }) => {
+      if (viewerId) {
+        const hasStableEventId =
+          typeof data.eventId === "string" && data.eventId.length > 0;
+        if (hasStableEventId && data.postId) {
+          feedRestorationStore.markKnownPostPending(forYouFeedId, data.postId);
+          feedRestorationStore.markKnownPostPending(homeFeedId, data.postId);
+        } else {
+          feedRestorationStore.markUnknownPostPending(forYouFeedId);
+          feedRestorationStore.markUnknownPostPending(homeFeedId);
+        }
+      }
+
       // Invalidate personalized feeds
       queryClient.invalidateQueries({ queryKey: ["personalizedFeed"] });
-      queryClient.invalidateQueries({ queryKey: ["forYouFeed"] });
+      queryClient.invalidateQueries({
+        queryKey: ["forYouFeed"],
+        refetchType: "none",
+      });
       queryClient.invalidateQueries({ queryKey: ["images"] });
 
       // Also invalidate author's profile posts
@@ -53,6 +75,7 @@ export const useFeedSocketIntegration = () => {
       authorId: string;
       timestamp: string;
     }) => {
+      feedRestorationStore.removePendingPost(data.postId);
       removePostFromFeedCaches(queryClient, data.postId);
       removePostDetailAndCommentCaches(queryClient, data.postId);
 
@@ -178,5 +201,12 @@ export const useFeedSocketIntegration = () => {
       socket.off("avatar_update", handleAvatarUpdate);
       socket.off("feed_interaction", handleFeedInteraction);
     };
-  }, [socket, queryClient, shouldHandleEvent]);
+  }, [
+    forYouFeedId,
+    homeFeedId,
+    queryClient,
+    shouldHandleEvent,
+    socket,
+    viewerId,
+  ]);
 };

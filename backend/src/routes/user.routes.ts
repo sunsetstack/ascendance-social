@@ -87,7 +87,9 @@ export class UserRoutes {
       asyncHandler(this.authController.login),
     );
 
-    this.router.post("/logout", asyncHandler(this.authController.logout));
+    this.router.post("/logout", (_req, res) => {
+      res.redirect(307, "/api/users/refresh/logout");
+    });
     this.router.post("/refresh", asyncHandler(this.authController.refresh));
     this.router.post(
       "/refresh/logout",

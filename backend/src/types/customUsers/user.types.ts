@@ -12,6 +12,7 @@ export interface IUser extends Document {
   avatar: string;
   cover: string;
   password: string;
+  authVersion: number;
   bio: string;
   createdAt: Date;
   updatedAt: Date;

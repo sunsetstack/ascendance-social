@@ -22,6 +22,7 @@ import {
 } from "../../api/userApi";
 import { ImagePageData, PublicUserDTO, AuthenticatedUserDTO, AdminUserDTO, CommentsPaginationResponse } from "../../types";
 import { editUserRequest, changePasswordRequest } from "../../api/userApi";
+import { useIsFeedRestoreNavigation } from "../../features/feed/feedRestoration";
 
 type UseUserImagesOptions = Omit<
 	UseInfiniteQueryOptions<ImagePageData, Error, InfiniteData<ImagePageData, number>>,
@@ -118,37 +119,69 @@ export const useGetUser = (identifier: string | undefined) => {
 
 export const useUserPosts = (
 	userPublicId: string,
-	options?: UseUserImagesOptions & { limit?: number; sortBy?: string; sortOrder?: string; page?: number }
+	options?: UseUserImagesOptions & {
+		limit?: number;
+		sortBy?: string;
+		sortOrder?: string;
+		page?: number;
+		feedId?: string;
+	}
 ) => {
-	const limit = options?.limit || 10;
-	const sortBy = options?.sortBy || "createdAt";
-	const sortOrder = options?.sortOrder || "desc";
-	const page = options?.page || 1;
+	const {
+		limit: requestedLimit,
+		sortBy: requestedSortBy,
+		sortOrder: requestedSortOrder,
+		page: requestedPage,
+		feedId,
+		...queryOptions
+	} = options ?? {};
+	const limit = requestedLimit || 10;
+	const sortBy = requestedSortBy || "createdAt";
+	const sortOrder = requestedSortOrder || "desc";
+	const page = requestedPage || 1;
+	const isFeedRestoreNavigation = useIsFeedRestoreNavigation(feedId ?? "");
 
 	return useInfiniteQuery({
-		queryKey: ["userPosts", userPublicId, limit, sortBy, sortOrder, page] as const,
+		queryKey: ["userPosts", userPublicId, limit, sortBy, sortOrder, page, feedId] as const,
 		queryFn: ({ pageParam = page }) => fetchUserPosts(pageParam as number, userPublicId, limit, sortBy, sortOrder),
 		initialPageParam: page,
 		getNextPageParam: (lastPage) => (lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined),
-		...options,
+		...queryOptions,
+		...(isFeedRestoreNavigation ? { refetchOnMount: false } : {}),
 	});
 };
 
 export const useUserLikedPosts = (
 	userPublicId: string,
-	options?: UseUserImagesOptions & { limit?: number; sortBy?: string; sortOrder?: string; page?: number }
+	options?: UseUserImagesOptions & {
+		limit?: number;
+		sortBy?: string;
+		sortOrder?: string;
+		page?: number;
+		feedId?: string;
+	}
 ) => {
-	const limit = options?.limit || 10;
-	const sortBy = options?.sortBy || "createdAt";
-	const sortOrder = options?.sortOrder || "desc";
-	const page = options?.page || 1;
+	const {
+		limit: requestedLimit,
+		sortBy: requestedSortBy,
+		sortOrder: requestedSortOrder,
+		page: requestedPage,
+		feedId,
+		...queryOptions
+	} = options ?? {};
+	const limit = requestedLimit || 10;
+	const sortBy = requestedSortBy || "createdAt";
+	const sortOrder = requestedSortOrder || "desc";
+	const page = requestedPage || 1;
+	const isFeedRestoreNavigation = useIsFeedRestoreNavigation(feedId ?? "");
 
 	return useInfiniteQuery({
-		queryKey: ["userLikedPosts", userPublicId, limit, sortBy, sortOrder, page] as const,
+		queryKey: ["userLikedPosts", userPublicId, limit, sortBy, sortOrder, page, feedId] as const,
 		queryFn: ({ pageParam = page }) => fetchUserLikedPosts(pageParam as number, userPublicId, limit, sortBy, sortOrder),
 		initialPageParam: page,
 		getNextPageParam: (lastPage) => (lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined),
-		...options,
+		...queryOptions,
+		...(isFeedRestoreNavigation ? { refetchOnMount: false } : {}),
 	});
 };
 

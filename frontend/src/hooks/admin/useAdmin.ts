@@ -60,6 +60,7 @@ export const useBanUser = () => {
 		mutationFn: ({ publicId, reason }: { publicId: string; reason: string }) => banUser(publicId, reason),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+			queryClient.invalidateQueries({ queryKey: ["admin", "dashboardStats"] });
 			toast.success("user banned successfully");
 		},
 		onError: (error: Error) => {
@@ -74,6 +75,7 @@ export const useUnbanUser = () => {
 		mutationFn: (publicId: string) => unbanUser(publicId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+			queryClient.invalidateQueries({ queryKey: ["admin", "dashboardStats"] });
 			toast.success("user unbanned successfully");
 		},
 		onError: (error: Error) => {
@@ -88,6 +90,7 @@ export const usePromoteToAdmin = () => {
 		mutationFn: (publicId: string) => promoteToAdmin(publicId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+			queryClient.invalidateQueries({ queryKey: ["admin", "dashboardStats"] });
 			toast.success("user promoted to admin");
 		},
 		onError: (error: Error) => {
@@ -102,6 +105,7 @@ export const useDemoteFromAdmin = () => {
 		mutationFn: (publicId: string) => demoteFromAdmin(publicId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+			queryClient.invalidateQueries({ queryKey: ["admin", "dashboardStats"] });
 			toast.success("admin privileges removed");
 		},
 		onError: (error: Error) => {
@@ -117,6 +121,7 @@ export const useDeleteUserAdmin = () => {
 			deleteUserAdmin(publicId, reason),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
+			queryClient.invalidateQueries({ queryKey: ["admin", "dashboardStats"] });
 			toast.success("user deleted successfully");
 		},
 		onError: (error: Error) => {
@@ -145,6 +150,7 @@ export const useDeleteImageAdmin = () => {
 		mutationFn: (publicId: string) => deleteImageAdmin(publicId),
 		onSuccess: () => {
 			queryClient.invalidateQueries({ queryKey: ["admin", "images"] });
+			queryClient.invalidateQueries({ queryKey: ["admin", "dashboardStats"] });
 			toast.success("image deleted successfully");
 		},
 		onError: (error: Error) => {
@@ -158,7 +164,7 @@ export const useDeleteCommentAdmin = () => {
 	return useMutation({
 		mutationFn: (commentId: string) => deleteCommentAdmin(commentId),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["userComments"] });
+			queryClient.invalidateQueries({ queryKey: ["userCommentsPage"] });
 			toast.success("comment deleted successfully");
 		},
 		onError: (error: Error) => {
@@ -172,8 +178,13 @@ export const useRemoveUserFavoriteAdmin = () => {
 	return useMutation({
 		mutationFn: ({ userPublicId, postPublicId }: { userPublicId: string; postPublicId: string }) =>
 			removeUserFavoriteAdmin(userPublicId, postPublicId),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["userLikedPosts"] });
+		onSuccess: (_, { userPublicId }) => {
+			queryClient.invalidateQueries({
+				queryKey: ["userLikedPostsPage", userPublicId],
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["admin", "userStats", userPublicId],
+			});
 			toast.success("favorite removed successfully");
 		},
 		onError: (error: Error) => {
@@ -230,8 +241,8 @@ export const useRequestLogs = (params: {
 	page?: number;
 	limit?: number;
 	userId?: string;
-	sessionId?: string;
-	tokenFamilyId?: string;
+	correlationId?: string;
+	ip?: string;
 	clientRequestId?: string;
 	clientBootId?: string;
 	previousClientRequestId?: string;
@@ -242,6 +253,7 @@ export const useRequestLogs = (params: {
 	statusCode?: number;
 	startDate?: string;
 	endDate?: string;
+	snapshotAt?: string;
 	search?: string;
 }, enabled = true) => {
 	return useQuery({
@@ -256,8 +268,8 @@ export const useAuthActivityLogs = (params: {
 	page?: number;
 	limit?: number;
 	userId?: string;
-	sessionId?: string;
-	tokenFamilyId?: string;
+	correlationId?: string;
+	ip?: string;
 	clientRequestId?: string;
 	clientBootId?: string;
 	previousClientRequestId?: string;
@@ -268,6 +280,7 @@ export const useAuthActivityLogs = (params: {
 	statusCode?: number;
 	startDate?: string;
 	endDate?: string;
+	snapshotAt?: string;
 	search?: string;
 }, enabled = true) => {
 	return useQuery({

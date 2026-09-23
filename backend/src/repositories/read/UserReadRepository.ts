@@ -1,5 +1,6 @@
 import { FilterQuery, Model, Types } from "mongoose";
 import { inject, injectable } from "tsyringe";
+import crypto from "crypto";
 import {
   IUser,
   PaginationOptions,
@@ -178,8 +179,12 @@ export class UserReadRepository
 
   async findByResetToken(token: string): Promise<IUser | null> {
     try {
+      const resetTokenHash = crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
       return await this.findUser(
-        { resetToken: token, resetTokenExpires: { $gt: new Date() } },
+        { resetToken: resetTokenHash, resetTokenExpires: { $gt: new Date() } },
         "+password +resetToken +resetTokenExpires",
       );
     } catch (error) {

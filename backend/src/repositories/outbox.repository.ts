@@ -358,6 +358,14 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
     }
   }
 
+  async renewClaim(eventId: string, workerId: string): Promise<boolean> {
+    const result = await this.model.updateOne(
+      { _id: eventId, processingOwner: workerId, processing: true, processed: false },
+      { $set: { processingStartedAt: new Date() } },
+    ).exec();
+    return result.matchedCount === 1;
+  }
+
   private buildOwnedFilter(
     eventId: string,
     workerId?: string,

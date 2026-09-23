@@ -1,3 +1,4 @@
+import { broadcastToAuthenticatedSockets } from "@/server/socket-security";
 import { Server as SocketIOServer } from "socket.io";
 import { inject, injectable } from "tsyringe";
 import { IRealtimeMessageHandler } from "./IRealtimeMessageHandler.interface";
@@ -24,7 +25,7 @@ export class LikeUpdateMessageHandler implements IRealtimeMessageHandler {
     if (!targetId || message.newLikes === undefined) return;
 
     // broadcast like count update to all connected users
-    io.emit(EventRegistry.socketServerEvents.likeUpdate, {
+    await broadcastToAuthenticatedSockets(io, EventRegistry.socketServerEvents.likeUpdate, {
       eventId:
         message.eventId ??
         buildRealtimeEventId(

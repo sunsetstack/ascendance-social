@@ -1,11 +1,20 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { GalleryProps } from "../types";
 import PostCard from "./PostCard";
 import MediaCard from "./MediaCard";
 import { useAuth } from "../hooks/context/useAuth";
 import {
+  Alert,
   Box,
+  Button,
   Typography,
   CircularProgress,
   Card,
@@ -14,6 +23,12 @@ import {
 } from "@mui/material";
 import { useTranslation } from "react-i18next";
 import { telemetry } from "../lib/telemetry";
+import {
+  feedRestorationStore,
+  formatNewPostsLabel,
+  useFeedPending,
+  useIsFeedRestoreNavigation,
+} from "../features/feed/feedRestoration";
 
 const Gallery: React.FC<GalleryProps> = ({
   posts,
@@ -25,26 +40,12 @@ const Gallery: React.FC<GalleryProps> = ({
   emptyTitle,
   emptyDescription,
   variant = "feed",
+  feedId,
+  onRefresh,
 }) => {
   const { t } = useTranslation();
 
-  /**
-   * deduplicate posts by publicId while preserving order
-   * using Map in to avoid N^2 complexity that .filter or  .findIndex would create
-   * this approach uses 'posts ||[]' as a safety fallback defaulting to an empty array
-   * if posts is null or undefined
-   *
-   * .map((p) => [p.publicId, p]) Transforms the array of post objects into an array of tuples.
-   * Before: [{ publicId: '123', text: 'hi' }, { publicId: '123', text: 'hi' }]
-   * After: [ ['123', { publicId: '123', text: 'hi' }], ['123', { publicId: '123', text: 'hi' }] ]
-   *
-   * new Map(...) - this forces keys to be unique which results in destroying all duplicates
-   * .values() - this extracts just the values (the post objects) after the Map has filtered the data
-   * throwing away the isolated publicId keys used for filtering.
-   *
-   * Array.from(...).values() - the .vlaues() method returns an Iterable Iterator not a real array.
-   * Array.from() converts it back into a standard JS array that can be mapped over
-   */
+  // Deduplicate by publicId without changing the first-seen feed order.
   const uniquePosts = useMemo(
     () =>
       Array.from(new Map((posts || []).map((p) => [p.publicId, p])).values()),
@@ -62,8 +63,38 @@ const Gallery: React.FC<GalleryProps> = ({
     setVisibleIndex((previous) => Math.max(previous, index + 1));
   }, []);
 
-  // generate a stable feed ID based on current route
-  const feedId = `${location.pathname}-${variant}`;
+  const telemetryFeedId = `${location.pathname}-${variant}`;
+  const restorationEnabled = Boolean(feedId && onRefresh);
+  const isRestoring = useIsFeedRestoreNavigation(feedId ?? "");
+  const hasRestorationTarget = Boolean(
+    restorationEnabled &&
+      feedId &&
+      feedRestorationStore.isRestorationFor(feedId, location.key),
+  );
+  const pending = useFeedPending(feedId, location.key);
+  const pendingLabel = formatNewPostsLabel(pending);
+  const anchorRefs = useRef(new Map<string, HTMLDivElement>());
+  const activeFeedKey = restorationEnabled && feedId
+    ? `${feedId}\u0000${location.key}`
+    : null;
+  const activeFeedKeyRef = useRef(activeFeedKey);
+  const [refreshingFeedKey, setRefreshingFeedKey] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<{
+    feedKey: string;
+    message: string;
+  } | null>(null);
+  const isRefreshing = Boolean(
+    activeFeedKey && refreshingFeedKey === activeFeedKey,
+  );
+  const visibleRefreshError =
+    refreshError?.feedKey === activeFeedKey ? refreshError.message : null;
+
+  useLayoutEffect(() => {
+    activeFeedKeyRef.current = activeFeedKey;
+    return () => {
+      activeFeedKeyRef.current = null;
+    };
+  }, [activeFeedKey]);
 
   const isProfileOwner = isLoggedIn && user?.publicId === profileId;
   const postCount = uniquePosts.length;
@@ -94,9 +125,107 @@ const Gallery: React.FC<GalleryProps> = ({
   // track scroll depth
   useEffect(() => {
     if (postCount > 0) {
-      telemetry.trackScrollDepth(feedId, visibleIndex, postCount);
+      telemetry.trackScrollDepth(telemetryFeedId, visibleIndex, postCount);
     }
-  }, [feedId, postCount, visibleIndex]);
+  }, [telemetryFeedId, postCount, visibleIndex]);
+
+  const handlePostOpen = useCallback(
+    (postPublicId: string) => {
+      if (!restorationEnabled || !feedId) return;
+      const anchor = anchorRefs.current.get(postPublicId);
+      if (!anchor) return;
+      feedRestorationStore.captureAnchor({
+        feedId,
+        postId: postPublicId,
+        top: anchor.getBoundingClientRect().top,
+        sourceLocationKey: location.key,
+      });
+    },
+    [feedId, location.key, restorationEnabled],
+  );
+
+  useLayoutEffect(() => {
+    if (!restorationEnabled || !feedId) return;
+    return feedRestorationStore.registerSession(feedId, location.key);
+  }, [feedId, location.key, restorationEnabled]);
+
+  useLayoutEffect(() => {
+    if (!restorationEnabled || !feedId || !isRestoring) return;
+    const restoration = feedRestorationStore.getRestoration(feedId, location.key);
+    if (!restoration) return;
+
+    const isLoading = Boolean(isLoadingAll || isFetchingAll);
+    if (isLoading) return;
+
+    const anchor = anchorRefs.current.get(restoration.postId);
+    if (!anchor) {
+      feedRestorationStore.consumeRestoration(feedId, location.key);
+      return;
+    }
+
+    const delta = anchor.getBoundingClientRect().top - restoration.top;
+    if (typeof window !== "undefined") {
+      window.scrollBy({ top: delta, behavior: "auto" });
+    }
+    feedRestorationStore.consumeRestoration(feedId, location.key);
+  }, [
+    feedId,
+    isFetchingAll,
+    isLoadingAll,
+    isRestoring,
+    location.key,
+    restorationEnabled,
+    uniquePosts,
+  ]);
+
+  const handleRefresh = useCallback(async () => {
+    if (
+      !restorationEnabled ||
+      !feedId ||
+      !onRefresh ||
+      !activeFeedKey ||
+      isRefreshing
+    ) {
+      return;
+    }
+    const refreshFeedKey = activeFeedKey;
+    setRefreshingFeedKey(refreshFeedKey);
+    setRefreshError(null);
+    const pendingVersion = feedRestorationStore.getPendingVersion(
+      feedId,
+      location.key,
+    );
+    try {
+      await onRefresh();
+      if (activeFeedKeyRef.current !== refreshFeedKey) return;
+      feedRestorationStore.clearPending(feedId, location.key, pendingVersion);
+      feedRestorationStore.consumeRestoration(feedId, location.key);
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "auto" });
+      }
+    } catch (error) {
+      if (activeFeedKeyRef.current === refreshFeedKey) {
+        setRefreshError({
+          feedKey: refreshFeedKey,
+          message:
+            error instanceof Error && error.message
+              ? error.message
+              : "Unable to refresh feed.",
+        });
+      }
+    } finally {
+      setRefreshingFeedKey((current) =>
+        current === refreshFeedKey ? null : current,
+      );
+    }
+  }, [
+    activeFeedKey,
+    feedId,
+    isRefreshing,
+    location.key,
+    onRefresh,
+    restorationEnabled,
+  ]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -175,6 +304,61 @@ const Gallery: React.FC<GalleryProps> = ({
         p: 0,
       }}
     >
+      {restorationEnabled && (pending.hasPending || visibleRefreshError) && (
+        <Box
+          sx={{
+            position: "fixed",
+            left: 0,
+            right: 0,
+            bottom: {
+              xs: "calc(72px + env(safe-area-inset-bottom))",
+              sm: 2,
+            },
+            zIndex: 1100,
+            display: "flex",
+            justifyContent: "center",
+            px: 1,
+            pointerEvents: "none",
+          }}
+        >
+          <Box
+            sx={{
+              width: "min(420px, calc(100vw - 16px))",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 0.5,
+              pointerEvents: "auto",
+            }}
+          >
+            {pending.hasPending && (
+              <Button
+                data-feed-new-posts
+                size="small"
+                variant="contained"
+                onClick={() => void handleRefresh()}
+                disabled={isRefreshing}
+                aria-label={pendingLabel}
+                sx={{ borderRadius: 999, px: 2, py: 0.5 }}
+              >
+                {pendingLabel}
+              </Button>
+            )}
+
+            {visibleRefreshError && (
+              <Alert
+                role="alert"
+                severity="error"
+                onClose={() => setRefreshError(null)}
+                sx={{ width: "100%", py: 0.25 }}
+              >
+                {visibleRefreshError}
+              </Alert>
+            )}
+          </Box>
+        </Box>
+      )}
+
       {/* Loading Skeletons - show while loading and no posts yet */}
       {showSkeleton && renderSkeletons()}
 
@@ -192,8 +376,15 @@ const Gallery: React.FC<GalleryProps> = ({
             {uniquePosts.map((img) => (
               <div
                 key={img.publicId}
+                ref={(element) => {
+                  if (element) anchorRefs.current.set(img.publicId, element);
+                  else anchorRefs.current.delete(img.publicId);
+                }}
               >
-                <MediaCard post={img} />
+                <MediaCard
+                  post={img}
+                  onOpen={restorationEnabled ? handlePostOpen : undefined}
+                />
               </div>
             ))}
           </Box>
@@ -203,10 +394,16 @@ const Gallery: React.FC<GalleryProps> = ({
               key={img.publicId}
               index={index}
               onVisible={handlePostVisible}
+              forceRealLayout={hasRestorationTarget}
+              anchorRef={(element) => {
+                if (element) anchorRefs.current.set(img.publicId, element);
+                else anchorRefs.current.delete(img.publicId);
+              }}
             >
               <PostCard
                 post={img}
                 prioritizeImage={prioritizedImageIndices.has(index)}
+                onOpen={restorationEnabled ? handlePostOpen : undefined}
               />
             </TrackedPost>
           ))
@@ -282,15 +479,19 @@ const Gallery: React.FC<GalleryProps> = ({
 interface TrackedPostProps {
   index: number;
   onVisible: (index: number) => void;
+  anchorRef: (element: HTMLDivElement | null) => void;
+  forceRealLayout: boolean;
   children: React.ReactNode;
 }
 
 const TrackedPost: React.FC<TrackedPostProps> = ({
   index,
   onVisible,
+  anchorRef,
+  forceRealLayout,
   children,
 }) => {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDivElement | null>(null);
   const hasBeenVisible = useRef(false);
 
   useEffect(() => {
@@ -310,11 +511,18 @@ const TrackedPost: React.FC<TrackedPostProps> = ({
 
   return (
     <div
-      ref={ref}
+      ref={(element) => {
+        ref.current = element;
+        anchorRef(element);
+      }}
       style={{
         width: "100%",
-        contentVisibility: "auto",
-        containIntrinsicSize: "auto 700px",
+        ...(forceRealLayout
+          ? { contentVisibility: "visible" }
+          : {
+              contentVisibility: "auto",
+              containIntrinsicSize: "auto 700px",
+            }),
       }}
     >
       {children}

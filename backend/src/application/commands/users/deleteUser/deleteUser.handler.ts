@@ -42,6 +42,14 @@ export class DeleteUserCommandHandler implements ICommandHandler<
         "An account deletion reason between 1 and 500 characters is required",
       );
     }
+    if (
+      command.requestedByPublicId &&
+      command.requestedByPublicId === command.userPublicId
+    ) {
+      throw Errors.validation(
+        "Administrators cannot delete their own account from the admin panel",
+      );
+    }
     await this.verifyPasswordWhenRequired(command);
 
     const targetUser = await this.userReadRepository.findByPublicId(

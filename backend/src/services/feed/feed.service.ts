@@ -2,7 +2,10 @@ import { UserPublicId, PostPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import { PaginationResult, PostDTO } from "@/types";
 import { FeedReadService } from "./feed-read.service";
-import { FeedInteractionService } from "./feed-interaction.service";
+import {
+  FeedInteractionService,
+  type FeedInteractionIdentity,
+} from "./feed-interaction.service";
 import { FeedMetaService } from "./feed-meta.service";
 import { FeedFanoutService } from "./feed-fanout.service";
 import { TOKENS } from "@/types/tokens";
@@ -49,12 +52,14 @@ export class FeedService {
     actionType: string,
     targetIdentifier: string,
     tags: string[],
+    identity: FeedInteractionIdentity,
   ): Promise<void> {
     return this.feedInteractionService.recordInteraction(
       userPublicId,
       actionType,
       targetIdentifier,
       tags,
+      identity,
     );
   }
 

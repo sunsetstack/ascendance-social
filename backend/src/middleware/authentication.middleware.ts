@@ -122,7 +122,9 @@ export class BearerTokenStrategy extends AuthStrategy {
         typeof verified.email !== "string" ||
         typeof verified.username !== "string" ||
         typeof verified.handle !== "string" ||
-        typeof verified.sid !== "string"
+        typeof verified.sid !== "string" ||
+        typeof verified.exp !== "number" ||
+        !Number.isFinite(verified.exp)
       ) {
         throw Errors.authentication("Invalid token payload", {
           errorCode: ErrorCode.TOKEN_INVALID,
@@ -135,6 +137,7 @@ export class BearerTokenStrategy extends AuthStrategy {
         username: verified.username,
         handle: verified.handle,
         sid: asSessionId(verified.sid),
+        exp: verified.exp,
         isAdmin:
           typeof verified.isAdmin === "boolean" ? verified.isAdmin : false,
       };
@@ -185,7 +188,7 @@ export class AuthenticationMiddleware {
     private readonly metricsService: MetricsService | null,
   ) {}
 
-  private async enforceActiveUser(
+  async enforceActiveUser(
     decodedUser: DecodedUser,
     options: RequiredAuthOptions = {},
   ): Promise<void> {
@@ -357,6 +360,20 @@ export class AuthMiddlewareService {
 
   required(options: RequiredAuthOptions = {}): RequestHandler {
     return this.authenticationMiddleware.handle(options);
+  }
+
+  async assertActiveSession(user: DecodedUser): Promise<void> {
+    if (
+      !user.sid ||
+      typeof user.exp !== "number" ||
+      !Number.isFinite(user.exp) ||
+      user.exp * 1000 <= Date.now()
+    ) {
+      throw Errors.authentication("Session is invalid or expired");
+    }
+
+    await this.authSessionService.assertAccessSession(user.sid, user.publicId);
+    await this.authenticationMiddleware.enforceActiveUser(user);
   }
 
   optional(): RequestHandler {

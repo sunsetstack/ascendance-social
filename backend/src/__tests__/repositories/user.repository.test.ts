@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, it } from "mocha";
 import * as chai from "chai";
 import { expect } from "chai";
 import chaiAsPromised from "chai-as-promised";
+import crypto from "crypto";
 import sinon, { SinonStub } from "sinon";
 import { Model, Types } from "mongoose";
 import { UserReadRepository } from "@/repositories/read/UserReadRepository";
@@ -217,6 +218,45 @@ describe("User read and write repositories", () => {
 					expect(error.name).to.equal("DatabaseError");
 					return true;
 				});
+		});
+	});
+
+	describe("UserWriteRepository.consumePasswordResetToken", () => {
+		it("matches an unexpired token while consuming it in the password update", async () => {
+			const updatedUser = { _id: new Types.ObjectId() } as IUser;
+			query.exec.resolves(updatedUser);
+
+			const result = await userWriteRepository.consumePasswordResetToken(
+				"token-hash",
+				"new-password",
+			);
+
+			expect(result).to.equal(updatedUser);
+			const [filter, update, options] = model.findOneAndUpdate.firstCall.args;
+			expect(filter.resetToken).to.equal("token-hash");
+			expect(filter.resetTokenExpires.$gt).to.be.instanceOf(Date);
+			expect(update).to.deep.equal({
+				$set: { password: "new-password" },
+				$unset: { resetToken: 1, resetTokenExpires: 1 },
+			});
+			expect(options).to.deep.equal({ new: true });
+		});
+	});
+
+	describe("UserReadRepository.findByResetToken", () => {
+		it("hashes the supplied token before matching an unexpired reset token", async () => {
+			query.exec.resolves(null);
+
+			await userReadRepository.findByResetToken("raw-reset-token");
+
+			const [filter] = model.findOne.firstCall.args;
+			expect(filter.resetToken).to.equal(
+				crypto
+					.createHash("sha256")
+					.update("raw-reset-token")
+					.digest("hex"),
+			);
+			expect(filter.resetTokenExpires.$gt).to.be.instanceOf(Date);
 		});
 	});
 

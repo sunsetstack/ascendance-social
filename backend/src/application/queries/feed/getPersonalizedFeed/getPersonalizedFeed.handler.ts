@@ -2,7 +2,7 @@ import { inject, injectable } from "tsyringe";
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { GetPersonalizedFeedQuery } from "./getPersonalizedFeed.query";
 import { RedisService } from "@/services/redis.service";
-import { Errors, isAppError } from "@/utils/errors";
+import { Errors, getErrorMessage, isAppError } from "@/utils/errors";
 import { CursorPaginationResult, FeedPost } from "@/types";
 import { logger } from "@/utils/winston";
 import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
@@ -15,7 +15,7 @@ import { decodeFeedCursor, FEED_CURSOR_ORDER } from "@/utils/feedCursor";
 @injectable()
 export class GetPersonalizedFeedQueryHandler implements IQueryHandler<
   GetPersonalizedFeedQuery,
-  any
+  CursorPaginationResult<FeedPost>
 > {
   constructor(
     @inject(TOKENS.Services.Redis) private redisService: RedisService,
@@ -52,7 +52,7 @@ export class GetPersonalizedFeedQueryHandler implements IQueryHandler<
       );
       let coreFeed = (await this.redisService.getWithTags(
         coreFeedKey,
-      )) as CursorPaginationResult<any> | null;
+      )) as CursorPaginationResult<FeedPost> | null;
 
       if (!coreFeed) {
         // cache miss - generate core feed
@@ -87,9 +87,9 @@ export class GetPersonalizedFeedQueryHandler implements IQueryHandler<
       };
     } catch (error) {
       if (isAppError(error)) throw error;
-      logger.error("Failed to generate personalized feed", { error });
       throw Errors.internal(
-        `Could not generate personalized feed for user ${userId}: ${(error as Error).message}`,
+        `Could not generate personalized feed for user ${userId}: ${getErrorMessage(error)}`,
+        { cause: error },
       );
     }
   }

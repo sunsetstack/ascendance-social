@@ -29,7 +29,7 @@ services:
 
   # --- APP LAYER ---
   backend:
-    image: ghcr.io/sunsetstack/ascendance-backend:${IMAGE_TAG:-latest}
+    image: ${BACKEND_IMAGE:-ghcr.io/sunsetstack/ascendance-backend:${IMAGE_TAG:-latest}}
     container_name: backend
     restart: always
     logging: *default-logging
@@ -53,7 +53,6 @@ services:
         SECURITY_AUDIT_MONGO_TTL_DAYS: ${SECURITY_AUDIT_MONGO_TTL_DAYS:-90}
         AUDIT_LOG_DIR: /app/audit/logs
         AUDIT_ARCHIVE_DIR: /app/audit/archives
-        AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64: ${AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64:-}
         AUDIT_ARCHIVE_DELETE_SOURCE: ${AUDIT_ARCHIVE_DELETE_SOURCE:-true}
       SERVICE_NAME: backend
       FORENSIC_ARCHIVE_DIR: /app/forensic/archives

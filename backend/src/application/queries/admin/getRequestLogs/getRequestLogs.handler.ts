@@ -2,30 +2,40 @@ import { inject, injectable } from "tsyringe";
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { GetRequestLogsQuery } from "./getRequestLogs.query";
 import { RequestLogRepository } from "@/repositories/requestLog.repository";
-import { PaginationResult, IRequestLog } from "@/types";
+import {
+  ClientFingerprint,
+  IRequestLog,
+  PaginationResult,
+  VisitorObservation,
+} from "@/types";
 import { escapeRegex } from "@/utils/sanitizers";
 import { TOKENS } from "@/types/tokens";
+import { sanitizeObservedUrl } from "@/utils/client-evidence";
+import {
+  buildUnauthenticatedEvidenceFilter,
+  isUnauthenticatedEvidence,
+} from "../admin-log-evidence";
 
 export interface RequestLogDTO {
   timestamp: Date;
   method: string;
   route: string;
   ip: string;
-  origin?: string;
-  referer?: string;
   statusCode: number;
   responseTimeMs: number;
   correlationId?: string;
   userId?: string;
-  userAgent?: string;
+  evidenceVisibility: "observed_unverified" | "restricted_authenticated";
   authState?: string;
   authSource?: string;
   authAction?: string;
-  authEmail?: string;
-  authUsername?: string;
-  authHandle?: string;
-  sessionId?: string;
-  tokenFamilyId?: string;
+  userAgent?: string;
+  origin?: string;
+  referer?: string;
+  clientFingerprint?: ClientFingerprint;
+  clientFingerprintSchemaVersion?: number;
+  visitorObservation?: VisitorObservation;
+  aborted?: boolean;
   clientRequestId?: string;
   clientBootId?: string;
   clientRequestAttempt?: number;
@@ -52,8 +62,8 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<
       page = 1,
       limit = 50,
       userId,
-      sessionId,
-      tokenFamilyId,
+      ip,
+      correlationId,
       clientRequestId,
       clientBootId,
       previousClientRequestId,
@@ -64,6 +74,7 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<
       statusCode,
       startDate,
       endDate,
+      snapshotAt,
       search,
     } = query.options;
 
@@ -73,12 +84,13 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<
       filter["metadata.userId"] = userId;
     }
 
-    if (sessionId) {
-      filter["metadata.sessionId"] = sessionId;
+    if (ip) {
+      filter["metadata.ip"] = ip;
+      filter.$and = buildUnauthenticatedEvidenceFilter().$and;
     }
 
-    if (tokenFamilyId) {
-      filter["metadata.tokenFamilyId"] = tokenFamilyId;
+    if (correlationId) {
+      filter["metadata.correlationId"] = correlationId;
     }
 
     if (clientRequestId) {
@@ -98,7 +110,21 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<
     }
 
     if (authState) {
-      filter["metadata.authState"] = authState;
+      if (authState === "unknown") {
+        filter.$and = [
+          ...(filter.$and ?? []),
+          {
+            $or: [
+              { "metadata.authState": { $exists: false } },
+              { "metadata.authState": null },
+              { "metadata.authState": "" },
+              { "metadata.authState": "unknown" },
+            ],
+          },
+        ];
+      } else {
+        filter["metadata.authState"] = authState;
+      }
     }
 
     if (authSource) {
@@ -113,10 +139,17 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<
       filter["metadata.statusCode"] = statusCode;
     }
 
-    if (startDate || endDate) {
+    if (startDate || endDate || snapshotAt) {
       filter.timestamp = {};
       if (startDate) filter.timestamp.$gte = startDate;
       if (endDate) filter.timestamp.$lte = endDate;
+      if (
+        snapshotAt &&
+        (!filter.timestamp.$lte ||
+          snapshotAt.getTime() < filter.timestamp.$lte.getTime())
+      ) {
+        filter.timestamp.$lte = snapshotAt;
+      }
     }
 
     if (search) {
@@ -124,22 +157,22 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<
       // If filter.$or already exists (unlikely given previous logic, but safe to check), merge or push
       // For now, assume exclusive usage of simple filters + search
       filter.$or = [
-        { "metadata.ip": regex },
         { "metadata.method": regex },
         { "metadata.route": regex },
         { "metadata.correlationId": regex },
         { "metadata.userId": regex },
-        { "metadata.authEmail": regex },
-        { "metadata.authUsername": regex },
-        { "metadata.authHandle": regex },
-        { "metadata.sessionId": regex },
-        { "metadata.tokenFamilyId": regex },
         { "metadata.clientRequestId": regex },
         { "metadata.clientBootId": regex },
         { "metadata.previousClientRequestId": regex },
         { "metadata.causedByClientRequestId": regex },
         { "metadata.authState": regex },
         { "metadata.authSource": regex },
+        {
+          $and: [
+            ...(buildUnauthenticatedEvidenceFilter().$and as object[]),
+            { "metadata.visitorObservation.path": regex },
+          ],
+        },
       ];
     }
 
@@ -151,34 +184,62 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<
       sortOrder: "desc",
     });
 
-    const transformedData = result.data.map((log: IRequestLog) => ({
-      timestamp: log.timestamp,
-      method: log.metadata.method,
-      route: log.metadata.route,
-      ip: log.metadata.ip,
-      origin: log.metadata.origin,
-      referer: log.metadata.referer,
-      statusCode: log.metadata.statusCode,
-      responseTimeMs: log.metadata.responseTimeMs,
-      correlationId: log.metadata.correlationId,
-      userId: log.metadata.userId,
-      userAgent: log.metadata.userAgent,
-      authState: log.metadata.authState,
-      authSource: log.metadata.authSource,
-      authAction: log.metadata.authAction,
-      authEmail: log.metadata.authEmail,
-      authUsername: log.metadata.authUsername,
-      authHandle: log.metadata.authHandle,
-      sessionId: log.metadata.sessionId,
-      tokenFamilyId: log.metadata.tokenFamilyId,
-      clientRequestId: log.metadata.clientRequestId,
-      clientBootId: log.metadata.clientBootId,
-      clientRequestAttempt: log.metadata.clientRequestAttempt,
-      axiosRetry: log.metadata.axiosRetry,
-      previousClientRequestId: log.metadata.previousClientRequestId,
-      causedByClientRequestId: log.metadata.causedByClientRequestId,
-      refreshRotated: log.metadata.refreshRotated,
-    }));
+    const transformedData = result.data.map((log: IRequestLog) => {
+      const authState = log.metadata.authState || "unknown";
+      const exposeEvidence = isUnauthenticatedEvidence({
+        userId: log.metadata.userId,
+        authState: log.metadata.authState,
+      });
+      const visitorObservation =
+        exposeEvidence &&
+        log.metadata.visitorObservation?.schemaVersion === 1 &&
+        log.metadata.visitorObservation.path
+          ? log.metadata.visitorObservation
+          : undefined;
+      const clientFingerprint =
+        exposeEvidence && log.metadata.clientFingerprint?.schemaVersion === 1
+          ? log.metadata.clientFingerprint
+          : undefined;
+
+      return {
+        timestamp: log.timestamp,
+        method: log.metadata.method,
+        route: log.metadata.route,
+        ip: exposeEvidence ? log.metadata.ip : "[restricted]",
+        statusCode: log.metadata.statusCode,
+        responseTimeMs: log.metadata.responseTimeMs,
+        correlationId: log.metadata.correlationId,
+        userId: log.metadata.userId,
+        evidenceVisibility: exposeEvidence
+          ? ("observed_unverified" as const)
+          : ("restricted_authenticated" as const),
+        authState,
+        authSource: log.metadata.authSource,
+        authAction: log.metadata.authAction,
+        userAgent: exposeEvidence ? log.metadata.userAgent : undefined,
+        origin: exposeEvidence
+          ? sanitizeObservedUrl(log.metadata.origin, "origin")
+          : undefined,
+        referer: exposeEvidence
+          ? sanitizeObservedUrl(log.metadata.referer, "referer")
+          : undefined,
+        clientFingerprint,
+        clientFingerprintSchemaVersion: exposeEvidence
+          ? clientFingerprint
+            ? (log.metadata.clientFingerprintSchemaVersion ?? 1)
+            : 0
+          : undefined,
+        visitorObservation,
+        aborted: log.metadata.aborted,
+        clientRequestId: log.metadata.clientRequestId,
+        clientBootId: log.metadata.clientBootId,
+        clientRequestAttempt: log.metadata.clientRequestAttempt,
+        axiosRetry: log.metadata.axiosRetry,
+        previousClientRequestId: log.metadata.previousClientRequestId,
+        causedByClientRequestId: log.metadata.causedByClientRequestId,
+        refreshRotated: log.metadata.refreshRotated,
+      };
+    });
 
     return {
       data: transformedData,

@@ -1,4 +1,5 @@
-import { Model } from "mongoose";
+import { Model, Types } from "mongoose";
+import { requireTransactionSession } from "@/database/UnitOfWork";
 import { IUserAction, PaginationOptions, PaginationResult } from "@/types";
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
@@ -28,6 +29,28 @@ export class UserActionRepository extends BaseRepository<IUserAction> {
 			}
 			throw Errors.internal(String(error));
 		}
+	}
+
+	async claimFeedEffects(
+		activityId: string,
+		userId: string,
+		actionType: string,
+		targetId: string,
+		timestamp: Date,
+	): Promise<boolean> {
+		const session = requireTransactionSession();
+		const _id = new Types.ObjectId(activityId);
+		await this.model.updateOne(
+			{ _id },
+			{ $setOnInsert: { userId, actionType, targetId, timestamp } },
+			{ upsert: true, session },
+		).exec();
+		const result = await this.model.updateOne(
+			{ _id, feedEffectsApplied: { $ne: true } },
+			{ $set: { feedEffectsApplied: true } },
+			{ session },
+		).exec();
+		return result.modifiedCount === 1;
 	}
 
 	async getActionsByUser(userId: string): Promise<IUserAction[]> {

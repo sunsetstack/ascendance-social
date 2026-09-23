@@ -62,6 +62,13 @@ const Profile: React.FC = () => {
 					posts={controller.flattenedImages}
 					likedPosts={controller.flattenedLikedPosts}
 					comments={controller.flattenedComments}
+					postsFeedId={controller.postsFeedId}
+					mediaFeedId={controller.mediaFeedId}
+					likedPostsFeedId={controller.likedPostsFeedId}
+					isPostsFetching={controller.isPostsFetching}
+					isLikedPostsFetching={controller.isLikedPostsFetching}
+					onRefreshPosts={controller.refetchPosts}
+					onRefreshLikedPosts={controller.refetchLikedPosts}
 					isLoadingImages={controller.isLoadingImages}
 					isLoadingAllPosts={controller.isLoadingAllPosts}
 					isLoadingAllLiked={controller.isLoadingAllLiked}

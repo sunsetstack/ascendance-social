@@ -55,7 +55,11 @@ export class TelemetryRoutes {
             return;
           }
 
-          const { events } = parsedBody.data;
+          const { events, visitor } = parsedBody.data;
+
+          if (visitor && !req.decodedUser?.publicId) {
+            req.visitorObservation = visitor;
+          }
 
           // extract client info for context
           const clientInfo = {

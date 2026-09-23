@@ -1,4 +1,4 @@
-import { Route, Routes, BrowserRouter, useLocation } from "react-router-dom";
+import { Route, Routes, BrowserRouter } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import { ThemeProvider } from "@mui/material/styles";
 import { Box, CircularProgress, CssBaseline } from "@mui/material";
@@ -12,7 +12,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AdminRoute } from "./components/AdminRoute";
 import { AppErrorBoundary } from "./components/error/AppErrorBoundary";
 import { useAuth } from "./hooks/context/useAuth";
-import { usePosts } from "./hooks/posts/usePosts";
+import VisitorObservation from "./components/VisitorObservation";
 
 // initialize telemetry on app load
 import "./lib/telemetry";
@@ -51,16 +51,6 @@ const AuthenticatedRealtime = () => {
 	) : null;
 };
 
-const HomeFeedWarmup = () => {
-	usePosts();
-	return null;
-};
-
-const RouteDataWarmup = () => {
-	const { pathname } = useLocation();
-	return pathname === "/" ? <HomeFeedWarmup /> : null;
-};
-
 const queryClient = new QueryClient({
 	defaultOptions: {
 		queries: {
@@ -82,8 +72,8 @@ function App() {
 					<AuthProvider>
 						<SocketProvider>
 							<AppErrorBoundary>
+								<VisitorObservation />
 								<AuthenticatedRealtime />
-								<RouteDataWarmup />
 								<Suspense
 									fallback={
 										<Box sx={{ display: "flex", justifyContent: "center", py: 6 }}>

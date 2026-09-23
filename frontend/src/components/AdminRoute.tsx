@@ -20,11 +20,6 @@ export const AdminRoute = ({ element }: { element: JSX.Element }) => {
 
 	if (loading) return <LoadingSpinner />;
 
-	if (user && "isEmailVerified" in user && user.isEmailVerified === false) {
-		const emailParam = typeof user.email === "string" ? `?email=${encodeURIComponent(user.email)}` : "";
-		return <Navigate to={`/verify-email${emailParam}`} />;
-	}
-
 	if (!isAdminUser(user)) {
 		return <Navigate to="/login" />;
 	}

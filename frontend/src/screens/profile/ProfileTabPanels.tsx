@@ -11,6 +11,13 @@ interface ProfileTabPanelsProps {
 	posts: IPost[];
 	likedPosts: IPost[];
 	comments: IComment[];
+	postsFeedId: string;
+	mediaFeedId: string;
+	likedPostsFeedId: string;
+	isPostsFetching: boolean;
+	isLikedPostsFetching: boolean;
+	onRefreshPosts: () => Promise<unknown>;
+	onRefreshLikedPosts: () => Promise<unknown>;
 	isLoadingImages: boolean;
 	isLoadingAllPosts: boolean;
 	isLoadingAllLiked: boolean;
@@ -34,6 +41,13 @@ export const ProfileTabPanels: React.FC<ProfileTabPanelsProps> = ({
 	posts,
 	likedPosts,
 	comments,
+	postsFeedId,
+	mediaFeedId,
+	likedPostsFeedId,
+	isPostsFetching,
+	isLikedPostsFetching,
+	onRefreshPosts,
+	onRefreshLikedPosts,
 	isLoadingImages,
 	isLoadingAllPosts,
 	isLoadingAllLiked,
@@ -108,6 +122,9 @@ export const ProfileTabPanels: React.FC<ProfileTabPanelsProps> = ({
 							hasNextPage={hasNextPostsPage}
 							isFetchingNext={isFetchingNextPostsPage}
 							isLoadingAll={isLoadingAllPosts}
+							isFetchingAll={isPostsFetching}
+							feedId={postsFeedId}
+							onRefresh={onRefreshPosts}
 						/>
 					))}
 
@@ -178,6 +195,9 @@ export const ProfileTabPanels: React.FC<ProfileTabPanelsProps> = ({
 							hasNextPage={hasNextPostsPage}
 							isFetchingNext={isFetchingNextPostsPage}
 							isLoadingAll={isLoadingAllPosts}
+							isFetchingAll={isPostsFetching}
+							feedId={mediaFeedId}
+							onRefresh={onRefreshPosts}
 							variant="media"
 						/>
 					))}
@@ -196,6 +216,9 @@ export const ProfileTabPanels: React.FC<ProfileTabPanelsProps> = ({
 							hasNextPage={hasNextLikedPage}
 							isFetchingNext={isFetchingNextLikedPage}
 							isLoadingAll={isLoadingAllLiked}
+							isFetchingAll={isLikedPostsFetching}
+							feedId={likedPostsFeedId}
+							onRefresh={onRefreshLikedPosts}
 						/>
 					))}
 			</Box>
