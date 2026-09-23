@@ -112,11 +112,11 @@ export class AuthController {
       undefined,
       requestContext.ip,
     );
-    const { user } =
+    const { user, authVersion } =
       await this.commandBus.dispatch<RegisterUserResult>(command);
     const { accessToken, refreshToken, sid } =
       await this.authService.issueTokensForUser(
-        toSessionUser(user),
+        toSessionUser(user, authVersion),
         requestContext,
       );
     req.authLogMetadata = {

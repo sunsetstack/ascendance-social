@@ -18,6 +18,7 @@ import { TOKENS } from "@/types/tokens";
 
 export interface RegisterUserResult {
   user: AuthenticatedUserDTO;
+  authVersion: number;
 }
 
 @injectable()
@@ -67,7 +68,7 @@ export class RegisterUserCommandHandler implements ICommandHandler<
       await this.seedUsernameBloom(userPayload.username);
 
       const userDTO = this.dtoService.toAuthenticatedUserDTO(user);
-      return { user: userDTO };
+      return { user: userDTO, authVersion: user.authVersion };
     } catch (error) {
       if (error instanceof Error) {
         throw wrapError(error);
