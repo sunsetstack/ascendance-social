@@ -32,6 +32,12 @@ export const recentActivityQuerySchema = paginationSchema
   })
   .strict();
 
+export const adminEvidenceUnlockBodySchema = z.object({
+  password: z.string().min(1).max(1024),
+}).strict();
+
+export type AdminEvidenceUnlockBody = z.infer<typeof adminEvidenceUnlockBodySchema>;
+
 export const requestLogsQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().optional().default(1),

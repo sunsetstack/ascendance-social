@@ -72,6 +72,7 @@ import {
   useUnbanUser,
 } from "../hooks/admin/useAdmin";
 import type { AuthActivityLog, ClientFingerprint, RequestLog, VisitorObservation } from "../api/adminApi";
+import { unlockAdminEvidence } from "../api/adminApi";
 import { AdminUserDTO, IPost } from "../types";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useAuth } from "../hooks/context/useAuth";
@@ -506,10 +507,6 @@ const LogDetailsDialog: React.FC<{
           <Grid item xs={12}><DetailValue label="Client-reported visitor observation" value={formatLogObject(log.visitorObservation)} /></Grid>
           <Grid item xs={12} sm={6}><DetailValue label="Request aborted" value={log.aborted} /></Grid>
         </Grid>
-        <Alert severity="info" sx={{ mt: 2.5 }}>
-          IP, request-header, and client-reported evidence is available only for
-          unauthenticated or legacy records. It does not establish account ownership.
-        </Alert>
       </DialogContent>
       <DialogActions>
         {log.userId ? (
@@ -517,7 +514,7 @@ const LogDetailsDialog: React.FC<{
             View account
           </Button>
         ) : null}
-        {log.ip && log.ip !== "[restricted]" ? (
+        {log.ip ? (
           <>
             <Button onClick={() => onOpenIp("requests", log.ip!)}>Requests from IP</Button>
             <Button onClick={() => onOpenIp("security", log.ip!)}>Security activity from IP</Button>
@@ -599,6 +596,39 @@ export const AdminDashboard: React.FC = () => {
     new Date().toISOString(),
   );
   const [selectedLog, setSelectedLog] = useState<AdminLog | null>(null);
+  const [evidenceUnlockedUntil, setEvidenceUnlockedUntil] = useState(0);
+  const [evidencePassword, setEvidencePassword] = useState("");
+  const [evidenceUnlocking, setEvidenceUnlocking] = useState(false);
+  const [evidenceUnlockError, setEvidenceUnlockError] = useState(false);
+  const evidenceUnlocked = evidenceUnlockedUntil > Date.now();
+  const closeEvidencePrompt = (): void => {
+    setEvidencePassword("");
+    setEvidenceUnlockError(false);
+    setCurrentTab(0);
+  };
+  React.useEffect(() => {
+    if (!evidenceUnlockedUntil) return;
+    const timeout = window.setTimeout(() => {
+      setEvidenceUnlockedUntil(0);
+      setSelectedLog(null);
+    }, Math.max(0, evidenceUnlockedUntil - Date.now()));
+    return () => window.clearTimeout(timeout);
+  }, [evidenceUnlockedUntil]);
+
+  const handleEvidenceUnlock = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+    setEvidenceUnlocking(true);
+    setEvidenceUnlockError(false);
+    try {
+      const result = await unlockAdminEvidence(evidencePassword);
+      setEvidenceUnlockedUntil(Date.now() + Math.max(1, result.expiresInSeconds - 5) * 1000);
+      setEvidencePassword("");
+    } catch {
+      setEvidenceUnlockError(true);
+    } finally {
+      setEvidenceUnlocking(false);
+    }
+  };
   const debouncedUserSearch = useDebouncedValue(userSearch);
   const debouncedLogsSearch = useDebouncedValue(logsSearch);
   const debouncedAuthLogsSearch = useDebouncedValue(authLogsSearch);
@@ -685,7 +715,7 @@ export const AdminDashboard: React.FC = () => {
     refetch: refetchTelemetry,
   } = useTelemetryMetrics(currentTab === 3);
   const {
-    data: requestLogsData,
+    data: requestLogsQueryData,
     isLoading: logsLoading,
     isError: logsError,
     refetch: refetchRequestLogs,
@@ -704,10 +734,10 @@ export const AdminDashboard: React.FC = () => {
       endDate: getLocalDateBoundaryIso(logsEndDate, true),
       snapshotAt: logsSnapshotAt,
     },
-    currentTab === 4,
+    currentTab === 4 && evidenceUnlocked,
   );
   const {
-    data: authActivityLogsData,
+    data: authActivityLogsQueryData,
     isLoading: authLogsLoading,
     isError: authLogsError,
     refetch: refetchAuthLogs,
@@ -726,8 +756,10 @@ export const AdminDashboard: React.FC = () => {
       endDate: getLocalDateBoundaryIso(authLogsEndDate, true),
       snapshotAt: authLogsSnapshotAt,
     },
-    currentTab === 5,
+    currentTab === 5 && evidenceUnlocked,
   );
+  const requestLogsData = evidenceUnlocked ? requestLogsQueryData : undefined;
+  const authActivityLogsData = evidenceUnlocked ? authActivityLogsQueryData : undefined;
 
   const usersTotalPages = usersData?.totalPages;
   const imagesTotalPages = imagesData?.totalPages;
@@ -2764,8 +2796,44 @@ export const AdminDashboard: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      <Dialog
+        open={(currentTab === 4 || currentTab === 5) && !evidenceUnlocked}
+        onClose={evidenceUnlocking ? undefined : closeEvidencePrompt}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Confirm admin identity</DialogTitle>
+        <form onSubmit={handleEvidenceUnlock}>
+          <DialogContent>
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              Enter your password to view all request and security evidence for 10 minutes.
+            </Typography>
+            <TextField
+              autoFocus
+              fullWidth
+              label="Password"
+              type="password"
+              autoComplete="current-password"
+              value={evidencePassword}
+              onChange={(event) => setEvidencePassword(event.target.value)}
+            />
+            {evidenceUnlockError ? (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                Could not confirm your identity. Check your password and try again.
+              </Alert>
+            ) : null}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={closeEvidencePrompt} disabled={evidenceUnlocking}>Cancel</Button>
+            <Button type="submit" variant="contained" disabled={!evidencePassword || evidenceUnlocking}>
+              {evidenceUnlocking ? "Confirming…" : "View evidence"}
+            </Button>
+          </DialogActions>
+        </form>
+      </Dialog>
+
       <LogDetailsDialog
-        log={selectedLog}
+        log={evidenceUnlocked ? selectedLog : null}
         onClose={() => setSelectedLog(null)}
         onOpenAccount={openLogAccount}
         onOpenCorrelation={openCorrelationView}

@@ -478,7 +478,11 @@ export class ErrorHandler {
       if (serializedError.errors) response.errors = serializedError.errors;
     }
 
-    if (statusCode >= 500) {
+    if (
+      statusCode >= 500 ||
+      (statusCode >= 400 &&
+        /^\/api\/admin(?:\/|$)/.test((req.originalUrl || req.url).split("?")[0]))
+    ) {
       const requestStartTime = (req as express.Request & {
         _startTime?: number;
       })._startTime;

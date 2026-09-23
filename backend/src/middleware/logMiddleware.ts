@@ -7,6 +7,9 @@ declare module "express-serve-static-core" {
   }
 }
 
+const isAdminRoute = (route: string): boolean =>
+  route === "/api/admin" || route.startsWith("/api/admin/");
+
 // Middleware for logging behavior
 export const logBehaviour = (
   req: Request,
@@ -16,6 +19,10 @@ export const logBehaviour = (
   const start = Date.now();
   const { method } = req;
   const route = (req.originalUrl || req.url).split("?")[0];
+  if (isAdminRoute(route)) {
+    next();
+    return;
+  }
 
   behaviourLogger.debug("HTTP request started", {
     event: "http.request.started",
@@ -55,6 +62,11 @@ export const detailedRequestLogging = (
 ) => {
   req._startTime = Date.now();
   const startTime = req._startTime;
+  const route = (req.originalUrl || req.url).split("?")[0];
+  if (isAdminRoute(route)) {
+    next();
+    return;
+  }
 
   const logObject = {
     event: "http.request.received",
