@@ -22,6 +22,7 @@ export type SessionUser = {
   username: string;
   isAdmin: boolean;
   isEmailVerified: boolean;
+  authVersion: number;
 };
 
 export function buildAuthRequestContext(req: Request): AuthRequestContext {
@@ -33,6 +34,7 @@ export function buildAuthRequestContext(req: Request): AuthRequestContext {
 
 export function toSessionUser(
   user: AuthenticatedUserDTO | AdminUserDTO,
+  authVersion: number,
 ): SessionUser {
   return {
     publicId: user.publicId,
@@ -41,6 +43,7 @@ export function toSessionUser(
     username: user.username,
     isAdmin: "isAdmin" in user ? Boolean(user.isAdmin) : false,
     isEmailVerified: user.isEmailVerified,
+    authVersion,
   };
 }
 
