@@ -529,7 +529,7 @@ describe("RepostPostCommandHandler", () => {
 		mockPostReadRepository.findByPublicId.onFirstCall().resolves(targetPost);
 		mockPostReadRepository.countDocuments.resolves(0);
 
-		mockUnitOfWork.executeInTransaction.callsFake(async (fn: any) => fn({}));
+		mockUnitOfWork.executeInTransaction.callsFake(async (fn: any) => fn());
 		mockPostWriteRepository.create.resolves(created);
 		mockPostWriteRepository.updateRepostCount.resolves();
 
@@ -573,7 +573,7 @@ describe("RepostPostCommandHandler", () => {
 		mockPostReadRepository.findByPublicId.onFirstCall().resolves(targetPost);
 		mockPostReadRepository.countDocuments.resolves(0);
 
-		mockUnitOfWork.executeInTransaction.callsFake(async (fn: any) => fn({}));
+		mockUnitOfWork.executeInTransaction.callsFake(async (fn: any) => fn());
 		mockPostWriteRepository.create.resolves(created);
 		mockPostWriteRepository.updateRepostCount.resolves();
 		mockPostReadRepository.findByPublicId.onSecondCall().resolves(hydrated);

@@ -3,7 +3,7 @@ import { injectable, inject } from "tsyringe";
 import { IEventHandler } from "../interfaces/event-handler.interface";
 import { IEvent } from "../interfaces/event.interface";
 import { OutboxRepository } from "@/repositories/outbox.repository";
-import { sessionALS } from "@/database/UnitOfWork";
+import { requireTransactionSession } from "@/database/UnitOfWork";
 import { TOKENS } from "@/types/tokens";
 import { getCorrelationId } from "@/runtime/request-context";
 import type {
@@ -88,12 +88,9 @@ export class EventBus {
   async queueTransactional<TEvent extends IEvent>(
     event: TEvent,
   ): Promise<void> {
-    const session = sessionALS.getStore();
-    if (!session) {
-      throw new Error(
-        "queueTransactional must be called within a UnitOfWork transaction context",
-      );
-    }
+    requireTransactionSession(
+      "queueTransactional must be called within a UnitOfWork transaction context",
+    );
     await this.outboxRepository.saveEvent(
       event.type,
       event,

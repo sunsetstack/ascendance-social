@@ -3,7 +3,7 @@ import * as chai from "chai";
 import { expect } from "chai";
 import chaiAsPromised from "chai-as-promised";
 import sinon, { SinonStub } from "sinon";
-import { ClientSession, Model, Types, Document } from "mongoose";
+import { Model, Types, Document } from "mongoose";
 import { BaseRepository } from "@/repositories/base.repository";
 import { asMongoId } from "@/types/branded";
 import {
@@ -64,7 +64,6 @@ interface MockModel extends SinonStub {
 describe("BaseRepository", () => {
 	let repository: TestRepository;
 	let mockModel: MockModel;
-	let mockSession: ClientSession;
 	let mockQuery: {
 		session: SinonStub;
 		select: SinonStub;
@@ -87,7 +86,6 @@ describe("BaseRepository", () => {
 
 		mockModel.callsFake((data) => createMockDocInstance(data));
 
-		mockSession = {} as ClientSession;
 		repository = new TestRepository(mockModel as any);
 	});
 

@@ -108,7 +108,7 @@ async function bootstrap(): Promise<void> {
       // Resolve and initialize WebSocket server
       const webSocketServer =
         container.resolve<WebSocketServer>("WebSocketServer");
-      webSocketServer.initialize(server);
+      webSocketServer.initialize(server, app.get("trust proxy fn"));
 
       // Initialize realtime feed service
       container.resolve<RealTimeFeedService>("RealTimeFeedService");

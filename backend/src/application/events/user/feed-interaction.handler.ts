@@ -10,8 +10,8 @@ import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRep
 import { logger } from "@/utils/winston";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
-import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
 import { IPost } from "@/types";
+import { buildRealtimeEventId } from "@/application/common/events/event-registry";
 @injectable()
 export class FeedInteractionHandler implements IEventHandler<UserInteractedWithPostEvent> {
   constructor(
@@ -39,24 +39,33 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
         return;
       }
 
+      const timestamp = new Date(event.timestamp);
+      const eventId =
+        event.eventId ??
+        buildRealtimeEventId(
+          event.type,
+          event.userId,
+          event.postId,
+          event.interactionType,
+          timestamp.toISOString(),
+        );
       await this.feedService.recordInteraction(
         event.userId,
         event.interactionType,
         event.postId,
         event.tags,
+        { eventId, timestamp, activityId: event.activityId },
       );
 
       await this.redis.pushToStream("stream:interactions", {
         postId: event.postId,
         userId: event.userId,
         type: event.interactionType,
-        timestamp: Date.now().toString(),
+        eventId,
+        timestamp: timestamp.getTime().toString(),
         tags: event.tags ? JSON.stringify(event.tags) : undefined,
       });
       await this.invalidateRelevantFeeds(event, post);
-
-      // Publish real-time interaction event for WebSocket notifications
-      await this.publishInteractionEvent(event);
     } catch (error) {
       logger.error("Feed update failed", { error });
       throw error;
@@ -180,38 +189,4 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
     }
   }
 
-  /**
-   * Publish real-time interaction event to Redis for WebSocket broadcasting
-   */
-  private async publishInteractionEvent(
-    event: UserInteractedWithPostEvent,
-  ): Promise<void> {
-    try {
-      const interactionMessage = {
-        eventId: buildRealtimeEventId(
-          EventRegistry.realtimeMessageTypes.interaction,
-          event.interactionType,
-          event.userId,
-          event.postId,
-          event.timestamp.toISOString(),
-        ),
-        type: EventRegistry.realtimeMessageTypes.interaction,
-        userId: event.userId,
-        actionType: event.interactionType,
-        targetId: event.postId,
-        tags: event.tags,
-        timestamp: event.timestamp.toISOString(),
-      };
-
-      await this.redis.publish(
-        EventRegistry.redisChannels.feedUpdates,
-        JSON.stringify(interactionMessage),
-      );
-      logger.info(
-        `Published real-time interaction event: ${event.interactionType} on post ${event.postId} by user ${event.userId}`,
-      );
-    } catch (error) {
-      logger.error("Failed to publish interaction event", { error });
-    }
-  }
 }

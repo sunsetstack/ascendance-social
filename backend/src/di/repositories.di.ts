@@ -24,6 +24,7 @@ import { CommunityMemberRepository } from "@/repositories/communityMember.reposi
 import { AuthActivityLogRepository } from "@/repositories/authActivityLog.repository";
 import { RequestLogRepository } from "@/repositories/requestLog.repository";
 import { SecurityAuditEventRepository } from "@/repositories/securityAuditEvent.repository";
+import { ForensicOperationalErrorRepository } from "@/repositories/forensicOperationalError.repository";
 import { OutboxRepository } from "@/repositories/outbox.repository";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
@@ -78,6 +79,16 @@ export function registerRepositories(): void {
     TOKENS.Repositories.SecurityAuditEvent,
     SecurityAuditEventRepository,
   );
+  container.registerSingleton(
+    TOKENS.Repositories.ForensicOperationalError,
+    ForensicOperationalErrorRepository,
+  );
+  container.register(TOKENS.Repositories.ForensicOperationalErrorWriter, {
+    useToken: TOKENS.Repositories.ForensicOperationalError,
+  });
+  container.register(TOKENS.Repositories.ForensicOperationalErrorReader, {
+    useToken: TOKENS.Repositories.ForensicOperationalError,
+  });
   container.registerSingleton(TOKENS.Repositories.Outbox, OutboxRepository);
 
   container.registerSingleton(TOKENS.Repositories.PostRead, PostReadRepository);

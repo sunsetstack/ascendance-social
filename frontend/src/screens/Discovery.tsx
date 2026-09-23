@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -24,6 +24,8 @@ import {
 } from "../hooks/posts/usePosts";
 import { PageSeo } from "../lib/PageSeo";
 import { buildDiscoveryMetadata } from "../lib/seo";
+import { feedIdentities } from "../features/feed/feedIdentity";
+import { feedRestorationStore } from "../features/feed/feedRestoration";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -80,21 +82,32 @@ const feedToIndex: Record<string, number> = {
 const Discovery: React.FC = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isLoggedIn, loading: authLoading } = useAuth();
+  const { isLoggedIn, loading: authLoading, user } = useAuth();
 
   // check if we have a specific feed requested via URL param
   const requestedFeed = searchParams.get("feed");
+  const historyFeed = (location.state as { discoveryFeed?: string } | null)
+    ?.discoveryFeed;
+  const selectedFeed = requestedFeed ?? historyFeed;
   const displayedFeed =
-    !isLoggedIn && requestedFeed === "foryou" ? "latest" : requestedFeed;
-  const isSingleFeedMode = isMobile && !!displayedFeed;
-  const initialTab = displayedFeed ? (feedToIndex[displayedFeed] ?? 0) : 0;
+    !isLoggedIn && selectedFeed === "foryou" ? "latest" : selectedFeed;
+  const isSingleFeedMode = isMobile && !!requestedFeed;
+  const activeTab = displayedFeed ? (feedToIndex[displayedFeed] ?? 0) : 0;
 
-  const [activeTab, setActiveTab] = useState<number>(initialTab);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const currentLocationKeyRef = React.useRef<string | null>(location.key);
 
-  // sync tab with URL param when it changes
+  React.useLayoutEffect(() => {
+    currentLocationKeyRef.current = location.key;
+    return () => {
+      currentLocationKeyRef.current = null;
+    };
+  }, [location.key]);
+
+  // Normalize anonymous For You deep links to Latest.
   useEffect(() => {
     if (authLoading) return;
 
@@ -108,15 +121,16 @@ const Discovery: React.FC = () => {
         { replace: true },
       );
     }
-
-    setActiveTab(displayedFeed ? (feedToIndex[displayedFeed] ?? 0) : 0);
-  }, [authLoading, displayedFeed, isLoggedIn, requestedFeed, setSearchParams]);
+  }, [authLoading, isLoggedIn, requestedFeed, setSearchParams]);
 
   const trendingFeedQuery = useTrendingFeed({ enabled: activeTab === 1 });
   const newFeedQuery = useNewFeed({ enabled: activeTab === 0 });
   const forYouFeedQuery = useForYouFeed({
     enabled: isLoggedIn && activeTab === 2,
   });
+  const latestFeedId = feedIdentities.latest(user?.publicId);
+  const trendingFeedId = feedIdentities.trending(user?.publicId);
+  const forYouFeedId = feedIdentities.forYou(user?.publicId);
   const newPosts =
     newFeedQuery.data?.pages.flatMap((page) => page.data) ?? [];
   const trendingPosts =
@@ -128,18 +142,48 @@ const Discovery: React.FC = () => {
     if (newValue !== activeTab) {
       window.scrollTo({ top: 0, behavior: "auto" });
     }
-    setActiveTab(newValue);
+    const feed = ["latest", "trending", "foryou"][newValue];
+    if (!feed) return;
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (requestedFeed) next.set("feed", feed);
+        return next;
+      },
+      {
+        replace: true,
+        state: {
+          ...(location.state && typeof location.state === "object"
+            ? location.state
+            : {}),
+          discoveryFeed: feed,
+        },
+      },
+    );
   };
 
   const handleRefreshNewFeed = async () => {
     if (!isLoggedIn || isRefreshing) return;
+    const refreshLocationKey = location.key;
     setIsRefreshing(true);
     setRefreshError(null);
+    const pendingVersion = feedRestorationStore.getPendingVersion(
+      latestFeedId,
+      refreshLocationKey,
+    );
     try {
       await newFeedQuery.refreshFeed();
-      await newFeedQuery.refetch();
+      if (currentLocationKeyRef.current !== refreshLocationKey) return;
+      feedRestorationStore.clearPending(
+        latestFeedId,
+        refreshLocationKey,
+        pendingVersion,
+      );
+      window.scrollTo({ top: 0, behavior: "auto" });
     } catch {
-      setRefreshError("Unable to refresh the latest feed.");
+      if (currentLocationKeyRef.current === refreshLocationKey) {
+        setRefreshError("Unable to refresh the latest feed.");
+      }
     } finally {
       setIsRefreshing(false);
     }
@@ -303,12 +347,13 @@ const Discovery: React.FC = () => {
                   id="discovery-tab-1"
                   aria-controls="discovery-tabpanel-1"
                 />
-                <Tab
-                  label="For You"
-                  id="discovery-tab-2"
-                  aria-controls="discovery-tabpanel-2"
-                  disabled={!isLoggedIn}
-                />
+                {isLoggedIn && (
+                  <Tab
+                    label="For You"
+                    id="discovery-tab-2"
+                    aria-controls="discovery-tabpanel-2"
+                  />
+                )}
               </Tabs>
             </Box>
           )}
@@ -371,6 +416,8 @@ const Discovery: React.FC = () => {
                       newFeedQuery.isLoading || newFeedQuery.isPending
                     }
                     isFetchingAll={newFeedQuery.isFetching}
+                    feedId={latestFeedId}
+                    onRefresh={newFeedQuery.refreshFeed}
                   />
                 )}
               </Box>
@@ -395,6 +442,8 @@ const Discovery: React.FC = () => {
                       trendingFeedQuery.isPending
                     }
                     isFetchingAll={trendingFeedQuery.isFetching}
+                    feedId={trendingFeedId}
+                    onRefresh={trendingFeedQuery.refreshFeed}
                   />
                 )}
               </Box>
@@ -418,6 +467,8 @@ const Discovery: React.FC = () => {
                         forYouFeedQuery.isLoading || forYouFeedQuery.isPending
                       }
                       isFetchingAll={forYouFeedQuery.isFetching}
+                      feedId={forYouFeedId}
+                      onRefresh={forYouFeedQuery.refreshFeed}
                     />
                   )}
                 </Box>

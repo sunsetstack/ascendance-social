@@ -37,10 +37,21 @@ function logRequest(
   activityThrottle: UserActivityThrottle,
 ): void {
   const startTime = Date.now();
+  let persisted = false;
 
-  res.once("finish", () => {
+  const persist = (aborted: boolean): void => {
+    if (persisted) {
+      return;
+    }
+    persisted = true;
+
     const route = getRequestRoute(req);
-    if (shouldSkipRequestLogging(route)) {
+    const isSuccessfulVisitorObservation =
+      (route === "/telemetry" || route === "/api/telemetry") &&
+      Boolean(req.visitorObservation) &&
+      res.statusCode >= 200 &&
+      res.statusCode < 300;
+    if (shouldSkipRequestLogging(route) && !isSuccessfulVisitorObservation) {
       return;
     }
 
@@ -49,16 +60,26 @@ function logRequest(
       res,
       route,
       startTime,
+      { aborted },
     );
     const resolvedCommandBus = resolveCommandBus();
 
-    dispatchUserActivityUpdate(
-      resolvedCommandBus,
-      context,
-      activityThrottle,
-    );
     dispatchRequestLog(resolvedCommandBus, context);
-    dispatchRequestAudits(resolvedCommandBus, context);
+    if (!aborted) {
+      dispatchUserActivityUpdate(
+        resolvedCommandBus,
+        context,
+        activityThrottle,
+      );
+      dispatchRequestAudits(resolvedCommandBus, context);
+    }
+  };
+
+  res.once("finish", () => persist(false));
+  res.once("close", () => {
+    if (!res.writableFinished) {
+      persist(true);
+    }
   });
 
   next();

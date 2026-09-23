@@ -48,6 +48,12 @@ export class RedisPubSubModule {
     }
 
     const subscriber = this.client.duplicate();
+    subscriber.on("error", (error) => {
+      redisLogger.warn("Redis subscription connection error", {
+        channels,
+        error: getErrorMessage(error),
+      });
+    });
     try {
       await subscriber.connect();
       this.subscribers.set(subscriberKey, subscriber);

@@ -169,7 +169,7 @@ export class FeedReadService {
     }
 
     if (forceRefresh) {
-      return this.getNewFeedDelta(safePage, safeLimit);
+      return this.getNewFeedDelta(safePage, safeLimit, cursor);
     }
 
     const key = cursor
@@ -247,14 +247,17 @@ export class FeedReadService {
   private async getNewFeedDelta(
     page: number,
     limit: number,
+    cursor?: string,
   ): Promise<PaginationResult<PostDTO> & { nextCursor?: string }> {
     const firstPageKey = CacheKeyBuilder.getNewFeedKey(1, limit);
-    const visiblePage =
-      await this.redisService.getWithTags<CachedNewFeed>(firstPageKey);
+    const visiblePage = cursor
+      ? null
+      : await this.redisService.getWithTags<CachedNewFeed>(firstPageKey);
+    const headCursor = cursor ?? visiblePage?.headCursor;
     const result = await this.feedReadDao.getNewFeedWithCursor({
       limit,
-      cursor: visiblePage?.headCursor,
-      direction: visiblePage?.headCursor ? "backward" : "forward",
+      cursor: headCursor,
+      direction: headCursor ? "backward" : "forward",
     });
     const enriched = await this.feedEnrichmentService.enrichFeedWithCurrentData(
       result.data as FeedPost[],

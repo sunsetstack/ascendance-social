@@ -66,10 +66,58 @@ copy_with_host_rclone() {
 main() {
   local date_value
   date_value="$(resolve_date "$@")"
-
+  : "${AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64:?AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64 is required}"
   cd "$ASCENDANCE_DIR"
-  docker_compose exec -T "$BACKEND_SERVICE" \
+
+  local container_ids
+  local -a backend_containers
+  container_ids="$(docker_compose ps -q "$BACKEND_SERVICE")"
+  mapfile -t backend_containers < <(printf '%s\n' "$container_ids" | sed '/^[[:space:]]*$/d')
+  if [[ "${#backend_containers[@]}" -ne 1 ]]; then
+    echo "Expected exactly one running Compose backend container for $BACKEND_SERVICE" >&2
+    return 1
+  fi
+
+  local backend_container="${backend_containers[0]}"
+  if [[ "$(docker inspect -f '{{.State.Running}}' "$backend_container")" != "true" ]]; then
+    echo "Compose backend container is not running: $backend_container" >&2
+    return 1
+  fi
+
+  local backend_image_id
+  backend_image_id="$(docker inspect -f '{{.Image}}' "$backend_container")"
+  if [[ ! "$backend_image_id" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    echo "Compose backend image ID is unavailable or not immutable: $backend_image_id" >&2
+    return 1
+  fi
+
+  local local_image_id
+  if ! local_image_id="$(docker image inspect -f '{{.Id}}' "$backend_image_id")"; then
+    echo "Running Compose backend image is not present locally: $backend_image_id" >&2
+    return 1
+  fi
+  if [[ "$local_image_id" != "$backend_image_id" ]]; then
+    echo "Running Compose backend image ID could not be verified: $backend_image_id" >&2
+    return 1
+  fi
+  export BACKEND_IMAGE="$backend_image_id"
+  export AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64
+
+  if docker_compose run --rm --no-deps \
+    --pull never \
+    -T \
+    -e AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64 \
+    "$BACKEND_SERVICE" \
     node backend/dist/scripts/seal-audit-archive.js "$@"
+  then
+    unset BACKEND_IMAGE
+    unset AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64
+  else
+    local exit_code=$?
+    unset BACKEND_IMAGE
+    unset AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64
+    return "$exit_code"
+  fi
 
   copy_with_host_rclone "$date_value"
 }

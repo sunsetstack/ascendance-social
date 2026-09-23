@@ -3,6 +3,7 @@ import { inject, injectable } from "tsyringe";
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { verifyPassword } from "@/application/common/policies/password.policy";
 import { UnitOfWork } from "@/database/UnitOfWork";
+import { AdminRemovalGuardService } from "@/services/admin-removal-guard.service";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
 import { AccountAuditSnapshotService } from "@/services/lifecycle/account-audit-snapshot.service";
 import { AccountLifecycleService } from "@/services/lifecycle/account-lifecycle.service";
@@ -30,6 +31,8 @@ export class DeleteUserCommandHandler implements ICommandHandler<
     private readonly userModel: Model<IUser>,
     @inject(TOKENS.Services.AuthSession)
     private readonly authSessionService: AuthSessionService,
+    @inject(TOKENS.Services.AdminRemovalGuard)
+    private readonly adminRemovalGuard: AdminRemovalGuardService,
   ) {}
 
   async execute(command: DeleteUserCommand): Promise<void> {
@@ -37,6 +40,14 @@ export class DeleteUserCommandHandler implements ICommandHandler<
     if (!reason || reason.length > 500) {
       throw Errors.validation(
         "An account deletion reason between 1 and 500 characters is required",
+      );
+    }
+    if (
+      command.requestedByPublicId &&
+      command.requestedByPublicId === command.userPublicId
+    ) {
+      throw Errors.validation(
+        "Administrators cannot delete their own account from the admin panel",
       );
     }
     await this.verifyPasswordWhenRequired(command);
@@ -56,10 +67,6 @@ export class DeleteUserCommandHandler implements ICommandHandler<
       targetUserPublicId: targetUser.publicId,
       reason,
     });
-    await this.authSessionService.revokeAllSessionsForUser(
-      command.userPublicId,
-    );
-
     try {
       await this.unitOfWork.executeInTransaction(async () => {
         const currentUser = await this.userReadRepository.findByPublicId(
@@ -67,6 +74,11 @@ export class DeleteUserCommandHandler implements ICommandHandler<
         );
         if (!currentUser) {
           throw Errors.notFound("User");
+        }
+
+        if (currentUser.isAdmin && !currentUser.isBanned) {
+          await this.adminRemovalGuard.touch();
+          await this.ensureActiveAdministratorWillRemain(currentUser);
         }
 
         await this.accountLifecycleService.purgeUser(
@@ -89,6 +101,10 @@ export class DeleteUserCommandHandler implements ICommandHandler<
     } catch (error) {
       throw wrapError(error);
     }
+
+    await this.authSessionService.revokeAllSessionsForUser(
+      command.userPublicId,
+    );
   }
 
   private async verifyPasswordWhenRequired(
@@ -107,6 +123,18 @@ export class DeleteUserCommandHandler implements ICommandHandler<
     }
     if (!(await verifyPassword(command.password, userWithPassword.password))) {
       throw Errors.authentication("Invalid password");
+    }
+  }
+
+  private async ensureActiveAdministratorWillRemain(user: IUser): Promise<void> {
+    if (!user.isAdmin || user.isBanned) return;
+
+    const activeAdminCount = await this.userReadRepository.countDocuments({
+      isAdmin: true,
+      isBanned: false,
+    });
+    if (activeAdminCount <= 1) {
+      throw Errors.validation("At least one active administrator must remain");
     }
   }
 

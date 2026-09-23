@@ -4,21 +4,21 @@ import {
   useQueryClient,
   UseQueryOptions,
   InfiniteData,
+  QueryKey,
 } from "@tanstack/react-query";
 import { followUser, likePost } from "../../api/userActions";
 import { fetchIsFollowing } from "../../api/userApi";
 import { addFavorite, removeFavorite } from "../../api/favoritesApi";
 import {
-  IImage,
   IPost,
   ImagePageData,
-  PaginatedResponse,
   PublicUserDTO,
   AuthenticatedUserDTO,
   AdminUserDTO,
   WhoToFollowResponse,
 } from "../../types";
 import { devError } from "@/lib/devLogger";
+import { postInteractionQueryFilter, updatePostInCache } from "../posts/postCache";
 
 /**All hooks use public ids */
 export const useFollowUser = () => {
@@ -264,138 +264,49 @@ export const useLikePost = () => {
   return useMutation({
     mutationFn: likePost,
     onMutate: async (postPublicId) => {
-      // Cancel all related queries on posts images personalized feed everything
-      await queryClient.cancelQueries({ queryKey: ["personalizedFeed"] });
-      await queryClient.cancelQueries({ queryKey: ["image", postPublicId] });
-      await queryClient.cancelQueries({ queryKey: ["image"] });
-      await queryClient.cancelQueries({ queryKey: ["post", postPublicId] });
-      await queryClient.cancelQueries({ queryKey: ["posts"] });
-
-      const previousFeed = queryClient.getQueryData<
-        InfiniteData<PaginatedResponse<IImage>>
-      >(["personalizedFeed"]);
-      const previousImage = queryClient.getQueryData<IImage>([
-        "image",
-        postPublicId,
-      ]);
-      const previousPost = queryClient.getQueryData<IImage>([
-        "post",
-        postPublicId,
-      ]);
-
-      // Update individual image cache - toggle both likes count and isLikedByViewer
-      queryClient.setQueryData<IImage>(["image", postPublicId], (oldImage) => {
-        if (!oldImage) return oldImage;
-        const currentlyLiked = oldImage.isLikedByViewer;
-        return {
-          ...oldImage,
-          likes: currentlyLiked ? oldImage.likes - 1 : oldImage.likes + 1,
-          isLikedByViewer: !currentlyLiked,
-        };
-      });
-      queryClient.setQueryData<IImage>(["post", postPublicId], (oldPost) => {
-        if (!oldPost) return oldPost;
-        const currentlyLiked = oldPost.isLikedByViewer;
-        return {
-          ...oldPost,
-          likes: currentlyLiked ? oldPost.likes - 1 : oldPost.likes + 1,
-          isLikedByViewer: !currentlyLiked,
-        };
-      });
-
-      // Update the general image query cache using the image publicid
-      queryClient.setQueriesData<IImage>(
-        { queryKey: ["image"] },
-        (oldImage) => {
-          if (!oldImage || oldImage.publicId !== postPublicId) return oldImage;
-          const currentlyLiked = oldImage.isLikedByViewer;
-          return {
-            ...oldImage,
-            likes: currentlyLiked ? oldImage.likes - 1 : oldImage.likes + 1,
-            isLikedByViewer: !currentlyLiked,
-          };
-        },
-      );
-
-      // Update all post queries
-      queryClient.setQueriesData<IImage>({ queryKey: ["posts"] }, (oldPost) => {
-        if (!oldPost || oldPost.publicId !== postPublicId) return oldPost;
-        const currentlyLiked = oldPost.isLikedByViewer;
-        return {
-          ...oldPost,
-          likes: currentlyLiked ? oldPost.likes - 1 : oldPost.likes + 1,
-          isLikedByViewer: !currentlyLiked,
-        };
-      });
-
-      // only update feed if it exists
-      if (previousFeed) {
-        queryClient.setQueryData<InfiniteData<PaginatedResponse<IImage>>>(
-          ["personalizedFeed"],
-          (oldData) => {
-            if (!oldData) return oldData;
-            return {
-              ...oldData,
-              pages: oldData.pages.map((page) => ({
-                ...page,
-                data: page.data.map((image) => {
-                  if (image.publicId === postPublicId) {
-                    const currentlyLiked = image.isLikedByViewer;
-                    return {
-                      ...image,
-                      likes: currentlyLiked ? image.likes - 1 : image.likes + 1,
-                      isLikedByViewer: !currentlyLiked,
-                    };
-                  }
-                  return image;
-                }),
-              })),
-            };
-          },
-        );
+      await queryClient.cancelQueries(postInteractionQueryFilter);
+      const previousPosts: Array<{ queryKey: QueryKey; post: IPost }> = [];
+      for (const [queryKey, data] of queryClient.getQueriesData(
+        postInteractionQueryFilter,
+      )) {
+        let previousPost: IPost | undefined;
+        updatePostInCache(data, postPublicId, (post) => {
+          previousPost ??= post;
+          return post;
+        });
+        if (previousPost) previousPosts.push({ queryKey, post: previousPost });
       }
 
-      return { previousFeed, previousImage, previousPost, postPublicId };
+      const detail = queryClient.getQueryData<IPost>(["post", postPublicId]);
+      const shouldLike = !(detail ?? previousPosts[0]?.post)?.isLikedByViewer;
+      queryClient.setQueriesData(postInteractionQueryFilter, (data: unknown) =>
+        updatePostInCache(data, postPublicId, (post) => ({
+          ...post,
+          likes: Math.max(
+            0,
+            post.likes + Number(shouldLike) - Number(!!post.isLikedByViewer),
+          ),
+          isLikedByViewer: shouldLike,
+        })),
+      );
+      return { previousPosts };
     },
     onError: (_error, postPublicId, context) => {
-      // Rollback optimistic updates on error
-      if (context?.previousFeed) {
-        queryClient.setQueryData(["personalizedFeed"], context.previousFeed);
-      }
-      if (context?.previousImage) {
-        queryClient.setQueryData(
-          ["image", postPublicId],
-          context.previousImage,
+      for (const { queryKey, post: previous } of context?.previousPosts ?? []) {
+        queryClient.setQueryData(queryKey, (data: unknown) =>
+          updatePostInCache(data, postPublicId, (post) => ({
+            ...post,
+            likes: previous.likes,
+            isLikedByViewer: previous.isLikedByViewer,
+          })),
         );
       }
-      if (context?.previousPost) {
-        queryClient.setQueryData(["post", postPublicId], context.previousPost);
-      }
-    },
-    onSuccess: () => {
-      // trust the optimistic update
-      // only invalidate feed queries in background to sync other posts
-      setTimeout(() => {
-        queryClient.invalidateQueries({
-          queryKey: ["personalizedFeed"],
-          refetchType: "none", // Refetching immediately causes very undesired behaviour so I disabled it and this fixed it
-        });
-        queryClient.invalidateQueries({
-          queryKey: ["trendingFeed"],
-          refetchType: "none",
-        });
-        queryClient.invalidateQueries({
-          queryKey: ["newFeed"],
-          refetchType: "none",
-        });
-        queryClient.invalidateQueries({
-          queryKey: ["forYouFeed"],
-          refetchType: "none",
-        });
-      }, 1000);
     },
     onSettled: () => {
-      // Backend handles correct state on next natural refetch
+      return queryClient.invalidateQueries({
+        ...postInteractionQueryFilter,
+        refetchType: "none",
+      });
     },
   });
 };

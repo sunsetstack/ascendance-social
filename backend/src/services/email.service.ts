@@ -126,8 +126,49 @@ export class EmailService {
     }
   }
 
+  async sendPasswordChangedEmail(recipientEmail: string): Promise<void> {
+    if (this.logOnly) {
+      this.logLocalEmail(
+        "password_changed",
+        recipientEmail,
+        "Password changed notification",
+      );
+      return;
+    }
+
+    if (!this.resend) {
+      logger.error("Email provider is not configured", {
+        event: "email.provider.unconfigured",
+        emailType: "password_changed",
+      });
+      throw Errors.internal("RESEND_API_KEY is not configured");
+    }
+    try {
+      await this.resend.emails.send({
+        from: "Ascendance <no-reply@ascendance.social>",
+        to: recipientEmail,
+        subject: "Your password was changed",
+        replyTo: "support@ascendance.social",
+        html: "<p>Your Ascendance password was changed.</p><p>If you did not make this change, reset your password immediately and contact support.</p>",
+      });
+      logger.info("Email sent", {
+        event: "email.sent",
+        emailType: "password_changed",
+        recipientDomain: getEmailDomain(recipientEmail),
+      });
+    } catch (error) {
+      logger.error("Failed to send email", {
+        event: "email.send_failed",
+        emailType: "password_changed",
+        recipientDomain: getEmailDomain(recipientEmail),
+        error,
+      });
+      throw Errors.internal("Failed to send password changed notification");
+    }
+  }
+
   private logLocalEmail(
-    emailType: "password_reset" | "email_verification",
+    emailType: "password_reset" | "email_verification" | "password_changed",
     recipientEmail: string,
     previewUrl: string,
   ): void {

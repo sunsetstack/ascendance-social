@@ -3,13 +3,17 @@ import { Model } from "mongoose";
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { ChangePasswordCommand } from "./changePassword.command";
 import type { IUserWriteRepository } from "@/repositories/interfaces/IUserWriteRepository";
-import { UnitOfWork, sessionALS } from "@/database/UnitOfWork";
+import {
+  requireTransactionSession,
+  UnitOfWork,
+} from "@/database/UnitOfWork";
 import { UserActionRepository } from "@/repositories/userAction.repository";
 import { IUser } from "@/types";
 import { Errors } from "@/utils/errors";
 import { asMongoId } from "@/types/branded";
 import { TOKENS } from "@/types/tokens";
 import { verifyPassword } from "@/application/common/policies/password.policy";
+import { AuthService } from "@/services/auth.service";
 
 @injectable()
 export class ChangePasswordCommandHandler implements ICommandHandler<
@@ -24,6 +28,7 @@ export class ChangePasswordCommandHandler implements ICommandHandler<
     @inject(TOKENS.Repositories.UserAction)
     private readonly userActionRepository: UserActionRepository,
     @inject(TOKENS.Models.User) private readonly userModel: Model<IUser>,
+    @inject(TOKENS.Services.Auth) private readonly authService: AuthService,
   ) {}
 
   async execute(command: ChangePasswordCommand): Promise<void> {
@@ -37,12 +42,12 @@ export class ChangePasswordCommandHandler implements ICommandHandler<
       );
     }
 
-    await this.unitOfWork.executeInTransaction(async () => {
+    const changedUser = await this.unitOfWork.executeInTransaction(async () => {
       // Need the model directly because the password is excluded by default.
       const user = await this.userModel
         .findOne({ publicId: command.userPublicId })
         .select("+password")
-        .session(sessionALS.getStore() ?? null)
+        .session(requireTransactionSession())
         .exec();
 
       if (!user) {
@@ -61,12 +66,17 @@ export class ChangePasswordCommandHandler implements ICommandHandler<
 
       await this.userWriteRepository.update(userId, {
         $set: { password: command.newPassword },
+        $inc: { authVersion: 1 },
+        $unset: { resetToken: 1, resetTokenExpires: 1 },
       });
       await this.userActionRepository.logAction(
         userId,
         "password_change",
         userId,
       );
+      return { publicId: user.publicId, email: user.email };
     });
+
+    await this.authService.handlePasswordChanged(changedUser);
   }
 }

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextFunction, Request, Response } from "express";
 import { runWithRequestContext } from "@/runtime/request-context";
+import { getClientIp } from "@/utils/request-ip";
 
 const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
@@ -127,8 +128,11 @@ export function correlationIdMiddleware(
       requestStartTime: process.hrtime.bigint(),
       method: req.method,
       requestPath: normalizeRequestPath(req.path),
+      clientIp: getClientIp(req),
+      userAgent: req.get("user-agent") ?? undefined,
       clientRequestId,
       clientBootId,
+      clientRequestAttempt,
       previousClientRequestId,
       causedByClientRequestId,
     },

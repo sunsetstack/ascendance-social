@@ -18,6 +18,7 @@ type NonHttpTerminalErrorContext = {
   message: string;
   event: string;
   operation: string;
+  errorId?: string;
   operationId?: string;
   worker?: string;
   messageType?: string;
@@ -69,9 +70,9 @@ function getSafeErrorBreadcrumbSnapshot(
 export function logNonHttpTerminalError(
   error: unknown,
   context: NonHttpTerminalErrorContext,
-): void {
+): string {
   const requestContext = getRequestContext();
-  const errorId = randomUUID();
+  const errorId = sanitizeIdentifier(context.errorId) ?? randomUUID();
   const operationId = sanitizeIdentifier(context.operationId) ?? randomUUID();
   const correlationId = sanitizeIdentifier(
     context.correlationId ?? requestContext?.correlationId,
@@ -121,4 +122,6 @@ export function logNonHttpTerminalError(
     ...(breadcrumbs.length ? { breadcrumbs: [...breadcrumbs] } : {}),
     error: serializeError(error),
   });
+
+  return errorId;
 }

@@ -2,8 +2,11 @@ import "reflect-metadata";
 import { after, afterEach, before, beforeEach, describe, it } from "mocha";
 import { expect } from "chai";
 import sinon from "sinon";
-import mongoose, { ClientSession, Types } from "mongoose";
-import { UnitOfWork } from "@/database/UnitOfWork";
+import mongoose, { Types } from "mongoose";
+import {
+  requireTransactionSession,
+  UnitOfWork,
+} from "@/database/UnitOfWork";
 import { getErrorLabels } from "@/utils/errors";
 
 const uri = process.env.INTEGRATION_MONGODB_URI;
@@ -186,7 +189,8 @@ describe("UnitOfWork retry integration", () => {
 
     try {
       evidence.finalValue = await unitOfWork.executeInTransaction(
-        async (session: ClientSession) => {
+        async () => {
+          const session = requireTransactionSession();
           evidence.bodyInvocationCount++;
           try {
             await mongoose.connection.db!.collection(collectionName).insertOne(
@@ -241,7 +245,8 @@ describe("UnitOfWork retry integration", () => {
 
     try {
       evidence.finalValue = await unitOfWork.executeInTransaction(
-        async (session: ClientSession) => {
+        async () => {
+          const session = requireTransactionSession();
           evidence.bodyInvocationCount++;
           try {
             await mongoose.connection.db!.collection(collectionName).insertOne(

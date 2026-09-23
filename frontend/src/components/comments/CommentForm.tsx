@@ -16,7 +16,7 @@ const CommentForm: React.FC<CommentFormProps> = ({ postId }) => {
   const [content, setContent] = useState("");
   const createCommentMutation = useCreateComment();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
 
     if (!content.trim() || !isLoggedIn) return;
@@ -34,12 +34,7 @@ const CommentForm: React.FC<CommentFormProps> = ({ postId }) => {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.ctrlKey && e.key === "Enter") {
-      e.preventDefault();
-      const formEvent = new Event("submit", {
-        bubbles: true,
-        cancelable: true,
-      });
-      handleSubmit(formEvent as unknown as React.FormEvent);
+      void handleSubmit(e);
     }
   };
 

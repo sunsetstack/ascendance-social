@@ -163,3 +163,15 @@ jobs:
 
             test "$(docker inspect frontend --format '{{.Config.Image}}')" = \
               "ghcr.io/sunsetstack/ascendance-frontend:$DEPLOY_SHA"
+
+            deadline=$(($(date +%s) + 240))
+            until [ "$(docker inspect backend --format '{{.State.Health.Status}}')" = healthy ] && \
+                  [ "$(docker inspect backend-worker --format '{{.State.Health.Status}}')" = healthy ] && \
+                  docker exec frontend wget --quiet --spider --timeout=5 http://127.0.0.1/; do
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "Deployment failed: application readiness timed out" >&2
+                compose -f docker-compose-prod.yml ps
+                exit 1
+              fi
+              sleep 5
+            done

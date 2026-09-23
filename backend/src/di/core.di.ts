@@ -1,6 +1,7 @@
 import { container } from "tsyringe";
 
 import User from "@/models/user.model";
+import { AdminMutationGuard } from "@/models/admin-mutation-guard.model";
 import Image, { Tag } from "@/models/image.model";
 import Post from "@/models/post.model";
 import PostLike from "@/models/postLike.model";
@@ -21,6 +22,9 @@ import { TOKENS } from "@/types/tokens";
 
 export function registerCoreComponents(): void {
   container.register(TOKENS.Models.User, { useValue: User });
+  container.register(TOKENS.Models.AdminMutationGuard, {
+    useValue: AdminMutationGuard,
+  });
   container.register(TOKENS.Models.Image, { useValue: Image });
   container.register(TOKENS.Models.Post, { useValue: Post });
   container.register(TOKENS.Models.PostLike, { useValue: PostLike });

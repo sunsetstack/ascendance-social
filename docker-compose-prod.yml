@@ -29,7 +29,7 @@ services:
 
   # --- APP LAYER ---
   backend:
-    image: ghcr.io/sunsetstack/ascendance-backend:${IMAGE_TAG:-latest}
+    image: ${BACKEND_IMAGE:-ghcr.io/sunsetstack/ascendance-backend:${IMAGE_TAG:-latest}}
     container_name: backend
     restart: always
     logging: *default-logging
@@ -37,6 +37,7 @@ services:
       <<: &backend-environment
         ENABLE_WORKERS: "false"
         NODE_ENV: production
+        TRUST_PROXY: ${TRUST_PROXY:-1}
         GIT_SHA: ${GIT_SHA:-unknown}
         MONGODB_URI: ${MONGODB_URI}
         REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
@@ -52,9 +53,9 @@ services:
         SECURITY_AUDIT_MONGO_TTL_DAYS: ${SECURITY_AUDIT_MONGO_TTL_DAYS:-90}
         AUDIT_LOG_DIR: /app/audit/logs
         AUDIT_ARCHIVE_DIR: /app/audit/archives
-        AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64: ${AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64:-}
         AUDIT_ARCHIVE_DELETE_SOURCE: ${AUDIT_ARCHIVE_DELETE_SOURCE:-true}
       SERVICE_NAME: backend
+      FORENSIC_ARCHIVE_DIR: /app/forensic/archives
 
     depends_on:
       redis:
@@ -66,6 +67,7 @@ services:
     volumes:
       - ./backend/audit/logs:/app/audit/logs
       - ./backend/audit/archives:/app/audit/archives
+      - ./backend/forensic/archives:/app/forensic/archives
 
     healthcheck:
       test: ["CMD", "wget", "--spider", "http://localhost:3000/health"]

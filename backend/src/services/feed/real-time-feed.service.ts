@@ -1,6 +1,7 @@
 import { inject, injectable } from "tsyringe";
 import { RedisService } from "../redis.service";
 import { WebSocketServer } from "../../server/socketServer";
+import { broadcastToAuthenticatedSockets, emitToAuthenticatedUser } from "@/server/socket-security";
 import { IRealtimeMessageHandler } from "@/application/handlers/realtime/IRealtimeMessageHandler.interface";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
@@ -151,7 +152,7 @@ export class RealTimeFeedService {
     const io = this.webSocketServer.getIO();
 
     for (const userId of userIds) {
-      io.to(userId).emit(event, data);
+      await emitToAuthenticatedUser(io, userId, event, data);
       this.metricsService.recordSocketEventEmitted(
         event as SocketServerEventName,
         "room",
@@ -164,7 +165,7 @@ export class RealTimeFeedService {
    */
   async broadcast(event: string, data: unknown): Promise<void> {
     const io = this.webSocketServer.getIO();
-    io.emit(event, data);
+    await broadcastToAuthenticatedSockets(io, event, data);
     this.metricsService.recordSocketEventEmitted(
       event as SocketServerEventName,
       "broadcast",

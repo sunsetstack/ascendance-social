@@ -62,6 +62,40 @@ loki.source.docker "containers" {
 
 loki.process "container_logs" {
   stage.match {
+    selector = "{service_name=~\"frontend|caddy\"}"
+
+    stage.json {
+      expressions = {
+        event                  = "event",
+        source_layer           = "source_layer",
+        request_id             = "request_id",
+        client_ip              = "client_ip",
+        cf_ray                 = "cf_ray",
+        request_path           = "request_path",
+        method                 = "method",
+        status                 = "status",
+        health_probe           = "health_probe",
+      }
+    }
+
+    # Per-request identifiers and visitor observations are structured metadata,
+    # not Loki stream labels, so they remain queryable without exploding streams.
+    stage.structured_metadata {
+      values = {
+        event                  = "",
+        source_layer           = "",
+        request_id             = "",
+        client_ip              = "",
+        cf_ray                 = "",
+        request_path           = "",
+        method                 = "",
+        status                 = "",
+        health_probe           = "",
+      }
+    }
+  }
+
+  stage.match {
     selector = "{service_name=\"mongo\"}"
 
     stage.drop {

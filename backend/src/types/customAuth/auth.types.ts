@@ -31,6 +31,7 @@ export interface AuthSessionRecord {
   sid: SessionId;
   publicId: UserPublicId;
   isEmailVerified: boolean;
+  authVersion: number;
   refreshTokenHash: RefreshTokenHash;
   refreshVersion: number;
   previousRefreshTokenHash?: RefreshTokenHash;

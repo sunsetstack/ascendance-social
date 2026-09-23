@@ -7,7 +7,7 @@ import mongoose, {
 import { IRepository } from "@/types";
 import { handleMongoError } from "@/utils/errors";
 import { addRequestContextBreadcrumb } from "@/runtime/request-context";
-import { sessionALS } from "@/database/UnitOfWork";
+import { getTransactionSession } from "@/database/UnitOfWork";
 import { MongoId } from "@/types/branded";
 
 /**
@@ -21,7 +21,7 @@ export abstract class BaseRepository<
   constructor(protected readonly model: mongoose.Model<T>) {}
 
   protected getSession(): ClientSession | undefined {
-    return sessionALS.getStore() ?? undefined;
+    return getTransactionSession();
   }
 
   /**

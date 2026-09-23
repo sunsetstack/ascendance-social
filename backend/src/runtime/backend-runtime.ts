@@ -5,6 +5,8 @@ import { logger } from "@/utils/winston";
 import { IWorker } from "@/workers/base/IWorker";
 import { registerGlobalProcessHandlers } from "@/runtime/process-handlers";
 import { logNonHttpTerminalError } from "@/runtime/non-http-error-logger";
+import { AdminRemovalGuardService } from "@/services/admin-removal-guard.service";
+import { TOKENS } from "@/types/tokens";
 
 let runtimeInitialized = false;
 
@@ -18,6 +20,9 @@ export async function initializeBackendRuntime(): Promise<void> {
 
   const dbConfig = container.resolve(DatabaseConfig);
   await dbConfig.connect();
+  await container
+    .resolve<AdminRemovalGuardService>(TOKENS.Services.AdminRemovalGuard)
+    .ensureInitialized();
 
   initCQRS();
   runtimeInitialized = true;

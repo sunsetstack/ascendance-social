@@ -1,3 +1,4 @@
+import { broadcastToAuthenticatedSockets } from "@/server/socket-security";
 import { Server as SocketIOServer } from "socket.io";
 import { inject, injectable } from "tsyringe";
 import { IRealtimeMessageHandler } from "./IRealtimeMessageHandler.interface";
@@ -23,7 +24,7 @@ export class AvatarUpdateMessageHandler implements IRealtimeMessageHandler {
     if (!message.userId) return;
 
     // notify all users about avatar change (since avatars appear in feeds)
-    io.emit(EventRegistry.socketServerEvents.avatarUpdate, {
+    await broadcastToAuthenticatedSockets(io, EventRegistry.socketServerEvents.avatarUpdate, {
       eventId:
         message.eventId ??
         buildRealtimeEventId(

@@ -22,6 +22,25 @@ import {
 
 export const sessionALS = new AsyncLocalStorage<ClientSession>();
 
+export function getTransactionSession(): ClientSession | undefined {
+  const session = sessionALS.getStore();
+  if (!session) return undefined;
+  if (!session.inTransaction()) {
+    throw Errors.internal("Transaction context is no longer active");
+  }
+  return session;
+}
+
+export function requireTransactionSession(
+  errorMessage = "Operation must run inside a UnitOfWork transaction",
+): ClientSession {
+  const session = getTransactionSession();
+  if (!session) {
+    throw Errors.internal(errorMessage);
+  }
+  return session;
+}
+
 /**
  * Configuration for transaction execution
  */
@@ -130,12 +149,12 @@ export class UnitOfWork {
    * commit retries. An unknown commit result retries commit only.
    */
   async executeInTransaction<T>(
-    work: (session: ClientSession) => Promise<T>,
+    work: () => Promise<T>,
     config?: TransactionConfig,
   ): Promise<T> {
     const existingSession = sessionALS.getStore();
     if (existingSession?.inTransaction()) {
-      return await work(existingSession);
+      return await work();
     }
 
     const cfg = resolveTransactionConfig(config);
@@ -162,7 +181,7 @@ export class UnitOfWork {
         try {
           activeSession.startTransaction(TRANSACTION_OPTIONS);
           result = await sessionALS.run(activeSession, async () => {
-            return await work(activeSession);
+            return await work();
           });
           addRequestContextBreadcrumb("transaction.callback.completed", {
             bodyAttempt,

@@ -32,6 +32,8 @@ export class NewFeedWarmCacheWorker {
   }
 
   start(): void {
+    if (this.cronJob) return;
+
     const shutdown = this.shutdown;
     if (shutdown) {
       void shutdown.then(

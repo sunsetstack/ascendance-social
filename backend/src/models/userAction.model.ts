@@ -6,6 +6,7 @@ const userActionSchema = new Schema<IUserAction>({
 	actionType: { type: String, required: true },
 	targetId: { type: Schema.Types.ObjectId, required: true },
 	timestamp: { type: Date, default: Date.now },
+	feedEffectsApplied: { type: Boolean, select: false },
 });
 
 userActionSchema.index({ userId: 1, timestamp: -1 });

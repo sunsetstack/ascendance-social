@@ -52,10 +52,15 @@ export class PostConflictError extends AppError {
 }
 
 export class PostPersistenceError extends AppError {
-  constructor(message = "Failed to persist post", context?: ErrorContext) {
+  constructor(
+    message = "Failed to persist post",
+    context?: ErrorContext,
+    cause?: unknown,
+  ) {
     super("PostPersistenceError", message, 500, {
       context: { ...context, resourceType: "Post" },
       errorCode: ErrorCode.DATABASE_ERROR,
+      cause,
     });
   }
 }
@@ -84,24 +89,36 @@ export function mapPostError(
   }
 
   if (error instanceof mongoose.Error.ValidationError) {
-    return new PostPersistenceError(error.message, {
-      ...context,
-      cause: "validation",
-    });
+    return new PostPersistenceError(
+      error.message,
+      {
+        ...context,
+        cause: "validation",
+      },
+      error,
+    );
   }
 
   if (error instanceof mongoose.Error.CastError) {
-    return new PostPersistenceError(error.message, {
-      ...context,
-      cause: "cast",
-    });
+    return new PostPersistenceError(
+      error.message,
+      {
+        ...context,
+        cause: "cast",
+      },
+      error,
+    );
   }
 
   if (error instanceof Error) {
-    return new PostPersistenceError(error.message, {
-      ...context,
-      errorName: error.name,
-    });
+    return new PostPersistenceError(
+      error.message,
+      {
+        ...context,
+        errorName: error.name,
+      },
+      error,
+    );
   }
 
   return new PostPersistenceError("Unexpected post persistence error", context);

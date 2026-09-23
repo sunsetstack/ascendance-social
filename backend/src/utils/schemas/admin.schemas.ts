@@ -37,8 +37,8 @@ export const requestLogsQuerySchema = z
     page: z.coerce.number().int().positive().optional().default(1),
     limit: z.coerce.number().int().positive().max(100).optional().default(50),
     userId: z.string().trim().min(1).optional(),
-    sessionId: z.string().trim().min(1).optional(),
-    tokenFamilyId: z.string().trim().min(1).optional(),
+    ip: z.string().trim().min(1).max(128).optional(),
+    correlationId: z.string().trim().min(1).max(128).optional(),
     clientRequestId: z.string().trim().min(1).optional(),
     clientBootId: z.string().trim().min(1).optional(),
     previousClientRequestId: z.string().trim().min(1).optional(),
@@ -51,6 +51,7 @@ export const requestLogsQuerySchema = z
     statusCode: z.coerce.number().int().min(100).max(599).optional(),
     startDate: z.coerce.date().optional(),
     endDate: z.coerce.date().optional(),
+    snapshotAt: z.coerce.date().optional(),
     search: z.string().trim().max(200).transform(sanitize).optional(),
   })
   .strict();
@@ -60,8 +61,8 @@ export const authActivityLogsQuerySchema = z
     page: z.coerce.number().int().positive().optional().default(1),
     limit: z.coerce.number().int().positive().max(100).optional().default(50),
     userId: z.string().trim().min(1).optional(),
-    sessionId: z.string().trim().min(1).optional(),
-    tokenFamilyId: z.string().trim().min(1).optional(),
+    ip: z.string().trim().min(1).max(128).optional(),
+    correlationId: z.string().trim().min(1).max(128).optional(),
     clientRequestId: z.string().trim().min(1).optional(),
     clientBootId: z.string().trim().min(1).optional(),
     previousClientRequestId: z.string().trim().min(1).optional(),
@@ -72,6 +73,7 @@ export const authActivityLogsQuerySchema = z
     statusCode: z.coerce.number().int().min(100).max(599).optional(),
     startDate: z.coerce.date().optional(),
     endDate: z.coerce.date().optional(),
+    snapshotAt: z.coerce.date().optional(),
     search: z.string().trim().max(200).transform(sanitize).optional(),
   })
   .strict();

@@ -37,6 +37,14 @@ import {
 } from "./redis/redis-resilience.module";
 import { FeedCursorSnapshot } from "@/utils/feedCursor";
 
+const CONSUME_FIXED_WINDOW_RATE_LIMIT_SCRIPT = `
+local count = redis.call("INCR", KEYS[1])
+if count == 1 then
+  redis.call("PEXPIRE", KEYS[1], ARGV[1])
+end
+return count
+`;
+
 /**
  * The service is much more of a facade now than it used to be.
  * It delegates to the appropriate module, constructs the focused redis modules
@@ -97,6 +105,30 @@ export class RedisService {
 
   async waitForConnection(timeoutMs?: number): Promise<boolean> {
     return this.connectionModule.waitForConnection(timeoutMs);
+  }
+
+  async consumeFixedWindowRateLimit(
+    key: string,
+    max: number,
+    windowMs: number,
+  ): Promise<boolean> {
+    if (!this.clientInstance.isReady) return false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const count = await Promise.race([
+        this.clientInstance.eval(CONSUME_FIXED_WINDOW_RATE_LIMIT_SCRIPT, {
+          keys: [key],
+          arguments: [String(windowMs)],
+        }),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error("Socket rate limit timed out")), 1500);
+          timer.unref();
+        }),
+      ]);
+      return typeof count === "number" && count <= max;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   async withResilience<T>(

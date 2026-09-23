@@ -1,7 +1,5 @@
-import { ClientSession, mongo } from "mongoose";
+import { mongo } from "mongoose";
 import { inject, injectable } from "tsyringe";
-import { sessionALS } from "@/database/UnitOfWork";
-import { Errors } from "@/utils/errors";
 import { TOKENS } from "@/types/tokens";
 import type {
   AccountCommunityCleanupParticipant,
@@ -43,22 +41,17 @@ export class AccountLifecycleService {
     user: AccountLifecycleUser,
     options: AccountPurgeOptions,
   ): Promise<AccountPurgeResult> {
-    const session = this.requireSession();
     const userId = new ObjectId(user._id.toString());
     const cleanup: ContentCleanupResult = { posts: [], imageAssets: [] };
 
     // Capture followers before any destructive participant runs. The snapshot is
     // used by the terminal lifecycle event after all mutations complete.
     const followerPublicIds =
-      await this.socialCleanupParticipant.captureFollowerPublicIds(
-        userId,
-        session,
-      );
+      await this.socialCleanupParticipant.captureFollowerPublicIds(userId);
 
     const contentCleanup = await this.contentCleanupParticipant.cleanup(
       user,
       options.action,
-      session,
     );
     appendCleanup(cleanup, contentCleanup);
 
@@ -66,25 +59,19 @@ export class AccountLifecycleService {
       await this.socialCleanupParticipant.removeRelationshipsAndActivity(
         userId,
         user.publicId,
-        session,
       );
 
     const preservedConversationCount =
-      await this.conversationCleanupParticipant.preserve(
-        user,
-        options.action,
-        session,
-      );
+      await this.conversationCleanupParticipant.preserve(user, options.action);
 
     appendCleanup(
       cleanup,
-      await this.communityCleanupParticipant.cleanup(userId, session),
+      await this.communityCleanupParticipant.cleanup(userId),
     );
 
     const recordImageAssets = await this.recordCleanupParticipant.finalize(
       user,
       options,
-      session,
     );
     appendCleanup(cleanup, { posts: [], imageAssets: recordImageAssets });
 
@@ -102,15 +89,5 @@ export class AccountLifecycleService {
     // the existing outbox atomicity and ordering remain part of this transaction.
     await this.outboxParticipant.enqueue(user, options, result);
     return result;
-  }
-
-  private requireSession(): ClientSession {
-    const session = sessionALS.getStore();
-    if (!session) {
-      throw Errors.internal(
-        "Account cleanup must run inside a UnitOfWork transaction",
-      );
-    }
-    return session;
   }
 }

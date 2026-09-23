@@ -1,7 +1,7 @@
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { inject, injectable } from "tsyringe";
 import { LikeActionByPublicIdCommand } from "./likeActionByPublicId.command";
-import { IPost, PostDTO, PopulatedPostUser } from "@/types/index";
+import { IPost, IUserAction, PostDTO, PopulatedPostUser } from "@/types/index";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { UserInteractedWithPostEvent } from "@/application/events/user/user-interaction.event";
 import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRepository";
@@ -41,8 +41,6 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
   ) {}
 
   async execute(command: LikeActionByPublicIdCommand): Promise<PostDTO> {
-    let isLikeAction = true;
-
     const user = await this.userReadRepository.findByPublicId(
       command.userPublicId,
     );
@@ -79,11 +77,11 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
         userMongoId,
       );
 
+      let activity: IUserAction;
       if (existingLike) {
-        await this.handleUnlike(userMongoId, postInternalId);
-        isLikeAction = false;
+        activity = await this.handleUnlike(userMongoId, postInternalId);
       } else {
-        await this.handleLike(
+        activity = await this.handleLike(
           command,
           userMongoId,
           existingPost,
@@ -93,10 +91,11 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
       await this.eventBus.queueTransactional(
         new UserInteractedWithPostEvent(
           command.userPublicId,
-          isLikeAction ? "like" : "unlike",
+          existingLike ? "unlike" : "like",
           existingPost.publicId,
           postTags,
           asUserPublicId(postOwnerPublicId),
+          String(activity._id),
         ),
       );
     });
@@ -116,7 +115,7 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
     userMongoId: string,
     post: IPost,
     postOwnerPublicId: string,
-  ) {
+  ): Promise<IUserAction> {
     const postId = post._id?.toString();
     const added = await this.postLikeRepository.addLike(postId, userMongoId);
     if (!added) {
@@ -125,7 +124,7 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
 
     await this.postWriteRepository.updateLikeCount(asMongoId(postId!), 1);
 
-    await this.userActionRepository.logAction(
+    const activity = await this.userActionRepository.logAction(
       userMongoId,
       "like",
       post._id?.toString(),
@@ -150,9 +149,13 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
         }),
       );
     }
+    return activity;
   }
 
-  private async handleUnlike(userMongoId: string, postId: string) {
+  private async handleUnlike(
+    userMongoId: string,
+    postId: string,
+  ): Promise<IUserAction> {
     const removed = await this.postLikeRepository.removeLike(
       postId,
       userMongoId,
@@ -160,8 +163,13 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
     if (!removed) {
       throw Errors.notFound("Resource");
     }
-    await this.userActionRepository.logAction(userMongoId, "unlike", postId);
+    const activity = await this.userActionRepository.logAction(
+      userMongoId,
+      "unlike",
+      postId,
+    );
     await this.postWriteRepository.updateLikeCount(asMongoId(postId), -1);
+    return activity;
   }
 
   /** Async resolution of post owner publicId — falls back to DB lookup when not populated */

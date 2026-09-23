@@ -10,9 +10,12 @@ import {
 import { Errors } from "@/utils/errors";
 import { DecodedUser, IUser } from "@/types";
 import { AuthSessionService } from "@/services/auth-session.service";
+import { EmailService } from "@/services/email.service";
+import { RetryService } from "@/services/retry.service";
 import { TOKENS } from "@/types/tokens";
 import { asSessionId, UserPublicId } from "@/types/branded";
 import { verifyPassword } from "@/application/common/policies/password.policy";
+import { logger } from "@/utils/winston";
 
 export interface AuthSessionContext {
   ip?: string;
@@ -32,7 +35,8 @@ export interface AuthenticatedSessionResult extends AuthTokens {
 type SessionUser = Pick<
   DecodedUser,
   "publicId" | "email" | "handle" | "username" | "isAdmin" | "isEmailVerified"
->;
+> &
+  Pick<IUser, "authVersion">;
 
 @injectable()
 export class AuthService {
@@ -52,6 +56,8 @@ export class AuthService {
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
     @inject(TOKENS.Services.AuthSession)
     private readonly authSessionService: AuthSessionService,
+    @inject(TOKENS.Services.Email) private readonly emailService: EmailService,
+    @inject(TOKENS.Services.Retry) private readonly retryService: RetryService,
   ) {}
 
   /**
@@ -99,6 +105,7 @@ export class AuthService {
       sid,
       publicId: user.publicId,
       isEmailVerified: user.isEmailVerified ?? false,
+      authVersion: user.authVersion,
       refreshToken,
       ttlSeconds: this.getRefreshTokenTtlSeconds(),
       ip: context.ip,
@@ -130,6 +137,10 @@ export class AuthService {
     if (user.isBanned) {
       await this.authSessionService.revokeSession(session.sid);
       throw Errors.forbidden("Account banned");
+    }
+    if (session.authVersion !== (user.authVersion ?? 0)) {
+      await this.authSessionService.revokeSession(session.sid).catch(() => {});
+      throw Errors.authentication("Session is invalid or expired");
     }
 
     const userDTO = user.isAdmin
@@ -187,6 +198,35 @@ export class AuthService {
    */
   async revokeAllSessionsForUser(publicId: string): Promise<void> {
     await this.authSessionService.revokeAllSessionsForUser(publicId);
+  }
+
+  async handlePasswordChanged(
+    user: Pick<IUser, "publicId" | "email">,
+  ): Promise<void> {
+    try {
+      await this.retryService.execute(
+        async () => {
+          await this.authSessionService.revokeAllSessionsForUser(user.publicId);
+        },
+        { shouldRetry: () => true },
+      );
+    } catch (error) {
+      logger.error("Failed to clean up password-changed sessions", {
+        event: "auth.password_changed.session_cleanup_failed",
+        publicId: user.publicId,
+        error,
+      });
+    }
+
+    try {
+      await this.emailService.sendPasswordChangedEmail(user.email);
+    } catch (error) {
+      logger.error("Failed to send password-changed notification", {
+        event: "auth.password_changed.notification_failed",
+        publicId: user.publicId,
+        error,
+      });
+    }
   }
 
   extractSessionIdFromRefreshToken(refreshToken: string): string | undefined {
@@ -305,6 +345,7 @@ export class AuthService {
     user: IUser | AuthenticatedUserDTO | AdminUserDTO,
   ): SessionUser {
     const withAdmin = user as { isAdmin?: boolean };
+    const withAuthVersion = user as { authVersion?: number };
     const isAdmin =
       typeof withAdmin.isAdmin === "boolean" ? withAdmin.isAdmin : false;
     return {
@@ -314,6 +355,7 @@ export class AuthService {
       username: user.username,
       isAdmin,
       isEmailVerified: user.isEmailVerified ?? false,
+      authVersion: withAuthVersion.authVersion ?? 0,
     };
   }
 }

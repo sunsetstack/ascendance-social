@@ -4,12 +4,14 @@ import { useNavigate } from "react-router-dom";
 import Gallery from "../components/Gallery";
 import { useFavorites } from "../hooks/favorites/useFavorites";
 import { useAuth } from "../hooks/context/useAuth";
+import { feedIdentities } from "../features/feed/feedIdentity";
 
 const Favorites = () => {
 	const theme = useTheme();
 	const navigate = useNavigate();
 	const { isLoggedIn, user } = useAuth();
 	const favoritesQuery = useFavorites();
+	const feedId = feedIdentities.favorites(user?.publicId);
 
 	const { data, error, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } = favoritesQuery;
 
@@ -91,6 +93,11 @@ const Favorites = () => {
 						hasNextPage={!!hasNextPage}
 						isFetchingNext={isFetchingNextPage}
 						isLoadingAll={isLoading}
+						isFetchingAll={favoritesQuery.isFetching}
+						feedId={feedId}
+						onRefresh={async () => {
+							await favoritesQuery.refetch({ throwOnError: true });
+						}}
 						emptyTitle="No favorites yet"
 						emptyDescription="Tap the heart icon on any image to save it to your favorites."
 					/>

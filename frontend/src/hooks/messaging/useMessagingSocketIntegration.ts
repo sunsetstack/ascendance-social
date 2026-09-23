@@ -101,19 +101,6 @@ export const useMessagingSocketIntegration = (): void => {
 							);
 						},
 					});
-
-					queryClient.refetchQueries({
-						predicate: (query) => {
-							const key = query.queryKey;
-							return (
-								Array.isArray(key) &&
-								key[0] === "messaging" &&
-								key[1] === "conversation" &&
-								key[2] === conversationId
-							);
-						},
-						type: "active",
-					});
 				}
 			}
 		};

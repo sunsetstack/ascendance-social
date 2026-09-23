@@ -1,5 +1,4 @@
 import { Request, Response } from "express";
-import { AuthService } from "@/services/auth.service";
 import { injectable, inject } from "tsyringe";
 import { CommandBus } from "@/application/common/buses/command.bus";
 import { QueryBus } from "@/application/common/buses/query.bus";
@@ -29,7 +28,6 @@ type EmptyParams = Record<string, never>;
 @injectable()
 export class ProfileController {
   constructor(
-    @inject(TOKENS.Services.Auth) private readonly authService: AuthService,
     @inject(TOKENS.CQRS.Commands.Bus) private readonly commandBus: CommandBus,
     @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
   ) {}
@@ -79,7 +77,6 @@ export class ProfileController {
       newPassword,
     );
     await this.commandBus.dispatch(command);
-    await this.authService.revokeAllSessionsForUser(userPublicId);
     clearAuthCookies(res);
     res.status(200).json({
       message: "Password changed successfully. Please log in again.",

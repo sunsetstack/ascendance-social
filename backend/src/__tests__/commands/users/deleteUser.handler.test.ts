@@ -33,7 +33,7 @@ describe("DeleteUserCommandHandler", () => {
     mocks = {
       userRead: { findByPublicId: sinon.stub().resolves(user) },
       unitOfWork: {
-        executeInTransaction: sinon.stub().callsFake(async (work) => work({})),
+        executeInTransaction: sinon.stub().callsFake(async (work) => work()),
       },
       lifecycle: {
         purgeUser: sinon.stub().resolves({
@@ -49,6 +49,7 @@ describe("DeleteUserCommandHandler", () => {
       audit: { capture: sinon.stub().resolves("snapshot-id") },
       userModel: { findOne: sinon.stub() },
       authSession: { revokeAllSessionsForUser: sinon.stub().resolves() },
+      adminRemovalGuard: { touch: sinon.stub().resolves() },
     };
     handler = new DeleteUserCommandHandler(
       mocks.userRead,
@@ -57,6 +58,7 @@ describe("DeleteUserCommandHandler", () => {
       mocks.audit,
       mocks.userModel,
       mocks.authSession,
+      mocks.adminRemovalGuard,
     );
   });
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams, Link as RouterLink, useNavigate } from "react-router-dom";
 import { usePostById } from "../hooks/posts/usePosts";
 import { useLikePost, useFavoritePost } from "../hooks/user/useUserAction";
@@ -54,9 +54,7 @@ const PostView = () => {
   const { mutate: triggerRepost } = useRepostPost();
   const { mutate: triggerUnrepost } = useUnrepostPost();
 
-  const [isFavorited, setIsFavorited] = useState<boolean>(
-    post?.isFavoritedByViewer ?? false,
-  );
+  const isFavorited = post?.isFavoritedByViewer ?? false;
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const seoMetadata = buildPostMetadata({
     id,
@@ -66,11 +64,6 @@ const PostView = () => {
     image: post?.url || post?.image?.url,
     communityName: post?.community?.name,
   });
-
-  // syncing local state with server state only when the underlying post ID changes
-  useEffect(() => {
-    setIsFavorited(post?.isFavoritedByViewer ?? false);
-  }, [post?.publicId, post?.isFavoritedByViewer]);
 
   if (isLoading) {
     return (

@@ -144,6 +144,24 @@ export class TrendingWorker {
   /** start reading stream and flushing batches */
   async start(): Promise<void> {
     if (this.readLoopTask) return;
+
+    const previousGeneration = this.readLoopGeneration;
+    if (
+      previousGeneration > 0 &&
+      !this.running &&
+      !this.stopping &&
+      this.inFlightCallbacks.size > 0
+    ) {
+      await Promise.allSettled([...this.inFlightCallbacks]);
+      if (
+        this.readLoopTask ||
+        this.readLoopGeneration !== previousGeneration ||
+        this.stopping
+      ) {
+        return;
+      }
+    }
+
     this.stopping = false;
     this.running = true;
 

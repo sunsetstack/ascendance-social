@@ -4,8 +4,8 @@ export interface GetAuthActivityLogsOptions {
   page?: number;
   limit?: number;
   userId?: string;
-  sessionId?: string;
-  tokenFamilyId?: string;
+  ip?: string;
+  correlationId?: string;
   clientRequestId?: string;
   clientBootId?: string;
   previousClientRequestId?: string;
@@ -16,6 +16,7 @@ export interface GetAuthActivityLogsOptions {
   statusCode?: number;
   startDate?: Date;
   endDate?: Date;
+  snapshotAt?: Date;
   search?: string;
 }
 

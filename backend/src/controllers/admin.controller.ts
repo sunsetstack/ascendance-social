@@ -292,7 +292,14 @@ export class AdminUserController {
     res: Response,
   ) => {
     const { publicId } = req.params;
-    const command = new DemoteFromAdminCommand(asUserPublicId(publicId));
+    const adminPublicId = req.adminContext?.adminId;
+    if (!adminPublicId) {
+      throw Errors.authentication("Admin user not found");
+    }
+    const command = new DemoteFromAdminCommand(
+      asUserPublicId(publicId),
+      adminPublicId,
+    );
     const result = await this.commandBus.dispatch<AdminUserDTO>(command);
     res.status(200).json(result);
   };
@@ -317,8 +324,8 @@ export class AdminUserController {
       page,
       limit,
       userId,
-      sessionId,
-      tokenFamilyId,
+      ip,
+      correlationId,
       clientRequestId,
       clientBootId,
       previousClientRequestId,
@@ -329,14 +336,15 @@ export class AdminUserController {
       statusCode,
       startDate,
       endDate,
+      snapshotAt,
       search,
     } = req.query;
     const options = {
       page,
       limit,
       userId,
-      sessionId,
-      tokenFamilyId,
+      ip,
+      correlationId,
       clientRequestId,
       clientBootId,
       previousClientRequestId,
@@ -347,6 +355,7 @@ export class AdminUserController {
       statusCode,
       startDate,
       endDate,
+      snapshotAt,
       search,
     };
     const query = new GetRequestLogsQuery(options);
@@ -373,8 +382,8 @@ export class AdminUserController {
       page,
       limit,
       userId,
-      sessionId,
-      tokenFamilyId,
+      ip,
+      correlationId,
       clientRequestId,
       clientBootId,
       previousClientRequestId,
@@ -385,14 +394,15 @@ export class AdminUserController {
       statusCode,
       startDate,
       endDate,
+      snapshotAt,
       search,
     } = req.query;
     const options = {
       page,
       limit,
       userId,
-      sessionId,
-      tokenFamilyId,
+      ip,
+      correlationId,
       clientRequestId,
       clientBootId,
       previousClientRequestId,
@@ -403,6 +413,7 @@ export class AdminUserController {
       statusCode,
       startDate,
       endDate,
+      snapshotAt,
       search,
     };
     const query = new GetAuthActivityLogsQuery(options);

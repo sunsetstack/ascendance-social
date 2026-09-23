@@ -3,7 +3,7 @@ import * as chai from "chai";
 import { expect } from "chai";
 import chaiAsPromised from "chai-as-promised";
 import sinon, { SinonStub } from "sinon";
-import { ClientSession, Types } from "mongoose";
+import { Types } from "mongoose";
 import { CreatePostCommand } from "@/application/commands/post/createPost/createPost.command";
 import { CreatePostCommandHandler } from "@/application/commands/post/createPost/createPost.handler";
 import { asImagePublicId, asPostPublicId, asUserPublicId } from "@/types/branded";
@@ -65,7 +65,6 @@ describe("CreatePostCommandHandler", () => {
 		queueDurable: SinonStub;
 		publish: SinonStub;
 	};
-	let mockSession: ClientSession;
 	let mockDTOService: {
 		toPostDTO: SinonStub;
 	};
@@ -132,8 +131,6 @@ describe("CreatePostCommandHandler", () => {
 		mockDTOService = {
 			toPostDTO: sinon.stub(),
 		};
-
-		mockSession = {} as ClientSession;
 
 		handler = new CreatePostCommandHandler(
 			mockUnitOfWork as any,
@@ -282,7 +279,7 @@ describe("CreatePostCommandHandler", () => {
 			mockDTOService.toPostDTO.resolves(mockPostDTO);
 
 			mockUnitOfWork.executeInTransaction.callsFake(async (callback) => {
-				return await callback(mockSession);
+				return await callback();
 			});
 
 			const result = await handler.execute(command);
@@ -359,7 +356,7 @@ describe("CreatePostCommandHandler", () => {
 			mockPostReadRepository.findByPublicId.resolves(mockHydratedPost);
 
 			mockUnitOfWork.executeInTransaction.callsFake(async (callback) => {
-				return await callback(mockSession);
+				return await callback();
 			});
 
 			await handler.execute(command);

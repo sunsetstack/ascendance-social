@@ -1,5 +1,6 @@
-import { ClientSession, Model, mongo } from "mongoose";
+import { Model, mongo } from "mongoose";
 import { inject, injectable } from "tsyringe";
+import { requireTransactionSession } from "@/database/UnitOfWork";
 import { DEFAULT_ACCOUNT_AVATAR } from "@/application/common/policies/account-lifecycle.policy";
 import { IUser } from "@/types";
 import { TOKENS } from "@/types/tokens";
@@ -22,8 +23,8 @@ export class MongoAccountRecordCleanupParticipant
   async finalize(
     user: AccountLifecycleUser,
     options: AccountRecordCleanupOptions,
-    session: ClientSession,
   ): Promise<RemovedImageAsset[]> {
+    const session = requireTransactionSession();
     const db = this.db();
     const userId = new mongo.ObjectId(user._id.toString());
     const imageAssets: RemovedImageAsset[] = [];

@@ -1,5 +1,6 @@
-import { ClientSession, Model, mongo } from "mongoose";
+import { Model, mongo } from "mongoose";
 import { inject, injectable } from "tsyringe";
+import { requireTransactionSession } from "@/database/UnitOfWork";
 import { IUser } from "@/types";
 import { TOKENS } from "@/types/tokens";
 import { Errors } from "@/utils/errors";
@@ -24,10 +25,8 @@ export class MongoAccountSocialCleanupParticipant
     @inject(TOKENS.Models.User) private readonly userModel: Model<IUser>,
   ) {}
 
-  async captureFollowerPublicIds(
-    userId: ObjectId,
-    session: ClientSession,
-  ): Promise<string[]> {
+  async captureFollowerPublicIds(userId: ObjectId): Promise<string[]> {
+    const session = requireTransactionSession();
     const db = this.db();
     const follows = await db
       .collection("follows")
@@ -50,8 +49,8 @@ export class MongoAccountSocialCleanupParticipant
   async removeRelationshipsAndActivity(
     userId: ObjectId,
     userPublicId: string,
-    session: ClientSession,
   ): Promise<string[]> {
+    const session = requireTransactionSession();
     const db = this.db();
     const follows = await db
       .collection("follows")

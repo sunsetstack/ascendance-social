@@ -6,7 +6,7 @@ import { expect } from "chai";
 import chaiAsPromised from "chai-as-promised";
 import sinon, { SinonStub } from "sinon";
 import { ImageRepository } from "@/repositories/image.repository";
-import { ClientSession, Model, Types } from "mongoose";
+import { Model, Types } from "mongoose";
 import { IImage } from "@/types";
 import { asImagePublicId, asMongoId } from "@/types/branded";
 
@@ -56,7 +56,6 @@ function createMockImage(partial: Partial<IImage>): Partial<IImage> {
 describe("ImageRepository", () => {
 	let repository: ImageRepository;
 	let mockModel: MockImageModel;
-	let mockSession: ClientSession;
 
 	beforeEach(() => {
 		mockModel = {
@@ -71,7 +70,6 @@ describe("ImageRepository", () => {
 			save: sinon.stub(),
 		};
 
-		mockSession = {} as ClientSession;
 
 		repository = new ImageRepository(mockModel as any as Model<IImage>);
 	});

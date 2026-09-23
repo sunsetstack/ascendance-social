@@ -3,6 +3,7 @@ import { MarkAsReadCommand } from "./markAsRead.command";
 import { NotificationRepository } from "@/repositories/notification.repository";
 import { RedisService } from "@/services/redis.service";
 import { WebSocketServer } from "@/server/socketServer";
+import { emitToAuthenticatedUser } from "@/server/socket-security";
 import { INotification, NotificationPlain } from "@/types";
 import { Errors, isErrorWithStatusCode, wrapError } from "@/utils/errors";
 import { normalizeNotificationPlain } from "@/utils/notification-plain";
@@ -95,10 +96,12 @@ export class MarkAsReadCommandHandler implements ICommandHandler<
         logger.info("Sending notification-read update", {
           event: "notification.mark_as_read.realtime_sending",
         });
-        this.webSocketServer
-          .getIO()
-          .to(userPublicId)
-          .emit(EventRegistry.socketServerEvents.notificationRead, payload);
+        await emitToAuthenticatedUser(
+          this.webSocketServer.getIO(),
+          userPublicId,
+          EventRegistry.socketServerEvents.notificationRead,
+          payload,
+        );
         this.metricsService.recordSocketEventEmitted(
           EventRegistry.socketServerEvents.notificationRead,
           "room",

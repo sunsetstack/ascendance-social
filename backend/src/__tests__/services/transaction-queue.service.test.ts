@@ -4,7 +4,6 @@ import sinon from "sinon";
 import { TransactionQueueService } from "@/services/transaction-queue.service";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { RedisService } from "@/services/redis.service";
-import { ClientSession } from "mongoose";
 import { errorLogger } from "@/utils/winston";
 
 function createDeferred(): {
@@ -43,7 +42,7 @@ describe("TransactionQueueService", () => {
 
 		// Mock executeInTransaction to just run the callback
 		unitOfWorkStub.executeInTransaction.callsFake(async (callback) => {
-			return callback({} as ClientSession);
+			return callback();
 		});
 
 		redisClientStub = {

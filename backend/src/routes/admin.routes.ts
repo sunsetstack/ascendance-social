@@ -24,6 +24,11 @@ import { commentIdSchema } from "@/utils/schemas/comment.schemas";
 import { publicIdSchema as postPublicIdSchema } from "@/utils/schemas/post.schemas";
 import { publicIdSchema as userPublicIdSchema } from "@/utils/schemas/user.schemas";
 
+const preventAdminResponseCaching: RequestHandler = (_req, res, next) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  next();
+};
+
 @injectable()
 export class AdminUserRoutes {
   private router: express.Router;
@@ -43,6 +48,7 @@ export class AdminUserRoutes {
   }
 
   private initializeRoutes(): void {
+    this.router.use(preventAdminResponseCaching);
     this.router.use(this.auth);
     this.router.use(adminRateLimit);
     this.router.use(this.adminOnly);

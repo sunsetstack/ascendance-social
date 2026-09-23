@@ -262,9 +262,16 @@ describe("background worker request-context roots", () => {
       const iteration = sinon
         .stub(worker as any, "readLoopIteration")
         .rejects(new Error("first generation failed"));
+      const staleRefresh = createDeferred();
+      let fullRefreshCalls = 0;
       const fullRefresh = sinon
         .stub(worker as any, "fullRefresh")
-        .resolves();
+        .callsFake(() => {
+          fullRefreshCalls += 1;
+          return fullRefreshCalls === 1
+            ? staleRefresh.promise
+            : Promise.resolve();
+        });
       sinon.stub(worker as any, "flushPending").resolves();
       sinon.stub(errorLogger, "error");
 
@@ -278,9 +285,14 @@ describe("background worker request-context roots", () => {
       iteration.resetHistory();
       iteration.resetBehavior();
       iteration.callsFake(() => activeIteration.promise);
-      fullRefresh.resetHistory();
 
-      worker.start();
+      const restart = worker.start();
+      await Promise.resolve();
+      expect((worker as any).readLoopTask).to.equal(undefined);
+      sinon.assert.calledOnce(fullRefresh);
+
+      staleRefresh.resolve();
+      await restart;
       const restartedTask = (worker as any).readLoopTask;
       const restartedTimers = [
         (worker as any).flushTimer,
@@ -299,7 +311,7 @@ describe("background worker request-context roots", () => {
         (worker as any).fullRefreshTimer,
       ]).to.deep.equal(restartedTimers);
       sinon.assert.calledOnce(iteration);
-      sinon.assert.calledOnce(fullRefresh);
+      sinon.assert.calledTwice(fullRefresh);
       sinon.assert.calledTwice(metrics.markWorkerRunning);
 
       (worker as any).settleReadLoopTask(oldTask, oldGeneration, {
@@ -686,6 +698,7 @@ describe("background worker request-context roots", () => {
     expect(updateAuthorSnapshot.callCount).to.equal(2);
     expect((worker as any).pendingUpdates.size).to.equal(0);
     sinon.assert.notCalled(terminal);
+    await worker.stop();
   });
 
   it("keeps profile and trending callbacks in flight until their final shutdown flush completes", async () => {
@@ -900,6 +913,8 @@ describe("background worker request-context roots", () => {
     expect(stopResolved).to.equal(false);
 
     worker.start();
+    worker.start();
+    sinon.assert.calledOnce(schedule);
     sinon.assert.calledWithExactly(schedule, "0 * * * *", sinon.match.func);
     cronCallback?.();
     await Promise.resolve();

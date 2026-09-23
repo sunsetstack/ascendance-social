@@ -95,7 +95,9 @@ describe("Transactional Outbox Pattern", () => {
 
     it("should save the event to the outbox repository when inside a transaction session", async () => {
       const event = new TestEvent("test");
-      const mockSession = {} as ClientSession;
+      const mockSession = {
+        inTransaction: sinon.stub().returns(true),
+      } as unknown as ClientSession;
 
       await runWithRequestContext({ correlationId: "request-123" }, async () =>
         sessionALS.run(mockSession, async () => {

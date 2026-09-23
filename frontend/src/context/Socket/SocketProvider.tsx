@@ -3,6 +3,7 @@ import type { Socket } from "socket.io-client";
 import { SocketContext } from "./SocketContext";
 import { useAuth } from "../../hooks/context/useAuth";
 import { devError, devWarn } from "@/lib/devLogger";
+import axiosClient from "@/api/axiosClient";
 
 interface SocketProviderProps {
   children: React.ReactNode;
@@ -20,22 +21,46 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
 
     let cancelled = false;
     let socket: Socket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let recovering = false;
+    let recoveryAttempts = 0;
+
+    const recoverConnection = (): void => {
+      if (cancelled || recovering || reconnectTimer || recoveryAttempts >= 5) return;
+      recoveryAttempts += 1;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = undefined;
+        if (cancelled) return;
+        recovering = true;
+        // Coordinate token refresh through the HTTP client before reconnecting.
+        void axiosClient.get("/api/users/me", { timeout: 10000 }).then(() => {
+          recovering = false;
+          if (!cancelled) socket?.connect();
+        }).catch(() => {
+          devWarn("Socket session could not be restored");
+        }).finally(() => {
+          recovering = false;
+        });
+      }, Math.min(1000 * 2 ** (recoveryAttempts - 1), 10000));
+    };
 
     // Connect
     const handleConnect = () => {
+      recoveryAttempts = 0;
       setReady(true);
     };
 
     // Error
     const handleError = (err: Error) => {
       devError("Socket connection error:", err);
+      if (!socket?.active) recoverConnection();
     };
 
     // Disconnect
     const handleDisconnect = (reason: string) => {
       devWarn("Socket disconnected:", reason);
       if (reason === "io server disconnect") {
-        socketRef.current?.connect();
+        recoverConnection();
       }
     };
 
@@ -73,6 +98,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
 
     return () => {
       cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       setReady(false);
       if (!socket) return;
       socket.off("connect", handleConnect);

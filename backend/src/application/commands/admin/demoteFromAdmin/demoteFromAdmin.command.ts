@@ -4,5 +4,8 @@ import { ICommand } from "@/application/common/interfaces/command.interface";
 export class DemoteFromAdminCommand implements ICommand {
   readonly type = "DemoteFromAdminCommand";
 
-  constructor(public readonly userPublicId: UserPublicId) {}
+  constructor(
+    public readonly userPublicId: UserPublicId,
+    public readonly adminPublicId?: UserPublicId,
+  ) {}
 }

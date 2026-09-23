@@ -266,6 +266,9 @@ describe("AccountLifecycleService integration", () => {
       $or: [{ followerId: { $in: userIds } }, { followeeId: { $in: userIds } }],
     });
     await db.collection("useractions").deleteMany({ userId: { $in: userIds } });
+    await db
+      .collection("securityAuditEvents")
+      .deleteMany({ "actor.userId": departingPublicId });
     await db.collection("posts").deleteMany({ _id: { $in: postIds } });
     await db.collection("users").deleteMany({ _id: { $in: userIds } });
   });
@@ -462,6 +465,26 @@ describe("AccountLifecycleService integration", () => {
   it("captures the account and recent activity before destructive cleanup", async () => {
     const record = sinon.stub().resolves();
     const snapshot = new AccountAuditSnapshotService(User, { record } as any);
+    const db = mongoose.connection.db!;
+    await db.collection("securityAuditEvents").insertMany([
+      {
+        stream: "security",
+        eventType: "security.test",
+        occurredAt: new Date(),
+        actor: { type: "user", userId: departingPublicId },
+      },
+      {
+        stream: "forensic",
+        eventType: "operational.error",
+        occurredAt: new Date(),
+        actor: { type: "user", userId: departingPublicId },
+      },
+      {
+        eventType: "security.legacy",
+        occurredAt: new Date(),
+        actor: { type: "user", userId: departingPublicId },
+      },
+    ]);
 
     const snapshotId = await snapshot.capture({
       action: "delete",
@@ -485,10 +508,18 @@ describe("AccountLifecycleService integration", () => {
     const activityChunk = chunks.find(
       (event) => event.metadata?.source === "userActions30d",
     );
+    const securityAuditChunk = chunks.find(
+      (event) => event.metadata?.source === "securityAudit30d",
+    );
     expect(commentChunk.metadata.records[0].content).to.equal(
       "original comment",
     );
     expect(activityChunk.metadata.records[0].actionType).to.equal("comment");
+    expect(
+      securityAuditChunk.metadata.records.map(
+        (event: { eventType: string }) => event.eventType,
+      ).sort(),
+    ).to.deep.equal(["security.legacy", "security.test"]);
     expect(commentChunk.reason).to.equal("integration audit reason");
   });
 });

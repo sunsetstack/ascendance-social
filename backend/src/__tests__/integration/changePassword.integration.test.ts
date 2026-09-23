@@ -39,6 +39,7 @@ chai.use(chaiAsPromised);
 
 const USER_PID = asUserPublicId("user-pub-01");
 const USER_MID = "aaaaaaaaaaaaaaaaaaaaaaaa";
+const USER_EMAIL = "user@example.com";
 
 const CURRENT_PASSWORD = "current_pass";
 const NEW_PASSWORD = "new_pass_xyz";
@@ -50,6 +51,7 @@ const NEW_PASSWORD = "new_pass_xyz";
 const makeUserDoc = async (overrides: Record<string, unknown> = {}) => ({
   _id: { toString: () => USER_MID },
   publicId: USER_PID,
+  email: USER_EMAIL,
   password: await hashPassword(CURRENT_PASSWORD),
   ...overrides,
 });
@@ -84,6 +86,9 @@ const makeStubs = (resolvedDoc: unknown) => ({
     logAction: sinon.stub().resolves(),
   },
   userModel: makeModelStub(resolvedDoc),
+  authService: {
+    handlePasswordChanged: sinon.stub().resolves(),
+  },
 });
 
 const buildHandler = (stubs: ReturnType<typeof makeStubs>) =>
@@ -92,6 +97,7 @@ const buildHandler = (stubs: ReturnType<typeof makeStubs>) =>
     stubs.unitOfWork as any,
     stubs.userActionRepo as any,
     stubs.userModel as any,
+    stubs.authService as any,
   );
 
 // ---------------------------------------------------------------------------
@@ -182,14 +188,25 @@ describe("ChangePasswordCommandHandler integration (via CommandBus)", () => {
     const [id, patch] = stubs.userWriteRepo.update.getCall(0).args;
     expect(id).to.equal(asMongoId(USER_MID));
     expect((patch as any).$set.password).to.equal(NEW_PASSWORD);
+    expect((patch as any).$inc).to.deep.equal({ authVersion: 1 });
+    expect((patch as any).$unset).to.deep.equal({
+      resetToken: 1,
+      resetTokenExpires: 1,
+    });
 
     expect(stubs.userActionRepo.logAction.calledOnce).to.be.true;
     const [actionId, action] = stubs.userActionRepo.logAction.getCall(0).args;
     expect(actionId).to.equal(asMongoId(USER_MID));
     expect(action).to.equal("password_change");
+    expect(
+      stubs.authService.handlePasswordChanged.calledOnceWith({
+        publicId: USER_PID,
+        email: USER_EMAIL,
+      }),
+    ).to.equal(true);
   });
 
-  it("performs all I/O inside the UnitOfWork transaction", async () => {
+  it("performs both database writes inside the UnitOfWork transaction", async () => {
     await bus.dispatch(
       new ChangePasswordCommand(USER_PID, CURRENT_PASSWORD, NEW_PASSWORD),
     );

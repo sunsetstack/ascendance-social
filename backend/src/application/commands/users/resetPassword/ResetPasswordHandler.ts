@@ -2,10 +2,9 @@ import { inject, injectable } from "tsyringe";
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { ResetPasswordCommand } from "./ResetPasswordCommand";
 import { Errors } from "@/utils/errors";
-import type {
-  IUserWriteRepository,
-} from "@/repositories/interfaces";
-import type { UserAuthenticationLookup } from "@/application/ports/user-authentication-lookup";
+import crypto from "crypto";
+import type { IUserWriteRepository } from "@/repositories/interfaces";
+import { AuthService } from "@/services/auth.service";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
@@ -14,22 +13,25 @@ export class ResetPasswordHandler implements ICommandHandler<
   void
 > {
   constructor(
-    @inject(TOKENS.Repositories.UserAuthenticationLookup)
-    private readonly userReadRepository: UserAuthenticationLookup,
     @inject(TOKENS.Repositories.UserWrite)
     private readonly userWriteRepository: IUserWriteRepository,
+    @inject(TOKENS.Services.Auth) private readonly authService: AuthService,
   ) {}
 
   async execute(command: ResetPasswordCommand): Promise<void> {
-    const user = await this.userReadRepository.findByResetToken(command.token);
+    const resetTokenHash = crypto
+      .createHash("sha256")
+      .update(command.token)
+      .digest("hex");
+    const user = await this.userWriteRepository.consumePasswordResetToken(
+      resetTokenHash,
+      command.newPassword,
+    );
 
     if (!user) {
       throw Errors.validation("Invalid or expired reset token");
     }
 
-    await this.userWriteRepository.update(user.id, {
-      $set: { password: command.newPassword },
-      $unset: { resetToken: 1, resetTokenExpires: 1 },
-    });
+    await this.authService.handlePasswordChanged(user);
   }
 }

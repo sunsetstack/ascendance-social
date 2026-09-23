@@ -10,13 +10,15 @@ import EditCommunityModal from "../components/EditCommunityModal";
 import { useAuth } from "../hooks/context/useAuth";
 import { PageSeo } from "../lib/PageSeo";
 import { buildCommunityMetadata } from "../lib/seo";
+import { feedIdentities } from "../features/feed/feedIdentity";
 
 const CommunityDetails: React.FC = () => {
 	const { slug } = useParams<{ slug: string }>();
 	const navigate = useNavigate();
 	const { data: community, isLoading: isCommunityLoading } = useCommunity(slug);
-	const { isLoggedIn } = useAuth();
+	const { isLoggedIn, user } = useAuth();
 	const [editModalOpen, setEditModalOpen] = useState(false);
+	const feedId = feedIdentities.community(community?.publicId, user?.publicId);
 
 	const {
 		data: postsData,
@@ -24,6 +26,8 @@ const CommunityDetails: React.FC = () => {
 		hasNextPage,
 		isFetchingNextPage,
 		isLoading: isPostsLoading,
+		isFetching: isFetchingPosts,
+		refetch: refetchPosts,
 	} = useCommunityPosts(community?.publicId);
 
 	const { mutate: joinCommunity, isPending: isJoining } = useJoinCommunity();
@@ -202,6 +206,11 @@ const CommunityDetails: React.FC = () => {
 							hasNextPage={hasNextPage}
 							isFetchingNext={isFetchingNextPage}
 							isLoadingAll={isPostsLoading}
+							isFetchingAll={isFetchingPosts}
+							feedId={feedId}
+							onRefresh={async () => {
+								await refetchPosts({ throwOnError: true });
+							}}
 							emptyTitle="No posts yet"
 							emptyDescription="Be the first to post in this community!"
 						/>

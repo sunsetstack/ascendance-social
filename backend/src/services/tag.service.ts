@@ -33,10 +33,7 @@ export class TagService {
    * ensures tags exist in the database, creating them if necessary
    * returns the full tag documents
    */
-  async ensureTagsExist(
-    tagNames: string[],
-    _session?: unknown,
-  ): Promise<ITag[]> {
+  async ensureTagsExist(tagNames: string[]): Promise<ITag[]> {
     if (!tagNames.length) {
       return [];
     }
@@ -74,7 +71,7 @@ export class TagService {
    */
   async incrementUsage(
     tagIds: mongoose.Types.ObjectId[],
-    options?: { trackActivity?: boolean } | unknown,
+    options?: { trackActivity?: boolean },
   ): Promise<void> {
     if (!tagIds.length) return;
 
@@ -86,8 +83,7 @@ export class TagService {
       );
     }
 
-    const shouldTrack =
-      !this.isIncrementOptions(options) || options.trackActivity !== false;
+    const shouldTrack = options?.trackActivity !== false;
     if (!shouldTrack) return;
 
     this.trackUsageActivity(tagIds.length).catch((err) => {
@@ -173,10 +169,7 @@ export class TagService {
   /**
    * decrements usage count for multiple tags atomically
    */
-  async decrementUsage(
-    tagIds: mongoose.Types.ObjectId[],
-    _session?: unknown,
-  ): Promise<void> {
+  async decrementUsage(tagIds: mongoose.Types.ObjectId[]): Promise<void> {
     if (!tagIds.length) return;
 
     const now = new Date();
@@ -224,15 +217,5 @@ export class TagService {
   private normalize(tag?: string): string {
     if (!tag) return "";
     return tag.replace(/^#+/, "").trim().toLowerCase();
-  }
-
-  private isIncrementOptions(
-    options: { trackActivity?: boolean } | unknown,
-  ): options is { trackActivity?: boolean } {
-    return (
-      typeof options === "object" &&
-      options !== null &&
-      "trackActivity" in options
-    );
   }
 }

@@ -18,8 +18,14 @@ export type RequestContext = {
   userId?: string;
   clientRequestId?: string;
   clientBootId?: string;
+  clientRequestAttempt?: number;
   previousClientRequestId?: string;
   causedByClientRequestId?: string;
+  clientIp?: string;
+  userAgent?: string;
+  sessionId?: string;
+  tokenFamilyId?: string;
+  authSource?: string;
   breadcrumbs: RequestContextBreadcrumb[];
 };
 
@@ -158,6 +164,23 @@ export function setRequestContextUserId(userId: string): void {
   }
 
   context.userId = userId;
+}
+
+export function setRequestContextAuthentication(input: {
+  userId: string;
+  sessionId?: string;
+  tokenFamilyId?: string;
+  authSource?: string;
+}): void {
+  const context = getMutableRequestContext();
+  if (!context) {
+    return;
+  }
+
+  context.userId = input.userId;
+  context.sessionId = input.sessionId;
+  context.tokenFamilyId = input.tokenFamilyId;
+  context.authSource = input.authSource;
 }
 
 export function addRequestContextBreadcrumb(

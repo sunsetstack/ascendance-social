@@ -37,10 +37,13 @@ export class OutboxWorker extends BasePollingWorker {
 
   protected async tick(): Promise<void> {
     const limit = 50;
-    const staleClaimMs = parseInt(
+    const configuredClaimMs = Number(
       process.env.OUTBOX_CLAIM_TIMEOUT_MS || "60000",
-      10,
     );
+    const staleClaimMs =
+      Number.isSafeInteger(configuredClaimMs) && configuredClaimMs >= 1000
+        ? configuredClaimMs
+        : 60000;
     const backlog = await this.readBacklogStats();
     const pendingCount = backlog.pendingCount;
     this.metricsService.setOutboxPendingCount(pendingCount);
@@ -51,24 +54,15 @@ export class OutboxWorker extends BasePollingWorker {
 
     if (pendingCount === 0) return;
 
-    const events = await this.outboxRepository.claimPendingEvents(
-      limit,
-      this.workerId,
-      staleClaimMs,
-    );
-
-    if (events.length === 0) return;
-
-    this.metricsService.recordOutboxBatchSize(events.length);
-    logger.info("Outbox events claimed", {
-      event: "outbox.batch.claimed",
-      worker: "OutboxWorker",
-      batchSize: events.length,
-      pendingCount,
-      workerId: this.workerId,
-    });
-
-    for (const record of events) {
+    let batchSize = 0;
+    for (let index = 0; index < limit; index++) {
+      const [record] = await this.outboxRepository.claimPendingEvents(
+        1,
+        this.workerId,
+        staleClaimMs,
+      );
+      if (!record) break;
+      batchSize++;
       const attemptStartedAt = Date.now();
       const eventId = String(record._id);
       const traceId = record.traceId || eventId;
@@ -76,11 +70,11 @@ export class OutboxWorker extends BasePollingWorker {
       const processedHandlers = new Set(record.processedHandlers || []);
       const handlers = this.eventBus.getRegisteredHandlers(record.eventType);
       const result = await runWithRequestContext(
-          {
-            correlationId,
-            requestStartTime: process.hrtime.bigint(),
-          },
-          async () => {
+        {
+          correlationId,
+          requestStartTime: process.hrtime.bigint(),
+        },
+        () => this.withClaimRenewal(eventId, staleClaimMs, async (assertOwnership) => {
           addRequestContextBreadcrumb("worker.outbox.received", {
             eventId,
             eventType: record.eventType,
@@ -89,6 +83,7 @@ export class OutboxWorker extends BasePollingWorker {
           let handlerInProgress = false;
           try {
             for (const handler of handlers) {
+              assertOwnership();
               if (processedHandlers.has(handler.key)) {
                 continue;
               }
@@ -100,6 +95,7 @@ export class OutboxWorker extends BasePollingWorker {
               handlerInProgress = true;
               await handler.handle(record.payload);
               handlerInProgress = false;
+              assertOwnership();
               const handlerMarked =
                 await this.outboxRepository.markHandlerProcessed(
                   eventId,
@@ -118,6 +114,7 @@ export class OutboxWorker extends BasePollingWorker {
               processedHandlers.add(handler.key);
             }
 
+            assertOwnership();
             const eventMarked = await this.outboxRepository.markAsProcessed(
               eventId,
               this.workerId,
@@ -230,8 +227,8 @@ export class OutboxWorker extends BasePollingWorker {
             }
             return { processed: false };
           }
-          },
-        );
+        }),
+      );
       if (result.processed) {
         this.metricsService.recordOutboxAttempt(
           record.eventType,
@@ -251,12 +248,49 @@ export class OutboxWorker extends BasePollingWorker {
       }
     }
 
+    this.metricsService.recordOutboxBatchSize(batchSize);
     const updatedBacklog = await this.readBacklogStats();
     this.metricsService.setOutboxPendingCount(updatedBacklog.pendingCount);
     this.metricsService.setOutboxBacklogStatus(
       updatedBacklog.exhaustedCount,
       updatedBacklog.oldestPendingAt,
     );
+  }
+
+  private async withClaimRenewal<T>(
+    eventId: string,
+    staleClaimMs: number,
+    work: (assertOwnership: () => void) => Promise<T>,
+  ): Promise<T> {
+    let renewalFailure: Error | undefined;
+    let renewal: Promise<void> | undefined;
+    const timer = setInterval(() => {
+      if (renewal || renewalFailure) return;
+      renewal = this.outboxRepository
+        .renewClaim(eventId, this.workerId)
+        .then((owned) => {
+          if (!owned) {
+            throw new Error("Outbox event ownership lost during processing");
+          }
+        })
+        .catch((error: unknown) => {
+          renewalFailure = error instanceof Error
+            ? error
+            : new Error("Outbox claim renewal failed", { cause: error });
+        })
+        .finally(() => {
+          renewal = undefined;
+        });
+    }, Math.floor(staleClaimMs / 3));
+    timer.unref();
+    try {
+      return await work(() => {
+        if (renewalFailure) throw renewalFailure;
+      });
+    } finally {
+      clearInterval(timer);
+      await renewal;
+    }
   }
 
   private async readBacklogStats(): Promise<OutboxBacklogStats> {

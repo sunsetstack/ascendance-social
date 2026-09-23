@@ -68,7 +68,9 @@ describe("FollowRepository", () => {
 			save: sinon.stub(),
 		};
 
-		mockSession = {} as ClientSession;
+		mockSession = {
+			inTransaction: sinon.stub().returns(true),
+		} as unknown as ClientSession;
 
 		// Create repository with mocked model
 		repository = new FollowRepository(mockModel as unknown as Model<IFollow>);

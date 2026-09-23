@@ -24,7 +24,7 @@ describe("UnrepostPostCommandHandler", () => {
   beforeEach(() => {
     mocks = {
       unitOfWork: {
-        executeInTransaction: sinon.stub().callsFake(async (work) => work({})),
+        executeInTransaction: sinon.stub().callsFake(async (work) => work()),
       },
       postRead: {
         findByPublicId: sinon.stub(),

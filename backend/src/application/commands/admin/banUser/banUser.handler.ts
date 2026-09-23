@@ -7,6 +7,7 @@ import { AuthSessionService } from "@/services/auth-session.service";
 import { AdminUserDTO, DTOService } from "@/services/dto.service";
 import { AccountAuditSnapshotService } from "@/services/lifecycle/account-audit-snapshot.service";
 import { AccountLifecycleService } from "@/services/lifecycle/account-lifecycle.service";
+import { AdminRemovalGuardService } from "@/services/admin-removal-guard.service";
 import { TOKENS } from "@/types/tokens";
 import { Errors, wrapError } from "@/utils/errors";
 import { BanUserCommand } from "./banUser.command";
@@ -34,6 +35,8 @@ export class BanUserCommandHandler implements ICommandHandler<
     private readonly authSessionService: AuthSessionService,
     @inject(TOKENS.Services.DTO)
     private readonly dtoService: DTOService,
+    @inject(TOKENS.Services.AdminRemovalGuard)
+    private readonly adminRemovalGuard: AdminRemovalGuardService,
   ) {}
 
   async execute(command: BanUserCommand): Promise<BanUserResult> {
@@ -69,16 +72,25 @@ export class BanUserCommandHandler implements ICommandHandler<
       reason,
     });
 
-    await this.authSessionService.revokeAllSessionsForUser(
-      command.userPublicId,
-    );
-
     try {
       await this.unitOfWork.executeInTransaction(async () => {
         const currentUser = await this.userReadRepository.findByPublicId(
           command.userPublicId,
         );
         if (!currentUser) throw Errors.notFound("User");
+
+        if (currentUser.isAdmin && !currentUser.isBanned) {
+          await this.adminRemovalGuard.touch();
+          const activeAdminCount = await this.userReadRepository.countDocuments({
+            isAdmin: true,
+            isBanned: false,
+          });
+          if (activeAdminCount <= 1) {
+            throw Errors.validation(
+              "At least one active administrator must remain",
+            );
+          }
+        }
 
         await this.accountLifecycleService.purgeUser(
           {
@@ -100,6 +112,10 @@ export class BanUserCommandHandler implements ICommandHandler<
     } catch (error) {
       throw wrapError(error);
     }
+
+    await this.authSessionService.revokeAllSessionsForUser(
+      command.userPublicId,
+    );
 
     const updatedUser = await this.userReadRepository.findByPublicId(
       command.userPublicId,

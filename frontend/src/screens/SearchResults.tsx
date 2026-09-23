@@ -7,9 +7,12 @@ import { Link, useLocation } from "react-router-dom";
 import { PageSeo } from "../lib/PageSeo";
 import { buildSearchMetadata } from "../lib/seo";
 import { buildAvatarUrl } from "../lib/media";
+import { useAuth } from "../hooks/context/useAuth";
+import { feedIdentities } from "../features/feed/feedIdentity";
 
 const SearchResults = () => {
 	const location = useLocation();
+	const { user } = useAuth();
 
 	// Parse the search query
 	const searchParams = new URLSearchParams(location.search);
@@ -57,18 +60,35 @@ const SearchResults = () => {
 		setActiveTab("posts");
 	}, [displayQuery]);
 
-	const { data: searchData, isFetching: isSearchingUsers } = useSearch(normalizedQuery);
+	const tagIdentityQuery = searchTerms.join(",");
+	const searchFeedId = feedIdentities.search(
+		searchMode,
+		searchMode === "tags" ? tagIdentityQuery : normalizedQuery,
+		user?.publicId,
+	);
+	const searchQueryResult = useSearch(normalizedQuery, searchFeedId);
+	const { data: searchData, isFetching: isSearchingUsers } = searchQueryResult;
 
 	// Fetch Posts with infinite scroll
+	const postsQuery = usePostsByTag(searchTerms, {
+		enabled: searchMode === "tags" && searchTerms.length > 0,
+	});
 	const {
 		data: postsData,
 		fetchNextPage,
 		hasNextPage,
 		isFetchingNextPage,
 		isLoading: isLoadingPosts,
-	} = usePostsByTag(searchTerms, {
-		enabled: searchMode === "tags" && searchTerms.length > 0,
-	});
+	} = postsQuery;
+
+	const activeFeedIsFetching = searchMode === "tags" ? postsQuery.isFetching : searchQueryResult.isFetching;
+	const refreshActiveFeed = async () => {
+		if (searchMode === "tags") {
+			await postsQuery.refetch({ throwOnError: true });
+			return;
+		}
+		await searchQueryResult.refetch({ throwOnError: true });
+	};
 
 	// Flatten pages
 	const allPosts = useMemo(() => {
@@ -130,6 +150,9 @@ const SearchResults = () => {
 										fetchNextPage={fetchNextPage}
 										isFetchingNext={isFetchingNextPage}
 										hasNextPage={!!hasNextPage}
+										feedId={searchFeedId}
+										isFetchingAll={activeFeedIsFetching}
+										onRefresh={refreshActiveFeed}
 									/>
 								) : (
 									<Typography color="text.secondary" sx={{ mt: 4, textAlign: "center" }}>

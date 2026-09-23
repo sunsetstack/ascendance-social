@@ -10,7 +10,7 @@ import {
   asMongoId,
 } from "@/types/branded";
 import { Errors, handleMongoError } from "@/utils/errors";
-import { sessionALS } from "@/database/UnitOfWork";
+import { getTransactionSession } from "@/database/UnitOfWork";
 import { addRequestContextBreadcrumb } from "@/runtime/request-context";
 import type { PostSearchLookup } from "@/application/ports/post-search-lookup";
 import {
@@ -38,7 +38,7 @@ export class PostReadRepository
   }
 
   private getSession() {
-    return sessionALS.getStore() ?? undefined;
+    return getTransactionSession();
   }
 
   async findById(

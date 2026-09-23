@@ -7,17 +7,28 @@ import { PageSeo } from "../lib/PageSeo";
 import { buildHomeMetadata } from "../lib/seo";
 import { useAuth } from "../hooks/context/useAuth";
 import { useTranslation } from "react-i18next";
+import { feedIdentities } from "../features/feed/feedIdentity";
 
 const CreatePost = lazy(() => import("../components/CreatePost"));
 
 const Home: React.FC = () => {
 	const theme = useTheme();
 	const isMobile = useMediaQuery(theme.breakpoints.down("md"));
-	const { isLoggedIn } = useAuth();
+	const { isLoggedIn, user } = useAuth();
 	const { t } = useTranslation();
 
 	// backend picks personalized vs trending based on auth present in the request
-	const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, error } = usePosts();
+	const {
+		data,
+		fetchNextPage,
+		hasNextPage,
+		isFetchingNextPage,
+		isFetching,
+		isLoading,
+		error,
+		refreshFeed,
+	} = usePosts();
+	const homeFeedId = feedIdentities.home(user?.publicId);
 
 	const activePosts = useMemo(() => data?.pages.flatMap((p) => p.data) ?? [], [data]);
 	const feedHeader = (
@@ -129,6 +140,9 @@ const Home: React.FC = () => {
 							hasNextPage={hasNextPage}
 							isFetchingNext={isFetchingNextPage}
 							isLoadingAll={isLoading}
+							isFetchingAll={isFetching}
+							feedId={homeFeedId}
+							onRefresh={refreshFeed}
 						/>
 					)}
 				</Box>

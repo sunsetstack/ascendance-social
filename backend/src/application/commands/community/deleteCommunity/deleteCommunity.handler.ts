@@ -5,7 +5,10 @@ import { DeleteCommunityCommand } from "./deleteCommunity.command";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
 import type { IUserReadRepository } from "@/repositories/interfaces";
-import { UnitOfWork } from "@/database/UnitOfWork";
+import {
+  requireTransactionSession,
+  UnitOfWork,
+} from "@/database/UnitOfWork";
 import { Errors } from "@/utils/errors";
 import {
   asMongoId,
@@ -69,7 +72,8 @@ export class DeleteCommunityCommandHandler implements ICommandHandler<
       throw Errors.forbidden("Only community admins can delete the community");
     }
 
-    await this.uow.executeInTransaction(async (session) => {
+    await this.uow.executeInTransaction(async () => {
+      const session = requireTransactionSession();
       const postIds =
         await this.contentCleanupService.findPostIdsByCommunity(communityId);
       const cleanup =

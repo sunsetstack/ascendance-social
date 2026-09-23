@@ -52,7 +52,7 @@ describe("BanUserCommandHandler", () => {
           ),
       },
       unitOfWork: {
-        executeInTransaction: sinon.stub().callsFake(async (work) => work({})),
+        executeInTransaction: sinon.stub().callsFake(async (work) => work()),
       },
       lifecycle: {
         purgeUser: sinon.stub().resolves({
@@ -68,6 +68,7 @@ describe("BanUserCommandHandler", () => {
       audit: { capture: sinon.stub().resolves("snapshot-id") },
       authSession: { revokeAllSessionsForUser: sinon.stub().resolves() },
       dto: { toAdminDTO: sinon.stub().returns({ publicId: TARGET_PUBLIC_ID }) },
+      adminRemovalGuard: { touch: sinon.stub().resolves() },
     };
     handler = new BanUserCommandHandler(
       mocks.userRead,
@@ -76,6 +77,7 @@ describe("BanUserCommandHandler", () => {
       mocks.audit,
       mocks.authSession,
       mocks.dto,
+      mocks.adminRemovalGuard,
     );
   });
 

@@ -1,5 +1,6 @@
-import { ClientSession, Model, mongo } from "mongoose";
+import { Model, mongo } from "mongoose";
 import { inject, injectable } from "tsyringe";
+import { requireTransactionSession } from "@/database/UnitOfWork";
 import { IUser } from "@/types";
 import { TOKENS } from "@/types/tokens";
 import { Errors } from "@/utils/errors";
@@ -43,10 +44,8 @@ export class MongoAccountCommunityCleanupParticipant
     private readonly contentCleanupService: ContentCleanupService,
   ) {}
 
-  async cleanup(
-    userId: ObjectId,
-    session: ClientSession,
-  ): Promise<ContentCleanupResult> {
+  async cleanup(userId: ObjectId): Promise<ContentCleanupResult> {
+    const session = requireTransactionSession();
     const db = this.db();
     const cleanup = { posts: [], imageAssets: [] };
     const memberships = await db

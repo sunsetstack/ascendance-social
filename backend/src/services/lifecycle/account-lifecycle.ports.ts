@@ -1,4 +1,4 @@
-import type { ClientSession, mongo } from "mongoose";
+import type { mongo } from "mongoose";
 import type { AccountLifecycleAction } from "@/application/common/policies/account-lifecycle.policy";
 import type {
   ContentCleanupResult,
@@ -50,19 +50,14 @@ export interface AccountContentCleanupParticipant {
   cleanup(
     user: AccountLifecycleUser,
     action: AccountLifecycleAction,
-    session: ClientSession,
   ): Promise<AccountContentCleanupResult>;
 }
 
 export interface AccountSocialCleanupParticipant {
-  captureFollowerPublicIds(
-    userId: ObjectId,
-    session: ClientSession,
-  ): Promise<string[]>;
+  captureFollowerPublicIds(userId: ObjectId): Promise<string[]>;
   removeRelationshipsAndActivity(
     userId: ObjectId,
     userPublicId: string,
-    session: ClientSession,
   ): Promise<string[]>;
 }
 
@@ -70,15 +65,11 @@ export interface AccountConversationCleanupParticipant {
   preserve(
     user: AccountLifecycleUser,
     action: AccountLifecycleAction,
-    session: ClientSession,
   ): Promise<number>;
 }
 
 export interface AccountCommunityCleanupParticipant {
-  cleanup(
-    userId: ObjectId,
-    session: ClientSession,
-  ): Promise<ContentCleanupResult>;
+  cleanup(userId: ObjectId): Promise<ContentCleanupResult>;
 }
 
 export type AccountRecordCleanupOptions = Pick<
@@ -90,7 +81,6 @@ export interface AccountRecordCleanupParticipant {
   finalize(
     user: AccountLifecycleUser,
     options: AccountRecordCleanupOptions,
-    session: ClientSession,
   ): Promise<RemovedImageAsset[]>;
 }
 

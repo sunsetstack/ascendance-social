@@ -73,6 +73,12 @@ const userSchema = new Schema<IUser>(
 			required: [true, "Password is required"],
 			select: false,
 		},
+		authVersion: {
+			type: Number,
+			required: true,
+			default: 0,
+			min: 0,
+		},
 		bio: {
 			type: String,
 			required: false,

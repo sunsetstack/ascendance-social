@@ -3,7 +3,7 @@ import * as chai from "chai";
 import { expect } from "chai";
 import chaiAsPromised from "chai-as-promised";
 import sinon, { SinonStub } from "sinon";
-import { ClientSession, Model, Types } from "mongoose";
+import { Model, Types } from "mongoose";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
 import { IFavorite, IPost } from "@/types";
 import { asPostPublicId } from "@/types/branded";
@@ -37,7 +37,6 @@ interface MockFavoriteModelFunc extends SinonStub {
 describe("FavoriteRepository", () => {
 	let repository: FavoriteRepository;
 	let mockModel: MockFavoriteModelFunc;
-	let mockSession: ClientSession;
 	let mockQuery: {
 		session: SinonStub;
 		exec: SinonStub;
@@ -64,7 +63,6 @@ describe("FavoriteRepository", () => {
 
 		mockModel.callsFake((data) => createMockFavoriteDocInstance(data));
 
-		mockSession = {} as ClientSession;
 		repository = new FavoriteRepository(mockModel as any as Model<IFavorite>);
 	});
 

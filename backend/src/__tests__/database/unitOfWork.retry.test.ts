@@ -206,12 +206,12 @@ function installSessionFactory(
 
 function instrumentBody<T>(
   evidence: FaultEvidence,
-  work: (invocation: number, session: ClientSession) => Promise<T>,
-): (session: ClientSession) => Promise<T> {
-  return async (session) => {
+  work: (invocation: number) => Promise<T>,
+): () => Promise<T> {
+  return async () => {
     evidence.bodyInvocationCount++;
     try {
-      return await work(evidence.bodyInvocationCount, session);
+      return await work(evidence.bodyInvocationCount);
     } catch (error) {
       evidence.retryClassification.push(`body:${errorClassification(error)}`);
       throw error;

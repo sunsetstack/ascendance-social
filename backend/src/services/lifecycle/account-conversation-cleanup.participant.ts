@@ -1,5 +1,6 @@
-import { ClientSession, Model, mongo } from "mongoose";
+import { Model, mongo } from "mongoose";
 import { inject, injectable } from "tsyringe";
+import { requireTransactionSession } from "@/database/UnitOfWork";
 import {
   AccountLifecycleAction,
   UNAVAILABLE_MESSAGE_SENDER,
@@ -50,8 +51,8 @@ export class MongoAccountConversationCleanupParticipant
   async preserve(
     user: AccountLifecycleUser,
     action: AccountLifecycleAction,
-    session: ClientSession,
   ): Promise<number> {
+    const session = requireTransactionSession();
     const db = this.db();
     const userId = new ObjectId(user._id.toString());
     const unavailableAt = new Date();

@@ -9,7 +9,6 @@ import {
   PostLikeCountReconciledEvent,
 } from "@/application/events/post/post.event";
 import { UserDeletedEvent } from "@/application/events/user/user-interaction.event";
-import { sessionALS } from "@/database/UnitOfWork";
 import { EventBusAccountOutboxParticipant } from "@/services/lifecycle/account-outbox.participant";
 import { AccountLifecycleService } from "@/services/lifecycle/account-lifecycle.service";
 import type {
@@ -83,7 +82,7 @@ describe("AccountLifecycleService orchestration", () => {
     return { content, social, conversations, communities, records, outbox };
   }
 
-  it("invokes participants in order, propagates the transaction session, and returns the aggregate result", async () => {
+  it("invokes participants in order and returns the aggregate result", async () => {
     const order: string[] = [];
     const participants = createParticipants(order);
     const lifecycle = new AccountLifecycleService(
@@ -94,14 +93,11 @@ describe("AccountLifecycleService orchestration", () => {
       participants.records,
       participants.outbox,
     );
-    const session = {} as any;
-    const result = await sessionALS.run(session, () =>
-      lifecycle.purgeUser(user, {
-        action: "delete",
-        reason: "requested",
-        requestedByPublicId: user.publicId,
-      }),
-    );
+    const result = await lifecycle.purgeUser(user, {
+      action: "delete",
+      reason: "requested",
+      requestedByPublicId: user.publicId,
+    });
 
     expect(order).to.deep.equal([
       "followers",
@@ -123,26 +119,6 @@ describe("AccountLifecycleService orchestration", () => {
     ]);
 
     expect(
-      (participants.social.captureFollowerPublicIds as sinon.SinonStub).firstCall
-        .args[1],
-    ).to.equal(session);
-    expect(
-      (participants.content.cleanup as sinon.SinonStub).firstCall.args[2],
-    ).to.equal(session);
-    expect(
-      (participants.social.removeRelationshipsAndActivity as sinon.SinonStub)
-        .firstCall.args[2],
-    ).to.equal(session);
-    expect(
-      (participants.conversations.preserve as sinon.SinonStub).firstCall.args[2],
-    ).to.equal(session);
-    expect(
-      (participants.communities.cleanup as sinon.SinonStub).firstCall.args[1],
-    ).to.equal(session);
-    expect(
-      (participants.records.finalize as sinon.SinonStub).firstCall.args[2],
-    ).to.equal(session);
-    expect(
       (participants.outbox.enqueue as sinon.SinonStub).firstCall.args[2],
     ).to.deep.equal(result);
   });
@@ -163,9 +139,10 @@ describe("AccountLifecycleService orchestration", () => {
 
     let caught: unknown;
     try {
-      await sessionALS.run({} as any, () =>
-        lifecycle.purgeUser(user, { action: "delete", reason: "requested" }),
-      );
+      await lifecycle.purgeUser(user, {
+        action: "delete",
+        reason: "requested",
+      });
     } catch (failure) {
       caught = failure;
     }

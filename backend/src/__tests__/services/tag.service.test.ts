@@ -3,7 +3,7 @@ import * as chai from "chai";
 import { expect } from "chai";
 import chaiAsPromised from "chai-as-promised";
 import sinon, { SinonStub } from "sinon";
-import { ClientSession, Types } from "mongoose";
+import { Types } from "mongoose";
 import { TagService } from "@/services/tag.service";
 
 chai.use(chaiAsPromised);
@@ -16,7 +16,6 @@ describe("TagService", () => {
 		upsertByTag: SinonStub;
 		findOneAndUpdate: SinonStub;
 	};
-	let mockSession: ClientSession;
 
 	beforeEach(() => {
 		mockTagRepository = {
@@ -26,7 +25,6 @@ describe("TagService", () => {
 			findOneAndUpdate: sinon.stub(),
 		};
 
-		mockSession = {} as ClientSession;
 
 		const mockRedisService = {
 			get: sinon.stub().resolves(null),
@@ -82,7 +80,7 @@ describe("TagService", () => {
 			mockTagRepository.upsertByTag.onFirstCall().resolves(existingTags[0]);
 			mockTagRepository.upsertByTag.onSecondCall().resolves(existingTags[1]);
 
-			const result = await tagService.ensureTagsExist(tagNames, mockSession);
+			const result = await tagService.ensureTagsExist(tagNames);
 
 			expect(mockTagRepository.findByTags.called).to.be.false;
 			expect(mockTagRepository.upsertByTag.calledTwice).to.be.true;
@@ -102,7 +100,7 @@ describe("TagService", () => {
 			mockTagRepository.upsertByTag.onFirstCall().resolves(existingTag);
 			mockTagRepository.upsertByTag.onSecondCall().resolves(newTag);
 
-			const result = await tagService.ensureTagsExist(tagNames, mockSession);
+			const result = await tagService.ensureTagsExist(tagNames);
 
 			expect(mockTagRepository.findByTags.called).to.be.false;
 			expect(mockTagRepository.create.called).to.be.false;
@@ -111,7 +109,7 @@ describe("TagService", () => {
 		});
 
 		it("should handle empty tag list", async () => {
-			const result = await tagService.ensureTagsExist([], mockSession);
+			const result = await tagService.ensureTagsExist([]);
 
 			expect(mockTagRepository.findByTags.called).to.be.false;
 			expect(mockTagRepository.create.called).to.be.false;
@@ -127,7 +125,7 @@ describe("TagService", () => {
 			mockTagRepository.upsertByTag.onFirstCall().resolves(existingTag);
 			mockTagRepository.upsertByTag.onSecondCall().resolves(newTag);
 
-			await tagService.ensureTagsExist(tagNames, mockSession);
+			await tagService.ensureTagsExist(tagNames);
 
 			expect(mockTagRepository.upsertByTag.calledTwice).to.be.true;
 			expect(mockTagRepository.upsertByTag.firstCall.args[0]).to.equal("nature");
@@ -142,7 +140,7 @@ describe("TagService", () => {
 			mockTagRepository.upsertByTag.onFirstCall().resolves(natureTag);
 			mockTagRepository.upsertByTag.onSecondCall().resolves(sunsetTag);
 
-			const result = await tagService.ensureTagsExist(tagNames, mockSession);
+			const result = await tagService.ensureTagsExist(tagNames);
 
 			expect(mockTagRepository.upsertByTag.calledTwice).to.be.true;
 			expect(mockTagRepository.upsertByTag.firstCall.args[0]).to.equal("nature");
@@ -157,7 +155,7 @@ describe("TagService", () => {
 
 			mockTagRepository.findOneAndUpdate.resolves({});
 
-			await tagService.incrementUsage(tagIds, mockSession);
+			await tagService.incrementUsage(tagIds);
 
 			expect(mockTagRepository.findOneAndUpdate.calledTwice).to.be.true;
 			// verify the $inc: { count: 1 } is in the update
@@ -166,7 +164,7 @@ describe("TagService", () => {
 		});
 
 		it("should handle empty tag ID list", async () => {
-			await tagService.incrementUsage([], mockSession);
+			await tagService.incrementUsage([]);
 
 			expect(mockTagRepository.findOneAndUpdate.called).to.be.false;
 		});
@@ -178,7 +176,7 @@ describe("TagService", () => {
 
 			mockTagRepository.findOneAndUpdate.resolves({});
 
-			await tagService.decrementUsage(tagIds, mockSession);
+			await tagService.decrementUsage(tagIds);
 
 			expect(mockTagRepository.findOneAndUpdate.calledTwice).to.be.true;
 			// verify the $inc: { count: -1 } is in the update
@@ -187,7 +185,7 @@ describe("TagService", () => {
 		});
 
 		it("should handle empty tag ID list", async () => {
-			await tagService.decrementUsage([], mockSession);
+			await tagService.decrementUsage([]);
 
 			expect(mockTagRepository.findOneAndUpdate.called).to.be.false;
 		});

@@ -2,7 +2,12 @@ import "reflect-metadata";
 import { expect } from "chai";
 import sinon from "sinon";
 import mongoose from "mongoose";
-import { UnitOfWork, sessionALS } from "@/database/UnitOfWork";
+import {
+  getTransactionSession,
+  requireTransactionSession,
+  sessionALS,
+  UnitOfWork,
+} from "@/database/UnitOfWork";
 import {
   isRetryableTransactionBodyError,
   isUnknownTransactionCommitResult,
@@ -234,6 +239,22 @@ describe("UnitOfWork", () => {
   });
 
   describe("executeInTransaction", () => {
+    it("distinguishes no transaction from an inactive ambient context", () => {
+      expect(getTransactionSession()).to.equal(undefined);
+      expect(() => requireTransactionSession()).to.throw(
+        "Operation must run inside a UnitOfWork transaction",
+      );
+
+      const inactiveSession = {
+        inTransaction: sinon.stub().returns(false),
+      } as any;
+      sessionALS.run(inactiveSession, () => {
+        expect(() => getTransactionSession()).to.throw(
+          "Transaction context is no longer active",
+        );
+      });
+    });
+
     it("reuses the ambient session when a transaction is already active", async () => {
       const startSessionStub = sinon.stub(mongoose, "startSession");
       const existingSession = {
@@ -241,8 +262,8 @@ describe("UnitOfWork", () => {
       } as any;
 
       const result = await sessionALS.run(existingSession, async () =>
-        unitOfWork.executeInTransaction(async (session) => {
-          expect(session).to.equal(existingSession);
+        unitOfWork.executeInTransaction(async () => {
+          expect(requireTransactionSession()).to.equal(existingSession);
           return "reused";
         }),
       );

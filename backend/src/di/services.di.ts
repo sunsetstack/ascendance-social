@@ -32,6 +32,7 @@ import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
 import { AuthSessionService } from "@/services/auth-session.service";
 import { BloomFilterService } from "@/services/redis/bloom-filter.service";
 import { SecurityAuditService } from "@/services/security-audit.service";
+import { ForensicOperationalErrorService } from "@/services/forensic-operational-error.service";
 import { FeedCoreService } from "@/services/feed/feed-core.service";
 import { FeedReadService } from "@/services/feed/feed-read.service";
 import { FeedInteractionService } from "@/services/feed/feed-interaction.service";
@@ -41,6 +42,7 @@ import { AuthMiddlewareService } from "@/middleware/authentication.middleware";
 import { TOKENS } from "@/types/tokens";
 import { AccountAuditSnapshotService } from "@/services/lifecycle/account-audit-snapshot.service";
 import { AccountLifecycleService } from "@/services/lifecycle/account-lifecycle.service";
+import { AdminRemovalGuardService } from "@/services/admin-removal-guard.service";
 import { ContentCleanupService } from "@/services/lifecycle/content-cleanup.service";
 import { MongoAccountCommunityCleanupParticipant } from "@/services/lifecycle/account-community-cleanup.participant";
 import { MongoAccountContentCleanupParticipant } from "@/services/lifecycle/account-content-cleanup.participant";
@@ -132,6 +134,10 @@ export function registerServices(): void {
     AccountLifecycleService,
   );
   container.registerSingleton(
+    TOKENS.Services.AdminRemovalGuard,
+    AdminRemovalGuardService,
+  );
+  container.registerSingleton(
     TOKENS.Services.AccountAuditSnapshot,
     AccountAuditSnapshotService,
   );
@@ -200,6 +206,10 @@ export function registerServices(): void {
   container.registerSingleton(
     TOKENS.Services.SecurityAudit,
     SecurityAuditService,
+  );
+  container.registerSingleton(
+    TOKENS.Services.ForensicOperationalError,
+    ForensicOperationalErrorService,
   );
   container.registerSingleton(
     TOKENS.Services.UserActivity,

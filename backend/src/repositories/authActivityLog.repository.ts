@@ -73,7 +73,7 @@ export class AuthActivityLogRepository extends BaseRepository<IAuthActivityLog> 
     try {
       const { page = 1, limit = 50, sortBy = "timestamp", sortOrder = "desc", filter = {} } = options;
       const skip = (page - 1) * limit;
-      const sort = { [sortBy]: sortOrder };
+      const sort = { [sortBy]: sortOrder, _id: sortOrder };
 
       const [data, total] = await Promise.all([
         this.model.find(filter).sort(sort).skip(skip).limit(limit).lean<IAuthActivityLog[]>().exec(),

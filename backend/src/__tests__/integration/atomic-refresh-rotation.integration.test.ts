@@ -138,7 +138,9 @@ describe("Atomic refresh-token rotation integration", function () {
       remove: sessions.removeSession.bind(sessions),
       deleteUserSessions: sessions.deleteUserSessions.bind(sessions),
       touch: sessions.touchSession.bind(sessions),
-    } satisfies AuthSessionStore);
+    } satisfies AuthSessionStore, {
+      findByPublicId: async () => null,
+    } as any);
   });
 
   beforeEach(async () => {

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import { useQueryClient } from "@tanstack/react-query";
 import { useGetUser, useUpdateUserAvatar, useUpdateUserCover, useUserComments, useUserLikedPosts, useUserPosts } from "../../hooks/user/useUsers";
@@ -7,10 +7,20 @@ import { useBanUser, useDeleteUserAdmin } from "../../hooks/admin/useAdmin";
 import { useFollowUser, useIsFollowing } from "../../hooks/user/useUserAction";
 import { useAuth } from "../../hooks/context/useAuth";
 import { useInitiateConversation } from "../../hooks/messaging/useInitiateConversation";
+import { feedIdentities } from "../../features/feed/feedIdentity";
 import { buildProfileMetadata } from "../../lib/seo";
 import { devError } from "@/lib/devLogger";
 
 const BASE_URL = "/api";
+const PROFILE_TAB_KEYS = ["posts", "replies", "media", "likes"] as const;
+const PROFILE_TAB_INDEX: Record<string, number> = {
+	posts: 0,
+	replies: 1,
+	media: 2,
+	likes: 3,
+};
+
+const getProfileTabIndex = (value: string | null): number => PROFILE_TAB_INDEX[value ?? ""] ?? 0;
 
 const resolveProfileAssetUrl = (urlPath: string | undefined): string | undefined => {
 	if (!urlPath) {
@@ -27,17 +37,37 @@ const resolveProfileAssetUrl = (urlPath: string | undefined): string | undefined
 export const useProfileController = () => {
 	const navigate = useNavigate();
 	const { id } = useParams<{ id: string }>();
+	const [searchParams, setSearchParams] = useSearchParams();
 	const { user, isLoggedIn } = useAuth();
 	const queryClient = useQueryClient();
-	const [activeTab, setActiveTab] = useState(0);
+	const activeTab = getProfileTabIndex(searchParams.get("tab"));
 	const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 	const [isCoverModalOpen, setIsCoverModalOpen] = useState(false);
 	const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+
+	const setActiveTab = useCallback(
+		(nextTab: number) => {
+			const nextTabIndex = PROFILE_TAB_KEYS[nextTab] ? nextTab : 0;
+			setSearchParams(
+				(current) => {
+					const next = new URLSearchParams(current);
+					next.set("tab", PROFILE_TAB_KEYS[nextTabIndex]);
+					return next;
+				},
+				{ replace: true },
+			);
+		},
+		[setSearchParams],
+	);
 
 	const profileUserId = id || user?.handle || user?.publicId;
 	const { data: profileData, isLoading: isLoadingProfile, error: getUserError } = useGetUser(
 		id ? id : isLoggedIn ? user?.handle : undefined,
 	);
+	const profileFeedSubject = profileData?.publicId ?? id ?? user?.publicId;
+	const profilePostsFeedId = feedIdentities.profilePosts(profileFeedSubject, user?.publicId);
+	const profileMediaFeedId = feedIdentities.profileMedia(profileFeedSubject, user?.publicId);
+	const profileLikesFeedId = feedIdentities.profileLikes(profileFeedSubject, user?.publicId);
 
 	const {
 		data: imagesData,
@@ -45,8 +75,11 @@ export const useProfileController = () => {
 		hasNextPage,
 		isFetchingNextPage,
 		isLoading: isLoadingImages,
+		isFetching: isFetchingImages,
+		refetch: refetchImagesQuery,
 	} = useUserPosts(profileData?.publicId || "", {
 		enabled: !!profileData?.publicId && (activeTab === 0 || activeTab === 2),
+		feedId: activeTab === 2 ? profileMediaFeedId : profilePostsFeedId,
 	});
 
 	const {
@@ -55,8 +88,11 @@ export const useProfileController = () => {
 		hasNextPage: hasNextLikedPage,
 		isFetchingNextPage: isFetchingNextLikedPage,
 		isLoading: isLoadingLikedPosts,
+		isFetching: isFetchingLikedPosts,
+		refetch: refetchLikedPostsQuery,
 	} = useUserLikedPosts(profileData?.publicId || "", {
 		enabled: !!profileData?.publicId && activeTab === 3,
+		feedId: profileLikesFeedId,
 	});
 
 	const {
@@ -82,6 +118,12 @@ export const useProfileController = () => {
 
 	const notifySuccess = useCallback((message: string) => toast.success(message), []);
 	const notifyError = useCallback((message: string) => toast.error(message), []);
+	const refetchPosts = useCallback(async () => {
+		await refetchImagesQuery({ throwOnError: true });
+	}, [refetchImagesQuery]);
+	const refetchLikedPosts = useCallback(async () => {
+		await refetchLikedPostsQuery({ throwOnError: true });
+	}, [refetchLikedPostsQuery]);
 
 	const flattenedImages = useMemo(() => imagesData?.pages?.flatMap((page) => page.data) || [], [imagesData]);
 	const flattenedLikedPosts = useMemo(() => likedPostsData?.pages?.flatMap((page) => page.data) || [], [likedPostsData]);
@@ -245,6 +287,13 @@ export const useProfileController = () => {
 		flattenedImages,
 		flattenedLikedPosts,
 		flattenedComments,
+		postsFeedId: profilePostsFeedId,
+		mediaFeedId: profileMediaFeedId,
+		likedPostsFeedId: profileLikesFeedId,
+		isPostsFetching: isFetchingImages,
+		isLikedPostsFetching: isFetchingLikedPosts,
+		refetchPosts,
+		refetchLikedPosts,
 		isLoadingImages,
 		isLoadingComments,
 		isLoadingAllPosts,

@@ -18,6 +18,7 @@ describe("AuthSessionService", () => {
 	let removeAuthSessionMembershipStub: sinon.SinonStub;
 	let getUserAuthSessionIdsStub: sinon.SinonStub;
 	let deleteUserAuthSessionsStub: sinon.SinonStub;
+	let findUserByPublicIdStub: sinon.SinonStub;
 
 	beforeEach(() => {
 		getAuthSessionStub = sinon.stub();
@@ -30,6 +31,7 @@ describe("AuthSessionService", () => {
 		removeAuthSessionMembershipStub = sinon.stub().resolves();
 		getUserAuthSessionIdsStub = sinon.stub().resolves([]);
 		deleteUserAuthSessionsStub = sinon.stub().resolves();
+		findUserByPublicIdStub = sinon.stub().resolves({ authVersion: 0 });
 
 		const mockAuthSessionStore = {
 			get: getAuthSessionStub,
@@ -44,7 +46,9 @@ describe("AuthSessionService", () => {
 			touch: touchAuthSessionStub,
 		} as AuthSessionStore;
 
-		authSessionService = new AuthSessionService(mockAuthSessionStore);
+		authSessionService = new AuthSessionService(mockAuthSessionStore, {
+			findByPublicId: findUserByPublicIdStub,
+		} as any);
 	});
 
 	afterEach(() => {
@@ -279,6 +283,7 @@ describe("AuthSessionService", () => {
 		getAuthSessionStub.resolves({
 			sid,
 			publicId: "user-public-id",
+			authVersion: 0,
 			refreshTokenHash: crypto.createHash("sha256").update(`${sid}.refresh-secret`, "utf8").digest("hex"),
 			createdAt,
 			lastSeenAt: previousSeen,
@@ -295,11 +300,33 @@ describe("AuthSessionService", () => {
 		expect(input.lastSeenAt).to.be.greaterThan(previousSeen);
 	});
 
+	it("rejects access when the session auth version is stale", async () => {
+		const sid = "3f7c90af-22a8-4a48-8e03-3ea6f865b59f";
+		getAuthSessionStub.resolves({
+			sid,
+			publicId: "user-public-id",
+			authVersion: 0,
+			refreshTokenHash: crypto.createHash("sha256").update(`${sid}.refresh-secret`, "utf8").digest("hex"),
+			createdAt: Date.now(),
+			lastSeenAt: Date.now(),
+			status: "active",
+		});
+		findUserByPublicIdStub.resolves({ authVersion: 1 });
+
+		await expect(
+			authSessionService.assertAccessSession(sid, "user-public-id"),
+		).to.be.rejectedWith("Session is invalid or expired");
+		expect(removeAuthSessionStub.calledOnceWith(sid, "user-public-id")).to.be
+			.true;
+		expect(touchAuthSessionStub.called).to.be.false;
+	});
+
 	it("rejects access when the atomic touch observes a deleted session", async () => {
 		const sid = "3f7c90af-22a8-4a48-8e03-3ea6f865b59f";
 		getAuthSessionStub.resolves({
 			sid,
 			publicId: "user-public-id",
+			authVersion: 0,
 			refreshTokenHash: crypto.createHash("sha256").update(`${sid}.refresh-secret`, "utf8").digest("hex"),
 			createdAt: Date.now() - 300_000,
 			lastSeenAt: Date.now() - 120_000,

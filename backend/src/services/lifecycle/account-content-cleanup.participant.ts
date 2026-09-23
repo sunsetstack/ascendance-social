@@ -1,5 +1,6 @@
-import { ClientSession, Model, mongo } from "mongoose";
+import { Model, mongo } from "mongoose";
 import { inject, injectable } from "tsyringe";
+import { requireTransactionSession } from "@/database/UnitOfWork";
 import {
   AccountLifecycleAction,
   accountLifecycleKey,
@@ -33,7 +34,6 @@ export class MongoAccountContentCleanupParticipant
   async cleanup(
     user: AccountLifecycleUser,
     action: AccountLifecycleAction,
-    session: ClientSession,
   ): Promise<AccountContentCleanupResult> {
     const userId = new ObjectId(user._id.toString());
     const cleanup: AccountContentCleanupResult = {
@@ -52,12 +52,8 @@ export class MongoAccountContentCleanupParticipant
       userId,
       user.publicId,
       action,
-      session,
     );
-    cleanup.reconciledPostLikes = await this.removePostInteractions(
-      userId,
-      session,
-    );
+    cleanup.reconciledPostLikes = await this.removePostInteractions(userId);
     return cleanup;
   }
 
@@ -65,8 +61,8 @@ export class MongoAccountContentCleanupParticipant
     userId: ObjectId,
     userPublicId: string,
     action: AccountLifecycleAction,
-    session: ClientSession,
   ): Promise<number> {
+    const session = requireTransactionSession();
     const db = this.db();
     const departedUserKey = accountLifecycleKey(userPublicId);
     const authoredComments = await db
@@ -101,7 +97,6 @@ export class MongoAccountContentCleanupParticipant
     );
     await this.contentCleanupService.recomputeCommentLikeCounts(
       affectedCommentIds,
-      session,
     );
 
     if (authoredCommentIds.length > 0) {
@@ -143,8 +138,8 @@ export class MongoAccountContentCleanupParticipant
 
   private async removePostInteractions(
     userId: ObjectId,
-    session: ClientSession,
   ): Promise<Array<{ postPublicId: string; likesCount: number }>> {
+    const session = requireTransactionSession();
     const db = this.db();
     const postLikes = await db
       .collection("postlikes")
@@ -156,7 +151,6 @@ export class MongoAccountContentCleanupParticipant
     await db.collection("postlikes").deleteMany({ userId }, { session });
     await this.contentCleanupService.recomputePostLikeCounts(
       affectedPostIds,
-      session,
     );
     await db.collection("favorites").deleteMany({ userId }, { session });
     await db.collection("postviews").deleteMany({ user: userId }, { session });

@@ -239,10 +239,20 @@ export class AccountAuditSnapshotService {
     const priorSecurityAudit = await db
       .collection("securityAuditEvents")
       .find({
-        occurredAt: { $gte: windowStart },
-        $or: [
-          { "actor.userId": userPublicId },
-          { "target.id": userPublicId },
+        $and: [
+          { occurredAt: { $gte: windowStart } },
+          {
+            $or: [
+              { "actor.userId": userPublicId },
+              { "target.id": userPublicId },
+            ],
+          },
+          {
+            $or: [
+              { stream: "security" },
+              { stream: { $exists: false } },
+            ],
+          },
         ],
       })
       .toArray();

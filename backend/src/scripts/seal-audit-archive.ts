@@ -117,16 +117,20 @@ function encryptIfConfigured(payload: Buffer): {
   extension: string;
   encrypted: boolean;
 } {
-  const keyRaw = process.env.AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64;
+  const keyRaw = process.env.AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64?.trim();
 
   if (!keyRaw) {
-    return { buffer: payload, extension: ".json.gz", encrypted: false };
+    throw new Error(
+      "AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64 is required; refusing to write a plaintext audit archive",
+    );
   }
 
   const key = Buffer.from(keyRaw, "base64");
-  if (key.length !== 32) {
+  const canonicalInput = keyRaw.replace(/=+$/, "");
+  const canonicalDecoded = key.toString("base64").replace(/=+$/, "");
+  if (key.length !== 32 || canonicalInput !== canonicalDecoded) {
     throw new Error(
-      "AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64 must decode to 32 bytes",
+      "AUDIT_ARCHIVE_ENCRYPTION_KEY_BASE64 must be valid base64 encoding exactly 32 bytes",
     );
   }
 

@@ -9,6 +9,7 @@ import { FeedUpdateMessage } from "@/services/feed/real-time-feed.service";
 import { TOKENS } from "@/types/tokens";
 import { logger } from "@/utils/winston";
 import { IRealtimeMessageHandler } from "./IRealtimeMessageHandler.interface";
+import { emitToAuthenticatedUser } from "@/server/socket-security";
 
 @injectable()
 export class NotificationMessageHandler implements IRealtimeMessageHandler {
@@ -38,7 +39,7 @@ export class NotificationMessageHandler implements IRealtimeMessageHandler {
         ),
     };
 
-    io.to(message.userId).emit(
+    await emitToAuthenticatedUser(io, message.userId,
       EventRegistry.socketServerEvents.newNotification,
       payload,
     );

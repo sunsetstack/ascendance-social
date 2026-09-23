@@ -7,6 +7,7 @@ import type { IUserWriteRepository } from "@/repositories/interfaces/IUserWriteR
 import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRepository";
 import type { IImageStorageService } from "@/types";
 import { UnitOfWork } from "@/database/UnitOfWork";
+import { AmbiguousTransactionCommitError } from "@/database/transaction-errors";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { DTOService, PublicUserDTO } from "@/services/dto.service";
 import { RetryPresets, RetryService } from "@/services/retry.service";
@@ -103,7 +104,11 @@ export class UpdateAvatarCommandHandler implements ICommandHandler<
 
       return this.dtoService.toPublicDTO(updatedUser);
     } catch (error) {
-      if (!committed && newAvatarPublicId) {
+      if (
+        !committed &&
+        newAvatarPublicId &&
+        !(error instanceof AmbiguousTransactionCommitError)
+      ) {
         try {
           await this.imageStorageService.deleteImage(newAvatarPublicId);
         } catch (deleteError) {

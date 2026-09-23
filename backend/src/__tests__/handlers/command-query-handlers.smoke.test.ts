@@ -21,7 +21,7 @@ const createLooseMock = (): any => {
 				if (prop in stubs) return stubs[prop];
 
 				if (prop === "executeInTransaction") {
-					stubs[prop] = sinon.stub().callsFake(async (fn: any) => fn({}));
+					stubs[prop] = sinon.stub().callsFake(async (fn: any) => fn());
 					return stubs[prop];
 				}
 

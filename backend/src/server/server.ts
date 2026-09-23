@@ -34,7 +34,7 @@ import { CommunityRoutes } from "../routes/community.routes";
 import { TelemetryRoutes } from "../routes/telemetry.routes";
 import { TOKENS } from "@/types/tokens";
 import { buildCorsOptions } from "@/config/corsConfig";
-import { getClientIp } from "@/utils/request-ip";
+import { getIpRateLimitKey } from "@/utils/request-ip";
 import { getRateLimitStoreOptions } from "@/config/rateLimit";
 import { csrfOriginMiddleware } from "@/middleware/csrf-origin.middleware";
 import { RedisService } from "@/services/redis.service";
@@ -110,7 +110,7 @@ export class Server {
       message: "Too many requests, please try again after 15 minutes",
       standardHeaders: true,
       legacyHeaders: false,
-      keyGenerator: (req) => getClientIp(req),
+      keyGenerator: (req) => getIpRateLimitKey(req),
       skip: (req) => req.path === "/metrics" || req.path === "/health",
     });
     this.app.use(limiter);

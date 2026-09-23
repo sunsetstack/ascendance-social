@@ -1,13 +1,39 @@
 import mongoose from "mongoose";
+import { container } from "tsyringe";
+import type { ForensicOperationalErrorService } from "@/services/forensic-operational-error.service";
+import { TOKENS } from "@/types/tokens";
+import { logNonHttpTerminalError } from "@/runtime/non-http-error-logger";
+import { serializeError } from "@/utils/error-serialization";
 import { errorLogger } from "./winston";
 
 export const convertToObjectId = (id: string): mongoose.Types.ObjectId => {
 	return new mongoose.Types.ObjectId(id);
 };
 
-export function safeFireAndForget(promise: unknown) {
+export function safeFireAndForget(promise: unknown): void {
 	Promise.resolve(promise).catch((err) => {
-		errorLogger.error("safeFireAndForget error", { err });
+		const errorId = logNonHttpTerminalError(err, {
+			message: "safeFireAndForget error",
+			event: "safe_fire_and_forget.error",
+			operation: "safeFireAndForget",
+		});
+
+		try {
+			const forensicWriter = container.resolve<ForensicOperationalErrorService>(
+				TOKENS.Services.ForensicOperationalError,
+			);
+			void forensicWriter.record(err, {
+				errorId,
+				operation: "safeFireAndForget",
+			});
+		} catch (forensicWriterError) {
+			errorLogger.error({
+				message: "Forensic operational error writer unavailable",
+				event: "forensic_operational_error.unavailable",
+				errorId,
+				error: serializeError(forensicWriterError),
+			});
+		}
 	});
 }
 

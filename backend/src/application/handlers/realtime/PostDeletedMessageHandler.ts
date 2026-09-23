@@ -1,3 +1,4 @@
+import { broadcastToAuthenticatedSockets } from "@/server/socket-security";
 import { inject, injectable } from "tsyringe";
 import { Server } from "socket.io";
 import { IRealtimeMessageHandler } from "../realtime/IRealtimeMessageHandler.interface";
@@ -23,7 +24,7 @@ export class PostDeletedMessageHandler implements IRealtimeMessageHandler {
     const postId = message.postId;
     if (!postId) return;
 
-    io.emit(EventRegistry.socketServerEvents.feedUpdate, {
+    await broadcastToAuthenticatedSockets(io, EventRegistry.socketServerEvents.feedUpdate, {
       eventId:
         message.eventId ??
         buildRealtimeEventId(
