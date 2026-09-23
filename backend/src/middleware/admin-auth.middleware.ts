@@ -15,6 +15,7 @@ export function createAdminOnlyMiddleware(
           method: req.method,
           route: req.path,
           ip: req.ip,
+          stack: new Error().stack,
         });
         return res.status(401).json({ error: "Authentication required" });
       }
@@ -27,6 +28,7 @@ export function createAdminOnlyMiddleware(
           userId: decodedUser.publicId,
           username: decodedUser.username,
           ip: req.ip,
+          stack: new Error().stack,
         });
         return res.status(403).json({ error: "Admin privileges required" });
       }
@@ -39,6 +41,7 @@ export function createAdminOnlyMiddleware(
         logger.warn("Admin user not found in database", {
           event: "security.admin_access.user_not_found",
           userId: decodedUser.publicId,
+          stack: new Error().stack,
         });
         return res.status(401).json({ error: "User not found" });
       }
@@ -49,6 +52,7 @@ export function createAdminOnlyMiddleware(
           userId: decodedUser.publicId,
           username: decodedUser.username,
           ip: req.ip,
+          stack: new Error().stack,
         });
         return res.status(403).json({ error: "Account banned" });
       }
@@ -58,6 +62,7 @@ export function createAdminOnlyMiddleware(
           event: "security.admin_access.role_mismatch",
           userId: decodedUser.publicId,
           username: decodedUser.username,
+          stack: new Error().stack,
         });
         return res.status(403).json({ error: "Admin privileges required" });
       }
@@ -75,21 +80,13 @@ export function createAdminOnlyMiddleware(
             userId: decodedUser.publicId,
             username: decodedUser.username,
             ip: req.ip,
+            stack: new Error().stack,
           });
           return res
             .status(403)
             .json({ error: "Admin privileges restricted" });
         }
       }
-
-      logger.info("Admin action authorized", {
-        event: "admin.action.authorized",
-        userId: decodedUser.publicId,
-        username: decodedUser.username,
-        method: req.method,
-        route: req.path,
-        ip: req.ip,
-      });
 
       req.adminContext = {
         adminId: decodedUser.publicId,

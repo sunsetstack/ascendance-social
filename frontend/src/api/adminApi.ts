@@ -288,6 +288,15 @@ export interface AuthActivityLogsResponse {
   totalPages: number;
 }
 
+export const unlockAdminEvidence = async (
+  password: string,
+): Promise<{ expiresInSeconds: number }> => {
+  const { data } = await axiosClient.post("/api/admin/dashboard/evidence/unlock", {
+    password,
+  });
+  return data;
+};
+
 export const fetchRequestLogs = async (params: {
   page?: number;
   limit?: number;

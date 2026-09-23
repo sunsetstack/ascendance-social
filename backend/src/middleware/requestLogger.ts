@@ -46,6 +46,10 @@ function logRequest(
     persisted = true;
 
     const route = getRequestRoute(req);
+    const isSuccessfulAdminAction =
+      !aborted &&
+      res.statusCode < 400 &&
+      (route === "/api/admin" || route.startsWith("/api/admin/"));
     const isSuccessfulVisitorObservation =
       (route === "/telemetry" || route === "/api/telemetry") &&
       Boolean(req.visitorObservation) &&
@@ -64,14 +68,18 @@ function logRequest(
     );
     const resolvedCommandBus = resolveCommandBus();
 
-    dispatchRequestLog(resolvedCommandBus, context);
+    if (!isSuccessfulAdminAction) {
+      dispatchRequestLog(resolvedCommandBus, context);
+    }
     if (!aborted) {
       dispatchUserActivityUpdate(
         resolvedCommandBus,
         context,
         activityThrottle,
       );
-      dispatchRequestAudits(resolvedCommandBus, context);
+      if (!isSuccessfulAdminAction) {
+        dispatchRequestAudits(resolvedCommandBus, context);
+      }
     }
   };
 

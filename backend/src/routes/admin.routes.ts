@@ -12,6 +12,7 @@ import { TOKENS } from "@/types/tokens";
 import {
   adminFavoriteParamsSchema,
   adminDeleteUserBodySchema,
+  adminEvidenceUnlockBodySchema,
   adminImagesQuerySchema,
   adminUsersQuerySchema,
   authActivityLogsQuerySchema,
@@ -20,6 +21,7 @@ import {
   recentActivityQuerySchema,
   requestLogsQuerySchema,
 } from "@/utils/schemas/admin.schemas";
+import { loginIpRateLimit } from "@/middleware/auth-rate-limits.middleware";
 import { commentIdSchema } from "@/utils/schemas/comment.schemas";
 import { publicIdSchema as postPublicIdSchema } from "@/utils/schemas/post.schemas";
 import { publicIdSchema as userPublicIdSchema } from "@/utils/schemas/user.schemas";
@@ -151,14 +153,22 @@ export class AdminUserRoutes {
       new ValidationMiddleware({ query: recentActivityQuerySchema }).validate(),
       asyncHandler(this.adminUserController.getRecentActivity),
     );
+    this.router.post(
+      "/dashboard/evidence/unlock",
+      loginIpRateLimit,
+      new ValidationMiddleware({ body: adminEvidenceUnlockBodySchema }).validate(),
+      asyncHandler(this.adminUserController.unlockLogEvidence),
+    );
     this.router.get(
       "/dashboard/request-logs",
+      asyncHandler(this.adminUserController.requireLogEvidence),
       new ValidationMiddleware({ query: requestLogsQuerySchema }).validate(),
       asyncHandler(this.adminUserController.getRequestLogs),
     );
 
     this.router.get(
       "/dashboard/auth-activity",
+      asyncHandler(this.adminUserController.requireLogEvidence),
       new ValidationMiddleware({ query: authActivityLogsQuerySchema }).validate(),
       asyncHandler(this.adminUserController.getAuthActivityLogs),
     );

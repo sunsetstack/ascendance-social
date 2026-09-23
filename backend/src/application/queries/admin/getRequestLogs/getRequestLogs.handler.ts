@@ -11,10 +11,6 @@ import {
 import { escapeRegex } from "@/utils/sanitizers";
 import { TOKENS } from "@/types/tokens";
 import { sanitizeObservedUrl } from "@/utils/client-evidence";
-import {
-  buildUnauthenticatedEvidenceFilter,
-  isUnauthenticatedEvidence,
-} from "../admin-log-evidence";
 
 export interface RequestLogDTO {
   timestamp: Date;
@@ -86,7 +82,6 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<
 
     if (ip) {
       filter["metadata.ip"] = ip;
-      filter.$and = buildUnauthenticatedEvidenceFilter().$and;
     }
 
     if (correlationId) {
@@ -167,12 +162,7 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<
         { "metadata.causedByClientRequestId": regex },
         { "metadata.authState": regex },
         { "metadata.authSource": regex },
-        {
-          $and: [
-            ...(buildUnauthenticatedEvidenceFilter().$and as object[]),
-            { "metadata.visitorObservation.path": regex },
-          ],
-        },
+        { "metadata.visitorObservation.path": regex },
       ];
     }
 
@@ -186,50 +176,29 @@ export class GetRequestLogsQueryHandler implements IQueryHandler<
 
     const transformedData = result.data.map((log: IRequestLog) => {
       const authState = log.metadata.authState || "unknown";
-      const exposeEvidence = isUnauthenticatedEvidence({
-        userId: log.metadata.userId,
-        authState: log.metadata.authState,
-      });
-      const visitorObservation =
-        exposeEvidence &&
-        log.metadata.visitorObservation?.schemaVersion === 1 &&
-        log.metadata.visitorObservation.path
-          ? log.metadata.visitorObservation
-          : undefined;
-      const clientFingerprint =
-        exposeEvidence && log.metadata.clientFingerprint?.schemaVersion === 1
-          ? log.metadata.clientFingerprint
-          : undefined;
+      const clientFingerprint = log.metadata.clientFingerprint;
 
       return {
         timestamp: log.timestamp,
         method: log.metadata.method,
         route: log.metadata.route,
-        ip: exposeEvidence ? log.metadata.ip : "[restricted]",
+        ip: log.metadata.ip,
         statusCode: log.metadata.statusCode,
         responseTimeMs: log.metadata.responseTimeMs,
         correlationId: log.metadata.correlationId,
         userId: log.metadata.userId,
-        evidenceVisibility: exposeEvidence
-          ? ("observed_unverified" as const)
-          : ("restricted_authenticated" as const),
+        evidenceVisibility: "observed_unverified" as const,
         authState,
         authSource: log.metadata.authSource,
         authAction: log.metadata.authAction,
-        userAgent: exposeEvidence ? log.metadata.userAgent : undefined,
-        origin: exposeEvidence
-          ? sanitizeObservedUrl(log.metadata.origin, "origin")
-          : undefined,
-        referer: exposeEvidence
-          ? sanitizeObservedUrl(log.metadata.referer, "referer")
-          : undefined,
+        userAgent: log.metadata.userAgent,
+        origin: sanitizeObservedUrl(log.metadata.origin, "origin"),
+        referer: sanitizeObservedUrl(log.metadata.referer, "referer"),
         clientFingerprint,
-        clientFingerprintSchemaVersion: exposeEvidence
-          ? clientFingerprint
-            ? (log.metadata.clientFingerprintSchemaVersion ?? 1)
-            : 0
-          : undefined,
-        visitorObservation,
+        clientFingerprintSchemaVersion: clientFingerprint
+          ? (log.metadata.clientFingerprintSchemaVersion ?? 1)
+          : 0,
+        visitorObservation: log.metadata.visitorObservation,
         aborted: log.metadata.aborted,
         clientRequestId: log.metadata.clientRequestId,
         clientBootId: log.metadata.clientBootId,

@@ -1,4 +1,4 @@
-import { Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { injectable, inject } from "tsyringe";
 import { Errors } from "@/utils/errors";
 import { CommandBus } from "@/application/common/buses/command.bus";
@@ -46,16 +46,100 @@ import type { PublicIdParams as UserPublicIdParams } from "@/utils/schemas/user.
 
 /** Threshold for enabling streaming responses (items) */
 import { STREAM_THRESHOLD } from "@/utils/post-helpers";
+import { UserAuthenticationLookup } from "@/application/ports/user-authentication-lookup";
+import { RedisService } from "@/services/redis.service";
+import { verifyPassword } from "@/application/common/policies/password.policy";
+import type { AdminEvidenceUnlockBody } from "@/utils/schemas/admin.schemas";
+import { logger } from "@/utils/winston";
 
 type EmptyParams = Record<string, never>;
 type EmptyBody = Record<string, never>;
+const ADMIN_EVIDENCE_UNLOCK_SECONDS = 600;
+
+const adminEvidenceKey = (sessionId: string): string =>
+  `admin:log-evidence:${sessionId}`;
 
 @injectable()
 export class AdminUserController {
   constructor(
     @inject(TOKENS.CQRS.Commands.Bus) private readonly commandBus: CommandBus,
     @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
+    @inject(TOKENS.Repositories.UserAuthenticationLookup)
+    private readonly userAuthenticationLookup: UserAuthenticationLookup,
+    @inject(TOKENS.Services.Redis) private readonly redisService: RedisService,
   ) {}
+
+  unlockLogEvidence = async (
+    req: TypedRequest<EmptyParams, AdminEvidenceUnlockBody>,
+    res: Response,
+  ): Promise<void> => {
+    const admin = req.decodedUser;
+    if (!admin?.sid) {
+      logger.warn("Admin evidence access denied", {
+        event: "security.admin_evidence.unauthenticated",
+        stack: new Error().stack,
+      });
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    const user = await this.userAuthenticationLookup.findByEmail(admin.email);
+    if (
+      !user ||
+      user.publicId !== admin.publicId ||
+      !user.isAdmin ||
+      user.isBanned ||
+      !(await verifyPassword(req.body.password, user.password))
+    ) {
+      logger.warn("Admin identity confirmation failed", {
+        event: "security.admin_identity.confirmation_failed",
+        userId: admin.publicId,
+        stack: new Error().stack,
+      });
+      res.status(403).json({ error: "Unable to confirm admin identity" });
+      return;
+    }
+
+    await this.redisService.set(
+      adminEvidenceKey(admin.sid),
+      admin.publicId,
+      ADMIN_EVIDENCE_UNLOCK_SECONDS,
+    );
+    res.status(200).json({ expiresInSeconds: ADMIN_EVIDENCE_UNLOCK_SECONDS });
+  };
+
+  requireLogEvidence = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    const admin = req.decodedUser;
+    if (!admin?.sid) {
+      logger.warn("Admin evidence access denied", {
+        event: "security.admin_evidence.unauthenticated",
+        stack: new Error().stack,
+      });
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    const unlockedAdminId = await this.redisService.get<string>(
+      adminEvidenceKey(admin.sid),
+    );
+    if (unlockedAdminId !== admin.publicId) {
+      logger.warn("Admin evidence access denied", {
+        event: "security.admin_evidence.locked",
+        userId: admin.publicId,
+        stack: new Error().stack,
+      });
+      res.status(403).json({
+        error: "Confirm your password to view admin log evidence",
+        code: "ADMIN_EVIDENCE_LOCKED",
+      });
+      return;
+    }
+    next();
+  };
 
   getAllUsersAdmin = async (
     req: TypedRequest<EmptyParams, EmptyBody, AdminUsersQuery>,
