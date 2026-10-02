@@ -189,7 +189,20 @@ services:
       - "9100"
 
     networks:
-      - app-network
+      - monitoring-network
+
+  docker-socket-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:v0.4.2
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    environment:
+      CONTAINERS: "1"
+      INFO: "1"
+      POST: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api-network
 
   cadvisor:
     image: ghcr.io/google/cadvisor:v0.57.0
@@ -197,21 +210,26 @@ services:
     restart: unless-stopped
     logging: *default-logging
     profiles: ["monitoring"]
-    privileged: true
     command:
+      - "--docker=tcp://docker-socket-proxy:2375"
       - "--docker_only=true"
       - "--housekeeping_interval=10s"
       - "--allow_dynamic_housekeeping=false"
     volumes:
       - /:/rootfs:ro
-      - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker:/var/lib/docker:ro
       - /dev/disk:/dev/disk:ro
+    tmpfs:
+      - /rootfs/run
     expose:
       - "8080"
     networks:
-      - app-network
+      - monitoring-network
+      - docker-api-network
+    depends_on:
+      docker-socket-proxy:
+        condition: service_started
 
   redis-exporter:
     image: oliver006/redis_exporter:latest
@@ -226,6 +244,7 @@ services:
       - "9121"
     networks:
       - app-network
+      - monitoring-network
     depends_on:
       redis:
         condition: service_healthy
@@ -276,6 +295,7 @@ services:
 
     networks:
       - app-network
+      - monitoring-network
 
     depends_on:
       node-exporter:
@@ -315,7 +335,7 @@ services:
       - loki_data:/loki
 
     networks:
-      - app-network
+      - monitoring-network
 
     mem_limit: 384m
 
@@ -338,13 +358,15 @@ services:
     volumes:
       - ./monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - alloy_data:/var/lib/alloy/data
-      - /var/run/docker.sock:/var/run/docker.sock:ro
 
     networks:
-      - app-network
+      - monitoring-network
+      - docker-api-network
 
     depends_on:
       loki:
+        condition: service_started
+      docker-socket-proxy:
         condition: service_started
 
     mem_limit: 128m
@@ -367,7 +389,7 @@ services:
       - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
 
     networks:
-      - app-network
+      - monitoring-network
 
     depends_on:
       prometheus:
@@ -406,6 +428,11 @@ services:
 networks:
   app-network:
     driver: bridge
+  monitoring-network:
+    driver: bridge
+  docker-api-network:
+    driver: bridge
+    internal: true
 
 volumes:
   mongo_data:

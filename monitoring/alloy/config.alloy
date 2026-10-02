@@ -4,7 +4,7 @@ logging {
 }
 
 discovery.docker "containers" {
-  host = "unix:///var/run/docker.sock"
+  host = "tcp://docker-socket-proxy:2375"
 }
 
 discovery.relabel "containers" {
@@ -54,7 +54,7 @@ discovery.relabel "containers" {
 }
 
 loki.source.docker "containers" {
-  host       = "unix:///var/run/docker.sock"
+  host       = "tcp://docker-socket-proxy:2375"
   targets    = discovery.relabel.containers.output
   forward_to = [loki.process.container_logs.receiver]
 }
@@ -78,8 +78,8 @@ loki.process "container_logs" {
       }
     }
 
-    # Per-request identifiers and visitor observations are structured metadata,
-    # not Loki stream labels, so they remain queryable without exploding streams.
+    // req identifiers and visitor data are structured metadata
+    // not Loki stream labels and  they remain queryable without exploding streams.
     stage.structured_metadata {
       values = {
         event                  = "",

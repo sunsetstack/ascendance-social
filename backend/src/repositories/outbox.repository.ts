@@ -184,7 +184,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
                 {
                   $match: {
                     retries: { $lt: MAX_OUTBOX_RETRIES },
-                    exhaustedAt: { $exists: false },
+                    exhaustedAt: null,
                   },
                 },
                 {
@@ -200,7 +200,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
                   $match: {
                     $or: [
                       { retries: { $gte: MAX_OUTBOX_RETRIES } },
-                      { exhaustedAt: { $exists: true } },
+                      { exhaustedAt: { $ne: null } },
                     ],
                   },
                 },
