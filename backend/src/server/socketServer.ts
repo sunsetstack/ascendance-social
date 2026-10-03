@@ -694,6 +694,7 @@ export class WebSocketServer {
         previousConversationId,
         socket.id,
       );
+      if (!(await validateSocketSession(this.getIO(), socket)) || !socket.connected) return;
     }
 
     socket.data.activeConversationId = conversationId;
