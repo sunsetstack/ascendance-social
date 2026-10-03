@@ -12,9 +12,10 @@ export class EmailService {
   private resend: Resend | null;
   private readonly logOnly: boolean;
   private readonly frontendUrl: string;
-
+  private readonly ascendanceMail: string;
   constructor() {
     this.logOnly = process.env.EMAIL_DELIVERY_MODE === "log";
+    this.ascendanceMail = "Ascendance <no-reply@ascendance.social>";
     const apiKey = process.env.RESEND_API_KEY?.trim();
     const configuredFrontendUrl = process.env.FRONTEND_URL?.replace(/\/+$/, "");
 
@@ -62,7 +63,7 @@ export class EmailService {
     }
     try {
       await this.resend.emails.send({
-        from: "Ascendance <no-reply@ascendance.social>",
+        from: this.ascendanceMail,
         to: recipientEmail,
         subject: "Password Reset Request",
         replyTo: "support@ascendance.social",
@@ -105,7 +106,7 @@ export class EmailService {
     }
     try {
       await this.resend.emails.send({
-        from: "noreply@ascendance.dev",
+        from: this.ascendanceMail,
         to: recipientEmail,
         subject: "Verify your email",
         html: `<p>Use this code to verify your email: <strong>${verificationToken}</strong></p><p>Or click <a href="${link}">here</a> to verify.</p>`,
@@ -145,7 +146,7 @@ export class EmailService {
     }
     try {
       await this.resend.emails.send({
-        from: "Ascendance <no-reply@ascendance.social>",
+        from: this.ascendanceMail,
         to: recipientEmail,
         subject: "Your password was changed",
         replyTo: "support@ascendance.social",
