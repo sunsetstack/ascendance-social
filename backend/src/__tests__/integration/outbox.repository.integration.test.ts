@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { expect } from "chai";
 import sinon from "sinon";
+import { z } from "zod";
 import type { PipelineStage } from "mongoose";
 import {
   MAX_OUTBOX_RETRIES,
@@ -371,6 +372,13 @@ describe("OutboxRepository persistence", () => {
     retries: MAX_OUTBOX_RETRIES,
     createdAt: new Date(now - 100),
   }).toObject();
+  const aboveLimitExhaustion = {
+    ...createRecord({
+      retries: MAX_OUTBOX_RETRIES + 1,
+      createdAt: new Date(now - 150),
+    }).toObject(),
+    exhaustedAt: null,
+  };
   const datedExhaustion = createRecord({
     exhaustedAt: new Date(now),
     createdAt: new Date(now - 200),
@@ -378,6 +386,12 @@ describe("OutboxRepository persistence", () => {
   const processedRecord = createRecord({
     processed: true,
     createdAt: new Date(now - 300),
+  }).toObject();
+  const processedExhaustion = createRecord({
+    processed: true,
+    retries: MAX_OUTBOX_RETRIES,
+    exhaustedAt: new Date(now),
+    createdAt: new Date(now - 400),
   }).toObject();
 
   const backlogCases = [
@@ -410,8 +424,15 @@ describe("OutboxRepository persistence", () => {
       oldestPendingAt: undefined,
     },
     {
-      name: "a processed record",
-      records: [processedRecord],
+      name: "retries above the limit with a null exhaustion timestamp",
+      records: [aboveLimitExhaustion],
+      pendingCount: 0,
+      exhaustedCount: 1,
+      oldestPendingAt: undefined,
+    },
+    {
+      name: "processed records including exhaustion",
+      records: [processedRecord, processedExhaustion],
       pendingCount: 0,
       exhaustedCount: 0,
       oldestPendingAt: undefined,
@@ -424,9 +445,11 @@ describe("OutboxRepository persistence", () => {
         processedRecord,
         nullExhaustion,
         retryExhaustion,
+        aboveLimitExhaustion,
+        processedExhaustion,
       ],
       pendingCount: 2,
-      exhaustedCount: 2,
+      exhaustedCount: 3,
       oldestPendingAt: new Date(now - 30),
     },
   ];
@@ -469,11 +492,76 @@ describe("OutboxRepository persistence", () => {
         }>(pipeline);
         if (hint) query.hint(hint);
         const [result] = await query.exec();
-        expect({
+        const actual = {
           pendingCount: result?.pending[0]?.count ?? 0,
           exhaustedCount: result?.exhausted[0]?.count ?? 0,
           oldestPendingAt: result?.pending[0]?.oldestPendingAt,
-        }).to.deep.equal(expected);
+        };
+        expect(actual).to.deep.equal(expected);
+
+        const explain = z
+          .object({
+            serverInfo: z.object({ version: z.string() }),
+            stages: z.array(
+              z.object({
+                $cursor: z
+                  .object({
+                    queryPlanner: z.object({ winningPlan: z.unknown() }),
+                    executionStats: z.object({
+                      nReturned: z.number(),
+                      totalKeysExamined: z.number(),
+                      totalDocsExamined: z.number(),
+                    }),
+                  })
+                  .optional(),
+              }),
+            ),
+          })
+          .parse(await query.explain("executionStats"));
+        const cursor = explain.stages.find((stage) => stage.$cursor)?.$cursor;
+        if (!cursor) throw new Error("Backlog explain did not contain a cursor");
+        const stages: string[] = [];
+        let plan: unknown = cursor.queryPlanner.winningPlan;
+        while (plan !== undefined) {
+          const node = z
+            .object({
+              stage: z.string(),
+              inputStage: z.unknown().optional(),
+            })
+            .parse(plan);
+          stages.push(node.stage);
+          plan = node.inputStage;
+        }
+        const unprocessedCount = scenario.records.filter(
+          (record) => !record.processed,
+        ).length;
+        expect(cursor.executionStats.nReturned).to.equal(unprocessedCount);
+        if (hint?.processed) {
+          expect(stages).to.include("IXSCAN").and.include("FETCH");
+          expect(cursor.executionStats.totalDocsExamined).to.equal(
+            unprocessedCount,
+          );
+        } else if (hint?.$natural) {
+          expect(stages).to.include("COLLSCAN").and.not.include("IXSCAN");
+          expect(cursor.executionStats.totalKeysExamined).to.equal(0);
+          expect(cursor.executionStats.totalDocsExamined).to.equal(
+            scenario.records.length,
+          );
+        } else if (stages.includes("PROJECTION_COVERED")) {
+          expect(stages).to.include("IXSCAN").and.not.include("FETCH");
+          expect(cursor.executionStats.totalDocsExamined).to.equal(0);
+        }
+        console.log(
+          "Backlog execution plan",
+          JSON.stringify({
+            scenario: scenario.name,
+            hint: hint ?? "unhinted",
+            version: explain.serverInfo.version,
+            winningPlan: cursor.queryPlanner.winningPlan,
+            ...cursor.executionStats,
+            result: actual,
+          }),
+        );
       }
       expect(await database.model.collection.find({}).toArray()).to.deep.equal(
         stored,
