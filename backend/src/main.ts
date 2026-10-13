@@ -111,7 +111,9 @@ async function bootstrap(): Promise<void> {
       webSocketServer.initialize(server, app.get("trust proxy fn"));
 
       // Initialize realtime feed service
-      container.resolve<RealTimeFeedService>("RealTimeFeedService");
+      const realTimeFeedService =
+        container.resolve<RealTimeFeedService>("RealTimeFeedService");
+      server.once("close", () => realTimeFeedService.stop());
 
       logger.info("Real-time feed service initialized", {
         event: "realtime_feed.initialized",

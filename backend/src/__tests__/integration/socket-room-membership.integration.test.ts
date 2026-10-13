@@ -85,6 +85,10 @@ describe("Socket room membership integration", () => {
     sandbox.stub(subscriber, "disconnect").callsFake(async () => {
       ready = false;
     });
+    sandbox.stub(subscriber, "quit").callsFake(async () => {
+      ready = false;
+      return "OK";
+    });
     sandbox.stub(subscriber, "pSubscribe").resolves();
     sandbox.stub(subscriber, "pUnsubscribe").resolves();
     sandbox.stub(subscriber, "subscribe").callsFake(async (names) => {
@@ -153,7 +157,7 @@ describe("Socket room membership integration", () => {
       client = null;
     }
 
-    webSocketServer.getIO().close();
+    await webSocketServer.close();
 
     await new Promise<void>((resolve) => {
       httpServer.close(() => resolve());
@@ -281,7 +285,7 @@ describe("Socket room membership integration", () => {
 
   it("fails closed when production has no configured origins", async () => {
     // Shut down the server created by beforeEach.
-    webSocketServer.getIO().close();
+    await webSocketServer.close();
 
     await new Promise<void>((resolve) => {
       httpServer.close(() => resolve());

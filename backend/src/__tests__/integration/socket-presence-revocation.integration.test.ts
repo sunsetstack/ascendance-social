@@ -231,7 +231,7 @@ describe("Socket presence revocation with real Redis", function () {
         await subscriber.quit();
       });
     }
-    if (server) await server.getIO().close();
+    if (server) await server.close();
     if (redis) {
       await redis.unsubscribeAll();
       if (redis.clientInstance.isOpen) {
