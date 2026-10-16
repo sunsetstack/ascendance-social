@@ -147,6 +147,8 @@ import { GetLikedPostsByUserQuery } from "@/application/queries/post/getLikedPos
 import { GetLikedPostsByUserHandler } from "@/application/queries/post/getLikedPostsByUser/getLikedPostsByUser.handler";
 import { GetForYouFeedQueryHandler } from "@/application/queries/feed/getForYouFeed/getForYouFeed.handler";
 import { GetForYouFeedQuery } from "@/application/queries/feed/getForYouFeed/getForYouFeed.query";
+import { GetFeedPreviewQuery } from "@/application/queries/feed/getFeedPreview/getFeedPreview.query";
+import { GetFeedPreviewQueryHandler } from "@/application/queries/feed/getFeedPreview/getFeedPreview.handler";
 import { GetTrendingFeedQueryHandler } from "@/application/queries/feed/getTrendingFeed/getTrendingFeed.handler";
 import { GetTrendingFeedQuery } from "@/application/queries/feed/getTrendingFeed/getTrendingFeed.query";
 import { DeleteUserCommand } from "@/application/commands/users/deleteUser/deleteUser.command";
@@ -326,6 +328,7 @@ const queryHandlerRegistrations: readonly ContainerRegistration[] = [
   [TOKENS.CQRS.Queries.GetPersonalizedFeed, GetPersonalizedFeedQueryHandler],
   [TOKENS.CQRS.Queries.GetNewFeed, GetNewFeedQueryHandler],
   [TOKENS.CQRS.Queries.GetForYouFeed, GetForYouFeedQueryHandler],
+  [TOKENS.CQRS.Queries.GetFeedPreview, GetFeedPreviewQueryHandler],
   [TOKENS.CQRS.Queries.GetTrendingFeed, GetTrendingFeedQueryHandler],
   [TOKENS.CQRS.Queries.GetCommentsByPost, GetCommentsByPostQueryHandler],
   [TOKENS.CQRS.Queries.GetCommentsByUser, GetCommentsByUserQueryHandler],
@@ -457,6 +460,7 @@ const queryBusRegistrations: readonly QueryBusRegistration[] = [
   [GetPersonalizedFeedQuery, TOKENS.CQRS.Queries.GetPersonalizedFeed],
   [GetNewFeedQuery, TOKENS.CQRS.Queries.GetNewFeed],
   [GetForYouFeedQuery, TOKENS.CQRS.Queries.GetForYouFeed],
+  [GetFeedPreviewQuery, TOKENS.CQRS.Queries.GetFeedPreview],
   [GetTrendingFeedQuery, TOKENS.CQRS.Queries.GetTrendingFeed],
   [GetCommentsByPostQuery, TOKENS.CQRS.Queries.GetCommentsByPost],
   [GetCommentsByUserQuery, TOKENS.CQRS.Queries.GetCommentsByUser],

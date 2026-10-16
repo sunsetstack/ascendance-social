@@ -1,7 +1,8 @@
 import React, { lazy, Suspense, useMemo } from "react";
 import { usePosts } from "../hooks/posts/usePosts";
 import Gallery from "../components/Gallery";
-import { Box, Typography, useMediaQuery, useTheme, Card, Skeleton, CardActions, alpha } from "@mui/material";
+import { Alert, Box, Button, Typography, useMediaQuery, useTheme, Card, Skeleton, CardActions, alpha } from "@mui/material";
+import { Link as RouterLink } from "react-router-dom";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import { PageSeo } from "../lib/PageSeo";
 import { buildHomeMetadata } from "../lib/seo";
@@ -17,7 +18,7 @@ const Home: React.FC = () => {
 	const { isLoggedIn, user } = useAuth();
 	const { t } = useTranslation();
 
-	// backend picks personalized vs trending based on auth present in the request
+	// Signed-out visitors browse Latest; signed-in users receive their Home feed.
 	const {
 		data,
 		fetchNextPage,
@@ -26,11 +27,25 @@ const Home: React.FC = () => {
 		isFetching,
 		isLoading,
 		error,
+		refetch,
 		refreshFeed,
 	} = usePosts();
 	const homeFeedId = feedIdentities.home(user?.publicId);
 
 	const activePosts = useMemo(() => data?.pages.flatMap((p) => p.data) ?? [], [data]);
+	const discoveryActions = (
+		<Box sx={{ display: "flex", gap: 1, justifyContent: "center", flexWrap: "wrap" }}>
+			<Button component={RouterLink} to="/discover?feed=custom" variant="contained">
+				{t("feed.builder_title")}
+			</Button>
+			<Button component={RouterLink} to="/discover?feed=latest" variant="outlined">
+				{t("feed.browse_latest")}
+			</Button>
+			<Button component={RouterLink} to="/communities">
+				{t("feed.find_communities")}
+			</Button>
+		</Box>
+	);
 	const feedHeader = (
 		<Box
 			component="header"
@@ -67,7 +82,7 @@ const Home: React.FC = () => {
 					{isLoggedIn ? t("nav.home") : t("marketing.guest_feed_title")}
 				</Typography>
 				{!isLoggedIn && (
-					<Typography variant="body2" color="text.secondary" noWrap>
+					<Typography variant="body2" color="text.secondary">
 						{t("marketing.guest_feed_subtitle")}
 					</Typography>
 				)}
@@ -110,6 +125,14 @@ const Home: React.FC = () => {
 			<PageSeo {...buildHomeMetadata()} />
 			<Box sx={{ display: "flex", flexDirection: "column" }}>
 				{feedHeader}
+				{!isLoggedIn && activePosts.length > 0 && (
+					<Box sx={{ p: 2, borderBottom: 1, borderColor: "divider" }}>
+						<Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+							{t("feed.guest_intro")}
+						</Typography>
+						{discoveryActions}
+					</Box>
+				)}
 				{/* CreatePost decides whether it should render or not - hide on mobile */}
 				{!isMobile && isLoggedIn && (
 					<Box sx={{ p: 2, borderBottom: `1px solid ${theme.palette.divider}` }}>
@@ -127,11 +150,11 @@ const Home: React.FC = () => {
 					}}
 				>
 					{error ? (
-						<Box>
-							<Typography color="error" sx={{ textAlign: "center", py: 4, fontSize: "1.1rem" }}>
-								Error fetching images: {error.message}
-							</Typography>
-						</Box>
+						<Alert severity="error" sx={{ m: 2 }} action={
+							<Button color="inherit" onClick={() => void refetch()}>{t("feed.retry")}</Button>
+						}>
+							{t("feed.load_failed")}
+						</Alert>
 					) : (
 						<Gallery
 							key={`posts-feed`}
@@ -143,6 +166,9 @@ const Home: React.FC = () => {
 							isFetchingAll={isFetching}
 							feedId={homeFeedId}
 							onRefresh={refreshFeed}
+							emptyTitle={t("feed.empty_title")}
+							emptyDescription={t("feed.empty_description")}
+							emptyAction={discoveryActions}
 						/>
 					)}
 				</Box>

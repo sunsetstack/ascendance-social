@@ -39,6 +39,7 @@ const Gallery: React.FC<GalleryProps> = ({
   isFetchingAll,
   emptyTitle,
   emptyDescription,
+  emptyAction,
   variant = "feed",
   feedId,
   onRefresh,
@@ -419,7 +420,8 @@ const Gallery: React.FC<GalleryProps> = ({
               px: 4,
               border: "1px solid rgba(99, 102, 241, 0.2)",
               borderRadius: 3,
-              minWidth: "300px",
+              width: "100%",
+              boxSizing: "border-box",
               mx: "auto",
               mt: 4,
               maxWidth: "600px",
@@ -441,6 +443,7 @@ const Gallery: React.FC<GalleryProps> = ({
             <Typography variant="body2" color="text.secondary">
               {resolvedEmptyMessage}
             </Typography>
+            {emptyAction && <Box sx={{ mt: 3 }}>{emptyAction}</Box>}
           </Box>
         </Box>
       )}

@@ -7,6 +7,7 @@ import { GetPersonalizedFeedQuery } from "@/application/queries/feed/getPersonal
 import { GetForYouFeedQuery } from "@/application/queries/feed/getForYouFeed/getForYouFeed.query";
 import { GetTrendingFeedQuery } from "@/application/queries/feed/getTrendingFeed/getTrendingFeed.query";
 import { GetNewFeedQuery } from "@/application/queries/feed/getNewFeed/getNewFeed.query";
+import { GetFeedPreviewQuery } from "@/application/queries/feed/getFeedPreview/getFeedPreview.query";
 import {
   streamPaginatedResponse,
   streamCursorResponse,
@@ -21,6 +22,7 @@ import {
 import { TOKENS } from "@/types/tokens";
 import type {
   FeedPaginationQuery,
+  FeedPreviewQuery,
   NewFeedQuery,
   TrendingTagsQuery,
 } from "@/utils/schemas/feed.schemas";
@@ -36,6 +38,17 @@ export class FeedController {
   constructor(
     @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
   ) {}
+
+  getFeedPreview = async (
+    req: TypedRequest<EmptyParams, EmptyBody, FeedPreviewQuery>,
+    res: Response,
+  ): Promise<void> => {
+    const { topics, sort, includeReposts, limit, cursor } = req.query;
+    const result = await this.queryBus.execute<CursorPaginationResult<FeedPost>>(
+      new GetFeedPreviewQuery({ topics, sort, includeReposts }, limit, cursor),
+    );
+    res.json(result);
+  };
 
   getFeed = async (
     req: TypedRequest<EmptyParams, EmptyBody, FeedPaginationQuery>,

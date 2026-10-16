@@ -117,6 +117,52 @@ describe("RecordPostViewCommandHandler", () => {
     expect(transactionQueueStub.executeOrQueue.called).to.be.false;
   });
 
+  it("resolves a confirmed duplicate only after the transaction has rejected", async () => {
+    const duplicate = Object.assign(new Error("duplicate view"), {
+      code: 11000,
+      keyValue: { post: postId, user: userId },
+    });
+    unitOfWorkStub.executeInTransaction.rejects(duplicate);
+    postViewRepoStub.hasViewed.resolves(true);
+
+    expect(await handler.execute(new RecordPostViewCommand(postPublicId, userPublicId))).to.equal(false);
+    expect(postViewRepoStub.hasViewed.calledOnceWithExactly(postId, userId)).to.equal(true);
+    expect(postWriteRepoStub.incrementViewCount.called).to.equal(false);
+    expect(transactionQueueStub.executeOrQueue.called).to.equal(false);
+    expect(bloomFilterServiceStub.add.calledOnce).to.equal(true);
+  });
+
+  it("does not turn an unrelated unique-index failure into an existing view", async () => {
+    unitOfWorkStub.executeInTransaction.rejects(Object.assign(new Error("duplicate id"), {
+      code: 11000, keyValue: { _id: new mongoose.Types.ObjectId() },
+    }));
+    let failure: unknown;
+    try {
+      await handler.execute(new RecordPostViewCommand(postPublicId, userPublicId));
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).to.be.instanceOf(Error);
+    expect(postViewRepoStub.hasViewed.called).to.equal(false);
+    expect(bloomFilterServiceStub.add.called).to.equal(false);
+  });
+
+  it("propagates a duplicate when the view cannot be confirmed after rollback", async () => {
+    unitOfWorkStub.executeInTransaction.rejects(Object.assign(new Error("duplicate view"), {
+      code: 11000, keyValue: { post: postId, user: userId },
+    }));
+    postViewRepoStub.hasViewed.resolves(false);
+    let failure: unknown;
+    try {
+      await handler.execute(new RecordPostViewCommand(postPublicId, userPublicId));
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).to.be.instanceOf(Error);
+    expect(bloomFilterServiceStub.add.called).to.equal(false);
+    expect(transactionQueueStub.executeOrQueue.called).to.equal(false);
+  });
+
   it("should throw error if post not found", async () => {
     postReadRepoStub.findOneByPublicId.resolves(null);
 

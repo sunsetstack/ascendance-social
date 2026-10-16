@@ -16,6 +16,16 @@ const feedPaginationBaseSchema = z
 
 export const feedPaginationQuerySchema = feedPaginationBaseSchema;
 
+export const feedPreviewQuerySchema = feedPaginationBaseSchema.omit({ page: true }).extend({
+  topics: z.preprocess(
+    (value) => value === undefined ? [] : typeof value === "string" ? [value] : value,
+    z.array(z.string().trim().min(1).max(64).regex(/^[\p{L}\p{N}_]+$/u)).max(5),
+  ).transform((topics) => [...new Set(topics.map((topic) => topic.toLowerCase()))].sort()),
+  sort: z.enum(["latest", "relevant"]).optional().default("latest"),
+  includeReposts: z.enum(["true", "false"]).optional().default("true")
+    .transform((value) => value === "true"),
+});
+
 export const newFeedQuerySchema = feedPaginationBaseSchema.extend({
   refresh: z
     .enum(["true", "false"])
@@ -32,5 +42,6 @@ export const trendingTagsQuerySchema = z
   .strict();
 
 export type FeedPaginationQuery = z.infer<typeof feedPaginationQuerySchema>;
+export type FeedPreviewQuery = z.infer<typeof feedPreviewQuerySchema>;
 export type NewFeedQuery = z.infer<typeof newFeedQuerySchema>;
 export type TrendingTagsQuery = z.infer<typeof trendingTagsQuerySchema>;

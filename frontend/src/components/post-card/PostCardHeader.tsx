@@ -9,7 +9,7 @@ import {
 } from "@mui/material";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { IPost } from "../../types";
 
@@ -19,6 +19,7 @@ interface PostCardHeaderProps {
 	hasCommunity: boolean;
 	isAdmin: boolean;
 	onDeleteClick: (event: React.MouseEvent) => void;
+	onOpen?: (postPublicId: string) => void;
 	media?: React.ReactNode;
 	footer?: React.ReactNode;
 	children: React.ReactNode;
@@ -30,12 +31,13 @@ export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
 	hasCommunity,
 	isAdmin,
 	onDeleteClick,
+	onOpen,
 	media,
 	footer,
 	children,
 }) => {
 	const { t } = useTranslation();
-	const navigate = useNavigate();
+	const profileUrl = `/profile/${post.user?.handle || post.user?.publicId}`;
 
 	return (
 		<Box
@@ -47,10 +49,12 @@ export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
 		>
 			<Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
 				<Avatar
+					component={RouterLink}
+					to={profileUrl}
+					aria-label={t("post.open_profile", { username: post.user?.username || t("post.unknown_user") })}
 					sx={{ width: 42, height: 42, cursor: "pointer", border: "1px solid", borderColor: "divider" }}
 					onClick={(event) => {
 						event.stopPropagation();
-						navigate(`/profile/${post.user?.handle || post.user?.publicId}`);
 					}}
 				>
 					{post.user?.avatar ? (
@@ -78,15 +82,17 @@ export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
 					)}
 					<Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 0.75, minWidth: 0 }}>
 						<Typography
+							component={RouterLink}
+							to={profileUrl}
 							variant="body1"
 							sx={{
 								fontWeight: 700,
 								color: "text.primary",
+								textDecoration: "none",
 								"&:hover": { textDecoration: "underline" },
 							}}
 							onClick={(event) => {
 								event.stopPropagation();
-								navigate(`/profile/${post.user?.handle || post.user?.publicId}`);
 							}}
 						>
 							{post.user?.username || t("post.unknown_user")}
@@ -119,7 +125,18 @@ export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
 								sx={{ height: 18, fontSize: "0.65rem" }}
 							/>
 						)}
-						<Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+						<Typography
+							component={RouterLink}
+							to={`/posts/${post.publicId}`}
+							aria-label={t("profile.view_post")}
+							onClick={(event) => {
+								event.stopPropagation();
+								onOpen?.(post.publicId);
+							}}
+							variant="body2"
+							color="text.secondary"
+							sx={{ whiteSpace: "nowrap", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
+						>
 							· {new Date(post.createdAt).toLocaleDateString(undefined, {
 								month: "short",
 								day: "numeric",

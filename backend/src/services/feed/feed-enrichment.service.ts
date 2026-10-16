@@ -38,7 +38,12 @@ export class FeedEnrichmentService {
     if (options.refreshUserData) {
       // Extract unique user publicIds from feed items
       const userPublicIds = [
-        ...new Set(coreFeedData.map((item) => item.userPublicId)),
+        ...new Set(
+          coreFeedData.flatMap((item) => [
+            item.userPublicId,
+            ...(item.repostOf?.user?.publicId ? [item.repostOf.user.publicId] : []),
+          ]),
+        ),
       ];
 
       const userData = await this.userLookup.findMany(userPublicIds);
@@ -58,8 +63,24 @@ export class FeedEnrichmentService {
     return coreFeedData.map((item) => {
       const meta = metaMap.get(item.publicId);
       const user = userMap.get(item.userPublicId);
+      const repostUser = item.repostOf
+        ? userMap.get(item.repostOf.user.publicId)
+        : undefined;
       return {
         ...item,
+        ...(item.repostOf && repostUser
+          ? {
+              repostOf: {
+                ...item.repostOf,
+                user: {
+                  publicId: repostUser.publicId,
+                  handle: repostUser.handle ?? "",
+                  username: repostUser.username,
+                  avatar: repostUser.avatar ?? "",
+                },
+              },
+            }
+          : {}),
         likes: meta?.likes ?? item.likes,
         commentsCount: meta?.commentsCount ?? item.commentsCount,
         viewsCount: meta?.viewsCount ?? item.viewsCount,

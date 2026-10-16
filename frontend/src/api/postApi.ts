@@ -1,5 +1,26 @@
 import axiosClient from "./axiosClient";
 import { IPost, ITag, PaginatedResponse } from "../types";
+import type { FeedPreviewDefinition } from "../features/feed/feedPreview";
+
+export interface FeedPreviewPage {
+  data: IPost[];
+  hasMore: boolean;
+  nextCursor?: string;
+}
+
+export const fetchFeedPreview = async (
+  definition: FeedPreviewDefinition,
+  cursor?: string,
+  signal?: AbortSignal,
+): Promise<FeedPreviewPage> => {
+  const params = new URLSearchParams({
+    limit: "10", sort: definition.sort, includeReposts: String(definition.includeReposts),
+  });
+  for (const topic of definition.topics) params.append("topics", topic);
+  if (cursor) params.set("cursor", cursor);
+  const { data } = await axiosClient.get<FeedPreviewPage>(`/api/feed/preview?${params}`, { signal });
+  return data;
+};
 
 export const fetchPersonalizedFeed = async (
   pageParam: number | string,

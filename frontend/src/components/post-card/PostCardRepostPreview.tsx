@@ -1,5 +1,5 @@
 import { Avatar, Box, Typography } from "@mui/material";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import RichText from "../RichText";
 import { IPost } from "../../types";
@@ -56,7 +56,17 @@ export const PostCardRepostPreview: React.FC<PostCardRepostPreviewProps> = ({
 				<Avatar sx={{ width: 24, height: 24 }} src={repostAvatarUrl ?? undefined}>
 					{post.repostOf.user.username.charAt(0).toUpperCase()}
 				</Avatar>
-				<Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+				<Typography
+					component={RouterLink}
+					to={`/posts/${post.repostOf.publicId}`}
+					aria-label={t("post.view_original", { username: post.repostOf.user.username })}
+					onClick={(event) => {
+						event.stopPropagation();
+						onOpen?.(post.publicId);
+					}}
+					variant="subtitle2"
+					sx={{ fontWeight: 700, color: "inherit", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
+				>
 					{post.repostOf.user.username}
 				</Typography>
 			</Box>

@@ -129,6 +129,7 @@ export const TOKENS = {
       GetFollowers: "GetFollowersQueryHandler",
       GetFollowing: "GetFollowingQueryHandler",
       GetForYouFeed: "GetForYouFeedQueryHandler",
+      GetFeedPreview: "GetFeedPreviewQueryHandler",
       GetHandleSuggestions: "GetHandleSuggestionsQueryHandler",
       GetLikedPostsByUser: "GetLikedPostsByUserHandler",
       GetMe: "GetMeQueryHandler",

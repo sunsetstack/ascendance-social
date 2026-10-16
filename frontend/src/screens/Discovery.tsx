@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { Link as RouterLink, useLocation, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Box,
   Typography,
@@ -16,6 +17,7 @@ import {
 import RefreshIcon from "@mui/icons-material/Refresh";
 
 import Gallery from "../components/Gallery";
+import FeedPreview from "../components/FeedPreview";
 import { useAuth } from "../hooks/context/useAuth";
 import {
   useTrendingFeed,
@@ -76,10 +78,12 @@ const feedToIndex: Record<string, number> = {
   new: 0,
   trending: 1,
   foryou: 2,
+  custom: 3,
   following: 0, // fallback to new/latest for now
 };
 
 const Discovery: React.FC = () => {
+  const { t } = useTranslation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const location = useLocation();
@@ -138,16 +142,16 @@ const Discovery: React.FC = () => {
   const forYouPosts =
     forYouFeedQuery.data?.pages.flatMap((page) => page.data) ?? [];
 
-  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_event: React.SyntheticEvent | null, newValue: number) => {
     if (newValue !== activeTab) {
       window.scrollTo({ top: 0, behavior: "auto" });
     }
-    const feed = ["latest", "trending", "foryou"][newValue];
+    const feed = ["latest", "trending", "foryou", "custom"][newValue];
     if (!feed) return;
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
-        if (requestedFeed) next.set("feed", feed);
+        if (requestedFeed || feed === "custom") next.set("feed", feed);
         return next;
       },
       {
@@ -199,6 +203,8 @@ const Discovery: React.FC = () => {
         return "Latest";
       case "foryou":
         return "For You";
+      case "custom":
+        return t("feed.builder_title");
       case "following":
         return "Following";
       default:
@@ -254,7 +260,7 @@ const Discovery: React.FC = () => {
           }}
         >
           {/* Single feed mode header (mobile only) */}
-          {isSingleFeedMode && (
+          {isSingleFeedMode && activeTab !== 3 && (
             <Box
               sx={{
                 width: "100%",
@@ -354,11 +360,20 @@ const Discovery: React.FC = () => {
                     aria-controls="discovery-tabpanel-2"
                   />
                 )}
+                <Tab
+                  value={3}
+                  label={t("feed.builder_title")}
+                  id="discovery-tab-3"
+                  aria-controls="discovery-tabpanel-3"
+                />
               </Tabs>
             </Box>
           )}
 
           <Box sx={{ width: "100%" }}>
+            <TabPanel value={activeTab} index={3}>
+              <FeedPreview />
+            </TabPanel>
             {/* Tab Panels */}
             <TabPanel value={activeTab} index={0}>
               <Box>
@@ -469,6 +484,18 @@ const Discovery: React.FC = () => {
                       isFetchingAll={forYouFeedQuery.isFetching}
                       feedId={forYouFeedId}
                       onRefresh={forYouFeedQuery.refreshFeed}
+                      emptyTitle={t("feed.for_you_empty_title")}
+                      emptyDescription={t("feed.for_you_empty_description")}
+                      emptyAction={
+                        <Box sx={{ display: "flex", gap: 1, justifyContent: "center", flexWrap: "wrap" }}>
+                          <Button variant="contained" onClick={() => handleTabChange(null, 0)}>
+                            {t("feed.browse_latest")}
+                          </Button>
+                          <Button component={RouterLink} to="/communities">
+                            {t("feed.find_communities")}
+                          </Button>
+                        </Box>
+                      }
                     />
                   )}
                 </Box>
@@ -477,7 +504,7 @@ const Discovery: React.FC = () => {
           </Box>
 
           {/* Empty State */}
-          {!isLoggedIn && (
+          {!isLoggedIn && activeTab !== 3 && (
             <Box sx={{ textAlign: "center", py: 6, px: 2 }}>
               <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
                 Sign in to see your personalized "For You" feed based on your

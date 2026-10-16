@@ -22,6 +22,8 @@ export const feedIdentities = {
 		makeFeedIdentity("trending", [["viewer", viewer]]),
 	forYou: (viewer?: string): string =>
 		makeFeedIdentity("for-you", [["viewer", viewer]]),
+	preview: (definition: string, viewer?: string): string =>
+		makeFeedIdentity("preview", [["definition", definition], ["viewer", viewer]]),
 	community: (subject: string | undefined, viewer?: string): string =>
 		makeFeedIdentity("community", [
 			["subject", subject],

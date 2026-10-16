@@ -1,5 +1,5 @@
-import React from "react";
-import { Box, alpha, useTheme } from "@mui/material";
+import React, { useState } from "react";
+import { Alert, Box, alpha, useTheme } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { IPost } from "../types";
@@ -32,8 +32,9 @@ const PostCard: React.FC<PostCardProps> = ({
 	const navigate = useNavigate();
 	const theme = useTheme();
 	const { isLoggedIn, user } = useAuth();
-	const { mutate: triggerRepost } = useRepostPost();
-	const { mutate: triggerUnrepost } = useUnrepostPost();
+	const { mutate: triggerRepost, isPending: isReposting } = useRepostPost();
+	const { mutate: triggerUnrepost, isPending: isUnreposting } = useUnrepostPost();
+	const [repostFailed, setRepostFailed] = useState(false);
 	const { mutate: deletePost } = useDeletePost();
 
 	const isAdmin = !!user?.isAdmin;
@@ -56,6 +57,7 @@ const PostCard: React.FC<PostCardProps> = ({
 
 	const handleRepostClick = (event: React.MouseEvent) => {
 		event.stopPropagation();
+		setRepostFailed(false);
 		if (!isLoggedIn) {
 			navigate("/login");
 			return;
@@ -67,15 +69,16 @@ const PostCard: React.FC<PostCardProps> = ({
 				: post.publicId;
 
 		if (hasReposted) {
-			triggerUnrepost({ postPublicId: targetId });
+			triggerUnrepost({ postPublicId: targetId }, { onError: () => setRepostFailed(true) });
 			return;
 		}
 
-		triggerRepost({ postPublicId: targetId });
+		triggerRepost({ postPublicId: targetId }, { onError: () => setRepostFailed(true) });
 	};
 
 	return (
 		<Box
+			component="article"
 			sx={{
 				width: { xs: "100%", sm: "calc(100% - 24px)" },
 				mx: { xs: 0, sm: 1.5 },
@@ -110,6 +113,7 @@ const PostCard: React.FC<PostCardProps> = ({
 				hasCommunity={!!post.community}
 				isAdmin={isAdmin}
 				onDeleteClick={handleDeletePost}
+				onOpen={onOpen}
 				media={
 					media.hasImage ? (
 						<PostCardImage
@@ -123,11 +127,18 @@ const PostCard: React.FC<PostCardProps> = ({
 					) : undefined
 				}
 				footer={
-					<PostCardStats
-						post={post}
-						hasReposted={hasReposted}
-						onRepostClick={handleRepostClick}
-					/>
+					<>
+						<PostCardStats
+							post={post}
+							hasReposted={hasReposted}
+							isReposting={isReposting || isUnreposting}
+							onRepostClick={handleRepostClick}
+							onOpen={onOpen}
+						/>
+						{repostFailed && (
+							<Alert severity="error" sx={{ mt: 1 }}>{t("post.repost_failed")}</Alert>
+						)}
+					</>
 				}
 			>
 				<PostCardBody body={post.body} hasImage={media.hasImage} />

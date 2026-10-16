@@ -46,7 +46,6 @@ export class FeedReadService {
         safeLimit,
       );
       let coreFeed = await this.redisService.getWithTags<CoreFeed>(coreFeedKey);
-      const isCacheHit = !!coreFeed;
 
       if (!coreFeed) {
         logger.info("Core feed cache miss, generating...");
@@ -79,9 +78,6 @@ export class FeedReadService {
       const enrichedFeed =
         await this.feedEnrichmentService.enrichFeedWithCurrentData(
           coreFeed!.data,
-          {
-            refreshUserData: isCacheHit,
-          },
         );
 
       return {
@@ -112,7 +108,6 @@ export class FeedReadService {
     const cacheKey = CacheKeyBuilder.getTrendingFeedKey(safePage, safeLimit);
 
     let cached = await this.redisService.getWithTags<CoreFeed>(cacheKey);
-    const isCacheHit = !!cached;
     if (!cached) {
       const skip = (safePage - 1) * safeLimit;
       const core = await this.feedReadDao.getTrendingFeed(
@@ -138,9 +133,6 @@ export class FeedReadService {
 
     const enriched = await this.feedEnrichmentService.enrichFeedWithCurrentData(
       cached.data,
-      {
-        refreshUserData: isCacheHit,
-      },
     );
 
     return {
@@ -178,7 +170,6 @@ export class FeedReadService {
 
     let cached = await this.redisService.getWithTags<CachedNewFeed>(key);
 
-    const isCacheHit = !!cached;
     if (!cached) {
       let core: CachedNewFeed;
       const useCursorFlow = Boolean(cursor) || safePage === 1;
@@ -230,9 +221,6 @@ export class FeedReadService {
 
     const enriched = await this.feedEnrichmentService.enrichFeedWithCurrentData(
       cached.data,
-      {
-        refreshUserData: isCacheHit,
-      },
     );
 
     return {

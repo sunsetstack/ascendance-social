@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useParams, Link as RouterLink, useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useParams, Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { usePostById } from "../hooks/posts/usePosts";
 import { useLikePost, useFavoritePost } from "../hooks/user/useUserAction";
 import { useAuth } from "../hooks/context/useAuth";
@@ -44,6 +44,8 @@ import {
 const PostView = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { hash } = useLocation();
+  const commentsRef = useRef<HTMLDivElement>(null);
   const { user, isLoggedIn } = useAuth();
   const theme = useTheme();
 
@@ -64,6 +66,13 @@ const PostView = () => {
     image: post?.url || post?.image?.url,
     communityName: post?.community?.name,
   });
+
+  useEffect(() => {
+    if (hash === "#comments" && post && !isLoading && !isError) {
+      commentsRef.current?.scrollIntoView({ block: "start" });
+      commentsRef.current?.focus({ preventScroll: true });
+    }
+  }, [hash, post?.publicId, isLoading, isError]);
 
   if (isLoading) {
     return (
@@ -611,7 +620,7 @@ const PostView = () => {
           </Box>
 
           {/* Comment Section */}
-          <Box sx={{ mt: 2 }}>
+          <Box id="comments" ref={commentsRef} tabIndex={-1} sx={{ mt: 2, scrollMarginTop: 64 }}>
             <CommentSection
               postId={post.publicId}
               commentsCount={post.commentsCount}

@@ -8,6 +8,7 @@ import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 import {
   feedPaginationQuerySchema,
+  feedPreviewQuerySchema,
   newFeedQuerySchema,
   trendingTagsQuerySchema,
 } from "@/utils/schemas/feed.schemas";
@@ -30,6 +31,12 @@ export class FeedRoutes {
   }
 
   private initializeRoutes(): void {
+    this.router.get(
+      "/preview",
+      this.optionalAuth,
+      new ValidationMiddleware({ query: feedPreviewQuerySchema }).validate(),
+      asyncHandler(this.controller.getFeedPreview),
+    );
     this.router.get(
       "/",
       this.auth,

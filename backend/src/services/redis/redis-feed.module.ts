@@ -477,6 +477,10 @@ export class RedisFeedModule {
       "excludedIdentityIds",
     ]);
     const isKnownVariant =
+      (snapshot?.feed === "preview" &&
+        (snapshot.order === FEED_CURSOR_ORDER.PREVIEW_LATEST ||
+          snapshot.order === FEED_CURSOR_ORDER.PREVIEW_RELEVANT) &&
+        snapshot.source === "mongo" && typeof snapshot.scope === "string") ||
       (snapshot?.feed === "new" &&
         snapshot.order === FEED_CURSOR_ORDER.NEW &&
         snapshot.source === "mongo" &&

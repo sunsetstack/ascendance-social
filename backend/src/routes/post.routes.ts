@@ -37,6 +37,8 @@ export class PostRoutes {
   }
 
   private initializeRoutes(): void {
+    this.router.get("/tags", asyncHandler(this.postController.listTags));
+
     this.router.get(
       "/",
       this.optionalAuth,
@@ -84,8 +86,6 @@ export class PostRoutes {
       new ValidationMiddleware({ query: searchByTagsSchema }).validate(),
       asyncHandler(this.postController.searchByTags),
     );
-    this.router.get("/tags", asyncHandler(this.postController.listTags));
-
     this.router.post(
       "/",
       this.auth,

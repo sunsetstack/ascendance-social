@@ -21,7 +21,7 @@ export class UserPreferenceRepository extends BaseRepository<IUserPreference> {
   async getTopUserTags(userId: string, limit = 5): Promise<IUserPreference[]> {
     try {
       return this.model
-        .find({ userId })
+        .find({ userId, score: { $gt: 0 } })
         .sort({ score: -1 })
         .limit(limit)
         .exec();

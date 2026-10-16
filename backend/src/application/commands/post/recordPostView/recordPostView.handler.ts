@@ -11,7 +11,7 @@ import { FeedService } from "@/services/feed/feed.service";
 import { TransactionQueueService } from "@/services/transaction-queue.service";
 import { BloomFilterService } from "@/services/redis/bloom-filter.service";
 import { UnitOfWork } from "@/database/UnitOfWork";
-import { Errors } from "@/utils/errors";
+import { Errors, isMongoDBDuplicateKeyError } from "@/utils/errors";
 import { isValidPublicId } from "@/utils/sanitizers";
 import {
   PostAuthorizationError,
@@ -123,13 +123,28 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
         return false;
       }
 
-      const isNewView = await this.unitOfWork.executeInTransaction(async () => {
-        const recorded = await this.postViewRepository.recordView(postId, userId);
-        if (recorded) {
-          await this.postWriteRepository.incrementViewCount(postId);
+      let isNewView: boolean;
+      try {
+        isNewView = await this.unitOfWork.executeInTransaction(async () => {
+          const recorded = await this.postViewRepository.recordView(postId, userId);
+          if (recorded) {
+            await this.postWriteRepository.incrementViewCount(postId);
+          }
+          return recorded;
+        });
+      } catch (error) {
+        if (
+          !isMongoDBDuplicateKeyError(error) ||
+          !error.keyValue.post ||
+          !error.keyValue.user ||
+          String(error.keyValue.post) !== String(postId) ||
+          String(error.keyValue.user) !== String(userId) ||
+          !(await this.postViewRepository.hasViewed(postId, userId))
+        ) {
+          throw error;
         }
-        return recorded;
-      });
+        isNewView = false;
+      }
 
       await this.markViewSeenInBloom(bloomKey, bloomItem);
 

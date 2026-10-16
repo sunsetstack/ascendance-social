@@ -44,7 +44,7 @@ export const PostCardImage: React.FC<PostCardImageProps> = ({
 				sizes="(max-width: 600px) calc(100vw - 64px), 553px"
 				alt={alt}
 				loading={prioritizeImage ? "eager" : "lazy"}
-				fetchPriority={prioritizeImage ? "high" : "auto"}
+				{...{ fetchpriority: prioritizeImage ? "high" : "auto" }}
 				decoding="async"
 				style={{
 					width: "100%",

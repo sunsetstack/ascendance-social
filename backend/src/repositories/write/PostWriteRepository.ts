@@ -29,6 +29,7 @@ export class PostWriteRepository
     } catch (error: unknown) {
       throw Errors.database(
         error instanceof Error ? error.message : String(error),
+        { cause: error },
       );
     }
   }

@@ -5,6 +5,7 @@ import {
   PaginationResult,
   TrendingTag,
 } from "@/types";
+import type { FeedPreviewDefinition } from "@/types/customFeeds/feed-preview.types";
 
 export type FeedSnapshotPaginationResult<T> = CursorPaginationResult<T> & {
   snapshotId?: string;
@@ -16,6 +17,11 @@ export type FeedSnapshotPaginationResult<T> = CursorPaginationResult<T> & {
  * This separates heavy analytical queries from the domain-focused post read repository.
  */
 export interface IFeedReadDao {
+  getPreviewFeedWithCursor(
+    definition: FeedPreviewDefinition,
+    options: CursorPaginationOptions,
+  ): Promise<FeedSnapshotPaginationResult<FeedPost>>;
+
   getFeedForUserCoreWithCursor(
     followingIds: string[],
     favoriteTags: string[],

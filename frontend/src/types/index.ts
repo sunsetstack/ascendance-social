@@ -6,6 +6,7 @@ import {
   UseQueryResult,
 } from "@tanstack/react-query";
 import type { Id } from "react-toastify";
+import type { ReactNode } from "react";
 
 // Base user interface matching backend DTOs
 export interface PublicUserDTO {
@@ -232,6 +233,7 @@ export interface GalleryProps {
   isFetchingAll?: boolean;
   emptyTitle?: string;
   emptyDescription?: string;
+  emptyAction?: ReactNode;
   variant?: "feed" | "media";
   /** Logical feed identity used for anchor restoration and pending updates. */
   feedId?: string;
