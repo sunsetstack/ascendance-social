@@ -9,6 +9,8 @@ import {
   useUnrepostPost,
 } from "../hooks/posts/usePosts";
 import RichText from "../components/RichText";
+import QuotePostDialog from "../components/QuotePostDialog";
+import { useTranslation } from "react-i18next";
 import { devError } from "@/lib/devLogger";
 import {
   Box,
@@ -42,6 +44,8 @@ import {
 } from "../lib/media";
 
 const PostView = () => {
+  const { t } = useTranslation();
+  const [quoting, setQuoting] = useState(false);
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { hash } = useLocation();
@@ -608,6 +612,7 @@ const PostView = () => {
             >
               <RepeatIcon />
             </IconButton>
+            <Button disabled={!!hasReposted} onClick={() => isLoggedIn ? setQuoting(true) : navigate("/login")}>{t("attachments.quote")}</Button>
             <IconButton
               aria-label={
                 isFavorited ? "Remove from favorites" : "Add to favorites"
@@ -627,6 +632,8 @@ const PostView = () => {
             />
           </Box>
         </Box>
+
+        <QuotePostDialog key={post.publicId} open={quoting} postPublicId={post.publicId} onClose={() => setQuoting(false)} />
 
         {/* Image Modal */}
         <Modal

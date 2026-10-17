@@ -21,9 +21,14 @@ export const createComment = async (
   postPublicId: string,
   commentData: CommentCreateDto,
 ): Promise<IComment> => {
+  const payload = new FormData();
+  payload.append("content", commentData.content);
+  if (commentData.parentId) payload.append("parentId", commentData.parentId);
+  if (commentData.image) payload.append("image", commentData.image);
   const response = await axiosClient.post(
     `${BASE_URL}/posts/${postPublicId}/comments`,
-    commentData,
+    payload,
+    { headers: { "Content-Type": "multipart/form-data" } },
   );
   return response.data;
 };

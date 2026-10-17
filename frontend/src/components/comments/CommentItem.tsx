@@ -28,6 +28,9 @@ import {
 } from "../../hooks/comments/useComments";
 import { useNavigate } from "react-router";
 import RichText from "../RichText";
+import ImageAttachmentInput from "../ImageAttachmentInput";
+import { Alert } from "@mui/material";
+import { buildMediaUrl } from "@/lib/media";
 import { devError } from "@/lib/devLogger";
 import { buildAvatarUrl } from "@/lib/media";
 
@@ -44,6 +47,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
   // Reply state
   const [showReplyForm, setShowReplyForm] = useState(false);
   const [replyContent, setReplyContent] = useState("");
+  const [replyImage, setReplyImage] = useState<File | null>(null);
 
   const navigate = useNavigate();
 
@@ -71,7 +75,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
       return;
     }
 
-    if (!replyContent.trim()) return;
+    if (!replyContent.trim() && !replyImage) return;
 
     try {
       await createCommentMutation.mutateAsync({
@@ -79,9 +83,11 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
         commentData: {
           content: replyContent,
           parentId: comment.id,
+          image: replyImage ?? undefined,
         },
       });
       setReplyContent("");
+      setReplyImage(null);
       setShowReplyForm(false);
     } catch (error) {
       devError("Failed to post reply:", error);
@@ -375,6 +381,10 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
           </Typography>
         )}
 
+        {!comment.isDeleted && comment.image?.url && <Box component="img" src={buildMediaUrl(comment.image.url)}
+          alt="Comment attachment" width={comment.image.width} height={comment.image.height} loading="lazy"
+          sx={{ maxWidth: "100%", height: "auto", maxHeight: 400, objectFit: "contain", borderRadius: 2, mt: 1 }} />}
+
         {/* Actions */}
         <Box
           sx={{ display: "flex", alignItems: "center", gap: 2, mt: 0.5 }}
@@ -451,6 +461,8 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
               onChange={(e) => setReplyContent(e.target.value)}
               multiline
             />
+            <ImageAttachmentInput file={replyImage} onChange={setReplyImage} disabled={createCommentMutation.isPending} />
+            {createCommentMutation.isError && <Alert severity="error">Unable to post your reply. Please try again.</Alert>}
             <Box
               sx={{
                 display: "flex",
@@ -467,7 +479,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
                 variant="contained"
                 onClick={handleReplySubmit}
                 disabled={
-                  !replyContent.trim() || createCommentMutation.isPending
+                  (!replyContent.trim() && !replyImage) || createCommentMutation.isPending
                 }
               >
                 Reply

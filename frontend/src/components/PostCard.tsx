@@ -16,6 +16,8 @@ import { PostCardImage } from "./post-card/PostCardImage";
 import { PostCardRepostPreview } from "./post-card/PostCardRepostPreview";
 import { PostCardStats } from "./post-card/PostCardStats";
 import { buildPostCardMedia } from "./post-card/postCardMedia";
+import { useLikePost } from "../hooks/user/useUserAction";
+import { Typography } from "@mui/material";
 
 interface PostCardProps {
 	post: IPost;
@@ -36,11 +38,18 @@ const PostCard: React.FC<PostCardProps> = ({
 	const { mutate: triggerUnrepost, isPending: isUnreposting } = useUnrepostPost();
 	const [repostFailed, setRepostFailed] = useState(false);
 	const { mutate: deletePost } = useDeletePost();
+  const like = useLikePost();
+  const handleLikeClick = (event: React.MouseEvent): void => {
+    event.stopPropagation();
+    if (!isLoggedIn) { navigate("/login"); return; }
+    like.mutate(post.publicId);
+  };
 
 	const isAdmin = !!user?.isAdmin;
 	const isOwnRepost = post.type === "repost" && post.user?.publicId === user?.publicId;
 	const hasReposted = isOwnRepost || post.isRepostedByViewer;
 	const media = buildPostCardMedia(post);
+  const [reason, match] = post.feedReason?.split(":") ?? [];
 
 	const handleDeletePost = (event: React.MouseEvent) => {
 		event.stopPropagation();
@@ -131,6 +140,8 @@ const PostCard: React.FC<PostCardProps> = ({
 						<PostCardStats
 							post={post}
 							hasReposted={hasReposted}
+              onLikeClick={post.viewerLikeStateKnown ? handleLikeClick : undefined}
+              isLiking={like.isPending}
 							isReposting={isReposting || isUnreposting}
 							onRepostClick={handleRepostClick}
 							onOpen={onOpen}
@@ -138,10 +149,17 @@ const PostCard: React.FC<PostCardProps> = ({
 						{repostFailed && (
 							<Alert severity="error" sx={{ mt: 1 }}>{t("post.repost_failed")}</Alert>
 						)}
+            {like.isError && <Alert severity="error">{t("interests.like_failed")}</Alert>}
 					</>
 				}
 			>
 				<PostCardBody body={post.body} hasImage={media.hasImage} />
+        {reason && <Typography variant="caption" color="text.secondary">{t(`feed_reasons.${reason}`, {
+          topic: match ? t(`interest_names.${match}`) : "", format: match ? t(`content_formats.${match}`) : "",
+        })}</Typography>}
+        {!reason && !!post.contentTopics?.length && <Typography variant="caption" color="text.secondary">
+          {t("interests.about", { topics: post.contentTopics.map((id) => t(`interest_names.${id}`)).join(", ") })}
+        </Typography>}
 				<PostCardRepostPreview
 					post={post}
 					repostAvatarUrl={media.repostAvatarUrl}

@@ -31,6 +31,7 @@ type FeedKey =
 	| "userPosts"
 	| "forYouFeed"
 	| "feedPreview"
+  | "interestFeed"
 	| "trendingFeed"
 	| "newFeed"
 	| "images"
@@ -43,6 +44,7 @@ const FEED_CACHE_KEYS: readonly FeedKey[] = [
 	"userPosts",
 	"forYouFeed",
 	"feedPreview",
+  "interestFeed",
 	"trendingFeed",
 	"newFeed",
 	"images",

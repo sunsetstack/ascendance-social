@@ -35,8 +35,8 @@ const Home: React.FC = () => {
 	const activePosts = useMemo(() => data?.pages.flatMap((p) => p.data) ?? [], [data]);
 	const discoveryActions = (
 		<Box sx={{ display: "flex", gap: 1, justifyContent: "center", flexWrap: "wrap" }}>
-			<Button component={RouterLink} to="/discover?feed=custom" variant="contained">
-				{t("feed.builder_title")}
+			<Button component={RouterLink} to="/interests" variant="contained">
+				{t("interests.title")}
 			</Button>
 			<Button component={RouterLink} to="/discover?feed=latest" variant="outlined">
 				{t("feed.browse_latest")}

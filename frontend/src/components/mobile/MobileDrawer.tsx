@@ -4,6 +4,7 @@ import { Box, Avatar, Typography, Badge, Collapse, alpha } from "@mui/material";
 import {
 	Home as HomeIcon,
 	Explore as ExploreIcon,
+  Interests as InterestsIcon,
 	Groups as GroupsIcon,
 	ChatBubbleOutline as ChatBubbleOutlineIcon,
 	Notifications as NotificationsIcon,
@@ -139,6 +140,7 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
 			icon: <GroupsIcon />,
 			path: "/communities",
 		},
+    { label: t("interests.title"), icon: <InterestsIcon />, path: "/interests" },
 	];
 
 	const authenticatedNavItems: NavItem[] = [

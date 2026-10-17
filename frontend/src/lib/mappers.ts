@@ -157,6 +157,10 @@ export function mapPost(rawInput: unknown): IPost {
 		viewsCount: typeof raw.viewsCount === "number" ? raw.viewsCount : 0,
 		createdAt: new Date(String(raw.createdAt)),
 		isLikedByViewer: typeof raw.isLikedByViewer === "boolean" ? raw.isLikedByViewer : false,
+    viewerLikeStateKnown: typeof raw.isLikedByViewer === "boolean",
+    feedReason: typeof raw.feedReason === "string" ? raw.feedReason : undefined,
+    contentTopics: isObject(raw.contentFeatures) && Array.isArray(raw.contentFeatures.topics)
+      ? raw.contentFeatures.topics.filter(isObject).map((topic) => String(topic.id)) : [],
 		isFavoritedByViewer: typeof raw.isFavoritedByViewer === "boolean" ? raw.isFavoritedByViewer : false,
 		isRepostedByViewer: typeof raw.isRepostedByViewer === "boolean" ? raw.isRepostedByViewer : false,
 		canDelete: typeof raw.canDelete === "boolean" ? raw.canDelete : undefined,

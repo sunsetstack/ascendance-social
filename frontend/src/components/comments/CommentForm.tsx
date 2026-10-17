@@ -6,6 +6,8 @@ import { useCreateComment } from "../../hooks/comments/useComments";
 import MentionInput from "../MentionInput";
 import { devError } from "@/lib/devLogger";
 import { buildAvatarUrl } from "@/lib/media";
+import ImageAttachmentInput from "../ImageAttachmentInput";
+import { Alert } from "@mui/material";
 
 interface CommentFormProps {
   postId: string;
@@ -14,19 +16,21 @@ interface CommentFormProps {
 const CommentForm: React.FC<CommentFormProps> = ({ postId }) => {
   const { user, isLoggedIn } = useAuth();
   const [content, setContent] = useState("");
+  const [image, setImage] = useState<File | null>(null);
   const createCommentMutation = useCreateComment();
 
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
 
-    if (!content.trim() || !isLoggedIn) return;
+    if ((!content.trim() && !image) || !isLoggedIn) return;
 
     try {
       await createCommentMutation.mutateAsync({
         imagePublicId: postId,
-        commentData: { content: content.trim() },
+        commentData: { content: content.trim(), image: image ?? undefined },
       });
       setContent("");
+      setImage(null);
     } catch (error) {
       devError("Failed to create comment:", error);
     }
@@ -65,13 +69,15 @@ const CommentForm: React.FC<CommentFormProps> = ({ postId }) => {
             sx={{ width: "100%" }}
           />
 
+          <ImageAttachmentInput file={image} onChange={setImage} disabled={createCommentMutation.isPending} />
+          {createCommentMutation.isError && <Alert severity="error">Unable to post your comment. Please try again.</Alert>}
           <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
             <Button
               type="submit"
               variant="contained"
               size="small"
               endIcon={<SendIcon />}
-              disabled={createCommentMutation.isPending || !content.trim()}
+              disabled={createCommentMutation.isPending || (!content.trim() && !image)}
             >
               {createCommentMutation.isPending ? "Posting..." : "Post"}
             </Button>

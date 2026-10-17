@@ -23,6 +23,7 @@ import {
 	Add as AddIcon,
 	CameraAlt as CameraAltIcon,
 	Explore as ExploreIcon,
+  Interests as InterestsIcon,
 	Bookmark as BookmarkIcon,
 	ChatBubbleOutline as ChatBubbleOutlineIcon,
 	AdminPanelSettings as AdminPanelSettingsIcon,
@@ -106,6 +107,7 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({ onPostClick }) => {
 			icon: <ExploreIcon sx={{ fontSize: 28 }} />,
 			path: "/discover",
 		},
+    { label: t("interests.title"), icon: <InterestsIcon sx={{ fontSize: 28 }} />, path: "/interests" },
 		{
 			label: t("nav.communities"),
 			icon: <GroupsIcon sx={{ fontSize: 28 }} />,
@@ -168,7 +170,7 @@ const LeftSidebar: React.FC<LeftSidebarProps> = ({ onPostClick }) => {
 	const visibleNavigationItems = isLoggedIn
 		? navigationItems
 		: navigationItems.filter((item) =>
-			["/", "/discover", "/communities"].includes(item.path ?? ""),
+			["/", "/discover", "/interests", "/communities"].includes(item.path ?? ""),
 		);
 
 	return (

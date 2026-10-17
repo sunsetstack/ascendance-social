@@ -18,6 +18,7 @@ import VisitorObservation from "./components/VisitorObservation";
 import "./lib/telemetry";
 
 const Discovery = lazy(() => import("./screens/Discovery"));
+const Interests = lazy(() => import("./screens/Interests"));
 const FeedSocketManager = lazy(() => import("./components/FeedSocketManager"));
 const VerifyEmail = lazy(() => import("./screens/VerifyEmail"));
 const Communities = lazy(() => import("./screens/Communities"));
@@ -86,6 +87,7 @@ function App() {
 										<Route path="/" element={<Layout />}>
 											<Route index element={<Home />} />
 											<Route path="discover" element={<Discovery />} />
+                      <Route path="interests" element={<Interests />} />
 											<Route path="communities" element={<Communities />} />
 											<Route path="communities/:slug" element={<CommunityDetails />} />
 											<Route path="communities/:slug/members" element={<CommunityMembers />} />

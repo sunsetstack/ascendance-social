@@ -123,6 +123,9 @@ export interface IPost {
   createdAt: Date;
 
   isLikedByViewer: boolean;
+  viewerLikeStateKnown?: boolean;
+  contentTopics?: string[];
+  feedReason?: string;
   isFavoritedByViewer: boolean;
   isRepostedByViewer: boolean;
   canDelete?: boolean;
@@ -152,6 +155,7 @@ export function isTextPost(post: IPost): boolean {
 }
 
 export interface IComment {
+  image?: { publicId?: string; url?: string; width?: number; height?: number } | null;
   id: string;
   content: string;
   postPublicId: string;
@@ -174,6 +178,7 @@ export interface IComment {
 }
 
 export interface CommentCreateDto {
+  image?: File;
   content: string;
   parentId?: string;
 }

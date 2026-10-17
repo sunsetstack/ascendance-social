@@ -122,9 +122,8 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 	};
 
 	const handleUpload = async () => {
-		// Must have either text or image
-		if (!file && !content.trim()) {
-			alert(t("post.error_empty"));
+		if (!content.trim() && !tags.length) {
+			alert(t("interests.caption_required"));
 			return;
 		}
 
@@ -179,7 +178,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 		}
 	};
 
-	const isDisabled = (!file && !content.trim()) || uploadPostMutation.isPending;
+	const isDisabled = (!content.trim() && !tags.length) || uploadPostMutation.isPending;
 
 	return (
 		<Box
@@ -295,6 +294,9 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 					/>
 
 					{/* Image Preview */}
+					{file && !content.trim() && !tags.length && <Typography variant="body2" color="warning.main" sx={{ my: 1 }}>
+            {t("interests.caption_required")}
+          </Typography>}
 					{preview && (
 						<Box sx={{ mt: 2, position: "relative" }}>
 							<img

@@ -168,11 +168,15 @@ export const deletePostByPublicId = async (publicId: string): Promise<void> => {
 export const repostPost = async (
   postPublicId: string,
   body?: string,
+  image?: File,
 ): Promise<IPost> => {
-  const payload = body ? { body } : {};
+  const payload = new FormData();
+  if (body) payload.append("body", body);
+  if (image) payload.append("image", image);
   const { data } = await axiosClient.post(
     `/api/posts/${postPublicId}/repost`,
     payload,
+    { headers: { "Content-Type": "multipart/form-data" } },
   );
   return data;
 };

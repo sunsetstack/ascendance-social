@@ -14,6 +14,8 @@ interface PostCardStatsProps {
 	isReposting: boolean;
 	onRepostClick: (event: React.MouseEvent) => void;
 	onOpen?: (postPublicId: string) => void;
+  onLikeClick?: (event: React.MouseEvent) => void;
+  isLiking?: boolean;
 }
 
 export const PostCardStats: React.FC<PostCardStatsProps> = ({
@@ -22,6 +24,8 @@ export const PostCardStats: React.FC<PostCardStatsProps> = ({
 	isReposting,
 	onRepostClick,
 	onOpen,
+  onLikeClick,
+  isLiking,
 }) => {
 	const { t } = useTranslation();
 	return (
@@ -34,8 +38,12 @@ export const PostCardStats: React.FC<PostCardStatsProps> = ({
 				mx: -0.75,
 			}}
 		>
-			<Box
-				role="img"
+      <ButtonBase
+        component={onLikeClick ? "button" : "span"}
+				role={onLikeClick ? "button" : "img"}
+        onClick={onLikeClick}
+        disabled={!onLikeClick || isLiking}
+        aria-pressed={onLikeClick ? post.isLikedByViewer : undefined}
 				aria-label={`${post.likes || 0} ${t("post.likes")}`}
 				sx={{
 					display: "flex",
@@ -45,12 +53,12 @@ export const PostCardStats: React.FC<PostCardStatsProps> = ({
 					px: 0.75,
 					py: 0.5,
 					borderRadius: 999,
-					color: "text.secondary",
+					color: post.isLikedByViewer ? "error.main" : "text.secondary",
 				}}
 			>
 				<FavoriteIcon fontSize="small" sx={{ fontSize: 18 }} />
 				<Typography variant="caption">{formatCount(post.likes || 0)}</Typography>
-			</Box>
+			</ButtonBase>
 			<ButtonBase
 				aria-label={t(hasReposted ? "post.undo_repost" : "post.repost")}
 				aria-pressed={!!hasReposted}

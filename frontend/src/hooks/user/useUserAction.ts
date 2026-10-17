@@ -19,6 +19,7 @@ import {
 } from "../../types";
 import { devError } from "@/lib/devLogger";
 import { postInteractionQueryFilter, updatePostInCache } from "../posts/postCache";
+import { latestFeedAction, traceFeedClient } from "@/features/feed/feedTrace";
 
 /**All hooks use public ids */
 export const useFollowUser = () => {
@@ -279,6 +280,7 @@ export const useLikePost = () => {
 
       const detail = queryClient.getQueryData<IPost>(["post", postPublicId]);
       const shouldLike = !(detail ?? previousPosts[0]?.post)?.isLikedByViewer;
+      traceFeedClient("feed.cache.like.optimistic", { postPublicId, shouldLike, affectedQueries: previousPosts.length });
       queryClient.setQueriesData(postInteractionQueryFilter, (data: unknown) =>
         updatePostInCache(data, postPublicId, (post) => ({
           ...post,
@@ -292,6 +294,7 @@ export const useLikePost = () => {
       return { previousPosts };
     },
     onError: (_error, postPublicId, context) => {
+      traceFeedClient("feed.cache.like.rollback", { postPublicId, affectedQueries: context?.previousPosts.length ?? 0 });
       for (const { queryKey, post: previous } of context?.previousPosts ?? []) {
         queryClient.setQueryData(queryKey, (data: unknown) =>
           updatePostInCache(data, postPublicId, (post) => ({
@@ -302,11 +305,12 @@ export const useLikePost = () => {
         );
       }
     },
-    onSettled: () => {
-      return queryClient.invalidateQueries({
+    onSettled: async () => {
+      traceFeedClient("feed.cache.invalidated", { latestSuccessfulAction: latestFeedAction(), profileRefetch: true, feedRefetch: false, reason: "preserve_pinned_order" });
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ["interests"] }), queryClient.invalidateQueries({
         ...postInteractionQueryFilter,
         refetchType: "none",
-      });
+      })]);
     },
   });
 };

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Link as RouterLink, useLocation, useSearchParams } from "react-router-dom";
+import { Link as RouterLink, Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   Box,
@@ -17,7 +17,6 @@ import {
 import RefreshIcon from "@mui/icons-material/Refresh";
 
 import Gallery from "../components/Gallery";
-import FeedPreview from "../components/FeedPreview";
 import { useAuth } from "../hooks/context/useAuth";
 import {
   useTrendingFeed,
@@ -78,7 +77,6 @@ const feedToIndex: Record<string, number> = {
   new: 0,
   trending: 1,
   foryou: 2,
-  custom: 3,
   following: 0, // fallback to new/latest for now
 };
 
@@ -146,12 +144,12 @@ const Discovery: React.FC = () => {
     if (newValue !== activeTab) {
       window.scrollTo({ top: 0, behavior: "auto" });
     }
-    const feed = ["latest", "trending", "foryou", "custom"][newValue];
+    const feed = ["latest", "trending", "foryou"][newValue];
     if (!feed) return;
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
-        if (requestedFeed || feed === "custom") next.set("feed", feed);
+        if (requestedFeed) next.set("feed", feed);
         return next;
       },
       {
@@ -203,8 +201,6 @@ const Discovery: React.FC = () => {
         return "Latest";
       case "foryou":
         return "For You";
-      case "custom":
-        return t("feed.builder_title");
       case "following":
         return "Following";
       default:
@@ -230,6 +226,8 @@ const Discovery: React.FC = () => {
       </>
     );
   }
+
+  if (requestedFeed === "custom") return <Navigate to="/interests" replace />;
 
   return (
     <>
@@ -260,7 +258,7 @@ const Discovery: React.FC = () => {
           }}
         >
           {/* Single feed mode header (mobile only) */}
-          {isSingleFeedMode && activeTab !== 3 && (
+          {isSingleFeedMode && (
             <Box
               sx={{
                 width: "100%",
@@ -360,20 +358,11 @@ const Discovery: React.FC = () => {
                     aria-controls="discovery-tabpanel-2"
                   />
                 )}
-                <Tab
-                  value={3}
-                  label={t("feed.builder_title")}
-                  id="discovery-tab-3"
-                  aria-controls="discovery-tabpanel-3"
-                />
               </Tabs>
             </Box>
           )}
 
           <Box sx={{ width: "100%" }}>
-            <TabPanel value={activeTab} index={3}>
-              <FeedPreview />
-            </TabPanel>
             {/* Tab Panels */}
             <TabPanel value={activeTab} index={0}>
               <Box>

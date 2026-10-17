@@ -31,6 +31,7 @@ import {
 } from "./postCache";
 import { feedIdentities } from "../../features/feed/feedIdentity";
 import { useIsFeedRestoreNavigation } from "../../features/feed/feedRestoration";
+import { latestFeedAction, traceFeedClient } from "../../features/feed/feedTrace";
 
 const MAX_FEED_PAGES = 6;
 const FEED_PAGE_SIZE = 5;
@@ -196,6 +197,7 @@ export const useUploadPost = () => {
       queryClient.invalidateQueries({ queryKey: ["tags"] });
       queryClient.invalidateQueries({ queryKey: ["personalizedFeed"] });
       queryClient.invalidateQueries({ queryKey: ["community-posts"] });
+      queryClient.invalidateQueries({ queryKey: ["interestFeed"] });
     },
     onError: (error: Error) => {
       devError("Error uploading post:", error);
@@ -237,9 +239,11 @@ export const useDeletePost = () => {
 export const useRepostPost = () => {
   const queryClient = useQueryClient();
 
-  return useMutation<IPost, Error, { postPublicId: string; body?: string }>({
-    mutationFn: ({ postPublicId, body }) => repostPost(postPublicId, body),
+  return useMutation<IPost, Error, { postPublicId: string; body?: string; image?: File }>({
+    mutationFn: ({ postPublicId, body, image }) => repostPost(postPublicId, body, image),
     onSuccess: (_newPost, { postPublicId }) => {
+      traceFeedClient("feed.cache.invalidated", { postPublicId, latestSuccessfulAction: latestFeedAction(),
+        profileRefetch: true, feedRefetch: true, reason: "repost_created" });
       const applyRepostState = (post: IPost): IPost => ({
         ...post,
         repostCount: (post.repostCount || 0) + 1,
@@ -255,6 +259,8 @@ export const useRepostPost = () => {
       queryClient.invalidateQueries({ queryKey: ["post", postPublicId] });
 
       // Invalidate feeds to show the new repost
+      queryClient.invalidateQueries({ queryKey: ["interests"] });
+      queryClient.invalidateQueries({ queryKey: ["interestFeed"] });
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       queryClient.invalidateQueries({ queryKey: ["personalizedFeed"] });
       queryClient.invalidateQueries({ queryKey: ["newFeed"] });
@@ -273,11 +279,15 @@ export const useUnrepostPost = () => {
   return useMutation<void, Error, { postPublicId: string }>({
     mutationFn: ({ postPublicId }) => unrepostPost(postPublicId),
     onSuccess: (_result, { postPublicId }) => {
+      traceFeedClient("feed.cache.invalidated", { postPublicId, latestSuccessfulAction: latestFeedAction(),
+        profileRefetch: true, feedRefetch: true, reason: "repost_removed" });
       const clearRepostState = (post: IPost): IPost => ({
         ...post,
         repostCount: Math.max((post.repostCount || 0) - 1, 0),
         isRepostedByViewer: false,
       });
+      queryClient.invalidateQueries({ queryKey: ["interests"] });
+      queryClient.invalidateQueries({ queryKey: ["interestFeed"] });
 
       updatePostDetailCaches(queryClient, postPublicId, clearRepostState);
       updatePostInInfiniteFeeds(queryClient, postPublicId, clearRepostState);
