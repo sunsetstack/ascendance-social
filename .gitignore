@@ -20,6 +20,7 @@ backend/tmp
 backend/audit/logs/*
 backend/audit/archives/*
 backend/audit-logs/*
+scripts/k6
 /uploads
 dist
 migrate-atlas-to-local.ts
@@ -29,7 +30,8 @@ backend/src/scripts/stress-test.ts
 notes.md
 tsconfig.test.tsbuildinfo
 docs/
-*pull-audit-archives.ps1
+scripts/audit/pull-*
+
 .vscode
 *ascendance-audit-seal.service
 *ascendance-audit-seal.timer
