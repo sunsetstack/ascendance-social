@@ -15,6 +15,7 @@ import Follow from "@/models/follow.model";
 import Notification from "@/models/notification.model";
 import UserAction from "@/models/userAction.model";
 import { UserPreference } from "@/models/userPreference.model";
+import { FeedProfile, FeedSignal } from "@/models/feed-profile.model";
 import { OutboxModel } from "@/models/outbox.model";
 import { WebSocketServer } from "../server/socketServer";
 import { logger } from "@/utils/winston";
@@ -27,6 +28,8 @@ export function registerCoreComponents(): void {
   });
   container.register(TOKENS.Models.Image, { useValue: Image });
   container.register(TOKENS.Models.Post, { useValue: Post });
+  container.register(TOKENS.Models.FeedProfile, { useValue: FeedProfile });
+  container.register(TOKENS.Models.FeedSignal, { useValue: FeedSignal });
   container.register(TOKENS.Models.PostLike, { useValue: PostLike });
   container.register(TOKENS.Models.PostView, { useValue: PostView });
   container.register(TOKENS.Models.Tag, { useValue: Tag });

@@ -1,5 +1,6 @@
 import mongoose, { Document } from "mongoose";
 import { IImage } from "@/types/customImages/images.types";
+import type { ContentFeatures } from "@/services/feed/interests.policy";
 import {
   MongoId,
   UserPublicId,
@@ -19,6 +20,7 @@ export interface IPost extends Document {
     displayName?: string;
   };
   body?: string;
+  contentFeatures?: ContentFeatures;
   slug?: string;
   type: "original" | "repost";
   status: PostStatus;

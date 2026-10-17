@@ -17,6 +17,10 @@ export type FeedSnapshotPaginationResult<T> = CursorPaginationResult<T> & {
  * This separates heavy analytical queries from the domain-focused post read repository.
  */
 export interface IFeedReadDao {
+  getInterestFeedWithCursor(
+    definition: import("@/services/feed/interests.policy").InterestFeedDefinition,
+    options: CursorPaginationOptions,
+  ): Promise<FeedSnapshotPaginationResult<FeedPost>>;
   getPreviewFeedWithCursor(
     definition: FeedPreviewDefinition,
     options: CursorPaginationOptions,
