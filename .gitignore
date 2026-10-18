@@ -21,7 +21,7 @@ backend/audit/logs/*
 backend/audit/archives/*
 backend/audit-logs/*
 scripts/k6
-/uploads
+uploads
 dist
 migrate-atlas-to-local.ts
 notes.txt
