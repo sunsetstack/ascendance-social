@@ -1,7 +1,6 @@
 import { Request, Response } from "express";
 import { QueryBus } from "@/application/common/buses/query.bus";
 import { SearchAllQuery } from "@/application/queries/search/searchAll/searchAll.query";
-import { SearchAllResult } from "@/application/queries/search/searchAll/searchAll.handler";
 import { Errors } from "@/utils/errors";
 import { sanitizeTextInput } from "@/utils/sanitizers";
 import { inject, injectable } from "tsyringe";
@@ -36,7 +35,7 @@ export class SearchController {
       throw Errors.validation('Query parameter "q" is required');
     }
 
-    const result = await this.queryBus.execute<SearchAllResult>(
+    const result = await this.queryBus.execute(
       new SearchAllQuery(searchTerms)
     );
 

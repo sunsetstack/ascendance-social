@@ -56,10 +56,6 @@ describe("CreatePostCommandHandler", () => {
 		uploadImageStream: SinonStub;
 		createImageRecord: SinonStub;
 	};
-	let mockRedisService: {
-		invalidateFeed: SinonStub;
-		invalidateByTags: SinonStub;
-	};
 	let mockEventBus: {
 		queueTransactional: SinonStub;
 		queueDurable: SinonStub;
@@ -117,11 +113,6 @@ describe("CreatePostCommandHandler", () => {
 			createImageRecord: sinon.stub(),
 		};
 
-		mockRedisService = {
-			invalidateFeed: sinon.stub(),
-			invalidateByTags: sinon.stub(),
-		};
-
 		mockEventBus = {
 			queueTransactional: sinon.stub(),
 			queueDurable: sinon.stub(),
@@ -142,7 +133,6 @@ describe("CreatePostCommandHandler", () => {
 			mockCommunityMemberRepository as any,
 			mockTagService as any,
 			mockImageService as any,
-			mockRedisService as any,
 			mockDTOService as any,
 			mockEventBus as any,
 		);

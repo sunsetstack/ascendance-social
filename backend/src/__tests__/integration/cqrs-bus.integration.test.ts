@@ -49,15 +49,23 @@ class OtherQuery implements IQuery {
   readonly type = "OtherQuery" as const;
 }
 
+type TestCommandHandlers =
+  | ICommandHandler<PingCommand, string>
+  | ICommandHandler<OtherCommand, string>;
+
+type TestQueryHandlers =
+  | IQueryHandler<EchoQuery, string>
+  | IQueryHandler<OtherQuery, string>;
+
 // ---------------------------------------------------------------------------
 // CommandBus integration
 // ---------------------------------------------------------------------------
 
 describe("CommandBus integration", () => {
-  let bus: CommandBus;
+  let bus: CommandBus<TestCommandHandlers>;
 
   beforeEach(() => {
-    bus = new CommandBus();
+    bus = new CommandBus<TestCommandHandlers>();
   });
 
   it("dispatches a command to its registered handler and returns the result", async () => {
@@ -66,13 +74,13 @@ describe("CommandBus integration", () => {
     };
     bus.register(PingCommand, handler);
 
-    const result = await bus.dispatch<string>(new PingCommand("hello"));
+    const result = await bus.dispatch(new PingCommand("hello"));
     expect(result).to.equal("pong");
     expect((handler.execute as sinon.SinonStub).calledOnce).to.be.true;
   });
 
   it("passes the exact command instance to the handler", async () => {
-    const stub = sinon.stub().resolves();
+    const stub = sinon.stub().resolves("pong");
     bus.register(PingCommand, { execute: stub });
 
     const cmd = new PingCommand("check-identity");
@@ -90,8 +98,8 @@ describe("CommandBus integration", () => {
     bus.register(OtherCommand, { execute: otherStub });
 
     const [r1, r2] = await Promise.all([
-      bus.dispatch<string>(new PingCommand("x")),
-      bus.dispatch<string>(new OtherCommand()),
+      bus.dispatch(new PingCommand("x")),
+      bus.dispatch(new OtherCommand()),
     ]);
 
     expect(r1).to.equal("ping-result");
@@ -126,13 +134,14 @@ describe("CommandBus integration", () => {
     // Simulate what minification does: renames the constructor but preserves static .type
     class WrappedCommand implements ICommand {
       readonly type = "PingCommand" as const;
+      readonly payload = "minified";
     }
     Object.defineProperty(WrappedCommand, "name", { value: "p" });
 
     const stub = sinon.stub().resolves("minified-ok");
     bus.register(PingCommand, { execute: stub });
 
-    const result = await bus.dispatch<string>(new WrappedCommand());
+    const result = await bus.dispatch(new WrappedCommand());
     expect(result).to.equal("minified-ok");
   });
 
@@ -143,7 +152,7 @@ describe("CommandBus integration", () => {
     bus.register(PingCommand, { execute: first });
     bus.register(PingCommand, { execute: second });
 
-    const result = await bus.dispatch<string>(new PingCommand("x"));
+    const result = await bus.dispatch(new PingCommand("x"));
     expect(result).to.equal("second");
     expect(first.called).to.be.false;
   });
@@ -154,10 +163,10 @@ describe("CommandBus integration", () => {
 // ---------------------------------------------------------------------------
 
 describe("QueryBus integration", () => {
-  let bus: QueryBus;
+  let bus: QueryBus<TestQueryHandlers>;
 
   beforeEach(() => {
-    bus = new QueryBus();
+    bus = new QueryBus<TestQueryHandlers>();
   });
 
   it("executes a query via its registered handler and returns the result", async () => {
@@ -166,7 +175,7 @@ describe("QueryBus integration", () => {
     };
     bus.register(EchoQuery, handler);
 
-    const result = await bus.execute<string>(new EchoQuery("hello"));
+    const result = await bus.execute(new EchoQuery("hello"));
     expect(result).to.equal("echo-result");
   });
 
@@ -189,8 +198,8 @@ describe("QueryBus integration", () => {
     bus.register(OtherQuery, { execute: otherStub });
 
     const [r1, r2] = await Promise.all([
-      bus.execute<string>(new EchoQuery("x")),
-      bus.execute<string>(new OtherQuery()),
+      bus.execute(new EchoQuery("x")),
+      bus.execute(new OtherQuery()),
     ]);
 
     expect(r1).to.equal("echo");
@@ -223,13 +232,14 @@ describe("QueryBus integration", () => {
   it("dispatches using the .type property so minified constructor names still route correctly", async () => {
     class WrappedQuery implements IQuery {
       readonly type = "EchoQuery" as const;
+      readonly text = "minified";
     }
     Object.defineProperty(WrappedQuery, "name", { value: "q" });
 
     const stub = sinon.stub().resolves("minified-ok");
     bus.register(EchoQuery, { execute: stub });
 
-    const result = await bus.execute<string>(new WrappedQuery());
+    const result = await bus.execute(new WrappedQuery());
     expect(result).to.equal("minified-ok");
   });
 });

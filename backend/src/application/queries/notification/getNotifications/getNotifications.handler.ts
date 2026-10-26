@@ -69,11 +69,25 @@ export class GetNotificationsQueryHandler implements IQueryHandler<
       );
 
       if (notifications.length >= limit) {
-        redisLogger.info(`Notification Redis HIT`, {
-          userId,
-          count: notifications.length,
-        });
-        return notifications;
+        const messageNotificationIds = notifications
+          .filter((notification) => notification.targetType === "conversation")
+          .map((notification) => notification.id ?? notification._id ?? "");
+        const validIds = messageNotificationIds.filter((id) =>
+          /^[0-9a-f]{24}$/i.test(id),
+        );
+        const existingIds = await this.notificationRepository.findExistingIds(
+          asUserPublicId(userId),
+          validIds,
+        );
+        if (messageNotificationIds.some((id) => !existingIds.has(id))) {
+          await this.redisService.clearNotificationCaches([userId], validIds);
+        } else {
+          redisLogger.info(`Notification Redis HIT`, {
+            userId,
+            count: notifications.length,
+          });
+          return notifications;
+        }
       }
 
       redisLogger.info(`Notification Redis MISS, fetching from DB`, { userId });

@@ -1,4 +1,3 @@
-import { UserPublicId } from "@/types/branded";
 import { IEventHandler } from "@/application/common/interfaces/event-handler.interface";
 import { inject, injectable } from "tsyringe";
 import { PostUploadedEvent } from "@/application/events/post/post.event";
@@ -47,83 +46,28 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
         return;
       }
 
-      // use tag-based invalidation for efficient cache clearing
-      const tagsToInvalidate: string[] = [];
-
-      // invalidate author's own feeds and metrics
-      tagsToInvalidate.push(
-        CacheKeyBuilder.getUserFeedTag(event.authorPublicId),
-      );
-      tagsToInvalidate.push(
-        CacheKeyBuilder.getUserForYouFeedTag(event.authorPublicId),
-      );
-      tagsToInvalidate.push(`user_post_count:${event.authorPublicId}`);
-
-      logger.info(
-        `[POST_UPLOAD_HANDLER] Getting followers for user: ${event.authorPublicId}`,
-      );
-      const followers = await this.getFollowersOfUser(event.authorPublicId);
-      logger.info(`[POST_UPLOAD_HANDLER] Found ${followers.length} followers`);
-
-      // Get users interested in the post's tags
-      logger.info(
-        `[POST_UPLOAD_HANDLER] Getting users interested in tags: ${event.tags.join(", ")}`,
-      );
-      const tagInterestedUsers = await this.getUsersInterestedInTags(
-        event.tags,
-      );
-      logger.info(
-        `[POST_UPLOAD_HANDLER] Found ${tagInterestedUsers.length} users interested in tags`,
-      );
-
-      // Combine and deduplicate affected users
-      const affectedUsers = [...new Set([...followers, ...tagInterestedUsers])];
-      logger.info(
-        `[POST_UPLOAD_HANDLER] Total affected users: ${affectedUsers.length}`,
-      );
-
-      const feedRecipients = [
-        ...new Set([event.authorPublicId, ...affectedUsers]),
+      const tagsToInvalidate = [
+        CacheKeyBuilder.getTrendingFeedTag(),
+        CacheKeyBuilder.getTrendingTagsTag(),
+        `user_post_count:${event.authorPublicId}`,
       ];
-      if (feedRecipients.length > 0) {
-        await this.redis.addToFeedsBatch(
-          feedRecipients,
-          event.postId,
-          event.timestamp.getTime(),
-          "for_you",
-        );
-        logger.info(
-          `[POST_UPLOAD_HANDLER] Materialized for_you feed for ${feedRecipients.length} users`,
-        );
-      }
 
-      if (affectedUsers.length > 0) {
-        // invalidate affected users' feeds using tags
-        affectedUsers.forEach((userId) => {
-          tagsToInvalidate.push(CacheKeyBuilder.getUserFeedTag(userId));
-          tagsToInvalidate.push(CacheKeyBuilder.getUserForYouFeedTag(userId));
-        });
-      }
-
-      // tag-based invalidation (primary)
-      logger.info(
-        `[POST_UPLOAD_HANDLER] Invalidating cache with ${tagsToInvalidate.length} tags`,
+      const followers = await this.userRepository.findUsersFollowing(
+        event.authorPublicId,
       );
+      const tagInterestedUsers = event.tags.length
+        ? await this.userPreferenceRepository.getUsersWithTagPreferences(event.tags)
+        : [];
+      const affectedUsers = [
+        ...new Set([...followers, ...tagInterestedUsers].map((user) => user.publicId)),
+      ];
+
       await this.redis.invalidateByTags(tagsToInvalidate);
 
-      // fallback cleanup for keys without tag metadata
-      const patterns = [
-        ...CacheKeyBuilder.getUserFeedPatterns(event.authorPublicId),
-        CacheKeyBuilder.getTrendingFeedPattern(),
-        `${CacheKeyBuilder.getTrendingTagsPrefix()}:*`, // Invalidate trending tags
-        // do NOT clear new_feed - lazy refresh only
-      ];
-
-      affectedUsers.forEach((userId) => {
-        patterns.push(...CacheKeyBuilder.getUserFeedPatterns(userId));
-      });
-
-      await this.redis.deletePatterns(patterns);
+      // Retain namespace cleanup until untagged Trending Tags entries expire.
+      await this.redis.deletePatterns([
+        `${CacheKeyBuilder.getTrendingTagsPrefix()}:*`,
+      ]);
 
       // Publish real-time feed update for WebSocket notifications
       if (affectedUsers.length > 0) {
@@ -173,37 +117,6 @@ export class PostUploadHandler implements IEventHandler<PostUploadedEvent> {
           fallbackError,
         });
       });
-      throw error;
-    }
-  }
-
-  private async getFollowersOfUser(
-    userPublicId: UserPublicId,
-  ): Promise<string[]> {
-    try {
-      const followers =
-        await this.userRepository.findUsersFollowing(userPublicId);
-      return followers.map((user) => user.publicId);
-    } catch (error) {
-      logger.error(
-        `[POST_UPLOAD_HANDLER] Error getting followers for user ${userPublicId}`,
-        { error },
-      );
-      throw error;
-    }
-  }
-
-  private async getUsersInterestedInTags(tags: string[]): Promise<string[]> {
-    try {
-      if (!tags || tags.length === 0) return [];
-      const interestedUsers =
-        await this.userPreferenceRepository.getUsersWithTagPreferences(tags);
-      return interestedUsers.map((user) => user.publicId);
-    } catch (error) {
-      logger.error(
-        `[POST_UPLOAD_HANDLER] Error getting users interested in tags ${tags.join(", ")}`,
-        { error },
-      );
       throw error;
     }
   }

@@ -21,7 +21,7 @@ export class UserPreferenceRepository extends BaseRepository<IUserPreference> {
   async getTopUserTags(userId: string, limit = 5): Promise<IUserPreference[]> {
     try {
       return this.model
-        .find({ userId })
+        .find({ userId, score: { $gt: 0 } })
         .sort({ score: -1 })
         .limit(limit)
         .exec();
@@ -95,21 +95,9 @@ export class UserPreferenceRepository extends BaseRepository<IUserPreference> {
         })
         .exec();
 
-      const userIds = [...new Set(preferences.map((pref) => pref.userId))];
-
-      const users = await Promise.all(
-        userIds.map(async (userId) => {
-          try {
-            return await this.userReadRepository.findById(
-              asMongoId(String(userId)),
-            );
-          } catch {
-            return null;
-          }
-        }),
-      );
-
-      return users.filter((user): user is IUser => user !== null);
+      const userIds = [...new Set(preferences.map((pref) => String(pref.userId)))];
+      if (userIds.length === 0) return [];
+      return await this.userReadRepository.findUsersByIds(userIds.map(asMongoId));
     } catch (error) {
       if (error instanceof Error) {
         throw wrapError(error);

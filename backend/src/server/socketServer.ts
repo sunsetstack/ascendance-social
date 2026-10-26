@@ -99,6 +99,8 @@ export class WebSocketServer {
   private stopped = false;
   private adapterReady?: Promise<boolean>;
   private adapterSubscriber?: ReturnType<RedisService["clientInstance"]["duplicate"]>;
+  private closePromise?: Promise<void>;
+  private redisClosePromise?: Promise<void>;
 
   constructor(
     @inject(RedisService) private readonly redisService: RedisService,
@@ -168,11 +170,10 @@ export class WebSocketServer {
       this.authMiddlewareService.assertActiveSession(user),
     );
     server.once("close", () => {
-      this.stopped = true;
-      if (this.revocationRetryTimer) clearTimeout(this.revocationRetryTimer);
-      if (this.adapterSubscriber?.isOpen) {
-        void this.adapterSubscriber.disconnect().catch(() => undefined);
-      }
+      this.stopSocketWork();
+      void this.close().catch((error) => {
+        logger.warn("Socket Redis subscription cleanup failed", { error });
+      });
     });
 
     // Add Redis Adapter for horizontal scaling of Socket.io node processes
@@ -462,6 +463,37 @@ export class WebSocketServer {
     });
   }
 
+  private stopSocketWork(): void {
+    this.stopped = true;
+    if (this.revocationRetryTimer) clearTimeout(this.revocationRetryTimer);
+    this.revocationRetryTimer = undefined;
+  }
+
+  close(): Promise<void> {
+    return this.closePromise ??= this.closeOwnedResources();
+  }
+
+  private async closeOwnedResources(): Promise<void> {
+    this.stopSocketWork();
+    try {
+      await this.getIO().close();
+    } catch (error) {
+      // An external HTTP close can precede Socket.IO's own HTTP close.
+      if (!(error instanceof Error && "code" in error && error.code === "ERR_SERVER_NOT_RUNNING")) throw error;
+    }
+    await this.closeRedisSubscriptions();
+  }
+
+  private closeRedisSubscriptions(): Promise<void> {
+    this.redisClosePromise ??= (async () => {
+      if (this.adapterReady) await this.adapterReady;
+      // QUIT drains the adapter's queued unsubscribe commands before closing its client.
+      if (this.adapterSubscriber?.isOpen) await this.adapterSubscriber.quit();
+      await this.redisService.unsubscribeAll();
+    })();
+    return this.redisClosePromise;
+  }
+
   private async ensureRedisAdapter(): Promise<boolean> {
     this.adapterReady ??= this.configureRedisAdapter();
     const ready = await this.adapterReady;
@@ -694,6 +726,7 @@ export class WebSocketServer {
         previousConversationId,
         socket.id,
       );
+      if (!(await validateSocketSession(this.getIO(), socket)) || !socket.connected) return;
     }
 
     socket.data.activeConversationId = conversationId;

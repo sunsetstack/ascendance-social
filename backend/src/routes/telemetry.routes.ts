@@ -3,7 +3,9 @@ import { injectable, inject } from "tsyringe";
 import { TelemetryService } from "@/services/telemetry.service";
 import { TOKENS } from "@/types/tokens";
 import { logger } from "@/utils/winston";
-import { telemetryBatchSchema } from "@/utils/schemas/telemetry.schemas";
+import { feedTraceBatchSchema, telemetryBatchSchema } from "@/utils/schemas/telemetry.schemas";
+import { isFeedTraceEnabled } from "@/services/feed/feed-trace";
+import rateLimit from "express-rate-limit";
 import {
   AuthMiddlewareService,
   adminRateLimit,
@@ -30,6 +32,18 @@ export class TelemetryRoutes {
   }
 
   private initializeRoutes(): void {
+    this.router.post("/feed-trace", rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false }), this.optionalAuth, (req: Request, res: Response) => {
+      if (!isFeedTraceEnabled()) { res.sendStatus(404); return; }
+      const parsed = feedTraceBatchSchema.safeParse(req.body);
+      if (!parsed.success) { res.status(400).json({ error: "Invalid feed trace batch" }); return; }
+      for (const item of parsed.data.events) {
+        const { stack, ...fields } = item;
+        const error = stack ? new Error(item.message ?? "Browser feed request failed") : undefined;
+        if (error) error.stack = stack;
+        logger.info("Browser feed trace", { ...fields, ...(error ? { error } : {}), traceSource: "browser", observedAt: item.at });
+      }
+      res.status(204).send();
+    });
     // receive telemetry events from frontend
     // use text() middleware to handle sendBeacon which sends as text/plain
     this.router.post(

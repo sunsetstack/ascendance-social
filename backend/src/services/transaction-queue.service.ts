@@ -150,7 +150,7 @@ export class TransactionQueueService {
       throw new Error(`[TransactionQueue] No handler registered for job: ${jobName}`);
     }
     
-    await this.unitOfWork.executeInTransaction(() => handler(payload));
+    await this.unitOfWork.executeWithoutTransaction(() => handler(payload));
   }
 
   /**
@@ -325,7 +325,7 @@ export class TransactionQueueService {
         }
 
         try {
-          await this.unitOfWork.executeInTransaction(() => handler(job.payload));
+          await this.unitOfWork.executeWithoutTransaction(() => handler(job.payload));
           this.metrics.totalProcessed++;
         } catch (error) {
           if (job.attempts < job.maxAttempts) {

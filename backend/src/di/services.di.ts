@@ -1,11 +1,11 @@
-import { container } from "tsyringe";
+import { container, instanceCachingFactory } from "tsyringe";
 
 import { CloudinaryService } from "@/services/cloudinary.service";
 import { AuthService } from "@/services/auth.service";
 import { ImageService } from "@/services/image.service";
+import { AttachmentTransactionService } from "@/services/image/attachment-transaction.service";
 import { CommentService } from "@/services/comment.service";
 import { DTOService } from "@/services/dto.service";
-import { FeedService } from "@/services/feed/feed.service";
 import { RedisService } from "@/services/redis.service";
 import { UserActionService } from "@/services/userAction.service";
 import { RealTimeFeedService } from "@/services/feed/real-time-feed.service";
@@ -20,6 +20,7 @@ import { InteractionMessageHandler } from "@/application/handlers/realtime/Inter
 import { LikeUpdateMessageHandler } from "@/application/handlers/realtime/LikeUpdateMessageHandler";
 import { AvatarUpdateMessageHandler } from "@/application/handlers/realtime/AvatarUpdateMessageHandler";
 import { MessageSentHandler as RealtimeMessageSentHandler } from "@/application/handlers/realtime/MessageSentHandler";
+import { ConversationsChangedHandler as RealtimeConversationsChangedHandler } from "@/application/handlers/realtime/ConversationsChangedHandler";
 import { MessageStatusUpdatedHandler as RealtimeMessageStatusUpdatedHandler } from "@/application/handlers/realtime/MessageStatusUpdatedHandler";
 import { NotificationMessageHandler } from "@/application/handlers/realtime/NotificationMessageHandler";
 import { logger } from "@/utils/winston";
@@ -33,11 +34,9 @@ import { AuthSessionService } from "@/services/auth-session.service";
 import { BloomFilterService } from "@/services/redis/bloom-filter.service";
 import { SecurityAuditService } from "@/services/security-audit.service";
 import { ForensicOperationalErrorService } from "@/services/forensic-operational-error.service";
-import { FeedCoreService } from "@/services/feed/feed-core.service";
 import { FeedReadService } from "@/services/feed/feed-read.service";
 import { FeedInteractionService } from "@/services/feed/feed-interaction.service";
 import { FeedMetaService } from "@/services/feed/feed-meta.service";
-import { FeedFanoutService } from "@/services/feed/feed-fanout.service";
 import { AuthMiddlewareService } from "@/middleware/authentication.middleware";
 import { TOKENS } from "@/types/tokens";
 import { AccountAuditSnapshotService } from "@/services/lifecycle/account-audit-snapshot.service";
@@ -50,7 +49,7 @@ import { MongoAccountConversationCleanupParticipant } from "@/services/lifecycle
 import { EventBusAccountOutboxParticipant } from "@/services/lifecycle/account-outbox.participant";
 import { MongoAccountRecordCleanupParticipant } from "@/services/lifecycle/account-record-cleanup.participant";
 import { MongoAccountSocialCleanupParticipant } from "@/services/lifecycle/account-social-cleanup.participant";
-import { RedisAuthSessionStore } from "@/services/redis/capabilities/redis-auth-session.store";
+import { RedisSessionModule } from "@/services/redis/redis-session.module";
 import { RedisFeedCache } from "@/services/redis/capabilities/redis-feed-cache";
 import { RedisUserLookup } from "@/services/redis/capabilities/redis-user-lookup";
 import { RedisUserSuggestions } from "@/services/redis/capabilities/redis-user-suggestions";
@@ -80,6 +79,7 @@ import type {
 } from "@/services/lifecycle/account-lifecycle.ports";
 
 export function registerServices(): void {
+  container.registerSingleton(TOKENS.Services.AttachmentTransaction, AttachmentTransactionService);
   const isCloudinaryConfigured = [
     process.env.CLOUDINARY_CLOUD_NAME,
     process.env.CLOUDINARY_API_KEY,
@@ -160,19 +160,22 @@ export function registerServices(): void {
     TOKENS.Services.FeedEnrichment,
     FeedEnrichmentService,
   );
-  container.registerSingleton(TOKENS.Services.FeedCore, FeedCoreService);
   container.registerSingleton(TOKENS.Services.FeedRead, FeedReadService);
   container.registerSingleton(
     TOKENS.Services.FeedInteraction,
     FeedInteractionService,
   );
   container.registerSingleton(TOKENS.Services.FeedMeta, FeedMetaService);
-  container.registerSingleton(TOKENS.Services.FeedFanout, FeedFanoutService);
-  container.registerSingleton(TOKENS.Services.Feed, FeedService);
   container.registerSingleton(TOKENS.Services.Redis, RedisService);
-  container.registerSingleton<AuthSessionStore>(
+  container.register<AuthSessionStore>(
     TOKENS.Services.AuthSessionStore,
-    RedisAuthSessionStore,
+    {
+      useFactory: instanceCachingFactory((c) =>
+        new RedisSessionModule(
+          c.resolve<RedisService>(TOKENS.Services.Redis).clientInstance,
+        ),
+      ),
+    },
   );
   container.registerSingleton<FeedCache>(
     TOKENS.Services.FeedCache,
@@ -234,6 +237,7 @@ export function registerServices(): void {
     container.resolve(LikeUpdateMessageHandler),
     container.resolve(AvatarUpdateMessageHandler),
     container.resolve(RealtimeMessageSentHandler),
+    container.resolve(RealtimeConversationsChangedHandler),
     container.resolve(RealtimeMessageStatusUpdatedHandler),
     container.resolve(NotificationMessageHandler),
   ];

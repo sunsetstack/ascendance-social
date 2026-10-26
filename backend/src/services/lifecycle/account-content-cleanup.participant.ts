@@ -112,6 +112,7 @@ export class MongoAccountContentCleanupParticipant
               action === "ban" ? "account_banned" : "account_deleted",
             departedUserKey,
             isEdited: false,
+            image: null,
             likesCount: 0,
           },
         },

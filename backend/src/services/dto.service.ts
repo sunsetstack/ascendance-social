@@ -66,10 +66,6 @@ export class DTOService {
     return mapCommunityMemberDTO(member);
   }
 
-  toPublicUserDTO(user: IUser, _viewerUserId?: string): PublicUserDTO {
-    return mapPublicUserDTO(user);
-  }
-
   toHandleSuggestionDTO(user: IUser): HandleSuggestionDTO {
     return mapHandleSuggestionDTO(user);
   }

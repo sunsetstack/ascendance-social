@@ -103,10 +103,14 @@ export class Server {
     this.app.use(compression());
 
     // Rate Limiting setup
+    const globalRateLimitMax = Number(process.env.GLOBAL_RATE_LIMIT_MAX ?? 300);
+    if (!Number.isSafeInteger(globalRateLimitMax) || globalRateLimitMax <= 0) {
+      throw new Error("GLOBAL_RATE_LIMIT_MAX must be a positive integer");
+    }
     const limiter = rateLimit({
       ...getRateLimitStoreOptions("global"),
       windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 300,
+      max: globalRateLimitMax,
       message: "Too many requests, please try again after 15 minutes",
       standardHeaders: true,
       legacyHeaders: false,

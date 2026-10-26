@@ -1,6 +1,6 @@
 import { Avatar, Box, Typography } from "@mui/material";
 import GroupsIcon from "@mui/icons-material/Groups";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
 import { IPost } from "../../types";
 
 interface PostCardCommunityBadgeProps {
@@ -12,7 +12,6 @@ export const PostCardCommunityBadge: React.FC<PostCardCommunityBadgeProps> = ({
 	post,
 	communityAvatarUrl,
 }) => {
-	const navigate = useNavigate();
 	const community = post.community;
 
 	if (!community?.publicId || !community.name || !community.slug) {
@@ -21,7 +20,11 @@ export const PostCardCommunityBadge: React.FC<PostCardCommunityBadgeProps> = ({
 
 	return (
 		<Box
+			component={RouterLink}
+			to={`/communities/${community.slug}`}
 			sx={{
+				textDecoration: "none",
+				"&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2 },
 				px: 2,
 				pt: 1.5,
 				pb: 0.5,
@@ -31,7 +34,6 @@ export const PostCardCommunityBadge: React.FC<PostCardCommunityBadgeProps> = ({
 			}}
 			onClick={(event) => {
 				event.stopPropagation();
-				navigate(`/communities/${community.slug}`);
 			}}
 		>
 			{community.avatar ? (

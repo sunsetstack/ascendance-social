@@ -18,7 +18,9 @@ import { MessageDTO, toObjectId } from "@/types";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { TOKENS } from "@/types/tokens";
+import { asMongoId } from "@/types/branded";
 import {
+  getConversationClearedAt,
   requireUserInternalId,
   resolveParticipantPublicIds,
 } from "@/application/messaging/messaging-support";
@@ -69,91 +71,60 @@ export class SendMessageCommandHandler implements ICommandHandler<
         senderPublicId,
       );
 
-      let targetConversation = payload.conversationPublicId
-        ? await this.conversationRepository.findByPublicId(
-            payload.conversationPublicId,
-            { populateParticipants: true },
-          )
-        : null;
-
-      if (!targetConversation && !payload.recipientPublicId) {
-        throw Errors.validation(
-          "Recipient is required when no conversation is provided",
-        );
+      if (!payload.conversationPublicId && !payload.recipientPublicId) {
+        throw Errors.validation("Recipient is required when no conversation is provided");
+      }
+      if (
+        !payload.conversationPublicId &&
+        payload.recipientPublicId === senderPublicId
+      ) {
+        throw Errors.validation("You cannot start a conversation with yourself");
       }
 
-      let recipientInternalId: string | null = null;
-      if (targetConversation) {
-        if (targetConversation.isClosed) {
-          throw Errors.validation(
-            "This conversation is closed because a participant is unavailable",
-          );
-        }
-        const existingParticipantIds = getParticipantIds(
-          targetConversation.participants,
-        );
-        if (!new Set(existingParticipantIds).has(senderInternalId)) {
-          throw Errors.forbidden(
-            "You do not have access to this conversation",
-          );
-        }
-      } else if (payload.recipientPublicId) {
-        recipientInternalId = await requireUserInternalId(
-          this.userReadRepository,
-          payload.recipientPublicId,
-        );
-      }
-
-      const messageDoc = await this.unitOfWork.executeInTransaction(
-        async () => {
-          let conversationDoc = targetConversation;
-
-          if (conversationDoc) {
-            await this.messageRepository.markConversationMessagesAsRead(
-              toObjectId(conversationDoc._id).toString(),
-              senderInternalId,
-            );
-
-            await this.conversationRepository.resetUnreadCount(
-              toObjectId(conversationDoc._id).toString(),
-              senderInternalId,
-            );
-          }
+      const { message, conversationPublicId } =
+        await this.unitOfWork.executeInTransaction(async () => {
+          let createdConversation = false;
+          let conversationDoc = payload.conversationPublicId
+            ? await this.conversationRepository.acquireForMutation(payload.conversationPublicId)
+            : null;
 
           if (!conversationDoc) {
-            if (!recipientInternalId) {
-              throw Errors.validation(
-                "Recipient is required when no conversation is provided",
-              );
+            if (!payload.recipientPublicId) {
+              throw Errors.validation("Recipient is required");
             }
-
+            const recipient = await this.userReadRepository.findByPublicId(
+              payload.recipientPublicId,
+            );
+            if (!recipient || recipient.isBanned) {
+              throw Errors.notFound("User");
+            }
+            const recipientInternalId = asMongoId(recipient.id);
             const participantIds = [senderInternalId, recipientInternalId];
             const participantHash = buildParticipantHash(participantIds);
-
-            conversationDoc =
-              await this.conversationRepository.findByParticipantHash(
-                participantHash,
-              );
-
-            if (!conversationDoc) {
-              const participantObjectIds = participantIds.map(
-                (id) => new mongoose.Types.ObjectId(id),
-              );
-              const unreadSeed = new Map<string, number>(
-                participantIds.map((id) => [
-                  id,
-                  id === senderInternalId ? 0 : 1,
-                ]),
-              );
-
+            const existing = await this.conversationRepository.findByParticipantHash(participantHash);
+            if (existing) {
+              conversationDoc = await this.conversationRepository.acquireForMutation(existing.publicId);
+            } else {
               conversationDoc = await this.conversationRepository.create({
-                participantHash,
-                participants: participantObjectIds,
-                lastMessageAt: new Date(),
-                unreadCounts: unreadSeed,
-              });
+                  participantHash,
+                  participants: participantIds.map((id) => new mongoose.Types.ObjectId(id)),
+                  lastMessageAt: new Date(),
+                  unreadCounts: new Map(participantIds.map((id) => [id, 0])),
+                });
+              createdConversation = true;
             }
           }
+          if (!getParticipantIds(conversationDoc.participants).includes(senderInternalId)) {
+            throw Errors.forbidden("You do not have access to this conversation");
+          }
+          if (conversationDoc.isLocked) throw Errors.forbidden("Conversation locked by admin");
+          if (conversationDoc.isClosed) {
+            throw Errors.validation("This conversation is closed because a participant is unavailable");
+          }
+          if (!createdConversation) await this.messageRepository.markConversationMessagesAsRead(
+            conversationDoc._id.toString(), senderInternalId,
+            getConversationClearedAt(conversationDoc, senderInternalId),
+          );
 
           const participantIds: string[] = getParticipantIds(
             conversationDoc!.participants,
@@ -170,12 +141,14 @@ export class SendMessageCommandHandler implements ICommandHandler<
             body: sanitizedBody,
             readBy: [new mongoose.Types.ObjectId(senderInternalId)],
             status: "sent",
+            createdAt: new Date(Math.max(Date.now(), (conversationDoc.lastMessageAt?.getTime() ?? 0) + 1)),
           });
 
           await this.conversationRepository.findOneAndUpdate(
             { _id: conversationDoc!._id },
             {
               $set: {
+                hiddenFor: [],
                 lastMessage: message._id,
                 lastMessageAt: message.createdAt,
                 [`unreadCounts.${senderInternalId}`]: 0,
@@ -219,20 +192,12 @@ export class SendMessageCommandHandler implements ICommandHandler<
             ),
           );
 
-          targetConversation = conversationDoc;
-          return message;
-        },
-      );
-
-      if (!targetConversation) {
-        throw Errors.internal(
-          "Conversation context missing after message creation",
-        );
-      }
+          return { message, conversationPublicId: conversationDoc!.publicId };
+        });
 
       return this.dtoService.toPublicMessageDTO(
-        messageDoc,
-        targetConversation.publicId,
+        message,
+        conversationPublicId,
       );
     } catch (error) {
       if (error instanceof Error && error.name === "AppError") throw error;

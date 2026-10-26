@@ -1,6 +1,7 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { fetchConversationMessages } from "../../api/messagingApi";
 import { ConversationMessagesResponse } from "@/types";
+import { isAxiosError } from "axios";
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_CACHE_MESSAGES = 240;
@@ -10,6 +11,10 @@ export function useConversationMessages(conversationPublicId: string | null, lim
 		queryKey: ["messaging", "conversation", conversationPublicId, limit],
 		enabled: Boolean(conversationPublicId),
 		staleTime: 60000,
+		retry: (failureCount, error) => {
+			if (isAxiosError(error) && [403, 404].includes(error.response?.status ?? 0)) return false;
+			return failureCount < 3;
+		},
 		initialPageParam: 1,
 		getNextPageParam: (lastPage) => {
 			const nextPage = lastPage.page + 1;

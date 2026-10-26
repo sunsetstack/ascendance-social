@@ -13,6 +13,8 @@ import {
 import { MetricsService } from "@/metrics/metrics.service";
 import type { NotificationPlain } from "@/types";
 
+const SUBSCRIPTION_RETRY_INTERVAL_MS = 5000;
+
 export interface FeedUpdateMessage {
   type: RealtimeMessageType;
   eventId?: string;
@@ -40,6 +42,9 @@ export interface FeedUpdateMessage {
 @injectable()
 export class RealTimeFeedService {
   private handlerRegistry = new Map<string, IRealtimeMessageHandler>();
+  private subscriptionRetryTimer?: ReturnType<typeof setTimeout>;
+  private subscriptionAttempts = 0;
+  private stopped = false;
 
   constructor(
     @inject(TOKENS.Services.Redis) private readonly redisService: RedisService,
@@ -51,7 +56,13 @@ export class RealTimeFeedService {
     private readonly metricsService: MetricsService,
   ) {
     this.registerHandlers();
-    this.initializePubSubListener();
+    void this.initializePubSubListener();
+  }
+
+  stop(): void {
+    this.stopped = true;
+    if (this.subscriptionRetryTimer) clearTimeout(this.subscriptionRetryTimer);
+    this.subscriptionRetryTimer = undefined;
   }
 
   /**
@@ -77,6 +88,8 @@ export class RealTimeFeedService {
    * Initialize Redis pub/sub listener for feed updates
    */
   private async initializePubSubListener(): Promise<void> {
+    if (this.stopped) return;
+    this.subscriptionAttempts += 1;
     try {
       // Subscribe to every cross-process realtime channel owned by the API.
       const subscribed = await this.redisService.subscribe(
@@ -86,6 +99,7 @@ export class RealTimeFeedService {
           EventRegistry.redisChannels.notificationUpdates,
         ],
         (channel: string, message: unknown) => {
+          if (this.stopped) return;
           // Handle case where message might be a string that needs parsing
           let parsedMessage: FeedUpdateMessage;
           if (typeof message === "string") {
@@ -103,17 +117,43 @@ export class RealTimeFeedService {
         { timeoutMs: 1500 },
       );
 
+      if (this.stopped) return;
       if (!subscribed) {
         logger.warn(
           "Real-time feed listener not started because Redis is unavailable",
+          { event: "realtime_feed.subscription.unavailable", attempt: this.subscriptionAttempts },
         );
+        this.scheduleSubscriptionRetry();
         return;
       }
 
-      logger.info("Real-time feed update listener initialized");
+      logger.info("Real-time feed update listener initialized", {
+        event: this.subscriptionAttempts > 1
+          ? "realtime_feed.subscription.recovered"
+          : "realtime_feed.subscription.initialized",
+        attempt: this.subscriptionAttempts,
+      });
     } catch (error) {
-      logger.error("Failed to initialize real-time feed listener:", { error });
+      if (this.stopped) return;
+      logger.error("Failed to initialize real-time feed listener:", {
+        event: "realtime_feed.subscription.failed", attempt: this.subscriptionAttempts, error,
+      });
+      this.scheduleSubscriptionRetry();
     }
+  }
+
+  private scheduleSubscriptionRetry(): void {
+    if (this.stopped || this.subscriptionRetryTimer) return;
+    logger.warn("Real-time feed subscription retry scheduled", {
+      event: "realtime_feed.subscription.retry_scheduled",
+      delayMs: SUBSCRIPTION_RETRY_INTERVAL_MS,
+      attempt: this.subscriptionAttempts,
+    });
+    this.subscriptionRetryTimer = setTimeout(() => {
+      this.subscriptionRetryTimer = undefined;
+      void this.initializePubSubListener();
+    }, SUBSCRIPTION_RETRY_INTERVAL_MS);
+    this.subscriptionRetryTimer.unref();
   }
 
   /**

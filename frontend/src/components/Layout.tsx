@@ -12,6 +12,7 @@ const MobileLayout = lazy(() => initialMobileLayout ?? loadMobileLayout());
 const DesktopAppShell = lazy(() =>
 	import("./layout/DesktopAppShell").then((module) => ({ default: module.DesktopAppShell })),
 );
+const InterestsOnboarding = lazy(() => import("./InterestsOnboarding"));
 
 const Layout: React.FC = () => {
 	const theme = useTheme();
@@ -35,26 +36,29 @@ const Layout: React.FC = () => {
 	};
 	const handleCloseUploadModal = () => setIsUploadModalOpen(false);
 
-	if (shouldLockToVerification) {
+	const isAuthPage = ["/login", "/register", "/forgot-password", "/reset-password"].includes(location.pathname.replace(/\/$/, ""));
+	if (shouldLockToVerification && !isAuthPage) {
 		const email = user && "email" in user ? user.email : "";
 		const search = email ? `?email=${encodeURIComponent(email)}` : "";
 		return <Navigate to={`/verify-email${search}`} replace />;
 	}
 
-	// use dedicated mobile layout for mobile devices
-	if (isMobile) {
-		return <MobileLayout />;
-	}
+	const showOnboarding = user && !isAuthPage;
 
 	return (
-		<DesktopAppShell
-			isMessagesPage={isMessagesPage}
-			isAdminPage={isAdminPage}
-			isSettingsPage={isSettingsPage}
-			isUploadModalOpen={isUploadModalOpen}
-			onCloseUploadModal={handleCloseUploadModal}
-			onOpenUploadModal={handleOpenUploadModal}
-		/>
+		<>
+			{showOnboarding && <InterestsOnboarding key={user?.publicId} />}
+			{isMobile ? <MobileLayout /> : (
+				<DesktopAppShell
+					isMessagesPage={isMessagesPage}
+					isAdminPage={isAdminPage}
+					isSettingsPage={isSettingsPage}
+					isUploadModalOpen={isUploadModalOpen}
+					onCloseUploadModal={handleCloseUploadModal}
+					onOpenUploadModal={handleOpenUploadModal}
+				/>
+			)}
+		</>
 	);
 };
 

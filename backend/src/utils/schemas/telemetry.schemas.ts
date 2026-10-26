@@ -110,3 +110,18 @@ export const telemetryBatchSchema = z
 
 export type TelemetryBatchBody = z.infer<typeof telemetryBatchSchema>;
 export type VisitorObservationBody = z.infer<typeof visitorObservationSchema>;
+
+const traceIdentifier = z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/);
+export const feedTraceBatchSchema = z.object({ events: z.array(z.object({
+  event: z.enum(["feed.http.started", "feed.http.completed", "feed.http.failed", "feed.cache.like.optimistic", "feed.cache.like.rollback", "feed.cache.invalidated"]),
+  at: z.string().datetime(),
+  clientRequestId: traceIdentifier.optional(), causedByClientRequestId: traceIdentifier.optional(),
+  serverRequestId: traceIdentifier.optional(), latestSuccessfulAction: traceIdentifier.optional(),
+  postPublicId: z.string().uuid().optional(),
+  path: z.string().max(512).refine(isSafePath).optional(), method: z.string().max(16).optional(),
+  status: z.number().int().min(100).max(599).optional(), durationMs: z.number().finite().nonnegative().optional(),
+  attempt: z.number().int().positive().optional(), code: z.string().max(64).optional(),
+  message: z.string().max(2048).optional(), stack: z.string().max(8192).optional(),
+  affectedQueries: z.number().int().nonnegative().optional(), shouldLike: z.boolean().optional(),
+  profileRefetch: z.boolean().optional(), feedRefetch: z.boolean().optional(), reason: z.string().max(128).optional(),
+}).strict()).min(1).max(25) }).strict();

@@ -14,7 +14,10 @@ export class CommunityMemberRepository extends BaseRepository<ICommunityMember> 
 		communityId: string | Types.ObjectId,
 		userId: string | Types.ObjectId,
 	): Promise<ICommunityMember | null> {
-		return this.model.findOne({ communityId, userId }).exec();
+		const session = this.getSession();
+		const query = this.model.findOne({ communityId, userId });
+		if (session) query.session(session);
+		return query.exec();
 	}
 
 	async findByCommunityAndUsers(
@@ -38,11 +41,12 @@ export class CommunityMemberRepository extends BaseRepository<ICommunityMember> 
 	async deleteByCommunityAndUser(
 		communityId: string | Types.ObjectId,
 		userId: string | Types.ObjectId,
-	): Promise<void> {
+	): Promise<boolean> {
 		const session = this.getSession();
 		const query = this.model.deleteOne({ communityId, userId });
 		if (session) query.session(session);
-		await query.exec();
+		const result = await query.exec();
+		return result.deletedCount === 1;
 	}
 
 	async deleteByCommunityId(communityId: string | Types.ObjectId): Promise<void> {

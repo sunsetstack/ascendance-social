@@ -21,6 +21,8 @@ type NonHttpTerminalErrorContext = {
   errorId?: string;
   operationId?: string;
   worker?: string;
+  handler?: string;
+  phase?: string;
   messageType?: string;
   messageId?: string;
   attempt?: number;
@@ -80,6 +82,8 @@ export function logNonHttpTerminalError(
   const messageId = sanitizeIdentifier(context.messageId);
   const traceId = sanitizeIdentifier(context.traceId);
   const worker = sanitizeMetadata(context.worker);
+  const handler = sanitizeMetadata(context.handler);
+  const phase = sanitizeMetadata(context.phase);
   const messageType = sanitizeMetadata(context.messageType);
   const signal = sanitizeMetadata(context.signal);
   const release = sanitizeMetadata(process.env.RELEASE || process.env.GIT_SHA);
@@ -107,6 +111,8 @@ export function logNonHttpTerminalError(
     operationId,
     errorId,
     ...(worker ? { worker } : {}),
+    ...(handler ? { handler } : {}),
+    ...(phase ? { phase } : {}),
     ...(messageType ? { messageType } : {}),
     ...(messageId ? { messageId } : {}),
     ...(attempt !== undefined ? { attempt } : {}),

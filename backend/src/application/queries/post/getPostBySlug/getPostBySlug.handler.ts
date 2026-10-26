@@ -2,7 +2,7 @@ import { inject, injectable } from "tsyringe";
 import { IQueryHandler } from "@/application/common/interfaces/query-handler.interface";
 import { GetPostBySlugQuery } from "./getPostBySlug.query";
 import type { IPostReadRepository } from "@/repositories/interfaces";
-import { DTOService } from "@/services/dto.service";
+import { GetPostByPublicIdQueryHandler } from "../getPostByPublicId/getPostByPublicId.handler";
 import { Errors } from "@/utils/errors";
 import { PostDTO } from "@/types";
 import { TOKENS } from "@/types/tokens";
@@ -15,7 +15,8 @@ export class GetPostBySlugQueryHandler implements IQueryHandler<
   constructor(
     @inject(TOKENS.Repositories.PostRead)
     private readonly postReadRepository: IPostReadRepository,
-    @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
+    @inject(TOKENS.CQRS.Queries.GetPostByPublicId)
+    private readonly postDetails: GetPostByPublicIdQueryHandler,
   ) {}
 
   async execute(query: GetPostBySlugQuery): Promise<PostDTO> {
@@ -23,6 +24,6 @@ export class GetPostBySlugQueryHandler implements IQueryHandler<
     if (!post) {
       throw Errors.notFound("Post");
     }
-    return this.dtoService.toPostDTO(post);
+    return this.postDetails.toViewerDTO(post, query.viewerPublicId);
   }
 }

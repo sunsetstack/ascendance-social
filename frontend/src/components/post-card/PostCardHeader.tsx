@@ -9,7 +9,8 @@ import {
 } from "@mui/material";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
 import DeleteIcon from "@mui/icons-material/Delete";
-import { useNavigate } from "react-router-dom";
+import EditIcon from "@mui/icons-material/Edit";
+import { Link as RouterLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { IPost } from "../../types";
 
@@ -19,8 +20,11 @@ interface PostCardHeaderProps {
 	hasCommunity: boolean;
 	isAdmin: boolean;
 	onDeleteClick: (event: React.MouseEvent) => void;
+	onEditClick?: (event: React.MouseEvent) => void;
+	onOpen?: (postPublicId: string) => void;
 	media?: React.ReactNode;
 	footer?: React.ReactNode;
+	context?: React.ReactNode;
 	children: React.ReactNode;
 }
 
@@ -30,27 +34,32 @@ export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
 	hasCommunity,
 	isAdmin,
 	onDeleteClick,
+	onEditClick,
+	onOpen,
 	media,
 	footer,
+	context,
 	children,
 }) => {
 	const { t } = useTranslation();
-	const navigate = useNavigate();
+	const profileUrl = `/profile/${post.user?.handle || post.user?.publicId}`;
 
 	return (
 		<Box
 			sx={{
-				px: { xs: 2, sm: 2.25 },
-				pt: hasCommunity ? 0.5 : 2,
-				pb: 1.25,
+				px: 2,
+				pt: hasCommunity ? 1 : 2,
+				pb: 1.5,
 			}}
 		>
 			<Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5 }}>
 				<Avatar
-					sx={{ width: 42, height: 42, cursor: "pointer", border: "1px solid", borderColor: "divider" }}
+					component={RouterLink}
+					to={profileUrl}
+					aria-label={t("post.open_profile", { username: post.user?.username || t("post.unknown_user") })}
+					sx={{ width: 40, height: 40, flexShrink: 0, cursor: "pointer", bgcolor: "#26364a", color: "#d7e6f5" }}
 					onClick={(event) => {
 						event.stopPropagation();
-						navigate(`/profile/${post.user?.handle || post.user?.publicId}`);
 					}}
 				>
 					{post.user?.avatar ? (
@@ -69,6 +78,7 @@ export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
 				</Avatar>
 
 				<Box sx={{ flex: 1, minWidth: 0 }}>
+					{context}
 					{post.type === "repost" && post.repostOf?.user && (
 						<Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.25 }}>
 							{t("post.reposted_from", {
@@ -78,21 +88,26 @@ export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
 					)}
 					<Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 0.75, minWidth: 0 }}>
 						<Typography
+							component={RouterLink}
+							to={profileUrl}
 							variant="body1"
+							noWrap
 							sx={{
+								minWidth: 0,
+								maxWidth: "60%",
 								fontWeight: 700,
 								color: "text.primary",
+								textDecoration: "none",
 								"&:hover": { textDecoration: "underline" },
 							}}
 							onClick={(event) => {
 								event.stopPropagation();
-								navigate(`/profile/${post.user?.handle || post.user?.publicId}`);
 							}}
 						>
 							{post.user?.username || t("post.unknown_user")}
 						</Typography>
 						{post.user?.handle && (
-							<Typography variant="body2" color="text.secondary" noWrap sx={{ minWidth: 0 }}>
+							<Typography variant="body2" color="text.secondary" noWrap sx={{ minWidth: 0, flexShrink: 2 }}>
 								@{post.user.handle}
 							</Typography>
 						)}
@@ -119,13 +134,25 @@ export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
 								sx={{ height: 18, fontSize: "0.65rem" }}
 							/>
 						)}
-						<Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+						<Typography
+							component={RouterLink}
+							to={`/posts/${post.publicId}`}
+							aria-label={t("profile.view_post")}
+							onClick={(event) => {
+								event.stopPropagation();
+								onOpen?.(post.publicId);
+							}}
+							variant="body2"
+							color="text.secondary"
+							sx={{ flexShrink: 0, whiteSpace: "nowrap", textDecoration: "none", "&:hover": { textDecoration: "underline" } }}
+						>
 							· {new Date(post.createdAt).toLocaleDateString(undefined, {
 								month: "short",
 								day: "numeric",
 							})}
 						</Typography>
 
+						{onEditClick && <Tooltip title={t("composer.edit_post")}><IconButton size="small" aria-label={t("composer.edit_post")} onClick={onEditClick} sx={{ ml: "auto", p: 0.5 }}><EditIcon sx={{ fontSize: 18 }} /></IconButton></Tooltip>}
 						{isAdmin && (
 							<Tooltip
 								title={t("admin.delete_post", {
@@ -148,21 +175,12 @@ export const PostCardHeader: React.FC<PostCardHeaderProps> = ({
 								</Tooltip>
 							)}
 					</Box>
+					{post.editedAt && <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>{t("composer.edited")}</Typography>}
 					{children}
-				</Box>
-			</Box>
-
-			{media && (
-				<Box sx={{ width: "100%", display: "flex", justifyContent: "center" }}>
 					{media}
-				</Box>
-			)}
-
-			{footer && (
-				<Box sx={{ ml: { xs: 5.5, sm: 5.75 }, minWidth: 0 }}>
 					{footer}
 				</Box>
-			)}
+			</Box>
 		</Box>
 	);
 };

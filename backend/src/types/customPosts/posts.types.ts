@@ -1,5 +1,6 @@
 import mongoose, { Document } from "mongoose";
 import { IImage } from "@/types/customImages/images.types";
+import type { ContentFeatures } from "@/services/feed/interests.policy";
 import {
   MongoId,
   UserPublicId,
@@ -19,6 +20,8 @@ export interface IPost extends Document {
     displayName?: string;
   };
   body?: string;
+  editedAt?: Date;
+  contentFeatures?: ContentFeatures;
   slug?: string;
   type: "original" | "repost";
   status: PostStatus;
@@ -104,4 +107,53 @@ export type PopulatedPostTag = {
   _id?: mongoose.Types.ObjectId;
   tag: string;
   publicId?: TagPublicId;
+};
+
+export interface PostImageRead {
+  publicId?: string;
+  url?: string;
+  width?: number;
+  height?: number;
+}
+
+export interface PostCommunityRead {
+  publicId?: string;
+  name?: string;
+  slug?: string;
+  avatar?: string;
+}
+
+export type PopulatedRepostRead = Pick<
+  IPost,
+  | "publicId"
+  | "body"
+  | "slug"
+  | "likesCount"
+  | "repostCount"
+  | "commentsCount"
+  | "author"
+> & {
+  image?: PostImageRead | null;
+};
+
+export type PostReadSource = Pick<
+  IPost,
+  | "publicId"
+  | "body"
+  | "editedAt"
+  | "slug"
+  | "type"
+  | "repostCount"
+  | "likesCount"
+  | "commentsCount"
+  | "viewsCount"
+  | "createdAt"
+> & {
+  user?: mongoose.Types.ObjectId | PopulatedPostUser;
+  author?: Partial<IPost["author"]>;
+  tags: (mongoose.Types.ObjectId | PopulatedPostTag | string)[];
+  image?: mongoose.Types.ObjectId | PostImageRead | null;
+  repostOf?: mongoose.Types.ObjectId | PopulatedRepostRead | null;
+  communityId?: mongoose.Types.ObjectId | PostCommunityRead | null;
+  community?: PostCommunityRead | null;
 };

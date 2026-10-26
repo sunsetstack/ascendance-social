@@ -16,7 +16,8 @@ const repositoryRoot = path.resolve(
 const backendRoot = path.join(repositoryRoot, "backend");
 const backendSourceRoot = path.join(backendRoot, "src");
 const composeFile = path.join(repositoryRoot, "docker-compose.test.yml");
-const composeProject = "ascendance-integration-tests";
+const composeProject =
+  process.env.INTEGRATION_COMPOSE_PROJECT ?? "ascendance-integration-tests";
 const mongoPort = Number.parseInt(
   process.env.INTEGRATION_MONGO_PORT ?? "37017",
   10,
@@ -150,14 +151,36 @@ async function stopDependencies() {
 }
 
 async function main() {
-  const suites = await discoverIntegrationSuites(backendSourceRoot);
-  if (suites.length === 0) {
+  const discovered = await discoverIntegrationSuites(backendSourceRoot);
+  if (discovered.length === 0) {
     throw new Error(
       "No backend integration suites were discovered under src/**/__tests__/integration",
     );
   }
 
-  console.log(`[integration] discovered ${suites.length} suite files:`);
+  const requested = process.argv
+    .slice(2)
+    .filter((arg) => arg.startsWith("--suite="))
+    .map((arg) => arg.slice("--suite=".length));
+  for (const name of requested) {
+    if (
+      !discovered.some(
+        (suite) => suite === name || path.basename(suite) === name,
+      )
+    ) {
+      throw new Error(`Unknown integration suite: ${name}`);
+    }
+  }
+  const suites = requested.length
+    ? discovered.filter(
+        (suite) =>
+          requested.includes(suite) || requested.includes(path.basename(suite)),
+      )
+    : discovered;
+
+  console.log(
+    `[integration] selected ${suites.length} of ${discovered.length} discovered suite files:`,
+  );
   for (const suite of suites) console.log(`  - backend/${suite}`);
 
   if (process.argv.includes("--list")) return;
@@ -218,7 +241,7 @@ async function main() {
     };
 
     console.log(
-      `[integration] running all ${suites.length} discovered suites (deadline: ${integrationTimeoutMs / 1000}s)`,
+      `[integration] running ${suites.length} selected suites (deadline: ${integrationTimeoutMs / 1000}s)`,
     );
     await runCommand(
       process.execPath,

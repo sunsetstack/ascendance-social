@@ -26,7 +26,7 @@ import { GetFavoritesQuery } from "@/application/queries/favorite/getFavorites/g
 import { GetFavoritesQueryHandler } from "@/application/queries/favorite/getFavorites/getFavorites.handler";
 import { AppError } from "@/utils/errors";
 import { asUserPublicId, asMongoId } from "@/types/branded";
-import type { PaginationResult, PostDTO } from "@/types";
+import type { PostDTO } from "@/types";
 
 chai.use(chaiAsPromised);
 
@@ -109,7 +109,7 @@ describe("GetFavoritesQueryHandler integration (via QueryBus)", () => {
     stubs.userRepo.findInternalIdByPublicId.resolves(asMongoId(VIEWER_MID));
     stubs.favoriteRepo.findFavoritesByUserId.resolves({ data: [], total: 0 });
 
-    const result = await bus.execute<PaginationResult<PostDTO>>(
+    const result = await bus.execute(
       new GetFavoritesQuery(asUserPublicId(VIEWER_PID), 1, 10),
     );
 
@@ -131,7 +131,7 @@ describe("GetFavoritesQueryHandler integration (via QueryBus)", () => {
       total: 2,
     });
 
-    const result = await bus.execute<PaginationResult<PostDTO>>(
+    const result = await bus.execute(
       new GetFavoritesQuery(asUserPublicId(VIEWER_PID), 1, 10),
     );
 
@@ -147,7 +147,7 @@ describe("GetFavoritesQueryHandler integration (via QueryBus)", () => {
       total: 25,
     });
 
-    const result = await bus.execute<PaginationResult<PostDTO>>(
+    const result = await bus.execute(
       new GetFavoritesQuery(asUserPublicId(VIEWER_PID), 1, 10),
     );
 
@@ -163,7 +163,7 @@ describe("GetFavoritesQueryHandler integration (via QueryBus)", () => {
     stubs.userRepo.findInternalIdByPublicId.resolves(asMongoId(VIEWER_MID));
     stubs.favoriteRepo.findFavoritesByUserId.resolves({ data: [], total: 0 });
 
-    const result = await bus.execute<PaginationResult<PostDTO>>(
+    const result = await bus.execute(
       new GetFavoritesQuery(asUserPublicId(VIEWER_PID), undefined, undefined),
     );
 
@@ -177,7 +177,7 @@ describe("GetFavoritesQueryHandler integration (via QueryBus)", () => {
     stubs.userRepo.findInternalIdByPublicId.resolves(asMongoId(VIEWER_MID));
     stubs.favoriteRepo.findFavoritesByUserId.resolves({ data: [], total: 0 });
 
-    const result = await bus.execute<PaginationResult<PostDTO>>(
+    const result = await bus.execute(
       new GetFavoritesQuery(asUserPublicId(VIEWER_PID), -5, 10),
     );
 
@@ -188,7 +188,7 @@ describe("GetFavoritesQueryHandler integration (via QueryBus)", () => {
     stubs.userRepo.findInternalIdByPublicId.resolves(asMongoId(VIEWER_MID));
     stubs.favoriteRepo.findFavoritesByUserId.resolves({ data: [], total: 0 });
 
-    const result = await bus.execute<PaginationResult<PostDTO>>(
+    const result = await bus.execute(
       new GetFavoritesQuery(asUserPublicId(VIEWER_PID), 1, 0),
     );
 

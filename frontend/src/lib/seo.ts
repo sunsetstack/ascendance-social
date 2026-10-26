@@ -76,6 +76,7 @@ export const buildDiscoveryMetadata = ({ feed }: DiscoveryMetadataOptions = {}):
 		latest: "Latest",
 		new: "Latest",
 		foryou: "For You",
+		custom: "Build a feed",
 		following: "Following",
 	};
 	const normalizedFeed = (feed || "").toLowerCase();

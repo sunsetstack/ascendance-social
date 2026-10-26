@@ -6,6 +6,7 @@ export class GetForYouFeedQuery implements IQuery {
 		public readonly userId: string,
 		public readonly page: number,
 		public readonly limit: number,
-		public readonly cursor?: string
+		public readonly cursor?: string,
+    public readonly destination: "home" | "for-you" = "for-you",
 	) {}
 }

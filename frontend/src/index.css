@@ -25,12 +25,8 @@ html {
 
 body {
 	margin: 0;
-	background:
-		radial-gradient(circle at 18% -10%, rgba(56, 189, 248, 0.1), transparent 30rem),
-		radial-gradient(circle at 88% 0%, rgba(139, 92, 246, 0.08), transparent 26rem),
-		#07090d;
-	background-attachment: fixed;
-	color: #e7e9ea;
+	background: #080b10;
+	color: #e9eef5;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 	overflow-y: scroll;
@@ -50,7 +46,7 @@ body {
 
 ::selection {
 	background: #0ea5e9;
-	color: #ffffff;
+	color: #05131d;
 }
 
 /* ensure viewport-fit=cover is respected */
@@ -63,7 +59,7 @@ body {
 	width: 10px;
 }
 ::-webkit-scrollbar-track {
-	background: #07090d;
+	background: #080b10;
 }
 ::-webkit-scrollbar-thumb {
 	background: #26313d;

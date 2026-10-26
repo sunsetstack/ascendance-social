@@ -2,7 +2,6 @@ import { IEventHandler } from "@/application/common/interfaces/event-handler.int
 import { inject, injectable } from "tsyringe";
 import { UserAvatarChangedEvent } from "./user-interaction.event";
 import { RedisService } from "@/services/redis.service";
-import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
@@ -28,9 +27,6 @@ export class UserAvatarChangedHandler implements IEventHandler<UserAvatarChanged
 
     const avatarTags = [`user_data:${event.userPublicId}`];
     await this.redis.invalidateByTags(avatarTags);
-
-    const followerTags = [CacheKeyBuilder.getUserFeedTag(event.userPublicId)];
-    await this.redis.invalidateByTags(followerTags);
 
     await this.redis.publish(
       EventRegistry.redisChannels.feedUpdates,

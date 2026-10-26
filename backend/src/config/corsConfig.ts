@@ -1,5 +1,6 @@
 import type { CorsOptions } from "cors";
 import { logger } from "@/utils/winston";
+import { Errors } from "@/utils/errors";
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5173",
@@ -82,7 +83,7 @@ export function buildCorsOptions(): CorsOptions {
         event: "cors.origin.blocked",
       });
       return callback(
-        new Error("Request from this origin is blocked by CORS policy"),
+        Errors.forbidden("Request from this origin is blocked by CORS policy"),
       );
     },
     credentials: true,

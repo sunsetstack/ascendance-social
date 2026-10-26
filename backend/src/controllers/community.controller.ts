@@ -14,7 +14,7 @@ import { UpdateCommunityCommand } from "@/application/commands/community/updateC
 import { DeleteCommunityCommand } from "@/application/commands/community/deleteCommunity/deleteCommunity.command";
 import { KickMemberCommand } from "@/application/commands/community/kickMember/kickMember.command";
 import { Errors } from "@/utils/errors";
-import { ICommunity, TypedRequest } from "@/types";
+import { TypedRequest } from "@/types";
 import { DTOService } from "@/services/dto.service";
 import { TOKENS } from "@/types/tokens";
 import type {
@@ -75,7 +75,7 @@ export class CommunityController {
       req.file?.originalname,
       req.file?.mimetype,
     );
-    const community = await this.commandBus.dispatch<ICommunity>(command);
+    const community = await this.commandBus.dispatch(command);
     res.status(201).json(
       this.dtoService.toCommunityDTO(community, {
         isMember: true,
@@ -198,7 +198,7 @@ export class CommunityController {
       decodedUser.publicId,
       updates,
     );
-    const community = await this.commandBus.dispatch<ICommunity>(command);
+    const community = await this.commandBus.dispatch(command);
     res.status(200).json(this.dtoService.toCommunityDTO(community));
   };
 

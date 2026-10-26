@@ -25,7 +25,7 @@ export class PostLikeRepository extends BaseRepository<IPostLike> {
 			if (typeof error === 'object' && error !== null && 'code' in error && error.code === 11000) {
 				return false;
 			}
-			throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to persist post like");
+			throw Errors.database((error instanceof Error ? error.message : String(error)) ?? "failed to persist post like", { cause: error });
 		}
 	}
 

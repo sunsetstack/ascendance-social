@@ -14,13 +14,15 @@ import { telemetry } from "../lib/telemetry";
 import { LoadingSpinner } from "./LoadingSpinner";
 import MentionInput from "./MentionInput";
 import { devError } from "@/lib/devLogger";
+import CharacterCounter, { POST_CHARACTER_LIMIT } from "./CharacterCounter";
 
 interface CreatePostProps {
+	compact?: boolean;
 	onClose?: () => void; // optional callback when post is successfully created for usage in modal
 	defaultCommunityPublicId?: string; // pre-select a community when posting from community page
 }
 
-const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublicId }) => {
+const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublicId, compact = false }) => {
 	const { t } = useTranslation();
 
 	const { user, isLoggedIn } = useAuth();
@@ -30,6 +32,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 
 	const [file, setFile] = useState<File | null>(null);
 	const [preview, setPreview] = useState<string>("");
+	const [expanded, setExpanded] = useState(!compact);
 
 	const [content, setContent] = useState<string>("");
 	const [tags, setTags] = useState<string[]>([]);
@@ -122,9 +125,9 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 	};
 
 	const handleUpload = async () => {
-		// Must have either text or image
-		if (!file && !content.trim()) {
-			alert(t("post.error_empty"));
+		if (content.length > POST_CHARACTER_LIMIT || uploadPostMutation.isPending) return;
+		if (!content.trim() && !tags.length) {
+			alert(t("interests.caption_required"));
 			return;
 		}
 
@@ -161,6 +164,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 			setTags([]);
 			setFile(null);
 			setPreview("");
+			if (compact) setExpanded(false);
 			setSelectedCommunityPublicId(defaultCommunityPublicId || null);
 			if (fileInputRef.current) fileInputRef.current.value = "";
 
@@ -179,29 +183,41 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 		}
 	};
 
-	const isDisabled = (!file && !content.trim()) || uploadPostMutation.isPending;
+	const isDisabled = (!content.trim() && !tags.length) || content.length > POST_CHARACTER_LIMIT || uploadPostMutation.isPending;
+	if (compact && !expanded) {
+		return <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1.5, sm: 2 }, minWidth: 0 }}>
+			<Avatar src={fullAvatarUrl} alt={user?.username} sx={{ width: 42, height: 42 }}>{user?.username?.charAt(0)}</Avatar>
+			<Button onClick={() => setExpanded(true)} onFocus={() => setExpanded(true)} aria-label={t("timeline.placeholder")}
+				sx={{ flex: 1, minWidth: 0, justifyContent: "flex-start", textAlign: "left", px: 0, color: "text.secondary", fontSize: { xs: "1rem", sm: "1.125rem" }, fontWeight: 400 }}>
+				{content.trim() ? t("timeline.continue_draft") : t("timeline.placeholder")}
+			</Button>
+			<Button variant="contained" onClick={() => setExpanded(true)} sx={{ borderRadius: 3, minWidth: 72, py: 1.25 }}>{t("post.post_button")}</Button>
+		</Box>;
+	}
 
 	return (
 		<Box
 			sx={{
-				p: 1,
+				p: 0,
 			}}
 		>
-			<Box sx={{ display: "flex", gap: 2 }}>
+			<Box sx={{ display: "flex", gap: 1.25 }}>
 				<Avatar
 					src={fullAvatarUrl}
 					alt={user?.username}
 					sx={{
-						width: 40,
-						height: 40,
+						width: 36,
+						height: 36,
 					}}
 				/>
-				<Box sx={{ flex: 1, position: "relative" }}>
+				<Box sx={{ flex: 1, minWidth: 0, position: "relative", display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", columnGap: 1 }}>
 					{/* Audience Selector Pill */}
 					<Button
 						onClick={handleAudienceClick}
 						endIcon={<KeyboardArrowDownIcon fontSize="small" />}
 						sx={{
+							gridColumn: compact ? "1" : "1 / -1",
+							justifySelf: "start",
 							color: "primary.main",
 							border: "1px solid",
 							borderColor: "divider",
@@ -209,7 +225,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 							textTransform: "none",
 							fontWeight: 600,
 							fontSize: "0.875rem",
-							mb: 1,
+							mb: 0.5,
 							height: 24,
 							px: 1.5,
 							"&:hover": {
@@ -270,33 +286,42 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 							</>
 						)}
 					</Menu>
+					{compact && <IconButton aria-label={t("timeline.close_composer")} onClick={() => setExpanded(false)}
+						sx={{ gridColumn: 2, gridRow: 1, justifySelf: "end", width: 32, height: 32 }}><CloseIcon fontSize="small" /></IconButton>}
 
-					<MentionInput
-						value={content}
-						onChange={setContent}
-						onKeyDown={handleKeyDown}
-						placeholder={t("post.placeholder")}
-						multiline
-						minRows={2}
-						sx={{
-							fontSize: "1.125rem",
-							lineHeight: 1.5,
-							border: "none",
-							backgroundColor: "transparent",
-							"&:hover": {
+					<Box sx={{ gridColumn: "1 / -1", minWidth: 0 }}>
+						<MentionInput
+							value={content}
+							onChange={setContent}
+							onKeyDown={handleKeyDown}
+							placeholder={t(compact ? "timeline.placeholder" : "post.placeholder")}
+							multiline
+							autoFocus={compact && expanded}
+							minRows={1}
+							maxLength={POST_CHARACTER_LIMIT}
+							sx={{
+								fontSize: "1rem",
+								lineHeight: 1.5,
+								border: "none",
 								backgroundColor: "transparent",
-								borderColor: "transparent",
-							},
-							"&:focus-within": {
-								backgroundColor: "transparent",
-								borderColor: "transparent",
-							},
-						}}
-					/>
+								"&:hover": {
+									backgroundColor: "transparent",
+									borderColor: "transparent",
+								},
+								"&:focus-within": {
+									backgroundColor: "transparent",
+									borderColor: "transparent",
+								},
+							}}
+						/>
+					</Box>
 
 					{/* Image Preview */}
+					{file && !content.trim() && !tags.length && <Typography variant="body2" color="warning.main" sx={{ my: 1, gridColumn: "1 / -1" }}>
+            {t("interests.caption_required")}
+          </Typography>}
 					{preview && (
-						<Box sx={{ mt: 2, position: "relative" }}>
+						<Box sx={{ mt: 1, mb: 1, position: "relative", gridColumn: "1 / -1" }}>
 							<img
 								src={preview}
 								alt={t("post.preview")}
@@ -304,7 +329,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 									width: "100%",
 									maxHeight: "300px",
 									objectFit: "cover",
-									borderRadius: "16px",
+									borderRadius: "10px",
 								}}
 							/>
 							<IconButton
@@ -331,7 +356,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 						</Box>
 					)}
 
-					<Box sx={{ display: "flex", alignItems: "center", gap: 1, color: "primary.main", mb: 1.5, px: 1 }}>
+					<Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 0.75, color: "primary.main", minWidth: 0 }}>
 						<Box sx={{ display: "flex", gap: 0.5 }}>
 							<IconButton
 								aria-label="Add image"
@@ -365,14 +390,17 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 							display: "flex",
 							justifyContent: "flex-end",
 							alignItems: "flex-end",
+							flexDirection: "column",
+							gap: 1,
 						}}
 					>
+						<CharacterCounter value={content} limit={POST_CHARACTER_LIMIT} />
 						<Button
 							variant="contained"
 							onClick={handleUpload}
 							disabled={isDisabled}
 							sx={{
-								borderRadius: 20,
+								borderRadius: 2,
 								textTransform: "none",
 								fontWeight: 700,
 								px: 2.5,
@@ -386,7 +414,7 @@ const CreatePost: React.FC<CreatePostProps> = ({ onClose, defaultCommunityPublic
 								"&:disabled": {
 									opacity: 0.5,
 									bgcolor: "primary.main",
-									color: "white",
+									color: "primary.contrastText",
 								},
 							}}
 						>

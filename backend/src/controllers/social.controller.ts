@@ -3,17 +3,12 @@ import { injectable, inject } from "tsyringe";
 import { CommandBus } from "@/application/common/buses/command.bus";
 import { QueryBus } from "@/application/common/buses/query.bus";
 import { SetFollowStateCommand } from "@/application/commands/users/setFollowState/setFollowState.command";
-import { SetFollowStateResult } from "@/application/commands/users/setFollowState/setFollowState.handler";
 import { LikeActionByPublicIdCommand } from "@/application/commands/users/likeActionByPublicId/likeActionByPublicId.command";
 import { CheckFollowStatusQuery } from "@/application/queries/users/checkFollowStatus/checkFollowStatus.query";
 import { GetFollowersQuery } from "@/application/queries/users/getFollowers/getFollowers.query";
-import { GetFollowersResult } from "@/application/queries/users/getFollowers/getFollowers.handler";
 import { GetFollowingQuery } from "@/application/queries/users/getFollowing/getFollowing.query";
-import { GetFollowingResult } from "@/application/queries/users/getFollowing/getFollowing.handler";
 import { GetWhoToFollowQuery } from "@/application/queries/users/getWhoToFollow/getWhoToFollow.query";
-import { GetWhoToFollowResult } from "@/application/queries/users/getWhoToFollow/getWhoToFollow.handler";
 import { GetHandleSuggestionsQuery } from "@/application/queries/users/getHandleSuggestions/getHandleSuggestions.query";
-import { HandleSuggestionDTO } from "@/services/dto.service";
 import { TypedRequest } from "@/types";
 import type {
   HandleSuggestionsQuery as HandleSuggestionsQueryParams,
@@ -24,8 +19,6 @@ import type {
 import { TOKENS } from "@/types/tokens";
 import { asUserPublicId, asPostPublicId, UserPublicId } from "@/types/branded";
 import { Errors } from "@/utils/errors";
-import { streamPaginatedResponse } from "@/utils/streamResponse";
-import { STREAM_THRESHOLD } from "@/utils/post-helpers";
 
 type EmptyBody = Record<string, never>;
 
@@ -49,7 +42,7 @@ export class SocialController {
     res: Response,
   ): Promise<void> => {
     const { publicId } = req.params;
-    const result = await this.commandBus.dispatch<SetFollowStateResult>(
+    const result = await this.commandBus.dispatch(
       new SetFollowStateCommand(
         this.requireAuthenticatedUserPublicId(req),
         asUserPublicId(publicId),
@@ -64,7 +57,7 @@ export class SocialController {
     res: Response,
   ): Promise<void> => {
     const { publicId } = req.params;
-    const result = await this.commandBus.dispatch<SetFollowStateResult>(
+    const result = await this.commandBus.dispatch(
       new SetFollowStateCommand(
         this.requireAuthenticatedUserPublicId(req),
         asUserPublicId(publicId),
@@ -84,7 +77,7 @@ export class SocialController {
       followerPublicId,
       asUserPublicId(publicId),
     );
-    const isFollowing = await this.queryBus.execute<boolean>(query);
+    const isFollowing = await this.queryBus.execute(query);
     res.status(200).json({ isFollowing });
   };
 
@@ -95,23 +88,9 @@ export class SocialController {
     const { publicId } = req.params;
     const { page, limit } = req.query;
     const query = new GetFollowersQuery(asUserPublicId(publicId), page, limit);
-    const result = await this.queryBus.execute<GetFollowersResult>(query);
+    const result = await this.queryBus.execute(query);
 
-    if (result.users.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(
-        res,
-        result.users,
-        {
-          total: result.total,
-          page: result.page,
-          limit: result.limit,
-          totalPages: result.totalPages,
-        },
-        { arrayKey: "users" },
-      );
-    } else {
-      res.status(200).json(result);
-    }
+    res.status(200).json(result);
   };
 
   getFollowing = async (
@@ -121,23 +100,9 @@ export class SocialController {
     const { publicId } = req.params;
     const { page, limit } = req.query;
     const query = new GetFollowingQuery(asUserPublicId(publicId), page, limit);
-    const result = await this.queryBus.execute<GetFollowingResult>(query);
+    const result = await this.queryBus.execute(query);
 
-    if (result.users.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(
-        res,
-        result.users,
-        {
-          total: result.total,
-          page: result.page,
-          limit: result.limit,
-          totalPages: result.totalPages,
-        },
-        { arrayKey: "users" },
-      );
-    } else {
-      res.status(200).json(result);
-    }
+    res.status(200).json(result);
   };
 
   getWhoToFollow = async (
@@ -147,7 +112,7 @@ export class SocialController {
     const { limit } = req.query;
     const userPublicId = this.requireAuthenticatedUserPublicId(req);
     const query = new GetWhoToFollowQuery(userPublicId, limit);
-    const result = await this.queryBus.execute<GetWhoToFollowResult>(query);
+    const result = await this.queryBus.execute(query);
     res.status(200).json(result);
   };
 
@@ -163,7 +128,7 @@ export class SocialController {
       limit,
       viewerPublicId,
     );
-    const result = await this.queryBus.execute<HandleSuggestionDTO[]>(query);
+    const result = await this.queryBus.execute(query);
     res.status(200).json({ users: result });
   };
 

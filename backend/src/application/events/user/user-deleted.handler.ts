@@ -33,11 +33,6 @@ export class UserDeletedHandler
       const tagsToInvalidate: string[] = [];
       const patternsToDelete: string[] = [];
 
-      // user's own feed tags
-      tagsToInvalidate.push(CacheKeyBuilder.getUserFeedTag(event.userPublicId));
-      tagsToInvalidate.push(
-        CacheKeyBuilder.getUserForYouFeedTag(event.userPublicId),
-      );
       tagsToInvalidate.push(`user_post_count:${event.userPublicId}`);
       tagsToInvalidate.push(`user_profile:${event.userPublicId}`);
       tagsToInvalidate.push("who_to_follow");
@@ -45,9 +40,6 @@ export class UserDeletedHandler
       tagsToInvalidate.push(`user_data:${event.userPublicId}`);
 
       // user's cache patterns
-      patternsToDelete.push(
-        ...CacheKeyBuilder.getUserFeedPatterns(event.userPublicId),
-      );
       patternsToDelete.push(`user:${event.userPublicId}:*`);
       patternsToDelete.push(`notifications:${event.userPublicId}:*`);
       patternsToDelete.push(`notification_count:${event.userPublicId}`);
@@ -60,36 +52,6 @@ export class UserDeletedHandler
       patternsToDelete.push(
         CacheKeyBuilder.getUserDataKey(event.userPublicId),
       );
-      patternsToDelete.push(
-        CacheKeyBuilder.getFollowingIdsKey(event.userPublicId),
-      );
-
-      // clear followers' feeds since they followed this user
-      if (event.followerPublicIds.length > 0) {
-        logger.info(
-          `[UserDeletedHandler] Invalidating feeds for ${event.followerPublicIds.length} followers`,
-        );
-        for (const followerPublicId of event.followerPublicIds) {
-          tagsToInvalidate.push(
-            CacheKeyBuilder.getUserFeedTag(followerPublicId),
-          );
-          tagsToInvalidate.push(
-            CacheKeyBuilder.getUserForYouFeedTag(followerPublicId),
-          );
-          patternsToDelete.push(
-            ...CacheKeyBuilder.getUserFeedPatterns(followerPublicId),
-          );
-        }
-      }
-
-      const deletedPostPublicIds = event.deletedPostPublicIds ?? [];
-      if (deletedPostPublicIds.length > 0) {
-        await this.redis.removePostsFromFeedsBatch(
-          [event.userPublicId, ...event.followerPublicIds],
-          deletedPostPublicIds,
-          "for_you",
-        );
-      }
 
       const affectedRelationshipPublicIds = [
         ...new Set(
@@ -106,16 +68,11 @@ export class UserDeletedHandler
         patternsToDelete.push(
           CacheKeyBuilder.getUserDataKey(affectedPublicId),
         );
-        patternsToDelete.push(
-          CacheKeyBuilder.getFollowingIdsKey(affectedPublicId),
-        );
       }
 
       // invalidate global feeds that might contain user's posts
       tagsToInvalidate.push(CacheKeyBuilder.getTrendingFeedTag());
       tagsToInvalidate.push(CacheKeyBuilder.getNewFeedTag());
-      patternsToDelete.push(CacheKeyBuilder.getTrendingFeedPattern());
-      patternsToDelete.push(`${CacheKeyBuilder.PREFIXES.NEW_FEED}:*`);
 
       // perform cache invalidation
       const uniqueTagsToInvalidate = [...new Set(tagsToInvalidate)];

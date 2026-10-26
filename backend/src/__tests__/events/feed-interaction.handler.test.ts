@@ -5,9 +5,9 @@ import { expect } from "chai";
 import * as sinon from "sinon";
 import { FeedInteractionHandler } from "@/application/events/user/feed-interaction.handler";
 import { UserInteractedWithPostEvent } from "@/application/events/user/user-interaction.event";
-import { FeedService } from "@/services/feed/feed.service";
+import { FeedInteractionService } from "@/services/feed/feed-interaction.service";
+import { FeedMetaService } from "@/services/feed/feed-meta.service";
 import { RedisService } from "@/services/redis.service";
-import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
 import { IPost } from "@/types";
 import type {
   IPostReadRepository,
@@ -21,26 +21,26 @@ const OWNER_PUBLIC_ID = asUserPublicId("owner456");
 
 describe("FeedInteractionHandler", () => {
   let handler: FeedInteractionHandler;
-  let feedServiceMock: sinon.SinonStubbedInstance<FeedService>;
+  let feedInteractionServiceMock: sinon.SinonStubbedInstance<FeedInteractionService>;
+  let feedMetaServiceMock: sinon.SinonStubbedInstance<FeedMetaService>;
   let redisServiceMock: sinon.SinonStubbedInstance<RedisService>;
   let userRepositoryMock: {
     findByPublicId: sinon.SinonStub;
     findUsersFollowing: sinon.SinonStub;
   };
-  let userPreferenceRepositoryMock: sinon.SinonStubbedInstance<UserPreferenceRepository>;
   let postRepositoryMock: {
     findByPublicId: sinon.SinonStub;
   };
 
   beforeEach(() => {
     // Create stubs for all dependencies
-    feedServiceMock = sinon.createStubInstance(FeedService);
+    feedInteractionServiceMock = sinon.createStubInstance(FeedInteractionService);
+    feedMetaServiceMock = sinon.createStubInstance(FeedMetaService);
     redisServiceMock = sinon.createStubInstance(RedisService);
     userRepositoryMock = {
       findByPublicId: sinon.stub().resolves({ isBanned: false }),
       findUsersFollowing: sinon.stub(),
     };
-    userPreferenceRepositoryMock = sinon.createStubInstance(UserPreferenceRepository);
     postRepositoryMock = {
       findByPublicId: sinon.stub().resolves({
         publicId: POST_PUBLIC_ID,
@@ -49,12 +49,12 @@ describe("FeedInteractionHandler", () => {
     };
 
     // Register mocks in the DI container
-    container.register("FeedService", { useValue: feedServiceMock });
+    container.register("FeedInteractionService", { useValue: feedInteractionServiceMock });
+    container.register("FeedMetaService", { useValue: feedMetaServiceMock });
     container.register("RedisService", { useValue: redisServiceMock });
     container.register("UserReadRepository", {
       useValue: userRepositoryMock as unknown as IUserReadRepository,
     });
-    container.register("UserPreferenceRepository", { useValue: userPreferenceRepositoryMock });
     container.register("PostReadRepository", {
       useValue: postRepositoryMock as unknown as IPostReadRepository,
     });
@@ -68,14 +68,14 @@ describe("FeedInteractionHandler", () => {
     container.clearInstances();
   });
 
-  it("should handle a 'like' event by updating meta and invalidating only the actor's feed", async () => {
+  it("records a like and updates metadata without structural cache invalidation", async () => {
     // Arrange
     const event = new UserInteractedWithPostEvent(ACTOR_PUBLIC_ID, "like", POST_PUBLIC_ID, ["tag1"], OWNER_PUBLIC_ID);
     const mockPost = { publicId: "postABC", likesCount: 10 } as IPost;
 
     postRepositoryMock.findByPublicId.resolves(mockPost);
-    feedServiceMock.recordInteraction.resolves();
-    feedServiceMock.updatePostLikeMeta.resolves();
+    feedInteractionServiceMock.recordInteraction.resolves();
+    feedMetaServiceMock.updatePostLikeMeta.resolves();
     redisServiceMock.invalidateByTags.resolves();
     redisServiceMock.pushToStream.resolves();
     redisServiceMock.publish.resolves();
@@ -85,33 +85,22 @@ describe("FeedInteractionHandler", () => {
 
     // Assert
     // 1. It should record the base interaction
-    expect(feedServiceMock.recordInteraction.calledOnceWith("user123", "like", "postABC", ["tag1"])).to.be.true;
+    expect(feedInteractionServiceMock.recordInteraction.calledOnceWith("user123", "like", "postABC", ["tag1"])).to.be.true;
 
     // 2. It should update the post's like metadata cache
     expect(postRepositoryMock.findByPublicId.calledOnceWith("postABC")).to.be.true;
-    expect(feedServiceMock.updatePostLikeMeta.calledOnceWith("postABC", 10)).to.be.true;
+    expect(feedMetaServiceMock.updatePostLikeMeta.calledOnceWith("postABC", 10)).to.be.true;
 
-    // 3. It should invalidate only the actor's structural feed cache using tags
-    expect(redisServiceMock.invalidateByTags.calledOnceWith([`user_feed:user123`, `user_for_you_feed:user123`])).to.be
-      .true;
+    expect(redisServiceMock.invalidateByTags.called).to.be.false;
 
-    // 4. It should NOT perform broader invalidation for a simple like
     expect(userRepositoryMock.findUsersFollowing.called).to.be.false;
   });
 
-  it("should handle a 'comment' event by performing broader feed invalidation", async () => {
+  it("records a comment and writes its interaction stream event", async () => {
     // Arrange
     const event = new UserInteractedWithPostEvent(ACTOR_PUBLIC_ID, "comment", POST_PUBLIC_ID, ["tag1"], OWNER_PUBLIC_ID);
 
-    // Mock affected user lookups
-    userRepositoryMock.findUsersFollowing
-      .withArgs("owner456")
-      .resolves([{ publicId: "follower1" }, { publicId: "follower2" }] as any);
-    userPreferenceRepositoryMock.getUsersWithTagPreferences
-      .withArgs(["tag1"])
-      .resolves([{ publicId: "tagLover1" }] as any);
-
-    feedServiceMock.recordInteraction.resolves();
+    feedInteractionServiceMock.recordInteraction.resolves();
     redisServiceMock.invalidateByTags.resolves();
     redisServiceMock.pushToStream.resolves();
     redisServiceMock.publish.resolves();
@@ -121,31 +110,20 @@ describe("FeedInteractionHandler", () => {
 
     // Assert
     // 1. It should record the base interaction
-    expect(feedServiceMock.recordInteraction.calledOnceWith("user123", "comment", "postABC", ["tag1"])).to.be.true;
+    expect(feedInteractionServiceMock.recordInteraction.calledOnceWith("user123", "comment", "postABC", ["tag1"])).to.be.true;
 
     // 2. It should NOT update like meta for a comment
-    expect(feedServiceMock.updatePostLikeMeta.called).to.be.false;
+    expect(feedMetaServiceMock.updatePostLikeMeta.called).to.be.false;
 
-    // 3. It should find all affected users (followers and tag-interested users)
-    expect(userRepositoryMock.findUsersFollowing.calledOnce).to.be.true;
-    expect(userPreferenceRepositoryMock.getUsersWithTagPreferences.calledOnce).to.be.true;
-
-    // 4. It should invalidate all affected users' feeds using tags
-    expect(redisServiceMock.invalidateByTags.calledOnce).to.be.true;
-    const tagsArg = redisServiceMock.invalidateByTags.firstCall.args[0];
-    // Should include actor's feeds and affected users' feeds
-    expect(tagsArg).to.include(`user_feed:user123`);
-    expect(tagsArg).to.include(`user_for_you_feed:user123`);
-    expect(tagsArg).to.include(`user_feed:follower1`);
-    expect(tagsArg).to.include(`user_feed:follower2`);
-    expect(tagsArg).to.include(`user_feed:tagLover1`);
+    expect(redisServiceMock.pushToStream.calledOnce).to.be.true;
+    expect(redisServiceMock.invalidateByTags.called).to.be.false;
   });
 
   it("should throw an error if recordInteraction fails", async () => {
     // Arrange
     const event = new UserInteractedWithPostEvent(ACTOR_PUBLIC_ID, "like", POST_PUBLIC_ID, [], OWNER_PUBLIC_ID);
     const testError = new Error("Database connection lost");
-    feedServiceMock.recordInteraction.rejects(testError);
+    feedInteractionServiceMock.recordInteraction.rejects(testError);
 
     // Act & Assert
     try {
@@ -173,7 +151,7 @@ describe("FeedInteractionHandler", () => {
 
     await handler.handle(event);
 
-    expect(feedServiceMock.recordInteraction.called).to.be.false;
+    expect(feedInteractionServiceMock.recordInteraction.called).to.be.false;
     expect(redisServiceMock.pushToStream.called).to.be.false;
   });
 });

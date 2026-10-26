@@ -9,12 +9,10 @@ import { CommentRepository } from "@/repositories/comment.repository";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
 import { NotificationRequestedEvent } from "@/application/events/notification/notification.event";
 import { Errors } from "@/utils/errors";
-import { UnitOfWork } from "@/database/UnitOfWork";
-import sanitizeHtml from "sanitize-html";
-import { sanitizeForMongo, isValidPublicId } from "@/utils/sanitizers";
+import { AttachmentTransactionService } from "@/services/image/attachment-transaction.service";
+import { sanitizeForMongo, isValidPublicId, sanitize, sanitizedTextLength } from "@/utils/sanitizers";
 import { IComment, TransformedComment, PopulatedPostUser } from "@/types";
 import mongoose from "mongoose";
-import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 import { extractTagNames, buildPostPreview } from "@/utils/post-helpers";
 import { asMongoId, asUserPublicId, asPostPublicId } from "@/types/branded";
@@ -25,8 +23,8 @@ export class CreateCommentCommandHandler implements ICommandHandler<
   TransformedComment
 > {
   constructor(
-    @inject(TOKENS.Repositories.UnitOfWork)
-    private readonly unitOfWork: UnitOfWork,
+    @inject(TOKENS.Services.AttachmentTransaction)
+    private readonly attachments: AttachmentTransactionService,
     @inject(TOKENS.Repositories.PostRead)
     private readonly postReadRepository: IPostReadRepository,
     @inject(TOKENS.Repositories.PostWrite)
@@ -55,21 +53,18 @@ export class CreateCommentCommandHandler implements ICommandHandler<
     }
 
     const trimmed = command.content.trim();
-    if (!trimmed) {
+    if (!trimmed && !command.imageBuffer) {
       throw Errors.validation("Comment content cannot be empty");
     }
 
-    const safeContent = sanitizeHtml(trimmed, {
-      allowedTags: [],
-      allowedAttributes: {},
-    });
+    const safeContent = sanitize(trimmed);
 
-    if (!safeContent || safeContent.length === 0) {
+    if (!safeContent && !command.imageBuffer) {
       throw Errors.validation("Comment content empty after sanitization");
     }
 
-    if (safeContent.length > 280) {
-      throw Errors.validation("Comment cannot exceed 280 characters");
+    if (sanitizedTextLength(safeContent) > 500) {
+      throw Errors.validation("Comment cannot exceed 500 characters");
     }
 
     let createdComment!: IComment;
@@ -77,10 +72,6 @@ export class CreateCommentCommandHandler implements ICommandHandler<
     let postOwnerId: string;
     let parentComment: IComment | null = null;
     let depth = 0;
-
-    logger.info(
-      `[CREATECOMMENTHANDLER] user=${command.userPublicId} post=${command.postPublicId}`,
-    );
 
     const user = await this.userReadRepository.findByPublicId(
       command.userPublicId,
@@ -125,9 +116,10 @@ export class CreateCommentCommandHandler implements ICommandHandler<
         : (postOwner?.toString() ?? "");
     const sanitizedPostId = post.publicId;
 
-    await this.unitOfWork.executeInTransaction(async () => {
+    await this.attachments.run(command, user, async (image) => {
       const payload: Partial<IComment> = {
         content: safeContent,
+        image,
         postId: post._id as mongoose.Types.ObjectId,
         userId: user._id as mongoose.Types.ObjectId,
         parentId: command.parentId
@@ -209,47 +201,26 @@ export class CreateCommentCommandHandler implements ICommandHandler<
 
       // Handle mentions
       const mentionRegex = /@([a-zA-Z0-9._]+)/g;
-      logger.info(
-        `[CreateComment] Content for mention parsing: "${safeContent}"`,
-      );
       const mentions = [...safeContent.matchAll(mentionRegex)].map(
         (match) => match[1],
-      );
-      logger.info(
-        `[CreateComment] Raw mentions found: ${JSON.stringify(mentions)}`,
       );
 
       if (mentions.length > 0) {
         const uniqueMentions = [...new Set(mentions)];
-        logger.info(
-          `[CreateComment] Looking up users for: ${uniqueMentions.join(", ")}`,
-        );
         const mentionedUsers =
           await this.userReadRepository.findUsersByHandles(uniqueMentions);
-        logger.info(`[CreateComment] Found ${mentionedUsers.length} users`);
 
         for (const mentionedUser of mentionedUsers) {
-          logger.info(
-            `[CreateComment] Checking user ${mentionedUser.username} (${mentionedUser.publicId})`,
-          );
-
           // Filter: Remove comment author
           if (mentionedUser.publicId === command.userPublicId) {
-            logger.info(`[CreateComment] Skipping self-mention`);
             continue;
           }
 
           // Filter: Remove post owner since I already notified them above
           if (mentionedUser.publicId === postOwnerId) {
-            logger.info(
-              `[CreateComment] Skipping post owner (already notified)`,
-            );
             continue;
           }
 
-          logger.info(
-            `[CreateComment] Creating mention notification for ${mentionedUser.publicId}`,
-          );
           await this.eventBus.queueTransactional(
             new NotificationRequestedEvent({
               receiverId: asUserPublicId(mentionedUser.publicId),

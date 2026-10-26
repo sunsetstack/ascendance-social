@@ -29,6 +29,7 @@ interface MentionInputProps {
 	multiline?: boolean;
 	minRows?: number;
 	maxRows?: number;
+	maxLength?: number;
 	onKeyDown?: (e: React.KeyboardEvent) => void;
 	onFocus?: (e: React.FocusEvent) => void;
 	onBlur?: (e: React.FocusEvent) => void;
@@ -45,6 +46,7 @@ const MentionInput: React.FC<MentionInputProps> = ({
 	multiline,
 	minRows = 1,
 	maxRows,
+	maxLength,
 	onKeyDown,
 	onFocus,
 	onBlur,
@@ -294,6 +296,7 @@ const MentionInput: React.FC<MentionInputProps> = ({
 					autoFocus={autoFocus}
 					fullWidth
 					inputProps={{
+						maxLength,
 						onScroll: handleScroll,
 						role: "combobox",
 						"aria-autocomplete": "list",

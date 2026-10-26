@@ -1,6 +1,5 @@
 import { NextFunction, Response } from "express";
 import { Errors } from "@/utils/errors";
-import { streamPaginatedResponse } from "@/utils/streamResponse";
 import { inject, injectable } from "tsyringe";
 import { CommandBus } from "@/application/common/buses/command.bus";
 import { QueryBus } from "@/application/common/buses/query.bus";
@@ -15,10 +14,6 @@ import { GetCommentRepliesQuery } from "@/application/queries/comments/getCommen
 import { TypedRequest } from "@/types";
 import { TOKENS } from "@/types/tokens";
 import { asPostPublicId, asUserPublicId } from "@/types/branded";
-import {
-  CommentListResult,
-  CommentThreadResult,
-} from "@/application/comments/comment-query.types";
 import type {
   CommentIdParams,
   CommentsQuery,
@@ -29,8 +24,6 @@ import type {
 import type { PostPublicIdParams } from "@/utils/schemas/post.schemas";
 import type { PublicIdParams as UserPublicIdParams } from "@/utils/schemas/user.schemas";
 
-/** Threshold for enabling streaming responses (items) */
-import { STREAM_THRESHOLD } from "@/utils/post-helpers";
 
 type EmptyBody = Record<string, never>;
 
@@ -62,6 +55,9 @@ export class CommentController {
       asPostPublicId(postPublicId),
       content,
       parentId ?? null,
+      req.file?.buffer,
+      req.file?.mimetype,
+      req.file?.originalname,
     );
     const comment = await this.commandBus.dispatch(command);
 
@@ -78,7 +74,7 @@ export class CommentController {
     // Limit max comments per page to prevent abuse
     const maxLimit = Math.min(limit, 50);
 
-    const result = await this.queryBus.execute<CommentListResult>(
+    const result = await this.queryBus.execute(
       new GetCommentsByPostQuery(
         asPostPublicId(postPublicId),
         page,
@@ -155,7 +151,7 @@ export class CommentController {
     // Limit max comments per page
     const maxLimit = Math.min(limit, 100);
 
-    const result = await this.queryBus.execute<CommentListResult>(
+    const result = await this.queryBus.execute(
       new GetCommentsByUserQuery(
         asUserPublicId(publicId),
         page,
@@ -165,21 +161,7 @@ export class CommentController {
       ),
     );
 
-    if (result.comments.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(
-        res,
-        result.comments,
-        {
-          total: result.total,
-          page: result.page,
-          limit: result.limit,
-          totalPages: result.totalPages,
-        },
-        { arrayKey: "comments" },
-      );
-    } else {
-      res.json(result);
-    }
+    res.json(result);
   };
 
   getCommentThread = async (
@@ -188,7 +170,7 @@ export class CommentController {
     next: NextFunction,
   ): Promise<void> => {
     const { commentId } = req.params;
-    const result = await this.queryBus.execute<CommentThreadResult>(
+    const result = await this.queryBus.execute(
       new GetCommentThreadQuery(commentId),
     );
 
@@ -209,7 +191,7 @@ export class CommentController {
 
     const maxLimit = Math.min(limit, 50);
 
-    const result = await this.queryBus.execute<CommentListResult>(
+    const result = await this.queryBus.execute(
       new GetCommentRepliesQuery(commentId, page, maxLimit),
     );
     res.json(result);

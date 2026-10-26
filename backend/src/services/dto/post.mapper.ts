@@ -1,10 +1,10 @@
 import { FeedPost, IPost, PostDTO } from "@/types";
+import type { PostCommunityRead, PostImageRead, PostReadSource } from "@/types";
 import {
   asCommunityPublicId,
   asImagePublicId,
   asPostPublicId,
   asUserPublicId,
-  UserPublicId,
 } from "@/types/branded";
 
 export function toPostDTO(post: IPost | FeedPost): PostDTO {
@@ -22,15 +22,7 @@ function feedPostToDTO(post: FeedPost): PostDTO {
   const tags = post.tags.map((tag) => tag.tag).filter(Boolean);
   const repostOf = buildFeedPostRepostOf(post.repostOf);
 
-  const image =
-    post.image?.url && post.image?.publicId
-      ? {
-          url: post.image.url,
-          publicId: asImagePublicId(post.image.publicId),
-          width: post.image.width,
-          height: post.image.height,
-        }
-      : null;
+  const image = buildImageDTO(post.image);
 
   const url = post.image?.url ?? undefined;
   const imagePublicId = post.image?.publicId
@@ -40,6 +32,7 @@ function feedPostToDTO(post: FeedPost): PostDTO {
   return {
     publicId: asPostPublicId(post.publicId),
     body: post.body,
+    editedAt: post.editedAt,
     slug: post.slug,
     type: post.type === "repost" || repostOf ? "repost" : "original",
     repostCount: post.repostCount ?? 0,
@@ -49,6 +42,8 @@ function feedPostToDTO(post: FeedPost): PostDTO {
     imagePublicId,
     tags,
     likes: post.likes,
+    isLikedByViewer: post.isLikedByViewer,
+    isRepostedByViewer: post.isRepostedByViewer,
     commentsCount: post.commentsCount,
     viewsCount: post.viewsCount,
     createdAt: post.createdAt,
@@ -63,70 +58,70 @@ function feedPostToDTO(post: FeedPost): PostDTO {
 }
 
 function iPostToDTO(post: IPost): PostDTO {
-  const rawObj = (post.toObject ? post.toObject() : post) as Record<
-    string,
-    unknown
-  >;
+  const rawObj: PostReadSource = post.toObject ? post.toObject() : post;
 
   const tags = Array.isArray(rawObj.tags)
-    ? (rawObj.tags as unknown[]).map((tag: unknown) => {
+    ? rawObj.tags.map((tag) => {
         if (typeof tag === "string") return tag;
         if (tag && typeof tag === "object" && "tag" in tag) {
-          return String((tag as { tag: unknown }).tag);
+          return String(tag.tag);
         }
         return "";
       })
     : [];
 
-  const imageRef = rawObj.image as unknown;
+  const imageRef = rawObj.image;
   const imageData =
     imageRef && typeof imageRef === "object" && !("_bsontype" in imageRef)
-      ? (imageRef as { url?: string; publicId?: string; width?: number; height?: number })
+      ? imageRef
       : null;
   const url = imageData?.url ?? undefined;
   const imagePublicId = imageData?.publicId
     ? asImagePublicId(imageData.publicId)
     : undefined;
-  const image = url && imagePublicId
-    ? { url, publicId: imagePublicId, width: imageData?.width, height: imageData?.height }
-    : null;
+  const image = buildImageDTO(imageData);
 
   const userSnapshot = resolveIPostUserSnapshot(rawObj);
   const repostOf = buildIPostRepostOf(rawObj);
 
-  const communityRef = (rawObj.communityId ?? rawObj.community) as unknown;
+  const communityRef = rawObj.communityId ?? rawObj.community;
   const community =
     communityRef &&
     typeof communityRef === "object" &&
     !("_bsontype" in communityRef)
-      ? buildCommunityFromRef(
-          communityRef as {
-            publicId?: string;
-            name?: string;
-            slug?: string;
-            avatar?: string;
-          },
-        )
+      ? buildCommunityFromRef(communityRef)
       : null;
 
   return {
-    publicId: asPostPublicId(rawObj.publicId as string),
-    body: rawObj.body as string | undefined,
-    slug: rawObj.slug as string | undefined,
-    type: (rawObj.type as "original" | "repost") ?? "original",
-    repostCount: (rawObj.repostCount as number) ?? 0,
+    publicId: asPostPublicId(rawObj.publicId),
+    body: rawObj.body,
+    editedAt: rawObj.editedAt,
+    slug: rawObj.slug,
+    type: rawObj.type ?? "original",
+    repostCount: rawObj.repostCount ?? 0,
     repostOf,
     image,
     url,
     imagePublicId,
     tags: tags.filter(Boolean),
-    likes: (rawObj.likesCount as number) ?? 0,
-    commentsCount: (rawObj.commentsCount as number) ?? 0,
-    viewsCount: (rawObj.viewsCount as number) ?? 0,
-    createdAt: rawObj.createdAt as Date,
+    likes: rawObj.likesCount ?? 0,
+    commentsCount: rawObj.commentsCount ?? 0,
+    viewsCount: rawObj.viewsCount ?? 0,
+    createdAt: rawObj.createdAt,
     user: userSnapshot,
     community,
   };
+}
+
+function buildImageDTO(image: PostImageRead | null | undefined): PostDTO["image"] {
+  return image?.url && image.publicId
+    ? {
+        url: image.url,
+        publicId: asImagePublicId(image.publicId),
+        width: image.width,
+        height: image.height,
+      }
+    : null;
 }
 
 function buildFeedPostCommunity(
@@ -146,15 +141,7 @@ function buildFeedPostRepostOf(
 ): PostDTO["repostOf"] {
   if (!repost?.publicId) return undefined;
 
-  const image =
-    repost.image?.url && repost.image?.publicId
-      ? {
-          url: repost.image.url,
-          publicId: asImagePublicId(repost.image.publicId),
-          width: repost.image.width,
-          height: repost.image.height,
-        }
-      : null;
+  const image = buildImageDTO(repost.image);
 
   return {
     publicId: asPostPublicId(repost.publicId),
@@ -173,12 +160,7 @@ function buildFeedPostRepostOf(
   };
 }
 
-function buildCommunityFromRef(source: {
-  publicId?: string;
-  name?: string;
-  slug?: string;
-  avatar?: string;
-}): PostDTO["community"] {
+function buildCommunityFromRef(source: PostCommunityRead): PostDTO["community"] {
   if (!source.publicId) return null;
   return {
     publicId: asCommunityPublicId(source.publicId),
@@ -188,92 +170,48 @@ function buildCommunityFromRef(source: {
   };
 }
 
-function resolveIPostUserSnapshot(rawObj: Record<string, unknown>): {
-  publicId: UserPublicId;
-  handle: string;
-  username: string;
-  avatar: string;
-} {
+function resolveIPostUserSnapshot(rawObj: PostReadSource): PostDTO["user"] {
   const userRef = rawObj.user;
   if (userRef && typeof userRef === "object" && !("_bsontype" in userRef)) {
-    const user = userRef as {
-      publicId?: string;
-      handle?: string;
-      username?: string;
-      avatar?: string;
-    };
-    if (user.publicId) {
+    if (userRef.publicId) {
       return {
-        publicId: asUserPublicId(user.publicId),
-        handle: user.handle ?? "",
-        username: user.username ?? "",
-        avatar: user.avatar ?? "",
+        publicId: asUserPublicId(userRef.publicId),
+        handle: userRef.handle ?? "",
+        username: userRef.username ?? "",
+        avatar: userRef.avatar ?? "",
       };
     }
   }
 
-  const author = (rawObj.author ?? {}) as {
-    publicId?: string;
-    handle?: string;
-    username?: string;
-    displayName?: string;
-    avatarUrl?: string;
-  };
+  return buildAuthorSnapshotDTO(rawObj.author);
+}
+
+function buildAuthorSnapshotDTO(author: PostReadSource["author"]): PostDTO["user"] {
   return {
-    publicId: asUserPublicId(author.publicId ?? ""),
-    handle: author.handle ?? "",
-    username: author.username ?? author.displayName ?? "",
-    avatar: author.avatarUrl ?? "",
+    publicId: asUserPublicId(author?.publicId ?? ""),
+    handle: author?.handle ?? "",
+    username: author?.username ?? author?.displayName ?? "",
+    avatar: author?.avatarUrl ?? "",
   };
 }
 
-function buildIPostRepostOf(rawObj: Record<string, unknown>): PostDTO["repostOf"] {
-  const repostRef = rawObj.repostOf;
+function buildIPostRepostOf(rawObj: PostReadSource): PostDTO["repostOf"] {
+  const repost = rawObj.repostOf;
   if (
-    !repostRef ||
-    typeof repostRef !== "object" ||
-    "_bsontype" in repostRef
+    !repost ||
+    typeof repost !== "object" ||
+    "_bsontype" in repost
   ) {
     return undefined;
   }
 
-  const repost = repostRef as {
-    publicId?: string;
-    body?: string;
-    slug?: string;
-    likesCount?: number;
-    repostCount?: number;
-    commentsCount?: number;
-    author?: {
-      publicId?: string;
-      handle?: string;
-      username?: string;
-      displayName?: string;
-      avatarUrl?: string;
-    };
-    image?: { url?: string; publicId?: string; width?: number; height?: number } | null;
-  };
-
   if (!repost.publicId) return undefined;
 
-  const image =
-    repost.image?.url && repost.image?.publicId
-      ? {
-          url: repost.image.url,
-          publicId: asImagePublicId(repost.image.publicId),
-          width: repost.image.width,
-          height: repost.image.height,
-        }
-      : null;
+  const image = buildImageDTO(repost.image);
 
   return {
     publicId: asPostPublicId(repost.publicId),
-    user: {
-      publicId: asUserPublicId(repost.author?.publicId ?? ""),
-      handle: repost.author?.handle ?? "",
-      username: repost.author?.username ?? repost.author?.displayName ?? "",
-      avatar: repost.author?.avatarUrl ?? "",
-    },
+    user: buildAuthorSnapshotDTO(repost.author),
     body: repost.body,
     slug: repost.slug,
     image,

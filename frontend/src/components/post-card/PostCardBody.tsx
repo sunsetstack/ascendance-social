@@ -24,7 +24,8 @@ export const PostCardBody: React.FC<PostCardBodyProps> = ({ body, hasImage }) =>
 				lineHeight: 1.5,
 				whiteSpace: "pre-wrap",
 				wordBreak: "break-word",
-				mb: hasImage ? 1.5 : 0,
+				mb: hasImage ? 0.5 : 0,
+				fontSize: "1.125rem",
 			}}
 		>
 			<RichText
@@ -32,13 +33,19 @@ export const PostCardBody: React.FC<PostCardBodyProps> = ({ body, hasImage }) =>
 			/>
 			{body.length > 280 && !isExpanded && (
 				<Box
-					component="span"
+					component="button"
+					type="button"
 					sx={{
+						border: 0,
+						p: 0,
+						bgcolor: "transparent",
+						font: "inherit",
 						color: "primary.main",
 						cursor: "pointer",
 						ml: 0.5,
 						fontWeight: 500,
 						"&:hover": { textDecoration: "underline" },
+						"&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 },
 					}}
 					onClick={(event) => {
 						event.stopPropagation();

@@ -14,17 +14,14 @@ export class FeedMetaService {
   public async updatePostLikeMeta(
     postPublicId: PostPublicId,
     newTotalLikes: number,
+    sourceEventId: string,
   ): Promise<void> {
     const metaKey = CacheKeyBuilder.getPostMetaKey(postPublicId);
     const tags = [`post_meta:${postPublicId}`, `post_likes:${postPublicId}`];
-    const existingMeta = (await this.redisService.getWithTags(metaKey)) || {};
 
-    await this.redisService.setWithTags(
+    await this.redisService.patchWithTags(
       metaKey,
-      {
-        ...existingMeta,
-        likes: newTotalLikes,
-      },
+      { likes: newTotalLikes },
       tags,
       300,
     );
@@ -34,8 +31,7 @@ export class FeedMetaService {
       JSON.stringify({
         eventId: buildRealtimeEventId(
           EventRegistry.realtimeMessageTypes.likeUpdate,
-          postPublicId,
-          newTotalLikes,
+          sourceEventId,
         ),
         type: EventRegistry.realtimeMessageTypes.likeUpdate,
         postId: postPublicId,
@@ -51,14 +47,10 @@ export class FeedMetaService {
   ): Promise<void> {
     const metaKey = CacheKeyBuilder.getPostMetaKey(postPublicId);
     const tags = [`post_meta:${postPublicId}`, `post_views:${postPublicId}`];
-    const existingMeta = (await this.redisService.getWithTags(metaKey)) || {};
 
-    await this.redisService.setWithTags(
+    await this.redisService.patchWithTags(
       metaKey,
-      {
-        ...existingMeta,
-        viewsCount: newViewsCount,
-      },
+      { viewsCount: newViewsCount },
       tags,
       300,
     );
@@ -70,14 +62,10 @@ export class FeedMetaService {
   ): Promise<void> {
     const metaKey = CacheKeyBuilder.getPostMetaKey(postPublicId);
     const tags = [`post_meta:${postPublicId}`, `post_comments:${postPublicId}`];
-    const existingMeta = (await this.redisService.getWithTags(metaKey)) || {};
 
-    await this.redisService.setWithTags(
+    await this.redisService.patchWithTags(
       metaKey,
-      {
-        ...existingMeta,
-        commentsCount: newCommentsCount,
-      },
+      { commentsCount: newCommentsCount },
       tags,
       300,
     );

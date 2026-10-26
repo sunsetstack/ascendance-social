@@ -1,0 +1,52 @@
+groups:
+  - name: ascendance-delivery
+    rules:
+      - alert: AscendanceBackendTargetDown
+        expr: up{job=~"backend|backend-worker"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Backend scrape target is unavailable"
+          description: "Check process startup and connectivity before diagnosing transaction delivery."
+      - alert: AscendanceAmbiguousCommit
+        expr: increase(transactions_total{outcome="ambiguous"}[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Mongo commit outcome is unresolved"
+          description: "Find transaction.ambiguous by transaction ID. Reconcile persisted state before retrying a user action."
+      - alert: AscendanceTransactionRejected
+        expr: increase(transactions_total{outcome="rejected"}[5m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "A transaction could not obtain admission"
+      - alert: AscendanceOutboxExhausted
+        expr: outbox_exhausted_events{job="backend-worker"} > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Outbox events require manual recovery"
+          description: "Inspect handler failure/checkpoints and repair the cause before requeueing."
+      - alert: AscendanceOutboxDelayed
+        expr: outbox_oldest_pending_age_seconds{job="backend-worker"} > 120
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Oldest retryable outbox event is over two minutes old"
+      - alert: AscendanceOutboxPollStalled
+        expr: (time() - outbox_last_poll_completed_timestamp_seconds{job="backend-worker"} > 120) and on(job, instance) (worker_thread_status{job="backend-worker",worker="outbox.worker"} == 1)
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Outbox is marked running but polls are not completing"
+      - alert: AscendanceOutboxRoutingFailure
+        expr: increase(outbox_delivery_issues_total{reason="no_handlers"}[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "An outbox event has no handler; delivery has been retained for retry"

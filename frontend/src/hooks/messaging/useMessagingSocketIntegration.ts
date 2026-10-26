@@ -41,7 +41,7 @@ function isMessageStatusPayload(value: unknown): value is MessageStatusPayload {
 	);
 }
 
-function isMessagingUpdatePayload(value: unknown): value is MessagingUpdatePayload {
+function isMessagingUpdatePayload(value: unknown): value is MessageSentPayload | MessageStatusPayload {
 	return isMessageSentPayload(value) || isMessageStatusPayload(value);
 }
 
@@ -53,8 +53,20 @@ export const useMessagingSocketIntegration = (): void => {
 
 	useEffect(() => {
 		if (!socket) return;
+		const refreshMessaging = () => {
+			void queryClient.resetQueries({ queryKey: ["messaging", "conversation"] });
+			void queryClient.invalidateQueries({ queryKey: ["messaging", "conversations"] });
+			void queryClient.resetQueries({ queryKey: ["notifications"] });
+		};
 
 		const handleMessagingUpdate = (payload: unknown) => {
+			if (typeof payload === "object" && payload !== null &&
+				"type" in payload && payload.type === "conversations_changed") {
+				const changed = payload as { eventId?: string; timestamp?: string };
+				if (typeof changed.timestamp !== "string" || !shouldHandleEvent(changed.eventId)) return;
+				refreshMessaging();
+				return;
+			}
 			if (!isMessagingUpdatePayload(payload)) return;
 			if (!shouldHandleEvent(payload.eventId)) return;
 
@@ -106,9 +118,11 @@ export const useMessagingSocketIntegration = (): void => {
 		};
 
 		socket.on("messaging_update", handleMessagingUpdate);
+		socket.on("connect", refreshMessaging);
 
 		return () => {
 			socket.off("messaging_update", handleMessagingUpdate);
+			socket.off("connect", refreshMessaging);
 		};
 	}, [socket, queryClient, user?.publicId, shouldHandleEvent]);
 };

@@ -3,9 +3,7 @@ import { injectable, inject } from "tsyringe";
 import { CommandBus } from "@/application/common/buses/command.bus";
 import { QueryBus } from "@/application/common/buses/query.bus";
 import { GetMeQuery } from "@/application/queries/users/getMe/getMe.query";
-import { GetMeResult } from "@/application/queries/users/getMe/getMe.handler";
 import { GetAccountInfoQuery } from "@/application/queries/users/getAccountInfo/getAccountInfo.query";
-import { GetAccountInfoResult } from "@/application/queries/users/getAccountInfo/getAccountInfo.handler";
 import { UpdateAvatarCommand } from "@/application/commands/users/updateAvatar/updateAvatar.command";
 import { UpdateCoverCommand } from "@/application/commands/users/updateCover/updateCover.command";
 import { DeleteUserCommand } from "@/application/commands/users/deleteUser/deleteUser.command";
@@ -21,7 +19,6 @@ import { TOKENS } from "@/types/tokens";
 import { UserPublicId } from "@/types/branded";
 import { Errors } from "@/utils/errors";
 import { clearAuthCookies } from "@/controllers/helpers/user-auth-response";
-import { PublicUserDTO } from "@/services/dto.service";
 
 type EmptyParams = Record<string, never>;
 
@@ -43,14 +40,14 @@ export class ProfileController {
   getMe = async (req: Request, res: Response) => {
     const userPublicId = this.requireAuthenticatedUserPublicId(req);
     const query = new GetMeQuery(userPublicId);
-    const { user } = await this.queryBus.execute<GetMeResult>(query);
+    const { user } = await this.queryBus.execute(query);
     res.status(200).json(user);
   };
 
   getAccountInfo = async (req: Request, res: Response): Promise<void> => {
     const userPublicId = this.requireAuthenticatedUserPublicId(req);
     const query = new GetAccountInfoQuery(userPublicId);
-    const result = await this.queryBus.execute<GetAccountInfoResult>(query);
+    const result = await this.queryBus.execute(query);
     res.status(200).json(result.accountInfo);
   };
 
@@ -61,7 +58,7 @@ export class ProfileController {
     const userData = req.body;
     const userPublicId = this.requireAuthenticatedUserPublicId(req);
     const command = new UpdateProfileCommand(userPublicId, userData);
-    const updatedUser = await this.commandBus.dispatch<PublicUserDTO>(command);
+    const updatedUser = await this.commandBus.dispatch(command);
     res.status(200).json(updatedUser);
   };
 
@@ -94,7 +91,7 @@ export class ProfileController {
       req.file?.mimetype,
     );
     const updatedUserDTO =
-      await this.commandBus.dispatch<PublicUserDTO>(command);
+      await this.commandBus.dispatch(command);
     res.status(200).json(updatedUserDTO);
   };
 
@@ -109,7 +106,7 @@ export class ProfileController {
       req.file?.mimetype,
     );
     const updatedUserDTO =
-      await this.commandBus.dispatch<PublicUserDTO>(command);
+      await this.commandBus.dispatch(command);
     res.status(200).json(updatedUserDTO);
   };
 

@@ -12,9 +12,10 @@ export class EmailService {
   private resend: Resend | null;
   private readonly logOnly: boolean;
   private readonly frontendUrl: string;
-
+  private readonly ascendanceMail: string;
   constructor() {
     this.logOnly = process.env.EMAIL_DELIVERY_MODE === "log";
+    this.ascendanceMail = "Ascendance <no-reply@ascendance.social>";
     const apiKey = process.env.RESEND_API_KEY?.trim();
     const configuredFrontendUrl = process.env.FRONTEND_URL?.replace(/\/+$/, "");
 
@@ -61,13 +62,14 @@ export class EmailService {
       throw Errors.internal("RESEND_API_KEY is not configured");
     }
     try {
-      await this.resend.emails.send({
-        from: "Ascendance <no-reply@ascendance.social>",
+      const { error } = await this.resend.emails.send({
+        from: this.ascendanceMail,
         to: recipientEmail,
         subject: "Password Reset Request",
         replyTo: "support@ascendance.social",
         html: `<p>You requested a password reset. Click <a href="${link}">here</a> to reset your password.</p>`,
       });
+      if (error) throw error;
       logger.info("Email sent", {
         event: "email.sent",
         emailType: "password_reset",
@@ -104,12 +106,13 @@ export class EmailService {
       throw Errors.internal("RESEND_API_KEY is not configured");
     }
     try {
-      await this.resend.emails.send({
-        from: "noreply@ascendance.dev",
+      const { error } = await this.resend.emails.send({
+        from: this.ascendanceMail,
         to: recipientEmail,
         subject: "Verify your email",
         html: `<p>Use this code to verify your email: <strong>${verificationToken}</strong></p><p>Or click <a href="${link}">here</a> to verify.</p>`,
       });
+      if (error) throw error;
       logger.info("Email sent", {
         event: "email.sent",
         emailType: "email_verification",
@@ -144,13 +147,14 @@ export class EmailService {
       throw Errors.internal("RESEND_API_KEY is not configured");
     }
     try {
-      await this.resend.emails.send({
-        from: "Ascendance <no-reply@ascendance.social>",
+      const { error } = await this.resend.emails.send({
+        from: this.ascendanceMail,
         to: recipientEmail,
         subject: "Your password was changed",
         replyTo: "support@ascendance.social",
         html: "<p>Your Ascendance password was changed.</p><p>If you did not make this change, reset your password immediately and contact support.</p>",
       });
+      if (error) throw error;
       logger.info("Email sent", {
         event: "email.sent",
         emailType: "password_changed",

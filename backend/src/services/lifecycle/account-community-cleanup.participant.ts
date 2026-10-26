@@ -28,6 +28,13 @@ interface StoredCommunityMember extends Document {
   joinedAt?: Date;
 }
 
+interface StoredCommunity extends Document {
+  _id: ObjectId;
+  creatorId: ObjectId;
+  avatarStoragePublicId?: string;
+  coverPhotoStoragePublicId?: string;
+}
+
 const rolePriority: Record<string, number> = {
   admin: 0,
   moderator: 1,
@@ -47,14 +54,24 @@ export class MongoAccountCommunityCleanupParticipant
   async cleanup(userId: ObjectId): Promise<ContentCleanupResult> {
     const session = requireTransactionSession();
     const db = this.db();
-    const cleanup = { posts: [], imageAssets: [] };
+    const cleanup: ContentCleanupResult = { posts: [], imageAssets: [] };
     const memberships = await db
       .collection<StoredCommunityMember>("communitymembers")
       .find({ userId }, { session })
       .toArray();
     const createdCommunities = await db
-      .collection("communities")
-      .find({ creatorId: userId }, { session, projection: { _id: 1 } })
+      .collection<StoredCommunity>("communities")
+      .find(
+        { creatorId: userId },
+        {
+          session,
+          projection: {
+            _id: 1,
+            avatarStoragePublicId: 1,
+            coverPhotoStoragePublicId: 1,
+          },
+        },
+      )
       .toArray();
     const deletedCommunityIds: ObjectId[] = [];
 
@@ -99,9 +116,32 @@ export class MongoAccountCommunityCleanupParticipant
         await db
           .collection("communitymembers")
           .deleteMany({ communityId }, { session });
-        await db
+        const deleteResult = await db
           .collection("communities")
           .deleteOne({ _id: communityId }, { session });
+        if (deleteResult.deletedCount !== 1) {
+          throw Errors.database(
+            "Failed to delete community during account cleanup",
+          );
+        }
+        appendCleanup(cleanup, {
+          posts: [],
+          imageAssets: Array.from(
+            new Set(
+              [
+                community.avatarStoragePublicId,
+                community.coverPhotoStoragePublicId,
+              ].filter(
+                (storagePublicId): storagePublicId is string =>
+                  typeof storagePublicId === "string" &&
+                  storagePublicId.length > 0,
+              ),
+            ),
+          ).map((storagePublicId) => ({
+            storagePublicId,
+            ownerPublicId: "",
+          })),
+        });
         deletedCommunityIds.push(communityId);
       }
     }

@@ -35,6 +35,8 @@ export {
   loginEmailRateLimit,
   loginIpRateLimit,
   registerIpRateLimit,
+  resendVerificationAccountRateLimit,
+  resendVerificationIpRateLimit,
   resetPasswordIpRateLimit,
   verifyEmailAddressRateLimit,
   verifyEmailIpRateLimit,
@@ -165,7 +167,7 @@ export class BearerTokenStrategy extends AuthStrategy {
       logger.warn("Token verification failed", {
         event: "auth.token_verification_failed",
         method: req.method,
-        route: req.originalUrl.split("?")[0],
+        route: (req.originalUrl || req.url || "/").split("?")[0],
         reason: error.name,
       });
       const errorCode =

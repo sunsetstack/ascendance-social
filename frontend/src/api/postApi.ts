@@ -1,5 +1,26 @@
 import axiosClient from "./axiosClient";
 import { IPost, ITag, PaginatedResponse } from "../types";
+import type { FeedPreviewDefinition } from "../features/feed/feedPreview";
+
+export interface FeedPreviewPage {
+  data: IPost[];
+  hasMore: boolean;
+  nextCursor?: string;
+}
+
+export const fetchFeedPreview = async (
+  definition: FeedPreviewDefinition,
+  cursor?: string,
+  signal?: AbortSignal,
+): Promise<FeedPreviewPage> => {
+  const params = new URLSearchParams({
+    limit: "10", sort: definition.sort, includeReposts: String(definition.includeReposts),
+  });
+  for (const topic of definition.topics) params.append("topics", topic);
+  if (cursor) params.set("cursor", cursor);
+  const { data } = await axiosClient.get<FeedPreviewPage>(`/api/feed/preview?${params}`, { signal });
+  return data;
+};
 
 export const fetchPersonalizedFeed = async (
   pageParam: number | string,
@@ -144,14 +165,23 @@ export const deletePostByPublicId = async (publicId: string): Promise<void> => {
   await axiosClient.delete(`/api/posts/${publicId}`);
 };
 
+export const updatePost = async (publicId: string, body: string): Promise<IPost> => {
+  const { data } = await axiosClient.patch<IPost>(`/api/posts/${publicId}`, { body });
+  return data;
+};
+
 export const repostPost = async (
   postPublicId: string,
   body?: string,
+  image?: File,
 ): Promise<IPost> => {
-  const payload = body ? { body } : {};
+  const payload = new FormData();
+  if (body) payload.append("body", body);
+  if (image) payload.append("image", image);
   const { data } = await axiosClient.post(
     `/api/posts/${postPublicId}/repost`,
     payload,
+    { headers: { "Content-Type": "multipart/form-data" } },
   );
   return data;
 };

@@ -1,6 +1,8 @@
 import { inject, injectable } from "tsyringe";
 import { Types } from "mongoose";
+import { EventBus } from "@/application/common/buses/event.bus";
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
+import { ImageAssetCleanupRequestedEvent } from "@/application/events/image/image.event";
 import { UpdateCommunityCommand } from "./updateCommunity.command";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
@@ -9,8 +11,12 @@ import type {
   IUserWriteRepository,
 } from "@/repositories/interfaces";
 import { UnitOfWork } from "@/database/UnitOfWork";
-import { ICommunity } from "@/types";
-import type { IImageStorageService } from "@/types";
+import { AmbiguousTransactionCommitError } from "@/database/transaction-errors";
+import type {
+  ICommunity,
+  IImageStorageService,
+  ImageUploadResult,
+} from "@/types";
 import { Errors } from "@/utils/errors";
 import { generateSlug } from "@/utils/helpers";
 import { logger } from "@/utils/winston";
@@ -35,9 +41,11 @@ export class UpdateCommunityCommandHandler implements ICommandHandler<
     private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UserWrite)
     private readonly userWriteRepository: IUserWriteRepository,
-    @inject(UnitOfWork) private readonly uow: UnitOfWork,
+    @inject(TOKENS.Repositories.UnitOfWork) private readonly uow: UnitOfWork,
     @inject(TOKENS.Services.ImageStorage)
     private readonly imageStorageService: IImageStorageService,
+    @inject(TOKENS.CQRS.Handlers.EventBus)
+    private readonly eventBus: EventBus,
   ) {}
 
   async execute(command: UpdateCommunityCommand): Promise<ICommunity> {
@@ -54,6 +62,7 @@ export class UpdateCommunityCommandHandler implements ICommandHandler<
       throw Errors.notFound("Community");
     }
     const communityId = community._id as Types.ObjectId;
+    const communityMongoId = asMongoId(communityId.toString());
 
     const user = await this.userReadRepository.findByPublicId(
       asUserPublicId(userPublicId),
@@ -92,37 +101,61 @@ export class UpdateCommunityCommandHandler implements ICommandHandler<
       updateData.slug = newSlug;
     }
 
-    // Handle avatar upload
+    let uploadedAvatar: ImageUploadResult | undefined;
+    let uploadedCoverPhoto: ImageUploadResult | undefined;
+
     if (updates.avatarBuffer) {
       try {
-        const uploadResult = await this.imageStorageService.uploadImageStream(
+        uploadedAvatar = await this.imageStorageService.uploadImageStream(
           {
             buffer: updates.avatarBuffer,
             originalName: updates.avatarOriginalName,
             mimeType: updates.avatarMimeType,
           },
-          `community-${community.slug}-avatar`,
+          community.publicId,
         );
-        updateData.avatar = uploadResult.url;
+        updateData.avatar = uploadedAvatar.url;
+        updateData.avatarStoragePublicId = uploadedAvatar.publicId;
       } catch (error) {
-        logger.error("Failed to upload community avatar", { error });
+        throw Errors.storage(
+          error instanceof Error
+            ? error.message
+            : "Failed to upload community avatar",
+          {
+            cause: error,
+            context: { operation: "upload-community-avatar" },
+          },
+        );
       }
     }
 
-    // Handle cover photo upload
     if (updates.coverPhotoBuffer) {
       try {
-        const uploadResult = await this.imageStorageService.uploadImageStream(
+        uploadedCoverPhoto = await this.imageStorageService.uploadImageStream(
           {
             buffer: updates.coverPhotoBuffer,
             originalName: updates.coverPhotoOriginalName,
             mimeType: updates.coverPhotoMimeType,
           },
-          `community-${community.slug}-cover`,
+          community.publicId,
         );
-        updateData.coverPhoto = uploadResult.url;
+        updateData.coverPhoto = uploadedCoverPhoto.url;
+        updateData.coverPhotoStoragePublicId = uploadedCoverPhoto.publicId;
       } catch (error) {
-        logger.error("Failed to upload community cover photo", { error });
+        await this.cleanupUploadedAssets(
+          "community-update-upload-failed",
+          [uploadedAvatar?.publicId],
+          community.publicId,
+        );
+        throw Errors.storage(
+          error instanceof Error
+            ? error.message
+            : "Failed to upload community cover photo",
+          {
+            cause: error,
+            context: { operation: "upload-community-cover" },
+          },
+        );
       }
     }
 
@@ -131,29 +164,131 @@ export class UpdateCommunityCommandHandler implements ICommandHandler<
       updateData.slug !== undefined ||
       updateData.avatar !== undefined;
 
-    const updatedCommunity = await this.uow.executeInTransaction(async () => {
-      const updated = await this.communityRepository.update(
-        asMongoId(communityId.toString()),
-        updateData,
-      );
-      if (!updated) {
-        throw Errors.notFound("Community");
-      }
+    const stagedStoragePublicIds = this.uniqueStoragePublicIds([
+      uploadedAvatar?.publicId,
+      uploadedCoverPhoto?.publicId,
+    ]);
 
-      if (shouldSyncJoinedCommunitySnapshot) {
-        await this.userWriteRepository.updateJoinedCommunitySnapshot(
-          asMongoId(communityId.toString()),
+    try {
+      return await this.uow.executeInTransaction(async () => {
+        const currentCommunity =
+          await this.communityRepository.findById(communityMongoId);
+        if (!currentCommunity) {
+          throw Errors.notFound("Community");
+        }
+
+        const updated = await this.communityRepository.update(
+          communityMongoId,
+          updateData,
+        );
+        if (!updated) {
+          throw Errors.notFound("Community");
+        }
+
+        if (shouldSyncJoinedCommunitySnapshot) {
+          await this.userWriteRepository.updateJoinedCommunitySnapshot(
+            communityMongoId,
+            {
+              name: updated.name,
+              slug: updated.slug,
+              icon: updated.avatar,
+            },
+          );
+        }
+
+        const retainedStoragePublicIds = new Set(
+          this.uniqueStoragePublicIds([
+            updated.avatarStoragePublicId,
+            updated.coverPhotoStoragePublicId,
+          ]),
+        );
+        const replacedStoragePublicIds = this.uniqueStoragePublicIds([
+          currentCommunity.avatarStoragePublicId,
+          currentCommunity.coverPhotoStoragePublicId,
+        ]).filter(
+          (storagePublicId) =>
+            !retainedStoragePublicIds.has(storagePublicId),
+        );
+
+        for (const storagePublicId of replacedStoragePublicIds) {
+          await this.eventBus.queueTransactional(
+            new ImageAssetCleanupRequestedEvent(
+              "community-media-replaced",
+              storagePublicId,
+            ),
+          );
+        }
+
+        return updated;
+      });
+    } catch (error) {
+      if (
+        stagedStoragePublicIds.length > 0 &&
+        error instanceof AmbiguousTransactionCommitError
+      ) {
+        logger.warn(
+          "Preserving community media after ambiguous transaction commit",
           {
-            name: updated.name,
-            slug: updated.slug,
-            icon: updated.avatar,
+            error,
+            communityPublicId: community.publicId,
+            storagePublicIds: stagedStoragePublicIds,
           },
         );
+      } else if (stagedStoragePublicIds.length > 0) {
+        await this.cleanupUploadedAssets(
+          "community-update-failed",
+          stagedStoragePublicIds,
+          community.publicId,
+        );
       }
+      throw error;
+    }
+  }
 
-      return updated;
-    });
+  private uniqueStoragePublicIds(
+    values: Array<string | null | undefined>,
+  ): string[] {
+    return Array.from(
+      new Set(
+        values.filter(
+          (value): value is string =>
+            typeof value === "string" && value.length > 0,
+        ),
+      ),
+    );
+  }
 
-    return updatedCommunity;
+  private async cleanupUploadedAssets(
+    reason: string,
+    storagePublicIds: Array<string | null | undefined>,
+    communityPublicId: string,
+  ): Promise<void> {
+    for (const storagePublicId of this.uniqueStoragePublicIds(
+      storagePublicIds,
+    )) {
+      await this.eventBus
+        .queueDurable(
+          new ImageAssetCleanupRequestedEvent(reason, storagePublicId),
+        )
+        .catch((error) => {
+          logger.error("Failed to queue community media cleanup", {
+            error,
+            reason,
+            storagePublicId,
+            communityPublicId,
+          });
+        });
+
+      try {
+        await this.imageStorageService.deleteImage(storagePublicId);
+      } catch (error) {
+        logger.error("Failed to rollback community media upload", {
+          error,
+          reason,
+          storagePublicId,
+          communityPublicId,
+        });
+      }
+    }
   }
 }

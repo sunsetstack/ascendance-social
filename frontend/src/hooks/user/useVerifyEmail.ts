@@ -10,7 +10,10 @@ export const useVerifyEmail = () => {
 	return useMutation<AuthenticatedUserDTO | AdminUserDTO, Error, VerifyEmailPayload>({
 		mutationFn: verifyEmail,
 		onSuccess: (data) => {
-			queryClient.setQueryData(["currentUser"], data);
+			const currentUser = queryClient.getQueryData<AuthenticatedUserDTO | AdminUserDTO | null>(["currentUser"]);
+			if (currentUser?.publicId === data.publicId) {
+				queryClient.setQueryData(["currentUser"], data);
+			}
 			queryClient.invalidateQueries({ queryKey: ["currentUser"] });
 		},
 	});

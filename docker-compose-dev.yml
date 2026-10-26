@@ -125,6 +125,8 @@ services:
     environment: &backend-environment
       ENABLE_WORKERS: "false"
       NODE_ENV: development
+      LOG_OUTPUT: stdout
+      FEED_TRACE_ENABLED: ${FEED_TRACE_ENABLED:-true}
       GIT_SHA: ${GIT_SHA:-local}
       SERVICE_NAME: backend
       PERF_MONGO_COMMAND_METRICS: ${PERF_MONGO_COMMAND_METRICS:-false}
@@ -133,7 +135,7 @@ services:
       REDIS_URL: redis://:dev-redis-password@redis:6379
       JWT_SECRET: local-development-only-jwt-secret
       FRONTEND_URL: "http://localhost:${DEV_HTTP_PORT:-8080}"
-      ALLOWED_ORIGINS: "http://localhost:${DEV_HTTP_PORT:-8080},http://127.0.0.1:${DEV_HTTP_PORT:-8080}"
+      ALLOWED_ORIGINS: "http://localhost:${DEV_HTTP_PORT:-8080},http://127.0.0.1:${DEV_HTTP_PORT:-8080},${ALLOWED_ORIGINS:-}"
       COOKIE_SECURE: "false"
       ALLOW_INSECURE_COOKIES: "true"
       TRUST_PROXY: "1"
@@ -142,7 +144,8 @@ services:
       LOGIN_EMAIL_MAX: "1000"
       VERIFY_EMAIL_IP_MAX: "1000"
       VERIFY_EMAIL_ADDRESS_MAX: "1000"
-      EMAIL_DELIVERY_MODE: log
+      EMAIL_DELIVERY_MODE: ${EMAIL_DELIVERY_MODE:-log}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
       SECURITY_AUDIT_MONGO_TTL_DAYS: ${SECURITY_AUDIT_MONGO_TTL_DAYS:-90}
       AUDIT_LOG_DIR: /app/audit/logs
       AUDIT_ARCHIVE_DIR: /app/audit/archives
@@ -189,7 +192,21 @@ services:
       - "9100"
 
     networks:
-      - app-network
+      - monitoring-network
+
+  docker-socket-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:v0.4.2
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    environment:
+      CONTAINERS: "1"
+      INFO: "1"
+      NETWORKS: "1"
+      POST: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker-api-network
 
   cadvisor:
     image: ghcr.io/google/cadvisor:v0.57.0
@@ -197,21 +214,26 @@ services:
     restart: unless-stopped
     logging: *default-logging
     profiles: ["monitoring"]
-    privileged: true
     command:
+      - "--docker=tcp://docker-socket-proxy:2375"
       - "--docker_only=true"
       - "--housekeeping_interval=10s"
       - "--allow_dynamic_housekeeping=false"
     volumes:
       - /:/rootfs:ro
-      - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker:/var/lib/docker:ro
       - /dev/disk:/dev/disk:ro
+    tmpfs:
+      - /rootfs/run
     expose:
       - "8080"
     networks:
-      - app-network
+      - monitoring-network
+      - docker-api-network
+    depends_on:
+      docker-socket-proxy:
+        condition: service_started
 
   redis-exporter:
     image: oliver006/redis_exporter:latest
@@ -226,6 +248,7 @@ services:
       - "9121"
     networks:
       - app-network
+      - monitoring-network
     depends_on:
       redis:
         condition: service_healthy
@@ -240,6 +263,7 @@ services:
       args:
         VITE_API_URL: ""
         VITE_SOCKET_URL: ""
+        VITE_FEED_TRACE_ENABLED: ${VITE_FEED_TRACE_ENABLED:-true}
     restart: always
     logging: *default-logging
     depends_on:
@@ -272,10 +296,13 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - ./monitoring/alerts:/etc/prometheus/alerts:ro
+      - ./monitoring/development-targets:/etc/prometheus/development-targets:ro
       - prometheus_data:/prometheus
 
     networks:
       - app-network
+      - monitoring-network
 
     depends_on:
       node-exporter:
@@ -297,16 +324,6 @@ services:
     command:
       - "-config.file=/etc/loki/loki-config.yml"
 
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--tries=1",
-          "--spider",
-          "http://127.0.0.1:3100/ready",
-        ]
     ports:
       - "127.0.0.1:3100:3100"
 
@@ -315,9 +332,35 @@ services:
       - loki_data:/loki
 
     networks:
-      - app-network
+      - monitoring-network
 
     mem_limit: 384m
+
+  loki-readiness:
+    image: curlimages/curl:8.12.1
+    container_name: loki-readiness
+    restart: unless-stopped
+    logging: *default-logging
+    profiles: ["monitoring"]
+    entrypoint: ["/bin/sh", "-c", "while :; do sleep 3600; done"]
+    networks:
+      - monitoring-network
+    depends_on:
+      loki:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "4", "http://loki:3100/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 16
+    mem_limit: 16m
 
   alloy:
     image: grafana/alloy:v1.18.0
@@ -337,14 +380,26 @@ services:
 
     volumes:
       - ./monitoring/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - type: bind
+        source: ./backend/app.log
+        target: /var/log/ascendance-dev/app.log
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./frontend/logs
+        target: /var/log/ascendance-dev/vite
+        read_only: true
       - alloy_data:/var/lib/alloy/data
-      - /var/run/docker.sock:/var/run/docker.sock:ro
 
     networks:
-      - app-network
+      - monitoring-network
+      - docker-api-network
 
     depends_on:
-      loki:
+      loki-readiness:
+        condition: service_healthy
+      docker-socket-proxy:
         condition: service_started
 
     mem_limit: 128m
@@ -367,7 +422,7 @@ services:
       - ./monitoring/grafana/dashboards:/etc/grafana/dashboards:ro
 
     networks:
-      - app-network
+      - monitoring-network
 
     depends_on:
       prometheus:
@@ -406,6 +461,11 @@ services:
 networks:
   app-network:
     driver: bridge
+  monitoring-network:
+    driver: bridge
+  docker-api-network:
+    driver: bridge
+    internal: true
 
 volumes:
   mongo_data:

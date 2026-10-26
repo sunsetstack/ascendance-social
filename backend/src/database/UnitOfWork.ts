@@ -1,5 +1,8 @@
 import mongoose, { ClientSession } from "mongoose";
 import { injectable } from "tsyringe";
+import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
+import { logger } from "@/utils/winston";
 import { addRequestContextBreadcrumb } from "@/runtime/request-context";
 import { Errors } from "@/utils/errors";
 import { AsyncLocalStorage } from "async_hooks";
@@ -18,9 +21,17 @@ import {
 import {
   TransactionMetrics,
   TransactionMetricsTracker,
+  TransactionObservabilityMetrics,
 } from "./transaction-metrics";
 
 export const sessionALS = new AsyncLocalStorage<ClientSession>();
+const transactionTraces = new WeakMap<ClientSession, { transactionId: string; bodyAttempt: number }>();
+
+export function getTransactionTrace(): { transactionId: string; bodyAttempt: number } | undefined {
+  const session = sessionALS.getStore();
+  const trace = session ? transactionTraces.get(session) : undefined;
+  return trace ? { ...trace } : undefined;
+}
 
 export function getTransactionSession(): ClientSession | undefined {
   const session = sessionALS.getStore();
@@ -158,13 +169,28 @@ export class UnitOfWork {
     }
 
     const cfg = resolveTransactionConfig(config);
-
-    await this.transactionSemaphore.acquire(cfg.semaphoreWaitTimeoutMs);
+    const transactionId = randomUUID();
+    const startedAt = performance.now();
+    try {
+      await this.transactionSemaphore.acquire(cfg.semaphoreWaitTimeoutMs);
+    } catch (error) {
+      this.metrics.recordRejected();
+      const durationMs = performance.now() - startedAt;
+      this.metrics.recordDuration(durationMs, durationMs);
+      logger.warn("Transaction rejected before acquiring a permit", {
+        event: "transaction.rejected", transactionId, durationMs, error,
+      });
+      throw error;
+    }
+    const queueWaitMs = performance.now() - startedAt;
     addRequestContextBreadcrumb("transaction.begin", {
       maxBodyAttempts: cfg.maxBodyAttempts,
       maxCommitAttempts: cfg.maxCommitAttempts,
     });
     let session: ClientSession | undefined;
+    let outcome: "committed" | "failed" | "ambiguous" = "failed";
+    let bodyAttempts = 0;
+    let commitAttempts = 0;
 
     try {
       session = await mongoose.startSession();
@@ -175,6 +201,8 @@ export class UnitOfWork {
         bodyAttempt <= cfg.maxBodyAttempts;
         bodyAttempt++
       ) {
+        bodyAttempts = bodyAttempt;
+        transactionTraces.set(activeSession, { transactionId, bodyAttempt });
         this.metrics.recordAttempt();
         let result: T;
 
@@ -195,6 +223,7 @@ export class UnitOfWork {
             bodyAttempt < cfg.maxBodyAttempts;
 
           if (shouldRetry) {
+            this.metrics.recordRetry("body");
             addRequestContextBreadcrumb("transaction.body.retry", { bodyAttempt });
             await this.backoffWithJitter(
               bodyAttempt,
@@ -210,6 +239,7 @@ export class UnitOfWork {
 
         if (!activeSession.inTransaction()) {
           this.metrics.recordSuccess(bodyAttempt);
+          outcome = "committed";
           return result;
         }
 
@@ -219,6 +249,8 @@ export class UnitOfWork {
           commitAttempt <= cfg.maxCommitAttempts;
           commitAttempt++
         ) {
+          commitAttempts++;
+          this.metrics.recordCommitAttempt();
           addRequestContextBreadcrumb("transaction.commit.attempt", {
             bodyAttempt,
             commitAttempt,
@@ -226,6 +258,7 @@ export class UnitOfWork {
           try {
             await activeSession.commitTransaction();
             this.metrics.recordSuccess(bodyAttempt);
+            outcome = "committed";
             return result;
           } catch (error: unknown) {
             if (isUnknownTransactionCommitResult(error)) {
@@ -234,6 +267,7 @@ export class UnitOfWork {
                 commitAttempt < cfg.maxCommitAttempts;
 
               if (shouldRetryCommit) {
+                this.metrics.recordRetry("commit");
                 addRequestContextBreadcrumb("transaction.commit.retry", {
                   commitAttempt,
                 });
@@ -263,6 +297,7 @@ export class UnitOfWork {
               bodyAttempt < cfg.maxBodyAttempts;
 
             if (shouldRetryBody) {
+              this.metrics.recordRetry("body");
               addRequestContextBreadcrumb("transaction.body.retry", { bodyAttempt });
               await this.backoffWithJitter(
                 bodyAttempt,
@@ -282,11 +317,33 @@ export class UnitOfWork {
       }
 
       throw new Error("Transaction body retry loop exited unexpectedly");
+    } catch (error) {
+      if (error instanceof AmbiguousTransactionCommitError) {
+        outcome = "ambiguous";
+        this.metrics.recordAmbiguous();
+      } else {
+        this.metrics.recordFailure();
+      }
+      logger.warn("Transaction did not complete with a confirmed commit", {
+        event: `transaction.${outcome}`, transactionId, bodyAttempts, commitAttempts, error,
+      });
+      throw error;
     } finally {
       try {
         if (session) await session.endSession();
+      } catch (error) {
+        logger.warn("Transaction session cleanup failed", {
+          event: "transaction.cleanup.failed", transactionId, outcome, error,
+        });
       } finally {
+        if (session) transactionTraces.delete(session);
         this.transactionSemaphore.release();
+        const durationMs = performance.now() - startedAt;
+        this.metrics.recordDuration(durationMs, queueWaitMs);
+        logger.info("Transaction finished", {
+          event: "transaction.finished", transactionId, outcome, bodyAttempts, commitAttempts,
+          durationMs, queueWaitMs,
+        });
       }
     }
   }
@@ -298,14 +355,16 @@ export class UnitOfWork {
       await session.abortTransaction();
       addRequestContextBreadcrumb("transaction.abort", { succeeded: true });
       return true;
-    } catch {
+    } catch (error) {
       addRequestContextBreadcrumb("transaction.abort", { succeeded: false });
+      logger.warn("Transaction abort failed", {
+        event: "transaction.abort.failed", ...transactionTraces.get(session), error,
+      });
       return false;
     }
   }
 
   private recordDefiniteFailure(bodyAttempt: number, retryable: boolean): void {
-    this.metrics.recordFailure();
     addRequestContextBreadcrumb("transaction.failed", { bodyAttempt, retryable });
   }
 
@@ -339,6 +398,10 @@ export class UnitOfWork {
    */
   getMetrics(): TransactionMetrics {
     return this.metrics.snapshot(this.transactionSemaphore);
+  }
+
+  getObservabilityMetrics(): TransactionObservabilityMetrics {
+    return this.metrics.observabilitySnapshot(this.transactionSemaphore);
   }
 
   /**

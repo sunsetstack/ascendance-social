@@ -6,11 +6,9 @@ import { CommandBus } from "@/application/common/buses/command.bus";
 import { LoginCommand } from "@/application/commands/auth/login/login.command";
 import { RefreshSessionCommand } from "@/application/commands/auth/refreshSession/refreshSession.command";
 import { RegisterUserCommand } from "@/application/commands/users/register/register.command";
-import { RegisterUserResult } from "@/application/commands/users/register/register.handler";
 import { RequestPasswordResetCommand } from "@/application/commands/users/requestPasswordReset/RequestPasswordResetCommand";
 import { ResetPasswordCommand } from "@/application/commands/users/resetPassword/ResetPasswordCommand";
 import { VerifyEmailCommand } from "@/application/commands/users/verifyEmail/VerifyEmailCommand";
-import { VerifyEmailResult } from "@/application/commands/users/verifyEmail/VerifyEmailHandler";
 import { TypedRequest } from "@/types";
 import type {
   LoginBody,
@@ -28,7 +26,6 @@ import {
   toSessionUser,
 } from "@/controllers/helpers/user-auth-response";
 import { Errors } from "@/utils/errors";
-import { AuthenticatedSessionResult } from "@/services/auth.service";
 
 type EmptyParams = Record<string, never>;
 
@@ -113,7 +110,7 @@ export class AuthController {
       requestContext.ip,
     );
     const { user, authVersion } =
-      await this.commandBus.dispatch<RegisterUserResult>(command);
+      await this.commandBus.dispatch(command);
     const { accessToken, refreshToken, sid } =
       await this.authService.issueTokensForUser(
         toSessionUser(user, authVersion),
@@ -145,7 +142,7 @@ export class AuthController {
       refreshRotated: false,
     };
     const { user, accessToken, refreshToken, sid } =
-      await this.commandBus.dispatch<AuthenticatedSessionResult>(
+      await this.commandBus.dispatch(
         new LoginCommand(email, password, buildAuthRequestContext(req)),
       );
     req.authLogMetadata = {
@@ -180,7 +177,7 @@ export class AuthController {
       accessToken,
       refreshToken: nextRefreshToken,
       sid,
-    } = await this.commandBus.dispatch<AuthenticatedSessionResult>(
+    } = await this.commandBus.dispatch(
       new RefreshSessionCommand(refreshToken, buildAuthRequestContext(req)),
     );
     req.authLogMetadata = {
@@ -276,7 +273,7 @@ export class AuthController {
       refreshRotated: false,
     };
     const command = new VerifyEmailCommand(email, token);
-    const user = await this.commandBus.dispatch<VerifyEmailResult>(command);
+    const user = await this.commandBus.dispatch(command);
     req.authLogMetadata = {
       authAction: "email_verify",
       userId: user.publicId,
@@ -288,5 +285,28 @@ export class AuthController {
       refreshRotated: false,
     };
     res.status(200).json(user);
+  };
+
+  resendVerificationEmail = async (req: Request, res: Response) => {
+    const userPublicId = req.decodedUser?.publicId;
+    if (!userPublicId) {
+      throw Errors.authentication("User information missing");
+    }
+
+    req.authLogMetadata = {
+      authAction: "email_verification_requested",
+      userId: userPublicId,
+      authEmail: req.decodedUser?.email,
+      authUsername: req.decodedUser?.username,
+      authHandle: req.decodedUser?.handle,
+      sessionId: req.decodedUser?.sid,
+      tokenFamilyId: req.decodedUser?.sid,
+      authSource: "access_token",
+      authState: "authenticated",
+      refreshRotated: false,
+    };
+
+    await this.authService.resendVerificationEmail(userPublicId);
+    res.status(200).json({ message: "Verification email sent" });
   };
 }

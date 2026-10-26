@@ -4,6 +4,19 @@ import { LogRequestCommand } from "./logRequest.command";
 import { RequestLogRepository } from "@/repositories/requestLog.repository";
 import { TOKENS } from "@/types/tokens";
 
+function redactMessagingLocation(value: string): string;
+function redactMessagingLocation(value: string | undefined): string | undefined;
+function redactMessagingLocation(
+  value: string | undefined,
+): string | undefined {
+  return value
+    ?.replace(
+      /(\/api\/messaging\/(?:conversations|messages)\/)[0-9a-f-]{36}/gi,
+      "$1:redacted",
+    )
+    .replace(/([?&]conversation=)[^&#]*/gi, "$1redacted");
+}
+
 @injectable()
 export class LogRequestCommandHandler implements ICommandHandler<
   LogRequestCommand,
@@ -51,10 +64,10 @@ export class LogRequestCommandHandler implements ICommandHandler<
       timestamp: new Date(),
       metadata: {
         method,
-        route,
+        route: redactMessagingLocation(route),
         ip,
         origin,
-        referer,
+        referer: redactMessagingLocation(referer),
         statusCode,
         responseTimeMs,
         aborted,
@@ -63,7 +76,13 @@ export class LogRequestCommandHandler implements ICommandHandler<
         userAgent,
         clientFingerprint,
         clientFingerprintSchemaVersion,
-        visitorObservation,
+        visitorObservation: visitorObservation
+          ? {
+              ...visitorObservation,
+              path: redactMessagingLocation(visitorObservation.path),
+              referrer: redactMessagingLocation(visitorObservation.referrer),
+            }
+          : undefined,
         authState,
         authSource,
         authAction,

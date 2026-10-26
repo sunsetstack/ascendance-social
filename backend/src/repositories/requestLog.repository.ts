@@ -25,6 +25,11 @@ export class RequestLogRepository extends BaseRepository<IRequestLog> {
 		super(RequestLogModel);
 	}
 
+	async deleteByIds(ids: string[]): Promise<void> {
+		if (ids.length === 0) return;
+		await this.model.deleteMany({ _id: { $in: ids } }).exec();
+	}
+
 	/**
 	 * Cursor-based pagination for request logs - efficient for large datasets.
 	 */

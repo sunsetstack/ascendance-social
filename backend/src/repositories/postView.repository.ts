@@ -16,20 +16,25 @@ export class PostViewRepository extends BaseRepository<IPostView> {
 	 * Returns true if a new view was recorded or false if user already viewed
 	 */
 	async recordView(postId: Types.ObjectId, userId: Types.ObjectId): Promise<boolean> {
+		const session = this.getSession();
 		try {
-			const session = this.getSession();
 			const viewData: Partial<IPostView> = {
 				post: postId,
 				user: userId,
 				viewedAt: new Date(),
 			};
 
-			await this.model.create([viewData], { session });
-			return true; // new view recorded
+			const result = await this.model.updateOne(
+				{ post: postId, user: userId },
+				{ $setOnInsert: viewData },
+				{ upsert: true, session },
+			);
+			return result.upsertedCount === 1;
 		} catch (error: unknown) {
-			// duplicate key error means user already viewed this post
 			if (typeof error === 'object' && error !== null && 'code' in error && error.code === 11000) {
-				return false; // already viewed
+				// Duplicate writes abort a transaction; its owner must handle the error.
+				if (session) throw error;
+				return false;
 			}
 			throw Errors.database("Failed to record post view", { cause: error });
 		}

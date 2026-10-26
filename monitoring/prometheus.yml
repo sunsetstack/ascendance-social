@@ -3,6 +3,9 @@ global:
   scrape_timeout: 10s
   evaluation_interval: 15s
 
+rule_files:
+  - /etc/prometheus/alerts/*.yml
+
 scrape_configs:
   # Prometheus monitors itself.
   - job_name: prometheus
@@ -33,6 +36,13 @@ scrape_configs:
     static_configs:
       - targets:
           - backend-worker:9464
+
+  - job_name: backend-dev
+    metrics_path: /metrics
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/development-targets/*.json
+        refresh_interval: 15s
 
   # Redis metrics.
   - job_name: redis_exporter

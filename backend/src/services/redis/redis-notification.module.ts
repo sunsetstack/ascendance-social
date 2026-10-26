@@ -28,6 +28,20 @@ function isNotificationHash(val: unknown): val is NotificationHash {
 export class RedisNotificationModule {
   constructor(private readonly client: RedisClientType) {}
 
+  async clearNotificationCaches(userIds: string[], notificationIds: string[]): Promise<void> {
+    const ids = new Set(notificationIds);
+    for (const userId of userIds) {
+      for (const id of await this.getUserNotificationIds(userId)) ids.add(id);
+    }
+    const keys = [
+      ...userIds.map((id) => CacheKeyBuilder.getNotificationListKey(id)),
+      ...[...ids].map((id) => CacheKeyBuilder.getNotificationHashKey(id)),
+    ];
+    for (let offset = 0; offset < keys.length; offset += 500) {
+      await this.client.del(keys.slice(offset, offset + 500));
+    }
+  }
+
   async pushNotification(
     userId: string,
     notification: INotification,

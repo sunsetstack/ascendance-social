@@ -34,6 +34,7 @@ export class MessageRepository extends BaseRepository<IMessage> {
 		conversationId: string,
 		limit: number = 50,
 		cursor?: string,
+		clearedAt?: Date,
 	): Promise<CursorPaginationResult<IMessageWithPopulatedSender>> {
 		try {
 			const objectId = new mongoose.Types.ObjectId(conversationId);
@@ -41,6 +42,7 @@ export class MessageRepository extends BaseRepository<IMessage> {
 
 			// Build filter with cursor condition for efficient pagination
 			const filter: Record<string, unknown> = { conversation: objectId };
+			if (clearedAt) filter.createdAt = { $gt: clearedAt };
 			
 			if (decodedCursor) {
 				// Get messages older than cursor (for descending order)
@@ -91,23 +93,20 @@ export class MessageRepository extends BaseRepository<IMessage> {
 	async findMessagesByConversation(
 		conversationId: string,
 		page: number,
-		limit: number
+		limit: number,
+		clearedAt?: Date,
 	): Promise<PaginationResult<IMessageWithPopulatedSender>> {
 		try {
 			const skip = (page - 1) * limit;
 			const objectId = new mongoose.Types.ObjectId(conversationId);
+			const filter = { conversation: objectId, ...(clearedAt ? { createdAt: { $gt: clearedAt } } : {}) };
 
-			const [messages, total] = await Promise.all([
-				this.model
-					.find({ conversation: objectId })
-					.sort({ createdAt: -1 })
-					.skip(skip)
-					.limit(limit)
-					.populate("sender", "publicId handle username avatar")
-					.lean<IMessageWithPopulatedSender[]>()
-					.exec(),
-				this.model.countDocuments({ conversation: objectId }),
-			]);
+			const session = this.getSession();
+			const messages = await this.model.find(filter)
+				.sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit)
+				.populate("sender", "publicId handle username avatar")
+				.session(session ?? null).lean<IMessageWithPopulatedSender[]>().exec();
+			const total = await this.model.countDocuments(filter).session(session ?? null).exec();
 
 			return {
 				data: messages,
@@ -124,12 +123,14 @@ export class MessageRepository extends BaseRepository<IMessage> {
 	// Trying different session handling here
 	async markConversationMessagesAsRead(
 		conversationId: string,
-		readerId: string
+		readerId: string,
+		clearedAt?: Date,
 	): Promise<void> {
 		const session = this.getSession();
 		const update = this.model.updateMany(
 			{
 				conversation: new mongoose.Types.ObjectId(conversationId),
+				...(clearedAt ? { createdAt: { $gt: clearedAt } } : {}),
 				sender: { $ne: new mongoose.Types.ObjectId(readerId) },
 				readBy: { $ne: new mongoose.Types.ObjectId(readerId) },
 			},
@@ -146,11 +147,13 @@ export class MessageRepository extends BaseRepository<IMessage> {
 	async markConversationMessagesAsDelivered(
 		conversationId: string,
 		recipientId: string,
+		clearedAt?: Date,
 	): Promise<boolean> {
 		const session = this.getSession();
 		const update = this.model.updateMany(
 			{
 				conversation: new mongoose.Types.ObjectId(conversationId),
+				...(clearedAt ? { createdAt: { $gt: clearedAt } } : {}),
 				sender: { $ne: new mongoose.Types.ObjectId(recipientId) },
 				status: "sent",
 			},

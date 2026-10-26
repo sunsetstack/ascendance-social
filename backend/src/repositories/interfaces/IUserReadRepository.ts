@@ -25,6 +25,7 @@ export interface IUserReadRepository {
   ): Promise<IUser | null>;
 
   // batch lookups
+  findUsersByIds(userIds: MongoId[]): Promise<IUser[]>;
   findUsersByPublicIds(userPublicIds: UserPublicId[]): Promise<IUser[]>;
   findUsersByUsernames(usernames: string[]): Promise<IUser[]>;
   findUsersByHandles(handles: string[]): Promise<IUser[]>;
@@ -44,10 +45,6 @@ export interface IUserReadRepository {
   countDocuments(filter: Record<string, unknown>): Promise<number>;
 
   // suggestions and recommendations
-  getSuggestedUsersToFollow(
-    currentUserId: MongoId,
-    limit?: number,
-  ): Promise<UserSuggestion[]>;
   getSuggestedUsersLowTraffic(
     currentUserId: MongoId,
     limit?: number,

@@ -9,14 +9,9 @@ import { SendMessageCommand } from "@/application/commands/messaging/sendMessage
 import { MarkConversationReadCommand } from "@/application/commands/messaging/markConversationRead/markConversationRead.command";
 import { EditMessageCommand } from "@/application/commands/messaging/editMessage/editMessage.command";
 import { DeleteMessageCommand } from "@/application/commands/messaging/deleteMessage/deleteMessage.command";
+import { ManageConversationCommand, ConversationAction } from "@/application/commands/messaging/manageConversation/manageConversation.command";
 import { Errors } from "@/utils/errors";
-import {
-  PaginatedConversationSummaryResult,
-  PaginatedMessageResult,
-  SendMessagePayload,
-  TypedRequest,
-} from "@/types";
-import { streamPaginatedResponse } from "@/utils/streamResponse";
+import { SendMessagePayload, TypedRequest } from "@/types";
 import { TOKENS } from "@/types/tokens";
 import type {
   ConversationParams,
@@ -26,7 +21,6 @@ import type {
   PaginationQuery,
   SendMessageBody,
 } from "@/utils/schemas/messaging.schemas";
-import { STREAM_THRESHOLD } from "@/utils/post-helpers";
 import {
   asConversationPublicId,
   asMessagePublicId,
@@ -43,6 +37,29 @@ export class MessagingController {
     @inject(TOKENS.CQRS.Queries.Bus) private readonly queryBus: QueryBus,
   ) {}
 
+  private async manageConversation(
+    req: TypedRequest<ConversationParams>, res: Response, action: ConversationAction,
+  ): Promise<void> {
+    if (!req.decodedUser?.publicId) throw Errors.authentication("User must be logged in");
+    await this.commandBus.dispatch(new ManageConversationCommand(
+      asUserPublicId(req.decodedUser.publicId),
+      asConversationPublicId(req.params.conversationId), action,
+    ));
+    res.status(204).send();
+  }
+
+  deleteConversation = (req: TypedRequest<ConversationParams>, res: Response): Promise<void> =>
+    this.manageConversation(req, res, "delete");
+
+  purgeConversation = (req: TypedRequest<ConversationParams>, res: Response): Promise<void> =>
+    this.manageConversation(req, res, "purge");
+
+  lockConversation = (req: TypedRequest<ConversationParams>, res: Response): Promise<void> =>
+    this.manageConversation(req, res, "lock");
+
+  unlockConversation = (req: TypedRequest<ConversationParams>, res: Response): Promise<void> =>
+    this.manageConversation(req, res, "unlock");
+
   listConversations = async (
     req: TypedRequest<EmptyParams, EmptyBody, PaginationQuery>,
     res: Response,
@@ -57,7 +74,7 @@ export class MessagingController {
     const { page, limit } = req.query;
 
     const result =
-      await this.queryBus.execute<PaginatedConversationSummaryResult>(
+      await this.queryBus.execute(
         new ListConversationsQuery(asUserPublicId(userPublicId), page, limit),
       );
     res.status(200).json(result);
@@ -75,7 +92,7 @@ export class MessagingController {
     const { conversationId } = req.params;
     const { page, limit } = req.query;
 
-    const result = await this.queryBus.execute<PaginatedMessageResult>(
+    const result = await this.queryBus.execute(
       new GetConversationMessagesQuery(
         asUserPublicId(userPublicId),
         asConversationPublicId(conversationId),
@@ -84,21 +101,7 @@ export class MessagingController {
       ),
     );
 
-    if (result.messages.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(
-        res,
-        result.messages,
-        {
-          total: result.total,
-          page: result.page,
-          limit: result.limit,
-          totalPages: result.totalPages,
-        },
-        { arrayKey: "messages" },
-      );
-    } else {
-      res.status(200).json(result);
-    }
+    res.status(200).json(result);
   };
 
   markConversationRead = async (

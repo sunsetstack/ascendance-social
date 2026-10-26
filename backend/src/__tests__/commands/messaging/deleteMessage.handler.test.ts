@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { describe, beforeEach, afterEach, it } from "mocha";
 import { expect } from "chai";
 import sinon from "sinon";
+import mongoose from "mongoose";
 import { DeleteMessageCommandHandler } from "@/application/commands/messaging/deleteMessage/deleteMessage.handler";
 import { DeleteMessageCommand } from "@/application/commands/messaging/deleteMessage/deleteMessage.command";
 import { asMessagePublicId, asUserPublicId } from "@/types/branded";
@@ -19,9 +20,15 @@ describe("DeleteMessageCommandHandler", () => {
     updateMessage: sinon.SinonStub;
   };
   let unitOfWork: { executeInTransaction: sinon.SinonStub };
+  let conversationRepository: { findById: sinon.SinonStub; acquireForMutation: sinon.SinonStub };
   let handler: DeleteMessageCommandHandler;
 
   beforeEach(() => {
+    const conversation = { publicId: "conversation", participants: [new mongoose.Types.ObjectId(userInternalId)] };
+    conversationRepository = {
+      findById: sinon.stub().resolves(conversation),
+      acquireForMutation: sinon.stub().resolves(conversation),
+    };
     userRepository = {
       findInternalIdByPublicId: sinon.stub().resolves(userInternalId),
     };
@@ -35,6 +42,7 @@ describe("DeleteMessageCommandHandler", () => {
         .callsFake(async (work: () => Promise<void>) => await work()),
     };
     handler = new DeleteMessageCommandHandler(
+      conversationRepository as any,
       messageRepository as any,
       userRepository as any,
       unitOfWork as any,
@@ -48,6 +56,7 @@ describe("DeleteMessageCommandHandler", () => {
   it("tombstones legacy attachment messages without scheduling storage deletion", async () => {
     messageRepository.findByPublicId.resolves({
       publicId: messagePublicId,
+      conversation: new mongoose.Types.ObjectId(),
       sender: { publicId: userPublicId },
       attachments: [
         {

@@ -20,7 +20,6 @@
     "typecheck:ts6": "tsc6 -p backend/tsconfig.json --noEmit --pretty false && tsc6 -b frontend/tsconfig.json --pretty false && tsc6 -p backend/tsconfig.test.json --noEmit --pretty false && tsc6 -p frontend/cypress/tsconfig.json --pretty false",
     "typecheck:ts6:stable": "tsc6 -p backend/tsconfig.json --noEmit --pretty false --stableTypeOrdering && tsc6 -p frontend/tsconfig.app.json --pretty false --stableTypeOrdering && tsc6 -p frontend/tsconfig.node.json --pretty false --stableTypeOrdering && tsc6 -p backend/tsconfig.test.json --noEmit --pretty false --stableTypeOrdering && tsc6 -p frontend/cypress/tsconfig.json --pretty false --stableTypeOrdering",
     "typecheck:ts7": "tsc -p backend/tsconfig.json --noEmit --pretty false && tsc -b frontend/tsconfig.json --pretty false && tsc -p backend/tsconfig.test.json --noEmit --pretty false && tsc -p frontend/cypress/tsconfig.json --pretty false",
-    "install-all": "npm install",
     "test:backend": "npm run test --workspace=backend",
     "lint:backend": "eslint \"backend/src/**/*.ts\"",
     "test:integration": "node scripts/test-backend-integration.mjs",
@@ -56,5 +55,8 @@
     "ts-node": "^10.9.2",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "^8.58.2"
+  },
+  "overrides": {
+    "socket.io-parser": "^4.2.7"
   }
 }
