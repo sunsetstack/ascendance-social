@@ -114,7 +114,6 @@ describe("Security - NoSQL Injection & XSS Prevention", () => {
 				trackUsageActivity: async () => undefined,
 			},
 			{},
-			{ invalidateByTags: async () => undefined },
 			{ toPostDTO: () => ({ body: createdPayload.body }) },
 			{ queueTransactional: async () => undefined, queueDurable: async () => undefined },
 		);
@@ -144,7 +143,7 @@ describe("Security - NoSQL Injection & XSS Prevention", () => {
 		let createdPayload: any;
 		const transformedComment = { _id: commentId, content: "Safe content" };
 		const handler = new CreateCommentCommandHandler(
-			{ executeInTransaction: async (operation: () => Promise<unknown>) => operation() },
+			{ run: async (_input: unknown, _user: unknown, operation: (image: null) => Promise<unknown>) => operation(null) },
 			{
 				findByPublicId: async () => ({
 					_id: postId,

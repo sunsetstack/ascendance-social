@@ -12,6 +12,13 @@ export class NotificationRepository extends BaseRepository<INotification> {
 		super(model);
 	}
 
+	async findExistingIds(userId: UserPublicId, ids: string[]): Promise<Set<string>> {
+		if (ids.length === 0) return new Set();
+		const notifications = await this.model.find({ userId, _id: { $in: ids } })
+			.select("_id").lean().exec();
+		return new Set(notifications.map((notification) => String(notification._id)));
+	}
+
 	async create(notificationData: Partial<INotification>): Promise<INotification> {
 		const session = this.getSession();
 		const notification = new this.model(notificationData);

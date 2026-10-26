@@ -2,11 +2,6 @@ import { IPost, PopulatedPostUser, PopulatedPostTag } from "@/types";
 import { Types } from "mongoose";
 
 /**
- * Shared constants for controller response handling.
- */
-export const STREAM_THRESHOLD = 100;
-
-/**
  * Extracts tag name strings from a post's tags array,
  * handling both populated tag objects and raw ObjectIds.
  */

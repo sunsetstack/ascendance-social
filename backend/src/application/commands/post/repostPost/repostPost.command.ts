@@ -8,5 +8,8 @@ export class RepostPostCommand implements ICommand {
     public readonly userPublicId: UserPublicId,
     public readonly targetPostPublicId: PostPublicId,
     public readonly body?: string,
+    public readonly imageBuffer?: Buffer,
+    public readonly imageMimeType?: string,
+    public readonly imageOriginalName?: string,
   ) {}
 }

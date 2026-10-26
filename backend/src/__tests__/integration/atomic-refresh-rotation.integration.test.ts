@@ -5,7 +5,6 @@ import { after, before, beforeEach, describe, it } from "mocha";
 import { createClient, RedisClientType } from "redis";
 import { AuthSessionService } from "@/services/auth-session.service";
 import { RedisSessionModule } from "@/services/redis/redis-session.module";
-import type { AuthSessionStore } from "@/application/ports/auth-session-store";
 
 type TestSession = {
   sid: string;
@@ -69,7 +68,7 @@ describe("Atomic refresh-token rotation integration", function () {
     };
 
     trackedSessions.set(sid, publicId);
-    await sessions.saveSession(session, 60);
+    await sessions.save(session, 60);
     return { session, currentHash };
   };
 
@@ -85,7 +84,7 @@ describe("Atomic refresh-token rotation integration", function () {
     } = {},
   ) => {
     const now = options.now ?? Date.now();
-    return (options.sessionModule ?? sessions).compareAndRotateSession<TestSession>({
+    return (options.sessionModule ?? sessions).compareAndRotate<TestSession>({
       sid: session.sid,
       publicId: session.publicId,
       presentedRefreshTokenHash,
@@ -123,36 +122,21 @@ describe("Atomic refresh-token rotation integration", function () {
     await peerClient.ping();
     sessions = new RedisSessionModule(client);
     peerSessions = new RedisSessionModule(peerClient);
-    authSessions = new AuthSessionService({
-      get: sessions.getSession.bind(sessions),
-      save: sessions.saveSession.bind(sessions),
-      compareAndRotate:
-        sessions.compareAndRotateSession.bind(sessions),
-      revokeByRefreshToken:
-        sessions.revokeRefreshSession.bind(sessions),
-      getUserSessionIds: sessions.getUserSessionIds.bind(sessions),
-      markEmailVerified:
-        sessions.markSessionEmailVerified.bind(sessions),
-      removeMembership:
-        sessions.removeSessionMembership.bind(sessions),
-      remove: sessions.removeSession.bind(sessions),
-      deleteUserSessions: sessions.deleteUserSessions.bind(sessions),
-      touch: sessions.touchSession.bind(sessions),
-    } satisfies AuthSessionStore, {
+    authSessions = new AuthSessionService(sessions, {
       findByPublicId: async () => null,
     } as any);
   });
 
   beforeEach(async () => {
     for (const [sid, publicId] of trackedSessions) {
-      await sessions.removeSession(sid, publicId);
+      await sessions.remove(sid, publicId);
     }
     trackedSessions.clear();
   });
 
   after(async () => {
     for (const [sid, publicId] of trackedSessions) {
-      await sessions.removeSession(sid, publicId);
+      await sessions.remove(sid, publicId);
     }
     if (peerClient?.isOpen) {
       await peerClient.disconnect();
@@ -200,7 +184,7 @@ describe("Atomic refresh-token rotation integration", function () {
       "message",
       "Refresh token already rotated",
     );
-    const stored = await sessions.getSession<TestSession>(sid);
+    const stored = await sessions.get<TestSession>(sid);
     expect(stored?.refreshVersion).to.equal(1);
     expect(successors.map(digest)).to.include(stored?.refreshTokenHash);
   });
@@ -208,7 +192,7 @@ describe("Atomic refresh-token rotation integration", function () {
   it("allows exactly one of two simultaneous rotations for one session", async () => {
     const { session, currentHash } = await createStoredSession("two");
     const successors = [digest("two:next-a"), digest("two:next-b")];
-    await sessions.removeSessionMembership(session.publicId, session.sid);
+    await sessions.removeMembership(session.publicId, session.sid);
     expect(
       await client.sIsMember(
         `user:sessions:${session.publicId}`,
@@ -224,7 +208,7 @@ describe("Atomic refresh-token rotation integration", function () {
       "rotated",
       "stale_previous",
     ]);
-    const stored = await sessions.getSession<TestSession>(session.sid);
+    const stored = await sessions.get<TestSession>(session.sid);
     expect(successors).to.include(stored?.refreshTokenHash);
     expect(stored?.previousRefreshTokenHash).to.equal(currentHash);
     expect(stored?.refreshVersion).to.equal(1);
@@ -255,7 +239,7 @@ describe("Atomic refresh-token rotation integration", function () {
       "rotated",
       "stale_previous",
     ]);
-    const stored = await sessions.getSession<TestSession>(session.sid);
+    const stored = await sessions.get<TestSession>(session.sid);
     expect(successors).to.include(stored?.refreshTokenHash);
     expect(stored?.refreshVersion).to.equal(1);
   });
@@ -275,7 +259,7 @@ describe("Atomic refresh-token rotation integration", function () {
     expect(
       results.filter((result) => result.outcome === "stale_previous"),
     ).to.have.length(9);
-    const stored = await sessions.getSession<TestSession>(session.sid);
+    const stored = await sessions.get<TestSession>(session.sid);
     expect(successors).to.include(stored?.refreshTokenHash);
     expect(stored?.refreshVersion).to.equal(1);
   });
@@ -293,11 +277,11 @@ describe("Atomic refresh-token rotation integration", function () {
     expect(firstResult.outcome).to.equal("rotated");
     expect(secondResult.outcome).to.equal("rotated");
     expect(
-      (await sessions.getSession<TestSession>(first.session.sid))
+      (await sessions.get<TestSession>(first.session.sid))
         ?.refreshVersion,
     ).to.equal(1);
     expect(
-      (await sessions.getSession<TestSession>(second.session.sid))
+      (await sessions.get<TestSession>(second.session.sid))
         ?.refreshVersion,
     ).to.equal(1);
   });
@@ -321,7 +305,7 @@ describe("Atomic refresh-token rotation integration", function () {
     );
 
     expect(replay.outcome).to.equal("mismatch");
-    expect(await sessions.getSession(session.sid)).to.equal(null);
+    expect(await sessions.get(session.sid)).to.equal(null);
   });
 
   it("classifies the previous token inside grace without changing the winner", async () => {
@@ -338,7 +322,7 @@ describe("Atomic refresh-token rotation integration", function () {
     );
 
     expect(stale.outcome).to.equal("stale_previous");
-    const stored = await sessions.getSession<TestSession>(session.sid);
+    const stored = await sessions.get<TestSession>(session.sid);
     expect(stored?.refreshTokenHash).to.equal(winningHash);
     expect(stored?.refreshVersion).to.equal(1);
   });
@@ -360,7 +344,7 @@ describe("Atomic refresh-token rotation integration", function () {
     );
 
     expect(result.outcome).to.equal("mismatch");
-    expect(await sessions.getSession(session.sid)).to.equal(null);
+    expect(await sessions.get(session.sid)).to.equal(null);
   });
 
   it("returns missing for missing and expired sessions", async () => {
@@ -409,7 +393,7 @@ describe("Atomic refresh-token rotation integration", function () {
         currentHash,
         digest("refresh-logout-race:next"),
       ),
-      peerSessions.revokeRefreshSession({
+      peerSessions.revokeByRefreshToken({
         sid: session.sid,
         presentedRefreshTokenHash: currentHash,
         now: Date.now(),
@@ -418,7 +402,7 @@ describe("Atomic refresh-token rotation integration", function () {
 
     expect(["rotated", "missing"]).to.include(rotation.outcome);
     expect(revocation).to.equal("revoked");
-    expect(await sessions.getSession(session.sid)).to.equal(null);
+    expect(await sessions.get(session.sid)).to.equal(null);
     expect(
       await client.sIsMember(
         `user:sessions:${session.publicId}`,
@@ -429,7 +413,7 @@ describe("Atomic refresh-token rotation integration", function () {
 
   it("keeps logout immediate in both orderings around rotation", async () => {
     const before = await createStoredSession("logout-before");
-    await sessions.removeSession(before.session.sid, before.session.publicId);
+    await sessions.remove(before.session.sid, before.session.publicId);
     const afterLogout = await rotate(
       before.session,
       before.currentHash,
@@ -443,9 +427,9 @@ describe("Atomic refresh-token rotation integration", function () {
       after.currentHash,
       digest("logout-after:next"),
     );
-    await sessions.removeSession(after.session.sid, after.session.publicId);
+    await sessions.remove(after.session.sid, after.session.publicId);
     expect(rotation.outcome).to.equal("rotated");
-    expect(await sessions.getSession(after.session.sid)).to.equal(null);
+    expect(await sessions.get(after.session.sid)).to.equal(null);
 
     const concurrent = await createStoredSession("logout-concurrent");
     const [concurrentRotation] = await Promise.all([
@@ -454,13 +438,13 @@ describe("Atomic refresh-token rotation integration", function () {
         concurrent.currentHash,
         digest("logout-concurrent:next"),
       ),
-      sessions.removeSession(
+      sessions.remove(
         concurrent.session.sid,
         concurrent.session.publicId,
       ),
     ]);
     expect(["rotated", "missing"]).to.include(concurrentRotation.outcome);
-    expect(await sessions.getSession(concurrent.session.sid)).to.equal(null);
+    expect(await sessions.get(concurrent.session.sid)).to.equal(null);
     expect(
       await client.sIsMember(
         `user:sessions:${concurrent.session.publicId}`,
@@ -488,7 +472,7 @@ describe("Atomic refresh-token rotation integration", function () {
     );
     await sessions.deleteUserSessions(publicId, [after.session.sid]);
     expect(rotation.outcome).to.equal("rotated");
-    expect(await sessions.getSession(after.session.sid)).to.equal(null);
+    expect(await sessions.get(after.session.sid)).to.equal(null);
 
     const concurrent = await createStoredSession(
       "revoke-all-concurrent",
@@ -503,7 +487,7 @@ describe("Atomic refresh-token rotation integration", function () {
       sessions.deleteUserSessions(publicId, [concurrent.session.sid]),
     ]);
     expect(["rotated", "missing"]).to.include(concurrentRotation.outcome);
-    expect(await sessions.getSession(concurrent.session.sid)).to.equal(null);
+    expect(await sessions.get(concurrent.session.sid)).to.equal(null);
     expect(await client.exists(`user:sessions:${publicId}`)).to.equal(0);
   });
 
@@ -517,7 +501,7 @@ describe("Atomic refresh-token rotation integration", function () {
     );
 
     expect(result.outcome).to.equal("mismatch");
-    expect(await sessions.getSession(session.sid)).to.equal(null);
+    expect(await sessions.get(session.sid)).to.equal(null);
     expect(
       await client.sIsMember(
         `user:sessions:${session.publicId}`,
@@ -541,7 +525,7 @@ describe("Atomic refresh-token rotation integration", function () {
 
     expect(result.outcome).to.equal("revoked");
     expect(
-      (await sessions.getSession<TestSession>(session.sid))?.refreshTokenHash,
+      (await sessions.get<TestSession>(session.sid))?.refreshTokenHash,
     ).to.equal(currentHash);
   });
 
@@ -556,7 +540,7 @@ describe("Atomic refresh-token rotation integration", function () {
     );
 
     expect(result.outcome).to.equal("version_conflict");
-    const stored = await sessions.getSession<TestSession>(session.sid);
+    const stored = await sessions.get<TestSession>(session.sid);
     expect(stored?.refreshTokenHash).to.equal(currentHash);
     expect(stored?.refreshVersion).to.equal(0);
   });
@@ -575,20 +559,20 @@ describe("Atomic refresh-token rotation integration", function () {
 
     const delayedLastSeenAt = Date.now() + 1_000;
     expect(
-      await sessions.touchSession({
+      await sessions.touch({
         sid: rotatedCase.session.sid,
         publicId: rotatedCase.session.publicId,
         lastSeenAt: delayedLastSeenAt,
       }),
     ).to.equal("updated");
     expect(
-      await sessions.markSessionEmailVerified({
+      await sessions.markEmailVerified({
         sid: rotatedCase.session.sid,
         publicId: rotatedCase.session.publicId,
       }),
     ).to.equal("updated");
 
-    const storedWinner = await sessions.getSession<TestSession>(
+    const storedWinner = await sessions.get<TestSession>(
       rotatedCase.session.sid,
     );
     expect(storedWinner?.refreshTokenHash).to.equal(winningHash);
@@ -604,22 +588,22 @@ describe("Atomic refresh-token rotation integration", function () {
     const olderLastSeenAt = session.lastSeenAt + 1_000;
     const newerLastSeenAt = session.lastSeenAt + 2_000;
 
-    await sessions.markSessionEmailVerified({
+    await sessions.markEmailVerified({
       sid: session.sid,
       publicId: session.publicId,
     });
-    await sessions.touchSession({
+    await sessions.touch({
       sid: session.sid,
       publicId: session.publicId,
       lastSeenAt: newerLastSeenAt,
     });
-    await sessions.touchSession({
+    await sessions.touch({
       sid: session.sid,
       publicId: session.publicId,
       lastSeenAt: olderLastSeenAt,
     });
 
-    const stored = await sessions.getSession<TestSession>(session.sid);
+    const stored = await sessions.get<TestSession>(session.sid);
     expect(stored?.isEmailVerified).to.equal(true);
     expect(stored?.lastSeenAt).to.equal(newerLastSeenAt);
   });
@@ -629,7 +613,7 @@ describe("Atomic refresh-token rotation integration", function () {
       "rotation-activity",
     );
     const newerLastSeenAt = session.lastSeenAt + 2_000;
-    await sessions.touchSession({
+    await sessions.touch({
       sid: session.sid,
       publicId: session.publicId,
       lastSeenAt: newerLastSeenAt,
@@ -644,7 +628,7 @@ describe("Atomic refresh-token rotation integration", function () {
 
     expect(result.outcome).to.equal("rotated");
     expect(
-      (await sessions.getSession<TestSession>(session.sid))?.lastSeenAt,
+      (await sessions.get<TestSession>(session.sid))?.lastSeenAt,
     ).to.equal(newerLastSeenAt);
   });
 
@@ -657,12 +641,12 @@ describe("Atomic refresh-token rotation integration", function () {
     const before = await client.pTTL(sessionKey);
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
 
-    await sessions.touchSession({
+    await sessions.touch({
       sid: session.sid,
       publicId: session.publicId,
       lastSeenAt: session.lastSeenAt + 1_000,
     });
-    await sessions.markSessionEmailVerified({
+    await sessions.markEmailVerified({
       sid: session.sid,
       publicId: session.publicId,
     });
@@ -682,7 +666,7 @@ describe("Atomic refresh-token rotation integration", function () {
 
     const [rotation, verification] = await Promise.all([
       rotate(session, currentHash, winningHash),
-      peerSessions.markSessionEmailVerified({
+      peerSessions.markEmailVerified({
         sid: session.sid,
         publicId: session.publicId,
       }),
@@ -690,7 +674,7 @@ describe("Atomic refresh-token rotation integration", function () {
 
     expect(rotation.outcome).to.equal("rotated");
     expect(verification).to.equal("updated");
-    const stored = await sessions.getSession<TestSession>(session.sid);
+    const stored = await sessions.get<TestSession>(session.sid);
     expect(stored?.refreshTokenHash).to.equal(winningHash);
     expect(stored?.refreshVersion).to.equal(1);
     expect(stored?.isEmailVerified).to.equal(true);
@@ -699,24 +683,24 @@ describe("Atomic refresh-token rotation integration", function () {
   it("does not let delayed metadata recreate logout", async () => {
     const loggedOut = await createStoredSession("delayed-after-logout");
 
-    await sessions.removeSession(
+    await sessions.remove(
       loggedOut.session.sid,
       loggedOut.session.publicId,
     );
     expect(
-      await sessions.touchSession({
+      await sessions.touch({
         sid: loggedOut.session.sid,
         publicId: loggedOut.session.publicId,
         lastSeenAt: Date.now() + 1_000,
       }),
     ).to.equal("missing");
     expect(
-      await sessions.markSessionEmailVerified({
+      await sessions.markEmailVerified({
         sid: loggedOut.session.sid,
         publicId: loggedOut.session.publicId,
       }),
     ).to.equal("missing");
-    expect(await sessions.getSession(loggedOut.session.sid)).to.equal(null);
+    expect(await sessions.get(loggedOut.session.sid)).to.equal(null);
   });
 
   it("preserves a delayed touch when email verification runs second", async () => {
@@ -726,20 +710,20 @@ describe("Atomic refresh-token rotation integration", function () {
     const touchedAt = session.lastSeenAt + 1_000;
 
     expect(
-      await sessions.touchSession({
+      await sessions.touch({
         sid: session.sid,
         publicId: session.publicId,
         lastSeenAt: touchedAt,
       }),
     ).to.equal("updated");
     expect(
-      await sessions.markSessionEmailVerified({
+      await sessions.markEmailVerified({
         sid: session.sid,
         publicId: session.publicId,
       }),
     ).to.equal("updated");
 
-    const stored = await sessions.getSession<TestSession>(session.sid);
+    const stored = await sessions.get<TestSession>(session.sid);
     expect(stored?.lastSeenAt).to.equal(touchedAt);
     expect(stored?.isEmailVerified).to.equal(true);
     expect(stored?.refreshTokenHash).to.equal(session.refreshTokenHash);
@@ -759,12 +743,12 @@ describe("Atomic refresh-token rotation integration", function () {
       session.refreshTokenHash,
       digest("embedded-sid:next"),
     );
-    const touch = await sessions.touchSession({
+    const touch = await sessions.touch({
       sid: session.sid,
       publicId: session.publicId,
       lastSeenAt: session.lastSeenAt + 1_000,
     });
-    const verification = await sessions.markSessionEmailVerified({
+    const verification = await sessions.markEmailVerified({
       sid: session.sid,
       publicId: session.publicId,
     });
@@ -792,12 +776,12 @@ describe("Atomic refresh-token rotation integration", function () {
       session.refreshTokenHash,
       digest("public-id-mismatch:next"),
     );
-    const touch = await sessions.touchSession({
+    const touch = await sessions.touch({
       sid: session.sid,
       publicId: expectedPublicId,
       lastSeenAt: session.lastSeenAt + 1_000,
     });
-    const verification = await sessions.markSessionEmailVerified({
+    const verification = await sessions.markEmailVerified({
       sid: session.sid,
       publicId: expectedPublicId,
     });
@@ -822,13 +806,13 @@ describe("Atomic refresh-token rotation integration", function () {
         .outcome,
     ).to.equal("rotated");
     expect(
-      await sessions.revokeRefreshSession({
+      await sessions.revokeByRefreshToken({
         sid: rotationFirst.session.sid,
         presentedRefreshTokenHash: rotationFirst.currentHash,
         now: Date.now(),
       }),
     ).to.equal("revoked");
-    expect(await sessions.getSession(rotationFirst.session.sid)).to.equal(null);
+    expect(await sessions.get(rotationFirst.session.sid)).to.equal(null);
     expect(
       await client.sIsMember(
         `user:sessions:${rotationFirst.session.publicId}`,
@@ -838,7 +822,7 @@ describe("Atomic refresh-token rotation integration", function () {
 
     const logoutFirst = await createStoredSession("logout-first");
     expect(
-      await sessions.revokeRefreshSession({
+      await sessions.revokeByRefreshToken({
         sid: logoutFirst.session.sid,
         presentedRefreshTokenHash: logoutFirst.currentHash,
         now: Date.now(),
@@ -853,7 +837,7 @@ describe("Atomic refresh-token rotation integration", function () {
         )
       ).outcome,
     ).to.equal("missing");
-    expect(await sessions.getSession(logoutFirst.session.sid)).to.equal(null);
+    expect(await sessions.get(logoutFirst.session.sid)).to.equal(null);
     expect(
       await client.sIsMember(
         `user:sessions:${logoutFirst.session.publicId}`,
@@ -868,14 +852,14 @@ describe("Atomic refresh-token rotation integration", function () {
     await client.sAdd(`user:sessions:${publicId}`, missingSid);
 
     expect(
-      await sessions.touchSession({
+      await sessions.touch({
         sid: missingSid,
         publicId,
         lastSeenAt: Date.now(),
       }),
     ).to.equal("missing");
     expect(
-      await sessions.markSessionEmailVerified({ sid: missingSid, publicId }),
+      await sessions.markEmailVerified({ sid: missingSid, publicId }),
     ).to.equal("missing");
     expect(await client.exists(`session:${missingSid}`)).to.equal(0);
     expect(
@@ -908,14 +892,14 @@ describe("Atomic refresh-token rotation integration", function () {
         ).outcome,
       ).to.equal("invalid_record");
       expect(
-        await sessions.touchSession({
+        await sessions.touch({
           sid,
           publicId,
           lastSeenAt: Date.now() + 1_000,
         }),
       ).to.equal("invalid_record");
       expect(
-        await sessions.markSessionEmailVerified({ sid, publicId }),
+        await sessions.markEmailVerified({ sid, publicId }),
       ).to.equal("invalid_record");
       expect(await client.get(`session:${sid}`)).to.equal(raw);
       expect(await client.sIsMember(`user:sessions:${publicId}`, sid)).to.equal(
@@ -942,7 +926,7 @@ describe("Atomic refresh-token rotation integration", function () {
       status: "active" as const,
     };
     trackedSessions.set(sid, publicId);
-    await sessions.saveSession(legacy, 60);
+    await sessions.save(legacy, 60);
 
     const result = await rotate(
       { ...legacy, refreshVersion: 0 },
@@ -951,7 +935,7 @@ describe("Atomic refresh-token rotation integration", function () {
     );
 
     expect(result.outcome).to.equal("rotated");
-    const stored = await sessions.getSession<TestSession>(sid);
+    const stored = await sessions.get<TestSession>(sid);
     expect(stored?.refreshVersion).to.equal(1);
     expect(stored?.previousRefreshTokenHash).to.equal(currentHash);
     expect(await client.sIsMember(`user:sessions:${publicId}`, sid)).to.equal(

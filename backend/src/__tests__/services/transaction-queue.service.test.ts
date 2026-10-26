@@ -40,8 +40,7 @@ describe("TransactionQueueService", () => {
 			availablePermits: 50,
 		});
 
-		// Mock executeInTransaction to just run the callback
-		unitOfWorkStub.executeInTransaction.callsFake(async (callback) => {
+		unitOfWorkStub.executeWithoutTransaction.callsFake(async (callback) => {
 			return callback();
 		});
 
@@ -97,6 +96,8 @@ describe("TransactionQueueService", () => {
 		});
 
 		it("should execute immediately if system is not under load", async () => {
+			const handler = sinon.stub().resolves();
+			transactionQueueService.registerHandler("testJob", handler);
 			unitOfWorkStub.getMetrics.returns({
 				totalAttempts: 0,
 				successfulTransactions: 0,
@@ -109,7 +110,9 @@ describe("TransactionQueueService", () => {
 
 			await transactionQueueService.executeOrQueue("testJob", { result: "immediate" });
 
-			expect(unitOfWorkStub.executeInTransaction.calledOnce).to.be.true;
+			sinon.assert.calledOnceWithExactly(handler, { result: "immediate" });
+			sinon.assert.calledOnce(unitOfWorkStub.executeWithoutTransaction);
+			sinon.assert.notCalled(unitOfWorkStub.executeInTransaction);
 			expect(redisClientStub.lPush.called).to.be.false;
 		});
 
@@ -129,6 +132,7 @@ describe("TransactionQueueService", () => {
 
 			expect(redisClientStub.lPush.calledOnce).to.be.true;
 			expect(unitOfWorkStub.executeInTransaction.called).to.be.false;
+			sinon.assert.notCalled(unitOfWorkStub.executeWithoutTransaction);
 			
 			const args = redisClientStub.lPush.firstCall.args;
 			expect(args[0]).to.equal("queue:normal"); // default priority
@@ -153,6 +157,38 @@ describe("TransactionQueueService", () => {
 			} catch (e) {
 				expect((e as Error).message).to.include("No handler registered");
 			}
+		});
+	});
+
+	describe("queued job execution", () => {
+		it("processes queued metadata work without a Mongo transaction", async () => {
+			const payload = { postPublicId: "post-public-id" };
+			const handler = sinon.stub().callsFake(async () => {
+				transactionQueueService.stopProcessing();
+			});
+			transactionQueueService.registerHandler("UPDATE_VIEW_COUNT_METADATA", handler);
+			redisClientStub.brPop.resolves({
+				key: "queue:low",
+				element: JSON.stringify({
+					id: "metadata-job",
+					jobName: "UPDATE_VIEW_COUNT_METADATA",
+					payload,
+					priority: "low",
+					createdAt: Date.now(),
+					attempts: 0,
+					maxAttempts: 3,
+				}),
+			});
+			(transactionQueueService as any).isProcessing = true;
+			(transactionQueueService as any).blockingClient = redisClientStub;
+
+			await (transactionQueueService as any).processLoop(redisClientStub);
+
+			sinon.assert.calledOnceWithExactly(handler, payload);
+			sinon.assert.calledOnce(unitOfWorkStub.executeWithoutTransaction);
+			sinon.assert.notCalled(unitOfWorkStub.executeInTransaction);
+			sinon.assert.notCalled(redisClientStub.rPush);
+			expect((await transactionQueueService.getMetrics()).totalProcessed).to.equal(1);
 		});
 	});
 

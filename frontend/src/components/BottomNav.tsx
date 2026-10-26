@@ -30,6 +30,7 @@ const BottomNav: React.FC = () => {
 		if (path === "/") return 0;
 		if (path.startsWith("/discover")) return 1;
 		if (path.startsWith("/communities")) return 2;
+		if (path.startsWith("/interests")) return -1;
 		if (!isLoggedIn && (path === "/login" || path === "/register")) return 3;
 		if (path === "/notifications") return 3;
 		if (path === "/messages") return 4;
@@ -64,6 +65,7 @@ const BottomNav: React.FC = () => {
 					<BottomNavigationAction
 						component={RouterLink}
 						to="/"
+            value={0}
 						label={t("nav.home")}
 						icon={<HomeIcon />}
 						sx={{
@@ -75,6 +77,7 @@ const BottomNav: React.FC = () => {
 					<BottomNavigationAction
 						component={RouterLink}
 						to="/discover"
+            value={1}
 						label={t("nav.explore")}
 						icon={<SearchIcon />}
 						sx={{
@@ -85,6 +88,7 @@ const BottomNav: React.FC = () => {
 					<BottomNavigationAction
 						component={RouterLink}
 						to="/communities"
+            value={2}
 						label={t("nav.communities")}
 						icon={<GroupsIcon />}
 						sx={{
@@ -98,6 +102,7 @@ const BottomNav: React.FC = () => {
 							<BottomNavigationAction
 								component={RouterLink}
 								to="/notifications"
+                value={3}
 								label={t("nav.notifications")}
 								icon={
 									<Badge badgeContent={unreadCount} color="primary">
@@ -112,6 +117,7 @@ const BottomNav: React.FC = () => {
 							<BottomNavigationAction
 								component={RouterLink}
 								to="/messages"
+                value={4}
 								label={t("nav.messages")}
 								icon={<MailIcon />}
 								sx={{
@@ -124,6 +130,7 @@ const BottomNav: React.FC = () => {
 						<BottomNavigationAction
 							component={RouterLink}
 							to="/login"
+              value={3}
 							label={t("auth.login")}
 							icon={<LoginIcon />}
 							sx={{

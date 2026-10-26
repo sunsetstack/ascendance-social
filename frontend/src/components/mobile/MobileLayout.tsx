@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState } from "react";
+import React, { lazy, Suspense, useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Box } from "@mui/material";
 import MobileHeader from "./MobileHeader";
@@ -27,10 +27,12 @@ const MobileLayout: React.FC = () => {
     isDragging,
   } = useSwipeDrawer();
 
+  useEffect(() => { closeDrawer(); }, [location.key, closeDrawer]);
+
   // pages where FAB should be hidden
   const isMessagesPage = location.pathname.startsWith("/messages");
   const isNotificationsPage = location.pathname.startsWith("/notifications");
-  const showFAB = isLoggedIn && !isMessagesPage && !isNotificationsPage;
+  const showFAB = isLoggedIn && location.pathname !== "/" && !isMessagesPage && !isNotificationsPage;
 
   const handleOpenUploadModal = () => {
     if (!user) {
@@ -47,6 +49,9 @@ const MobileLayout: React.FC = () => {
       <Box
         sx={{
           minHeight: "100dvh",
+          width: "100%",
+          maxWidth: isMessagesPage ? undefined : 640,
+          mx: "auto",
           height: isMessagesPage ? "100dvh" : "auto",
           display: "flex",
           flexDirection: "column",

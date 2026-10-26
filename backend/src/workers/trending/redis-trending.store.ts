@@ -100,7 +100,7 @@ export class RedisTrendingCacheStore implements ITrendingCacheStore {
           score,
           "trending:posts",
         ),
-        this.redisService.setWithTags(
+        this.redisService.patchWithTags(
           `post_meta:${postId}`,
           {
             likes,

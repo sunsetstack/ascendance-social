@@ -4,7 +4,7 @@ import { useSocket } from "../context/useSocket";
 import {
   removePostDetailAndCommentCaches,
   removePostFromFeedCaches,
-  updatePostLikesInFeedCaches,
+  updatePostCaches,
 } from "../posts/postCache";
 import { useRecentEventIds } from "../socket/useRecentEventIds";
 import { useAuth } from "../context/useAuth";
@@ -52,6 +52,7 @@ export const useFeedSocketIntegration = () => {
       }
 
       // Invalidate personalized feeds
+      queryClient.invalidateQueries({ queryKey: ["followingFeed"], refetchType: "none" });
       queryClient.invalidateQueries({ queryKey: ["personalizedFeed"] });
       queryClient.invalidateQueries({
         queryKey: ["forYouFeed"],
@@ -115,7 +116,9 @@ export const useFeedSocketIntegration = () => {
     }) => {
       if (!shouldHandleEvent(data.eventId)) return;
 
-      updatePostLikesInFeedCaches(queryClient, data.imageId, data.newLikes);
+      updatePostCaches(queryClient, data.imageId, (post) => ({
+        ...post, likes: data.newLikes,
+      }));
 
       // Update specific image queries
       queryClient.invalidateQueries({ queryKey: ["image", data.imageId] });
@@ -154,6 +157,7 @@ export const useFeedSocketIntegration = () => {
       queryClient.invalidateQueries({ queryKey: ["forYouFeed"] });
       queryClient.invalidateQueries({ queryKey: ["trendingFeed"] });
       queryClient.invalidateQueries({ queryKey: ["newFeed"] });
+      queryClient.invalidateQueries({ queryKey: ["followingFeed"] });
       queryClient.invalidateQueries({ queryKey: ["images"] });
     };
 

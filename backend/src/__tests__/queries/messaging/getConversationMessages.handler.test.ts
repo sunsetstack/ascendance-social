@@ -20,7 +20,7 @@ describe("GetConversationMessagesQueryHandler", () => {
   const viewerInternalId = "507f1f77bcf86cd799439011";
   const otherInternalId = new mongoose.Types.ObjectId();
 
-  let conversationRepository: { findByPublicId: sinon.SinonStub };
+  let conversationRepository: { findByPublicId: sinon.SinonStub; acquireForMutation: sinon.SinonStub };
   let messageRepository: {
     markConversationMessagesAsDelivered: sinon.SinonStub;
     findMessagesByConversation: sinon.SinonStub;
@@ -33,6 +33,7 @@ describe("GetConversationMessagesQueryHandler", () => {
 
   beforeEach(() => {
     conversationRepository = {
+      acquireForMutation: sinon.stub().resolves(),
       findByPublicId: sinon.stub(),
     };
     messageRepository = {

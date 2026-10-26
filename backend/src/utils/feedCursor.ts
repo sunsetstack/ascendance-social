@@ -20,9 +20,11 @@ export const FEED_CURSOR_ORDER = {
   FOR_YOU: "for-you-rank-score-id-desc-v1",
   TRENDING: "trending-score-id-desc-v1",
   TRENDING_NEW: "trending-new-created-at-id-desc-v1",
+  PREVIEW_LATEST: "preview-created-at-id-desc-v1",
+  PREVIEW_RELEVANT: "preview-rank-score-id-desc-v1",
 } as const;
 
-export type FeedCursorFeed = "new" | "personalized" | "for-you" | "trending";
+export type FeedCursorFeed = "new" | "personalized" | "for-you" | "trending" | "preview";
 export type FeedCursorSource = "mongo" | "redis";
 export type FeedCursorOrder =
   (typeof FEED_CURSOR_ORDER)[keyof typeof FEED_CURSOR_ORDER];
@@ -73,6 +75,15 @@ export interface ForYouFeedCursorPayload extends FeedCursorBase {
   scope: string;
 }
 
+export interface PreviewFeedCursorPayload extends FeedCursorBase {
+  feed: "preview";
+  order: typeof FEED_CURSOR_ORDER.PREVIEW_LATEST | typeof FEED_CURSOR_ORDER.PREVIEW_RELEVANT;
+  source: "mongo";
+  snapshotId: string;
+  offset: number;
+  scope: string;
+}
+
 export interface TrendingFeedCursorPayload extends FeedCursorBase {
   feed: "trending";
   order: typeof FEED_CURSOR_ORDER.TRENDING;
@@ -97,6 +108,7 @@ export type FeedCursorPayload =
   | PersonalizedFeedCursorPayload
   | PersonalizedRankedFeedCursorPayload
   | ForYouFeedCursorPayload
+  | PreviewFeedCursorPayload
   | TrendingFeedCursorPayload
   | TrendingNewFeedCursorPayload;
 
@@ -111,6 +123,9 @@ export interface FeedCursorSnapshotEntry {
   publicId: string;
   visibleIdentityId: string;
   score?: number;
+  reason?: string;
+  rankBreakdown?: { freshness: number; popularity: number; topic: number; format: number };
+  formatMix?: { format: "text" | "image" | "mixed"; share: number; basePosition: number };
 }
 
 export interface FeedCursorSnapshot {
@@ -273,6 +288,12 @@ function assertFeedCursorPayload(
       assertNoTrendingEnvelope(hasTrendingNewEnvelope);
       return payload as unknown as ForYouFeedCursorPayload;
 
+    case FEED_CURSOR_ORDER.PREVIEW_LATEST:
+    case FEED_CURSOR_ORDER.PREVIEW_RELEVANT:
+      assertSnapshotCursor(payload, "preview", "mongo", true);
+      assertNoTrendingEnvelope(hasTrendingNewEnvelope);
+      return payload as unknown as PreviewFeedCursorPayload;
+
     case FEED_CURSOR_ORDER.TRENDING:
       assertExactKeys(payload, [
         ...BASE_KEYS,
@@ -316,7 +337,7 @@ function assertFeedCursorPayload(
 
 function assertSnapshotCursor(
   payload: Record<string, unknown>,
-  feed: "personalized" | "for-you",
+  feed: "personalized" | "for-you" | "preview",
   source: FeedCursorSource | undefined,
   requiresScope: boolean,
 ): void {

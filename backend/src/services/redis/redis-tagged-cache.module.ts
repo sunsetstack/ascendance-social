@@ -15,6 +15,74 @@ export type TaggedCacheEntry<T> = {
   tags: string[];
 };
 
+const PATCH_WITH_TAGS_SCRIPT = `
+local ttlSeconds = nil
+if ARGV[2] ~= "" then
+  ttlSeconds = tonumber(ARGV[2])
+  if not ttlSeconds then
+    return redis.error_reply("Invalid tagged cache TTL")
+  end
+end
+
+if ttlSeconds and ttlSeconds <= 0 then
+  redis.call("DEL", KEYS[1])
+  if #KEYS > 2 then
+    redis.call("DEL", KEYS[2])
+    for index = 3, #KEYS do
+      redis.call("SREM", KEYS[index], KEYS[1])
+    end
+  end
+  return 0
+end
+
+local raw = redis.call("GET", KEYS[1])
+local value = {}
+
+if raw then
+  local decoded, cached = pcall(cjson.decode, raw)
+  if decoded and type(cached) == "table" then
+    value = cached
+  end
+end
+
+local patchDecoded, patch = pcall(cjson.decode, ARGV[1])
+if not patchDecoded or type(patch) ~= "table" then
+  return redis.error_reply("Invalid tagged cache patch")
+end
+
+for field, fieldValue in pairs(patch) do
+  value[field] = fieldValue
+end
+
+local encoded = cjson.encode(value)
+if ttlSeconds then
+  redis.call("SET", KEYS[1], encoded, "EX", ttlSeconds)
+else
+  redis.call("SET", KEYS[1], encoded)
+end
+
+if #KEYS > 2 then
+  for index = 3, #KEYS do
+    redis.call("SADD", KEYS[index], KEYS[1])
+    if ttlSeconds then
+      redis.call("EXPIRE", KEYS[index], ttlSeconds, "NX")
+      redis.call("EXPIRE", KEYS[index], ttlSeconds, "GT")
+    else
+      redis.call("PERSIST", KEYS[index])
+    end
+    redis.call("SADD", KEYS[2], ARGV[index])
+  end
+
+  if ttlSeconds then
+    redis.call("EXPIRE", KEYS[2], ttlSeconds)
+  else
+    redis.call("PERSIST", KEYS[2])
+  end
+end
+
+return 1
+`;
+
 export class RedisTaggedCacheModule {
   constructor(
     private readonly client: RedisClientType,
@@ -88,6 +156,45 @@ export class RedisTaggedCacheModule {
         const durationMs = performance.now() - start;
         redisLogger.info(
           `[Redis] setWithTags key=${key} tags=${uniqueTags.length} duration=${durationMs.toFixed(2)}ms`,
+        );
+      },
+      { maxAttempts: 3 },
+    );
+  }
+
+  async patchWithTags(
+    key: string,
+    patch: Readonly<Record<string, unknown>>,
+    tags: readonly string[],
+    ttl?: number,
+  ): Promise<void> {
+    return this.resilienceModule.withResilience(
+      async () => {
+        const uniqueTags = [...new Set(tags)];
+        const keyTagsKey = `key_tags:${key}`;
+        const tagKeys = uniqueTags.map((tag) => `tag:${tag}`);
+
+        if (uniqueTags.length > 0) {
+          await Promise.all(
+            [keyTagsKey, ...tagKeys].map((keyToEnsure) =>
+              this.ensureSetKey(keyToEnsure),
+            ),
+          );
+        }
+
+        const start = performance.now();
+        await this.client.eval(PATCH_WITH_TAGS_SCRIPT, {
+          keys: [key, keyTagsKey, ...tagKeys],
+          arguments: [
+            JSON.stringify(patch),
+            ttl === undefined ? "" : String(ttl),
+            ...uniqueTags,
+          ],
+        });
+
+        const durationMs = performance.now() - start;
+        redisLogger.info(
+          `[Redis] patchWithTags key=${key} tags=${uniqueTags.length} duration=${durationMs.toFixed(2)}ms`,
         );
       },
       { maxAttempts: 3 },

@@ -522,7 +522,7 @@ describe("Winston log contract format", () => {
     }
   });
 
-  it("redacts ALS user identity while retaining the correlation ID in JSON output", async () => {
+  it("redacts ALS user identity while retaining request and action ancestry in JSON output", async () => {
     const stream = new MemoryLogStream();
     const logger = winston.createLogger({
       format: createJsonLogFormat(),
@@ -532,7 +532,7 @@ describe("Winston log contract format", () => {
     const correlationId = "correlation-123";
 
     try {
-      await runWithRequestContext({ correlationId, userId }, async () => {
+      await runWithRequestContext({ correlationId, userId, clientRequestId: "browser-action", causedByClientRequestId: "earlier-action" }, async () => {
         logger.info("context record");
         await new Promise<void>((resolve) => {
           logger.once("finish", () => resolve());
@@ -543,6 +543,8 @@ describe("Winston log contract format", () => {
       expect(stream.lines).to.have.length(1);
       const line = JSON.parse(stream.lines[0]);
       expect(line.correlationId).to.equal(correlationId);
+      expect(line.clientRequestId).to.equal("browser-action");
+      expect(line.causedByClientRequestId).to.equal("earlier-action");
       expect(line.userId).to.equal("[REDACTED]");
       expect(JSON.stringify(line)).not.to.include(userId);
     } finally {

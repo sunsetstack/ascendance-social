@@ -5,6 +5,7 @@ import { EventBus } from "@/application/common/buses/event.bus";
 import { MetricsService } from "@/metrics/metrics.service";
 import { OutboxRepository } from "@/repositories/outbox.repository";
 import { errorLogger, logger } from "@/utils/winston";
+import { getRequestContext, runWithRequestContext } from "@/runtime/request-context";
 import { OutboxTestDatabase } from "../helpers/outbox-database";
 import {
   createDeferred,
@@ -59,6 +60,26 @@ describe("OutboxWorker with real repository (collection scans)", () => {
     }
   });
   after(async () => database.close());
+
+  it("persists action ancestry and restores it while delivering a claimed event", async () => {
+    const record = await runWithRequestContext({ correlationId: "request-origin", clientRequestId: "browser-action",
+      causedByClientRequestId: "preceding-action" }, () => repository.saveEvent("TestEvent", new TestEvent("origin"), "event-trace", "request-origin"));
+    const persisted = await database.model.findById(record._id).orFail().lean().exec();
+    expect(persisted).to.include({ clientRequestId: "browser-action", causedByClientRequestId: "preceding-action" });
+    const observed: unknown[] = [];
+    const handler = new TestEventHandler();
+    sandbox.stub(handler, "handle").callsFake(async (payload) => {
+      const context = getRequestContext();
+      observed.push({ payload, correlationId: context?.correlationId, clientRequestId: context?.clientRequestId,
+        causedByClientRequestId: context?.causedByClientRequestId });
+    });
+    eventBus.subscribe(TestEvent, handler);
+    await worker.runTick();
+    expect(observed).to.deep.equal([{ payload: persisted.payload, correlationId: "request-origin", clientRequestId: "browser-action",
+      causedByClientRequestId: "preceding-action" }]);
+    expect((await database.model.findById(record._id).orFail()).processed).to.equal(true);
+    expect(getRequestContext()).to.equal(undefined);
+  });
 
   it("persists a partial checkpoint, continues another event, delays retry and resumes only the failed handler", async () => {
     const first = await database.model.create(
@@ -149,6 +170,25 @@ describe("OutboxWorker with real repository (collection scans)", () => {
     ])
       expect(resumed).not.to.have.property(field);
     expect(sandbox.clock.countTimers()).to.equal(0);
+  });
+
+  it("retains a handlerless event and delivers it after registration and the retry delay", async () => {
+    const record = await database.model.create(createRecord().toObject());
+    await worker.runTick();
+    const retained = await database.model.findById(record._id).orFail().lean().exec();
+    expect(retained).to.include({ processed: false, processing: false, retries: 1, error: "Outbox event has no registered handlers" });
+    expect(retained.processedHandlers).to.deep.equal([]);
+    expect(retained.nextAttemptAt).to.deep.equal(new Date(now + 15_000));
+    sinon.assert.calledOnceWithExactly(metrics.recordOutboxDeliveryIssue, "TestEvent", "no_handlers");
+    const handler = new TestEventHandler();
+    const handle = sandbox.stub(handler, "handle").resolves();
+    eventBus.subscribe(TestEvent, handler);
+    sandbox.clock.setSystemTime(now + 15_000);
+    await worker.runTick();
+    sinon.assert.calledOnceWithExactly(handle, retained.payload);
+    const delivered = await database.model.findById(record._id).orFail().lean().exec();
+    expect(delivered.processed).to.equal(true);
+    expect(delivered.processedHandlers).to.deep.equal(["TestEventHandler"]);
   });
 
   it("persists renewal beyond the original lease while another worker processes the next event", async () => {

@@ -1,4 +1,4 @@
-import { FilterQuery, Model, Types } from "mongoose";
+import { FilterQuery, Model, PipelineStage, Types } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import crypto from "crypto";
 import {
@@ -20,6 +20,25 @@ import type { UserAuthenticationLookup } from "@/application/ports/user-authenti
 import type { UserDirectoryLookup } from "@/application/ports/user-directory-lookup";
 import type { UserIdentityLookup } from "@/application/ports/user-identity-lookup";
 import type { UserSuggestionsLookup } from "@/application/ports/user-suggestions-lookup";
+
+const suggestionTotalLikes = {
+  $reduce: {
+    input: "$posts",
+    initialValue: 0,
+    in: {
+      $add: [
+        "$$value",
+        {
+          $cond: [
+            { $isArray: "$$this.likes" },
+            { $size: { $ifNull: ["$$this.likes", []] } },
+            { $ifNull: ["$$this.likesCount", 0] },
+          ],
+        },
+      ],
+    },
+  },
+};
 
 @injectable()
 export class UserReadRepository
@@ -77,6 +96,7 @@ export class UserReadRepository
     throw Errors.database(
       error instanceof Error ? error.message : String(error),
       {
+        cause: error,
         context: {
           operation,
           repository: "userReadRepository",
@@ -128,13 +148,12 @@ export class UserReadRepository
     operation: string,
   ): Promise<IUser[]> {
     try {
-      return await this.model
-        .find(filter)
-        .select("publicId handle username avatar")
-        .exec();
+      const query = this.model.find(filter)
+        .select("publicId handle username avatar");
+      return await this.withSession(query).exec();
     } catch (error) {
-      logger.error(`UserReadRepository.${operation} failed`, { error });
-      return [];
+      this.recordFailure(operation);
+      handleMongoError(error);
     }
   }
 
@@ -171,7 +190,7 @@ export class UserReadRepository
 
   async findByEmail(email: string): Promise<IUser | null> {
     try {
-      return await this.findUser({ email }, "+password");
+      return await this.findUser({ email: email.trim().toLowerCase() }, "+password");
     } catch (error) {
       this.throwDatabaseError("findByEmail", error);
     }
@@ -199,7 +218,7 @@ export class UserReadRepository
     try {
       return await this.findUser(
         {
-          email,
+          email: email.trim().toLowerCase(),
           emailVerificationToken: token,
           emailVerificationExpires: { $gt: new Date() },
         },
@@ -211,38 +230,37 @@ export class UserReadRepository
   }
 
   async findUsersFollowing(userPublicId: UserPublicId): Promise<IUser[]> {
-    try {
-      const userId = await this.findInternalIdByPublicId(userPublicId);
-      if (!userId) {
-        return [];
-      }
-
-      const followerIds = await this.followRepository.getFollowerObjectIds(
-        new Types.ObjectId(userId),
-      );
-      const followerObjectIds = this.toObjectIds(followerIds);
-
-      if (followerObjectIds.length === 0) {
-        return [];
-      }
-
-      return await this.findPublicUsers(
-        { _id: { $in: followerObjectIds } },
-        "findUsersFollowing",
-      );
-    } catch (error) {
-      logger.error("UserReadRepository.findUsersFollowing failed", {
-        userPublicId,
-        error,
-      });
+    const userId = await this.findInternalIdByPublicId(userPublicId);
+    if (!userId) {
       return [];
     }
+
+    const followerIds = await this.followRepository.getFollowerObjectIds(
+      new Types.ObjectId(userId),
+    );
+    const followerObjectIds = this.toObjectIds(followerIds);
+
+    if (followerObjectIds.length === 0) {
+      return [];
+    }
+
+    return await this.findPublicUsers(
+      { _id: { $in: followerObjectIds } },
+      "findUsersFollowing",
+    );
   }
 
   async findUsersByPublicIds(userPublicIds: UserPublicId[]): Promise<IUser[]> {
     return await this.findPublicUsers(
       { publicId: { $in: userPublicIds } },
       "findUsersByPublicIds",
+    );
+  }
+
+  async findUsersByIds(userIds: MongoId[]): Promise<IUser[]> {
+    return this.findPublicUsers(
+      { _id: { $in: userIds } },
+      "findUsersByIds",
     );
   }
 
@@ -346,127 +364,45 @@ export class UserReadRepository
     return await this.withSession(this.model.countDocuments(filter)).exec();
   }
 
-  async getSuggestedUsersToFollow(
+  private async getSuggestionCandidateStages(
     currentUserId: MongoId,
-    limit: number = 5,
-  ): Promise<UserSuggestion[]> {
-    try {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    recentlyActiveUserPublicIds?: UserPublicId[],
+  ): Promise<PipelineStage[]> {
+    const followingIds = (
+      await this.followRepository.getFollowingObjectIds(currentUserId)
+    )
+      .map((id) => {
+        try {
+          return new Types.ObjectId(id);
+        } catch {
+          return null;
+        }
+      })
+      .filter(
+        (value): value is Types.ObjectId => value instanceof Types.ObjectId,
+      );
 
-      const followingIds = (
-        await this.followRepository.getFollowingObjectIds(currentUserId)
-      )
-        .map((id) => {
-          try {
-            return new Types.ObjectId(id);
-          } catch {
-            return null;
-          }
-        })
-        .filter(
-          (value): value is Types.ObjectId => value instanceof Types.ObjectId,
-        );
+    const priorityUserMatch = recentlyActiveUserPublicIds?.length
+      ? { publicId: { $in: recentlyActiveUserPublicIds } }
+      : {};
 
-      return await this.model.aggregate([
-        {
-          $match: {
-            _id: { $ne: new Types.ObjectId(currentUserId), $nin: followingIds },
-            isBanned: false,
-          },
+    return [
+      {
+        $match: {
+          _id: { $ne: new Types.ObjectId(currentUserId), $nin: followingIds },
+          isBanned: false,
+          ...priorityUserMatch,
         },
-        {
-          $lookup: {
-            from: "follows",
-            localField: "_id",
-            foreignField: "followeeId",
-            as: "followerLinks",
-          },
+      },
+      {
+        $lookup: {
+          from: "posts",
+          localField: "_id",
+          foreignField: "user",
+          as: "posts",
         },
-        {
-          $lookup: {
-            from: "posts",
-            localField: "_id",
-            foreignField: "user",
-            as: "posts",
-          },
-        },
-        {
-          $addFields: {
-            followerCount: { $size: "$followerLinks" },
-            postCount: { $size: "$posts" },
-            totalLikes: {
-              $reduce: {
-                input: "$posts",
-                initialValue: 0,
-                in: {
-                  $add: [
-                    "$$value",
-                    {
-                      $cond: [
-                        { $isArray: "$$this.likes" },
-                        { $size: { $ifNull: ["$$this.likes", []] } },
-                        { $ifNull: ["$$this.likesCount", 0] },
-                      ],
-                    },
-                  ],
-                },
-              },
-            },
-            recentPostCount: {
-              $size: {
-                $filter: {
-                  input: "$posts",
-                  as: "post",
-                  cond: { $gte: ["$$post.createdAt", thirtyDaysAgo] },
-                },
-              },
-            },
-          },
-        },
-        {
-          $match: {
-            $or: [
-              { followerCount: { $gte: 1 } },
-              { postCount: { $gte: 1 } },
-              { totalLikes: { $gte: 1 } },
-            ],
-          },
-        },
-        {
-          $addFields: {
-            score: {
-              $add: [
-                { $multiply: ["$followerCount", 0.4] },
-                { $multiply: ["$totalLikes", 0.3] },
-                { $multiply: ["$postCount", 0.2] },
-                { $multiply: ["$recentPostCount", 0.1] },
-              ],
-            },
-          },
-        },
-        { $sort: { score: -1 } },
-        { $limit: limit },
-        {
-          $project: {
-            publicId: 1,
-            handle: 1,
-            username: 1,
-            avatar: 1,
-            bio: 1,
-            followerCount: 1,
-            postCount: 1,
-            totalLikes: 1,
-            score: 1,
-          },
-        },
-      ]);
-    } catch (error) {
-      logger.error("UserReadRepository.getSuggestedUsersToFollow failed", {
-        error,
-      });
-      this.throwDatabaseError("getSuggestedUsersToFollow", error);
-    }
+      },
+    ];
   }
 
   async getSuggestedUsersLowTraffic(
@@ -475,44 +411,13 @@ export class UserReadRepository
     recentlyActiveUserPublicIds?: UserPublicId[],
   ): Promise<UserSuggestion[]> {
     try {
-      const followingIds = (
-        await this.followRepository.getFollowingObjectIds(currentUserId)
-      )
-        .map((id) => {
-          try {
-            return new Types.ObjectId(id);
-          } catch {
-            return null;
-          }
-        })
-        .filter(
-          (value): value is Types.ObjectId => value instanceof Types.ObjectId,
-        );
-
-      let priorityUserMatch = {};
-      if (
-        recentlyActiveUserPublicIds &&
-        recentlyActiveUserPublicIds.length > 0
-      ) {
-        priorityUserMatch = { publicId: { $in: recentlyActiveUserPublicIds } };
-      }
+      const candidateStages = await this.getSuggestionCandidateStages(
+        currentUserId,
+        recentlyActiveUserPublicIds,
+      );
 
       return await this.model.aggregate([
-        {
-          $match: {
-            _id: { $ne: new Types.ObjectId(currentUserId), $nin: followingIds },
-            isBanned: false,
-            ...priorityUserMatch,
-          },
-        },
-        {
-          $lookup: {
-            from: "posts",
-            localField: "_id",
-            foreignField: "user",
-            as: "posts",
-          },
-        },
+        ...candidateStages,
         {
           $match: {
             "posts.0": { $exists: true },
@@ -521,24 +426,7 @@ export class UserReadRepository
         {
           $addFields: {
             postCount: { $size: "$posts" },
-            totalLikes: {
-              $reduce: {
-                input: "$posts",
-                initialValue: 0,
-                in: {
-                  $add: [
-                    "$$value",
-                    {
-                      $cond: [
-                        { $isArray: "$$this.likes" },
-                        { $size: { $ifNull: ["$$this.likes", []] } },
-                        { $ifNull: ["$$this.likesCount", 0] },
-                      ],
-                    },
-                  ],
-                },
-              },
-            },
+            totalLikes: suggestionTotalLikes,
             lastPostDate: {
               $max: "$posts.createdAt",
             },
@@ -579,35 +467,12 @@ export class UserReadRepository
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const followingIds = (
-        await this.followRepository.getFollowingObjectIds(currentUserId)
-      )
-        .map((id) => {
-          try {
-            return new Types.ObjectId(id);
-          } catch {
-            return null;
-          }
-        })
-        .filter(
-          (value): value is Types.ObjectId => value instanceof Types.ObjectId,
-        );
+      const candidateStages = await this.getSuggestionCandidateStages(
+        currentUserId,
+      );
 
       return await this.model.aggregate([
-        {
-          $match: {
-            _id: { $ne: new Types.ObjectId(currentUserId), $nin: followingIds },
-            isBanned: false,
-          },
-        },
-        {
-          $lookup: {
-            from: "posts",
-            localField: "_id",
-            foreignField: "user",
-            as: "posts",
-          },
-        },
+        ...candidateStages,
         {
           $lookup: {
             from: "follows",
@@ -648,24 +513,7 @@ export class UserReadRepository
                 },
               },
             },
-            totalLikes: {
-              $reduce: {
-                input: "$posts",
-                initialValue: 0,
-                in: {
-                  $add: [
-                    "$$value",
-                    {
-                      $cond: [
-                        { $isArray: "$$this.likes" },
-                        { $size: { $ifNull: ["$$this.likes", []] } },
-                        { $ifNull: ["$$this.likesCount", 0] },
-                      ],
-                    },
-                  ],
-                },
-              },
-            },
+            totalLikes: suggestionTotalLikes,
             totalComments: {
               $reduce: {
                 input: "$posts",

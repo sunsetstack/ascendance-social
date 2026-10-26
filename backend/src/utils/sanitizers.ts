@@ -67,6 +67,10 @@ export const sanitize = (text: string): string =>
     allowedAttributes: {},
   });
 
+export function sanitizedTextLength(text: string): number {
+  return text.replace(/&(?:amp|lt|gt|quot);/g, "_").length;
+}
+
 export function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -92,7 +96,7 @@ export function sanitizeTextInput(
     throw Errors.validation("Input cannot be empty");
   }
 
-  if (trimmed.length > maxLength) {
+  if (sanitizedTextLength(trimmed) > maxLength) {
     throw Errors.validation(`Input cannot exceed ${maxLength} characters`);
   }
 

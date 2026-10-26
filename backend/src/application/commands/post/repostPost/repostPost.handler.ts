@@ -10,7 +10,10 @@ import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRep
 import type { IUserWriteRepository } from "@/repositories/interfaces/IUserWriteRepository";
 import { NotificationRequestedEvent } from "@/application/events/notification/notification.event";
 import { DTOService } from "@/services/dto.service";
-import { UnitOfWork } from "@/database/UnitOfWork";
+import { AttachmentTransactionService } from "@/services/image/attachment-transaction.service";
+import { FeedPreferenceRepository } from "@/repositories/feed-preference.repository";
+import { classifyContent, classifyRepostContent } from "@/services/feed/interests.policy";
+import { extractTagNames } from "@/utils/post-helpers";
 import { Errors, createError } from "@/utils/errors";
 import {
   isValidPublicId,
@@ -28,7 +31,7 @@ import { EventBus } from "@/application/common/buses/event.bus";
 import { PostUploadedEvent } from "@/application/events/post/post.event";
 import { TOKENS } from "@/types/tokens";
 
-const MAX_BODY_LENGTH = 300;
+const MAX_BODY_LENGTH = 600;
 const REPOST_UNIQUE_INDEX_KEYS = ["user", "repostOf", "type"] as const;
 
 @injectable()
@@ -37,8 +40,10 @@ export class RepostPostCommandHandler implements ICommandHandler<
   PostDTO
 > {
   constructor(
-    @inject(TOKENS.Repositories.UnitOfWork)
-    private readonly unitOfWork: UnitOfWork,
+    @inject(TOKENS.Services.AttachmentTransaction)
+    private readonly attachments: AttachmentTransactionService,
+    @inject(TOKENS.Repositories.FeedPreference)
+    private readonly preferences: FeedPreferenceRepository,
     @inject(TOKENS.Repositories.PostRead)
     private readonly postReadRepository: IPostReadRepository,
     @inject(TOKENS.Repositories.PostWrite)
@@ -106,19 +111,7 @@ export class RepostPostCommandHandler implements ICommandHandler<
   }
 
   private normalizeBody(body?: string): string {
-    if (!body) return "";
-    try {
-      return sanitizeTextInput(body, MAX_BODY_LENGTH);
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("empty")) return "";
-      if (error instanceof Error && error.message.includes("exceed")) {
-        return sanitizeTextInput(
-          body.slice(0, MAX_BODY_LENGTH),
-          MAX_BODY_LENGTH,
-        );
-      }
-      return "";
-    }
+    return sanitizeTextInput(body ?? "", { maxLength: MAX_BODY_LENGTH, allowEmpty: true });
   }
 
   private async createRepost(
@@ -128,7 +121,7 @@ export class RepostPostCommandHandler implements ICommandHandler<
     normalizedBody: string,
   ): Promise<IPost> {
     try {
-      return (await this.unitOfWork.executeInTransaction(async () => {
+      return (await this.attachments.run(command, user, async (image) => {
         const postPublicId = uuidv4();
         const payload = sanitizeForMongo({
           publicId: postPublicId,
@@ -142,6 +135,9 @@ export class RepostPostCommandHandler implements ICommandHandler<
             displayName: user.username,
           },
           body: normalizedBody,
+          image: image?.docId ?? null,
+          contentFeatures: classifyRepostContent(normalizedBody, Boolean(image),
+            targetPost.contentFeatures ?? classifyContent(targetPost.body ?? "", extractTagNames(targetPost.tags), Boolean(targetPost.image))),
           slug: `${postPublicId}`,
           type: "repost" as const,
           repostOf: targetPost._id,
@@ -160,6 +156,10 @@ export class RepostPostCommandHandler implements ICommandHandler<
         }) as Partial<IPost>;
 
         const newPost = await this.postWriteRepository.create(payload);
+        if (!normalizedBody && !image) {
+          await this.preferences.setSignal(String(user._id), String(targetPost._id), "repost",
+            targetPost.contentFeatures ?? classifyContent(targetPost.body ?? "", extractTagNames(targetPost.tags), Boolean(targetPost.image)), true);
+        }
         await this.postWriteRepository.updateRepostCount(
           asMongoId(targetPost._id!.toString()),
           1,

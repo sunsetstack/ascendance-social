@@ -11,6 +11,7 @@ import { TagRepository } from "@/repositories/tag.repository";
 import { FollowRepository } from "@/repositories/follow.repository";
 import { NotificationRepository } from "@/repositories/notification.repository";
 import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
+import { FeedPreferenceRepository } from "@/repositories/feed-preference.repository";
 import { FavoriteRepository } from "@/repositories/favorite.repository";
 import { ConversationRepository } from "@/repositories/conversation.repository";
 import { MessageRepository } from "@/repositories/message.repository";
@@ -30,6 +31,7 @@ import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 
 export function registerRepositories(): void {
+  container.registerSingleton(TOKENS.Repositories.FeedPreference, FeedPreferenceRepository);
   container.registerSingleton(TOKENS.Repositories.UnitOfWork, UnitOfWork);
   container.registerSingleton(TOKENS.Repositories.Image, ImageRepository);
   container.registerSingleton(TOKENS.Repositories.PostLike, PostLikeRepository);

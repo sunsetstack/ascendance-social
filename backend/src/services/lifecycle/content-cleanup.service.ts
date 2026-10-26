@@ -98,6 +98,14 @@ export class ContentCleanupService {
     }
 
     const postIds = posts.map((post) => post._id);
+    const repostSignals = posts.filter((post) => post.type === "repost" && post.repostOf)
+      .map((post) => ({ userId: post.user, postId: post.repostOf, kind: "repost" }));
+    const signalFilter = { $or: [{ postId: { $in: postIds } }, ...repostSignals] };
+    const affectedSignals = await db.collection("feedsignals").find(signalFilter, { session, projection: { userId: 1 } }).toArray();
+    await db.collection("feedsignals").deleteMany(signalFilter, { session });
+    if (affectedSignals.length) await db.collection("feedprofiles").updateMany(
+      { userId: { $in: uniqueObjectIds(affectedSignals.map((signal) => signal.userId as ObjectId)) } },
+      { $inc: { revision: 1 } }, { session });
     const postIdSet = new Set(postIds.map((id) => id.toHexString()));
     const postPublicIds = posts.map((post) => post.publicId).filter(Boolean);
     const comments = await db
@@ -108,6 +116,7 @@ export class ContentCleanupService {
       )
       .toArray();
     const commentIds = comments.map((comment) => comment._id as ObjectId);
+    const commentAssets = await this.removeCommentAttachments(commentIds);
     const imageIds = uniqueObjectIds(posts.map((post) => post.image));
     const images = imageIds.length
       ? await db
@@ -205,7 +214,7 @@ export class ContentCleanupService {
         publicId: post.publicId,
         authorPublicId: post.author?.publicId ?? "",
       })),
-      imageAssets,
+      imageAssets: [...imageAssets, ...commentAssets],
     };
   }
 
@@ -280,6 +289,20 @@ export class ContentCleanupService {
       },
       { session },
     );
+  }
+
+  async removeCommentAttachments(commentIds: ObjectId[]): Promise<RemovedImageAsset[]> {
+    const session = requireTransactionSession();
+    const ids = uniqueObjectIds(commentIds);
+    if (!ids.length) return [];
+    const db = this.db();
+    const comments = await db.collection("comments").find({ _id: { $in: ids }, "image.docId": { $exists: true } }, { session }).toArray();
+    const imageIds = uniqueObjectIds(comments.map((comment) => comment.image?.docId as ObjectId));
+    if (!imageIds.length) return [];
+    const images = await db.collection<StoredImage>("images").find({ _id: { $in: imageIds } }, { session }).toArray();
+    await db.collection("images").deleteMany({ _id: { $in: imageIds } }, { session });
+    await db.collection("comments").updateMany({ _id: { $in: ids } }, { $unset: { image: 1 } }, { session });
+    return images.map((image) => ({ storagePublicId: image.publicId, url: image.url, ownerPublicId: "" }));
   }
 
   async recomputePostCommentCounts(postIds: ObjectId[]): Promise<void> {

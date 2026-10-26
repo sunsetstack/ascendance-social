@@ -1,6 +1,8 @@
 import mongoose, { Schema } from "mongoose";
 import { v4 as uuidv4 } from "uuid";
 import { IPost } from "@/types";
+import { contentFeaturesSchema } from "./feed-profile.model";
+import { sanitizedTextLength } from "@/utils/sanitizers";
 
 const authorSchema = new Schema(
 	{
@@ -34,8 +36,13 @@ const postSchema = new Schema<IPost>(
 		body: {
 			type: String,
 			trim: true,
-			maxlength: 300,
+			validate: {
+				validator: (body: string | null | undefined): boolean => !body || sanitizedTextLength(body) <= 600,
+				message: "Post cannot exceed 600 characters",
+			},
 		},
+		editedAt: { type: Date },
+    contentFeatures: { type: contentFeaturesSchema },
 		slug: {
 			type: String,
 			trim: true,
@@ -104,6 +111,7 @@ const postSchema = new Schema<IPost>(
 
 postSchema.index({ user: 1, createdAt: -1 }); // profile feed queries
 postSchema.index({ tags: 1, createdAt: -1 }); // tag discovery
+postSchema.index({ "contentFeatures.topics.id": 1, createdAt: -1 });
 postSchema.index({ body: "text" }); // text search on body
 postSchema.index({ slug: 1 }, { unique: true, sparse: true }); // fast lookup by slug
 postSchema.index({ commentsCount: -1, likesCount: -1 }); // engagement ranking

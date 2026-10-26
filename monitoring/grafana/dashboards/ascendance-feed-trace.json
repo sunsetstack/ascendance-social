@@ -1,0 +1,725 @@
+{
+  "id": null,
+  "uid": "ascendance-feed-trace",
+  "title": "Ascendance Feed & Delivery Trace",
+  "description": "Request and event lifecycle, precise personalized ranking, learned evidence and hydration. Loki via Alloy supplies detailed traces; Prometheus supplies runtime health. Blank ID/post filters show all data.",
+  "tags": [
+    "ascendance",
+    "feeds",
+    "outbox",
+    "tracing"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": false,
+  "graphTooltip": 1,
+  "refresh": "5s",
+  "timezone": "browser",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "templating": {
+    "list": [
+      {
+        "name": "trace",
+        "label": "Request / action / transaction / event ID",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [],
+        "hide": 0
+      },
+      {
+        "name": "post",
+        "label": "Post public ID",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [],
+        "hide": 0
+      },
+      {
+        "name": "topic",
+        "label": "Topic",
+        "type": "custom",
+        "query": "finance,crypto,politics,technology,science,health,culture,sports,gaming",
+        "current": {
+          "text": "crypto",
+          "value": "crypto"
+        },
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Transaction outcomes",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(job,outcome) (rate(transactions_total{job=~\"backend|backend-worker|backend-dev\"}[$__rate_interval]))",
+          "legendFormat": "{{job}} {{outcome}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Body and commit retries",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(job,phase) (rate(transaction_retries_total[$__rate_interval]))",
+          "legendFormat": "{{job}} {{phase}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Outbox backlog and exhausted events",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "outbox_pending_events",
+          "legendFormat": "{{job}} pending"
+        },
+        {
+          "refId": "B",
+          "expr": "outbox_exhausted_events",
+          "legendFormat": "{{job}} exhausted"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Outbox delay and heartbeat age",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "outbox_oldest_pending_age_seconds",
+          "legendFormat": "{{job}} oldest pending"
+        },
+        {
+          "refId": "B",
+          "expr": "time() - (outbox_last_poll_completed_timestamp_seconds > 0)",
+          "legendFormat": "{{job}} since completed poll"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Action → transaction → delivery → feed timeline",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{compose_project=\"ascendance-social\",service_name=~\"backend|backend-worker|backend-dev|frontend-dev\"} | event=~\"^(feed[.]|transaction[.]|outbox[.]|domain[.]|worker[.]outbox[.]|dev[.]proxy[.]).*\" |= \"$trace\" |= \"$post\"",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "sortOrder": "Ascending",
+        "enableLogDetails": true
+      },
+      "description": "Paste a client request ID, server request ID, transaction ID or event trace ID. The filter searches full JSON, including browser causes. Blank filters show all records. Browser records are untrusted observations, not proof of a database commit."
+    },
+    {
+      "id": 6,
+      "title": "Pinned base rank components per served post",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time({compose_project=\"ascendance-social\",service_name=~\"backend|backend-worker|backend-dev|frontend-dev\"} | event=\"feed.rank.served\" |= \"$trace\" |= \"$post\" | json post=\"postPublicId\", component=\"rankBreakdown.freshness\" | keep post,component | unwrap component | __error__=\"\" [$__interval])",
+          "legendFormat": "{{post}} freshness",
+          "queryType": "range"
+        },
+        {
+          "refId": "B",
+          "expr": "last_over_time({compose_project=\"ascendance-social\",service_name=~\"backend|backend-worker|backend-dev|frontend-dev\"} | event=\"feed.rank.served\" |= \"$trace\" |= \"$post\" | json post=\"postPublicId\", component=\"rankBreakdown.popularity\" | keep post,component | unwrap component | __error__=\"\" [$__interval])",
+          "legendFormat": "{{post}} popularity",
+          "queryType": "range"
+        },
+        {
+          "refId": "C",
+          "expr": "last_over_time({compose_project=\"ascendance-social\",service_name=~\"backend|backend-worker|backend-dev|frontend-dev\"} | event=\"feed.rank.served\" |= \"$trace\" |= \"$post\" | json post=\"postPublicId\", component=\"rankBreakdown.topic\" | keep post,component | unwrap component | __error__=\"\" [$__interval])",
+          "legendFormat": "{{post}} topic",
+          "queryType": "range"
+        },
+        {
+          "refId": "D",
+          "expr": "last_over_time({compose_project=\"ascendance-social\",service_name=~\"backend|backend-worker|backend-dev|frontend-dev\"} | event=\"feed.rank.served\" |= \"$trace\" |= \"$post\" | json post=\"postPublicId\", component=\"rankBreakdown.format\" | keep post,component | unwrap component | __error__=\"\" [$__interval])",
+          "legendFormat": "{{post}} format",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "Weighted components stored with the ranking snapshot. No rounding or minimum contribution threshold is applied in logs. Filter a post to compare fresh and reused snapshots."
+    },
+    {
+      "id": 7,
+      "title": "Exact scores, format allocation and snapshot inputs",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{compose_project=\"ascendance-social\",service_name=~\"backend|backend-worker|backend-dev|frontend-dev\"} | event=~\"feed.rank.served|feed.rank.build.started|feed.format.mix.planned|feed.snapshot.ready\" |= \"$trace\" |= \"$post\"",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "sortOrder": "Ascending",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 8,
+      "title": "Learned topic evidence",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time({compose_project=\"ascendance-social\",service_name=~\"backend|backend-worker|backend-dev|frontend-dev\"} | event=\"feed.profile.read\" |= \"$trace\" |= \"$post\" | json profileKey=\"profileKey\", evidence=\"profile.topics.$topic\" | keep profileKey,evidence | unwrap evidence | __error__=\"\" [$__interval])",
+          "legendFormat": "{{profileKey}} $topic evidence",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Staged interaction deltas",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{compose_project=\"ascendance-social\",service_name=~\"backend|backend-worker|backend-dev|frontend-dev\"} | event=\"feed.signal.staged\" |= \"$trace\" |= \"$post\"",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "sortOrder": "Ascending",
+        "enableLogDetails": true
+      },
+      "description": "These changes are staged inside a transaction. Pair transactionId with transaction.finished before treating them as committed. Every numeric delta is retained at JSON precision."
+    },
+    {
+      "id": 10,
+      "title": "Like counts before and after hydration",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time({compose_project=\"ascendance-social\",service_name=~\"backend|backend-worker|backend-dev|frontend-dev\"} | event=\"feed.hydration.post\" |= \"$trace\" |= \"$post\" | json post=\"postPublicId\", likes=\"before.likes\" | keep post,likes | unwrap likes | __error__=\"\" [$__interval])",
+          "legendFormat": "{{post}} before",
+          "queryType": "range"
+        },
+        {
+          "refId": "B",
+          "expr": "last_over_time({compose_project=\"ascendance-social\",service_name=~\"backend|backend-worker|backend-dev|frontend-dev\"} | event=\"feed.hydration.post\" |= \"$trace\" |= \"$post\" | json post=\"postPublicId\", likes=\"after.likes\" | keep post,likes | unwrap likes | __error__=\"\" [$__interval])",
+          "legendFormat": "{{post}} after",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Hydration source and frontend cache decisions",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 56,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{compose_project=\"ascendance-social\",service_name=~\"backend|backend-worker|backend-dev|frontend-dev\"} | event=~\"feed.hydration.*|feed.cache.*|feed.http.*\" |= \"$trace\" |= \"$post\"",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "sortOrder": "Ascending",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 12,
+      "title": "Failure stacks, checkpoints and ambiguous outcomes",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 64,
+        "w": 24,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{compose_project=\"ascendance-social\",service_name=~\"backend|backend-worker|backend-dev|frontend-dev\"} | event=~\"transaction.failed|transaction.ambiguous|transaction.abort.failed|transaction.cleanup.failed|transaction.rejected|outbox.event.failed|outbox.event.ownership_lost|worker.outbox.event_exhausted|domain.event.handler.failed|feed.http.failed|dev.proxy.failed\" |= \"$trace\" |= \"$post\"",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": true,
+        "sortOrder": "Ascending",
+        "enableLogDetails": true
+      }
+    },
+    {
+      "id": 13,
+      "title": "Prometheus delivery alerts",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 76,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "ALERTS{alertname=~\"Ascendance.*\"}",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "Rules evaluate locally. External notifications require an Alertmanager/contact point; this dashboard does not claim a notification destination is configured."
+    }
+  ]
+}

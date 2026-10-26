@@ -14,6 +14,7 @@ import {
   searchByTagsSchema,
   repostSchema,
   userPostsQuerySchema,
+  updatePostSchema,
 } from "@/utils/schemas/post.schemas";
 import { handleSchema } from "@/utils/schemas/user.schemas";
 import upload, { validateImageUpload } from "@/config/multer";
@@ -37,6 +38,11 @@ export class PostRoutes {
   }
 
   private initializeRoutes(): void {
+    this.router.patch("/:publicId", this.auth,
+      new ValidationMiddleware({ params: publicIdSchema, body: updatePostSchema }).validate(),
+      asyncHandler(this.postController.updatePost));
+    this.router.get("/tags", asyncHandler(this.postController.listTags));
+
     this.router.get(
       "/",
       this.optionalAuth,
@@ -84,8 +90,6 @@ export class PostRoutes {
       new ValidationMiddleware({ query: searchByTagsSchema }).validate(),
       asyncHandler(this.postController.searchByTags),
     );
-    this.router.get("/tags", asyncHandler(this.postController.listTags));
-
     this.router.post(
       "/",
       this.auth,
@@ -97,6 +101,8 @@ export class PostRoutes {
     this.router.post(
       "/:publicId/repost",
       this.auth,
+      upload.single("image"),
+      validateImageUpload,
       new ValidationMiddleware({
         params: publicIdSchema,
         body: repostSchema,

@@ -18,7 +18,8 @@ import {
   WhoToFollowResponse,
 } from "../../types";
 import { devError } from "@/lib/devLogger";
-import { postInteractionQueryFilter, updatePostInCache } from "../posts/postCache";
+import { postInteractionQueryFilter, updatePostInCache, updatePostCaches } from "../posts/postCache";
+import { latestFeedAction, traceFeedClient } from "@/features/feed/feedTrace";
 
 /**All hooks use public ids */
 export const useFollowUser = () => {
@@ -152,6 +153,7 @@ export const useFollowUser = () => {
       };
     },
     onSuccess: (_data, publicId) => {
+      void queryClient.resetQueries({ queryKey: ["followingFeed"] });
       queryClient.invalidateQueries({
         queryKey: ["isFollowing", publicId],
         exact: true,
@@ -279,19 +281,24 @@ export const useLikePost = () => {
 
       const detail = queryClient.getQueryData<IPost>(["post", postPublicId]);
       const shouldLike = !(detail ?? previousPosts[0]?.post)?.isLikedByViewer;
-      queryClient.setQueriesData(postInteractionQueryFilter, (data: unknown) =>
-        updatePostInCache(data, postPublicId, (post) => ({
-          ...post,
-          likes: Math.max(
-            0,
-            post.likes + Number(shouldLike) - Number(!!post.isLikedByViewer),
-          ),
-          isLikedByViewer: shouldLike,
-        })),
-      );
+      traceFeedClient("feed.cache.like.optimistic", { postPublicId, shouldLike, affectedQueries: previousPosts.length });
+      updatePostCaches(queryClient, postPublicId, (post) => ({
+        ...post,
+        likes: Math.max(
+          0,
+          post.likes + Number(shouldLike) - Number(!!post.isLikedByViewer),
+        ),
+        isLikedByViewer: shouldLike,
+      }));
       return { previousPosts };
     },
+    onSuccess: (updated, postPublicId) => {
+      updatePostCaches(queryClient, postPublicId, (post) => ({ ...post,
+        likes: updated.likes, isLikedByViewer: updated.isLikedByViewer, viewerLikeStateKnown: true,
+      }));
+    },
     onError: (_error, postPublicId, context) => {
+      traceFeedClient("feed.cache.like.rollback", { postPublicId, affectedQueries: context?.previousPosts.length ?? 0 });
       for (const { queryKey, post: previous } of context?.previousPosts ?? []) {
         queryClient.setQueryData(queryKey, (data: unknown) =>
           updatePostInCache(data, postPublicId, (post) => ({
@@ -302,17 +309,15 @@ export const useLikePost = () => {
         );
       }
     },
-    onSettled: () => {
-      return queryClient.invalidateQueries({
+    onSettled: async () => {
+      traceFeedClient("feed.cache.invalidated", { latestSuccessfulAction: latestFeedAction(), profileRefetch: true, feedRefetch: false, reason: "preserve_pinned_order" });
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ["interests"] }), queryClient.invalidateQueries({
         ...postInteractionQueryFilter,
         refetchType: "none",
-      });
+      })]);
     },
   });
 };
-
-// Legacy alias for backward compatibility
-export const useLikeImage = useLikePost;
 
 // Check if current LOGGED IN user is following the profile they're visiting by publicid
 export const useIsFollowing = (

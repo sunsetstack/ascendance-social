@@ -5,6 +5,20 @@ import {
 } from "@/types/branded";
 import { IEvent } from "@/application/common/interfaces/event.interface";
 import { EventRegistry } from "@/application/common/events/event-registry";
+import { randomUUID } from "node:crypto";
+
+export class ConversationsChangedEvent implements IEvent {
+  static readonly type = EventRegistry.domain.ConversationsChanged;
+  public readonly type = ConversationsChangedEvent.type;
+  public readonly timestamp = new Date();
+  public readonly eventId = randomUUID();
+
+  constructor(
+    public readonly participantPublicIds: UserPublicId[],
+    public readonly notificationIds: string[] = [],
+    public readonly requestLogIds: string[] = [],
+  ) {}
+}
 
 export class MessageSentEvent implements IEvent {
   static readonly type = EventRegistry.domain.MessageSent;

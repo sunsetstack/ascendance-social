@@ -11,7 +11,6 @@ import { NotificationRequestedEvent } from "@/application/events/notification/no
 import { RedisService } from "@/services/redis.service";
 import { Errors, AppError } from "@/utils/errors";
 import { EventBus } from "@/application/common/buses/event.bus";
-import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 
@@ -136,8 +135,6 @@ export class SetFollowStateCommandHandler implements ICommandHandler<
   ): Promise<void> {
     try {
       await this.redisService.invalidateByTags([
-        CacheKeyBuilder.getUserFeedTag(followerPublicId),
-        CacheKeyBuilder.getUserForYouFeedTag(followerPublicId),
         "who_to_follow",
         `user_suggestions:${followerPublicId}`,
       ]);

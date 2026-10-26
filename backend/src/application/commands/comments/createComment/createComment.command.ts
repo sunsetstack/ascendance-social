@@ -9,5 +9,8 @@ export class CreateCommentCommand implements ICommand {
     public readonly postPublicId: PostPublicId,
     public readonly content: string,
     public readonly parentId: string | null = null,
+    public readonly imageBuffer?: Buffer,
+    public readonly imageMimeType?: string,
+    public readonly imageOriginalName?: string,
   ) {}
 }

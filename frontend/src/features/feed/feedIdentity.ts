@@ -14,6 +14,8 @@ const makeFeedIdentity = (
 		.join("|")}`;
 
 export const feedIdentities = {
+	following: (viewer?: string): string =>
+		makeFeedIdentity("following", [["viewer", viewer]]),
 	home: (viewer?: string): string =>
 		makeFeedIdentity("home", [["viewer", viewer]]),
 	latest: (viewer?: string): string =>
@@ -22,6 +24,8 @@ export const feedIdentities = {
 		makeFeedIdentity("trending", [["viewer", viewer]]),
 	forYou: (viewer?: string): string =>
 		makeFeedIdentity("for-you", [["viewer", viewer]]),
+	preview: (definition: string, viewer?: string): string =>
+		makeFeedIdentity("preview", [["definition", definition], ["viewer", viewer]]),
 	community: (subject: string | undefined, viewer?: string): string =>
 		makeFeedIdentity("community", [
 			["subject", subject],

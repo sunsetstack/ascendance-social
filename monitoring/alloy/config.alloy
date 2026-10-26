@@ -59,6 +59,26 @@ loki.source.docker "containers" {
   forward_to = [loki.process.container_logs.receiver]
 }
 
+local.file_match "development" {
+  path_targets = [{
+    __path__ = "/var/log/ascendance-dev/*.log",
+    service_name = "backend-dev",
+    compose_project = "ascendance-social",
+    source_layer = "development",
+  }, {
+    __path__ = "/var/log/ascendance-dev/vite/*.log",
+    service_name = "frontend-dev",
+    compose_project = "ascendance-social",
+    source_layer = "development",
+  }]
+}
+
+loki.source.file "development" {
+  targets = local.file_match.development.targets
+  forward_to = [loki.process.container_logs.receiver]
+  tail_from_end = false
+}
+
 
 loki.process "container_logs" {
   stage.match {
@@ -163,12 +183,30 @@ loki.process "container_logs" {
 
     expressions = {
       level          = "level",
+      timestamp      = "timestamp",
       event          = "event",
       correlation_id = "correlationId",
       error_id       = "errorId",
       error_type     = "error.name",
       status_code    = "statusCode",
+      client_request_id = "clientRequestId",
+      caused_by_client_request_id = "causedByClientRequestId",
+      transaction_id = "transactionId",
+      event_trace_id = "traceId",
+      outbox_event_id = "eventId",
+      post_public_id = "postPublicId",
+      snapshot_id = "snapshotId",
+      outcome = "outcome",
+      phase = "phase",
+      handler = "handler",
+      trace_source = "traceSource",
     }
+  }
+
+  stage.timestamp {
+    source = "timestamp"
+    format = "RFC3339Nano"
+    action_on_failure = "skip"
   }
 
   stage.labels {
@@ -184,6 +222,17 @@ loki.process "container_logs" {
       error_id       = "",
       error_type     = "",
       status_code    = "",
+      client_request_id = "",
+      caused_by_client_request_id = "",
+      transaction_id = "",
+      event_trace_id = "",
+      outbox_event_id = "",
+      post_public_id = "",
+      snapshot_id = "",
+      outcome = "",
+      phase = "",
+      handler = "",
+      trace_source = "",
     }
   }
 

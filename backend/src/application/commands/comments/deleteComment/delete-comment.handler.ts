@@ -14,6 +14,7 @@ import { TOKENS } from "@/types/tokens";
 import { asMongoId, asUserPublicId, asPostPublicId } from "@/types/branded";
 import { ContentCleanupService } from "@/services/lifecycle/content-cleanup.service";
 import { Types } from "mongoose";
+import { ImageAssetCleanupRequestedEvent } from "@/application/events/image/image.event";
 
 @injectable()
 export class DeleteCommentCommandHandler implements ICommandHandler<
@@ -100,6 +101,10 @@ export class DeleteCommentCommandHandler implements ICommandHandler<
 
     await this.unitOfWork.executeInTransaction(async () => {
       const commentId = new Types.ObjectId(command.commentId);
+      const assets = await this.contentCleanupService.removeCommentAttachments([commentId]);
+      for (const asset of assets) {
+        await this.eventBus.queueTransactional(new ImageAssetCleanupRequestedEvent("comment-deleted", asset.storagePublicId));
+      }
       const hasReplies = await this.commentRepository.hasReplies(
         asMongoId(command.commentId),
       );

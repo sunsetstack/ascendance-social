@@ -262,6 +262,7 @@ describe("RedisService", () => {
 			mockClient.isOpen = true;
 			const subscriber = {
 				isOpen: false,
+				on: sinon.stub().returnsThis(),
 				connect: sinon.stub().resolves(),
 				subscribe: sinon.stub().resolves(),
 				unsubscribe: sinon.stub().resolves(),

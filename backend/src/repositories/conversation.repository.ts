@@ -6,6 +6,7 @@ import { Errors } from "@/utils/errors";
 import { encodeCursor, decodeCursor } from "@/utils/cursorCodec";
 import { TOKENS } from "@/types/tokens";
 import { ConversationPublicId } from "@/types/branded";
+import { requireTransactionSession } from "@/database/UnitOfWork";
 
 interface ConversationCursor {
 	lastMessageAt: string;
@@ -39,6 +40,56 @@ Notes on messaging system:
 export class ConversationRepository extends BaseRepository<IConversation> {
 	constructor(@inject(TOKENS.Models.Conversation) model: Model<IConversation>) {
 		super(model);
+	}
+
+	async acquireForMutation(publicId: ConversationPublicId): Promise<IConversation> {
+		const conversation = await this.model.findOneAndUpdate(
+			{ publicId }, { $inc: { __v: 1 } }, { new: true },
+		).session(requireTransactionSession()).exec();
+		if (!conversation) throw Errors.notFound("Conversation");
+		return conversation;
+	}
+
+	async purge(conversation: IConversation): Promise<string[]> {
+		const session = requireTransactionSession();
+		const db = this.model.db;
+		const notificationIds = await this.deleteNotifications(conversation.publicId);
+		await db.collection("messages").deleteMany({ conversation: conversation._id }, { session });
+		await db.collection("outboxes").deleteMany({ $or: [
+			{ "payload.conversationPublicId": conversation.publicId },
+			{ "payload.conversationId": conversation.publicId },
+			{ "payload.payload.targetId": conversation.publicId },
+		] }, { session });
+		await this.model.deleteOne({ _id: conversation._id }).session(session).exec();
+		return notificationIds;
+	}
+
+	async deleteNotifications(publicId: ConversationPublicId, userPublicId?: string): Promise<string[]> {
+		const session = requireTransactionSession();
+		const db = this.model.db;
+		const filter = { targetId: publicId, targetType: "conversation", ...(userPublicId ? { userId: userPublicId } : {}) };
+		const notifications = await db.collection("notifications").find(
+			filter,
+			{ session, projection: { _id: 1 } },
+		).toArray();
+		await db.collection("notifications").deleteMany(filter, { session });
+		return notifications.map((notification) => notification._id.toString());
+	}
+
+	async findRequestLogIds(publicId: ConversationPublicId): Promise<string[]> {
+		const conversation = await this.model.findOne({ publicId }).select("_id").lean().exec();
+		const messages = conversation ? await this.model.db.collection("messages")
+			.find({ conversation: conversation._id }, { projection: { publicId: 1 } }).toArray() : [];
+		const messageRoutes = messages.map((message) => `/api/messaging/messages/${message.publicId}`);
+		const conversationReference = publicId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		const logs = await this.model.db.collection("requestlogs").find({ $or: [
+			{ "metadata.route": { $regex: conversationReference } },
+			{ "metadata.route": { $in: messageRoutes } },
+			{ "metadata.referer": { $regex: conversationReference } },
+			{ "metadata.visitorObservation.path": { $regex: conversationReference } },
+			{ "metadata.visitorObservation.referrer": { $regex: conversationReference } },
+		] }, { projection: { _id: 1 } }).toArray();
+		return logs.map((log) => log._id.toString());
 	}
 
 	async findByPublicId(
@@ -80,7 +131,7 @@ export class ConversationRepository extends BaseRepository<IConversation> {
 			const skip = (page - 1) * limit;
 
 			const pipeline: mongoose.PipelineStage[] = [
-				{ $match: { participants: objectId } },
+				{ $match: { participants: objectId, hiddenFor: { $ne: objectId } } },
 				{ $sort: { lastMessageAt: -1, _id: -1 } },
 				{ $skip: skip },
 				{ $limit: limit },
@@ -149,6 +200,8 @@ export class ConversationRepository extends BaseRepository<IConversation> {
 						isGroup: 1,
 						isClosed: 1,
 						closedReason: 1,
+						isLocked: 1,
+						clearedAt: 1,
 						title: 1,
 						createdAt: 1,
 						updatedAt: 1,
@@ -158,7 +211,7 @@ export class ConversationRepository extends BaseRepository<IConversation> {
 
 			const [data, total] = await Promise.all([
 				this.model.aggregate(pipeline).exec(),
-				this.model.countDocuments({ participants: objectId }),
+				this.model.countDocuments({ participants: objectId, hiddenFor: { $ne: objectId } }),
 			]);
 
 			return {
@@ -187,7 +240,7 @@ export class ConversationRepository extends BaseRepository<IConversation> {
 			const decodedCursor = decodeCursor<ConversationCursor>(cursor);
 
 			// Build match stage with cursor condition
-			const matchStage: Record<string, unknown> = { participants: objectId };
+			const matchStage: Record<string, unknown> = { participants: objectId, hiddenFor: { $ne: objectId } };
 
 			if (decodedCursor) {
 				matchStage.$or = [
@@ -268,6 +321,8 @@ export class ConversationRepository extends BaseRepository<IConversation> {
 						isGroup: 1,
 						isClosed: 1,
 						closedReason: 1,
+						isLocked: 1,
+						clearedAt: 1,
 						title: 1,
 						createdAt: 1,
 						updatedAt: 1,

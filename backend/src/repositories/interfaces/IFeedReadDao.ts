@@ -5,6 +5,7 @@ import {
   PaginationResult,
   TrendingTag,
 } from "@/types";
+import type { FeedPreviewDefinition } from "@/types/customFeeds/feed-preview.types";
 
 export type FeedSnapshotPaginationResult<T> = CursorPaginationResult<T> & {
   snapshotId?: string;
@@ -16,11 +17,19 @@ export type FeedSnapshotPaginationResult<T> = CursorPaginationResult<T> & {
  * This separates heavy analytical queries from the domain-focused post read repository.
  */
 export interface IFeedReadDao {
-  getFeedForUserCoreWithCursor(
+  getFollowingFeedWithCursor(
+    viewerMongoId: string,
     followingIds: string[],
-    favoriteTags: string[],
-    options: CursorPaginationOptions
+    options: CursorPaginationOptions,
   ): Promise<CursorPaginationResult<FeedPost>>;
+  getInterestFeedWithCursor(
+    definition: import("@/services/feed/interests.policy").InterestFeedDefinition,
+    options: CursorPaginationOptions,
+  ): Promise<FeedSnapshotPaginationResult<FeedPost>>;
+  getPreviewFeedWithCursor(
+    definition: FeedPreviewDefinition,
+    options: CursorPaginationOptions,
+  ): Promise<FeedSnapshotPaginationResult<FeedPost>>;
 
   getTrendingFeed(
     limit: number,
@@ -43,14 +52,6 @@ export interface IFeedReadDao {
       timeWindowDays?: number;
       minLikes?: number;
       weights?: { recency?: number; popularity?: number; comments?: number };
-    }
-  ): Promise<FeedSnapshotPaginationResult<FeedPost>>;
-
-  getRankedFeedWithCursor(
-    favoriteTags: string[],
-    options: CursorPaginationOptions & {
-      cursorFeed?: "for-you" | "personalized";
-      weights?: { recency?: number; popularity?: number; tagMatch?: number };
     }
   ): Promise<FeedSnapshotPaginationResult<FeedPost>>;
 }

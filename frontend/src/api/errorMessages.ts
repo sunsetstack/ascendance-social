@@ -19,7 +19,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   AUTH_1005: "You do not have permission to do that.",
   AUTH_1006: "Please verify your email before continuing.",
 
-  VAL_2001: "Please check the highlighted fields and try again.",
   VAL_2002: "Some of the submitted information is invalid.",
   VAL_2003: "Please fill in the required fields.",
   VAL_2004: "Please use the expected format and try again.",

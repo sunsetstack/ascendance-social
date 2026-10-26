@@ -7,11 +7,11 @@ import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRep
 import type { IPostWriteRepository } from "@/repositories/interfaces/IPostWriteRepository";
 import { PostViewRepository } from "@/repositories/postView.repository";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
-import { FeedService } from "@/services/feed/feed.service";
+import { FeedMetaService } from "@/services/feed/feed-meta.service";
 import { TransactionQueueService } from "@/services/transaction-queue.service";
 import { BloomFilterService } from "@/services/redis/bloom-filter.service";
 import { UnitOfWork } from "@/database/UnitOfWork";
-import { Errors } from "@/utils/errors";
+import { Errors, isMongoDBDuplicateKeyError } from "@/utils/errors";
 import { isValidPublicId } from "@/utils/sanitizers";
 import {
   PostAuthorizationError,
@@ -46,7 +46,8 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
     private readonly postViewRepository: PostViewRepository,
     @inject(TOKENS.Repositories.UserRead)
     private readonly userReadRepository: IUserReadRepository,
-    @inject(TOKENS.Services.Feed) private readonly feedService: FeedService,
+    @inject(TOKENS.Services.FeedMeta)
+    private readonly feedMetaService: FeedMetaService,
     @inject(TOKENS.Services.TransactionQueue)
     private readonly transactionQueue: TransactionQueueService,
     @inject(TOKENS.Services.BloomFilter)
@@ -61,7 +62,7 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
           payload.postPublicId,
         );
         if (updatedPost?.viewsCount !== undefined) {
-          await this.feedService.updatePostViewMeta(
+          await this.feedMetaService.updatePostViewMeta(
             payload.postPublicId,
             updatedPost.viewsCount,
           );
@@ -123,13 +124,28 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
         return false;
       }
 
-      const isNewView = await this.unitOfWork.executeInTransaction(async () => {
-        const recorded = await this.postViewRepository.recordView(postId, userId);
-        if (recorded) {
-          await this.postWriteRepository.incrementViewCount(postId);
+      let isNewView: boolean;
+      try {
+        isNewView = await this.unitOfWork.executeInTransaction(async () => {
+          const recorded = await this.postViewRepository.recordView(postId, userId);
+          if (recorded) {
+            await this.postWriteRepository.incrementViewCount(postId);
+          }
+          return recorded;
+        });
+      } catch (error) {
+        if (
+          !isMongoDBDuplicateKeyError(error) ||
+          !error.keyValue.post ||
+          !error.keyValue.user ||
+          String(error.keyValue.post) !== String(postId) ||
+          String(error.keyValue.user) !== String(userId) ||
+          !(await this.postViewRepository.hasViewed(postId, userId))
+        ) {
+          throw error;
         }
-        return recorded;
-      });
+        isNewView = false;
+      }
 
       await this.markViewSeenInBloom(bloomKey, bloomItem);
 

@@ -203,19 +203,6 @@ export function useSwipeDrawer(options: SwipeDrawerOptions = {}): SwipeDrawerRet
 		resetDrag,
 	]);
 
-	// handle backdrop click to close
-	useEffect(() => {
-		const backdrop = backdropRef.current;
-		if (!backdrop) return;
-
-		const handleClick = () => {
-			if (isOpen) close();
-		};
-
-		backdrop.addEventListener("click", handleClick);
-		return () => backdrop.removeEventListener("click", handleClick);
-	}, [isOpen, close]);
-
 	// handle escape key
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {

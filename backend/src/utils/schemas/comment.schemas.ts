@@ -11,9 +11,8 @@ export const createCommentSchema = z
     content: z
       .string()
       .trim()
-      .min(1, "Comment cannot be empty.")
-      .max(250, "Comment cannot be longer than 250 characters.")
-      .transform(sanitize),
+      .max(500, "Comment cannot be longer than 500 characters.")
+      .transform(sanitize).optional().default(""),
     parentId: parentIdField,
   })
   .strict()
@@ -25,7 +24,7 @@ export const updateCommentSchema = z
       .string()
       .trim()
       .min(1, "Comment cannot be empty.")
-      .max(250, "Comment cannot be longer than 250 characters.")
+      .max(500, "Comment cannot be longer than 500 characters.")
       .transform(sanitize),
   })
   .strict()

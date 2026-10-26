@@ -17,6 +17,9 @@ import { UnitOfWork } from "@/database/UnitOfWork";
 import { TOKENS } from "@/types/tokens";
 import { extractTagNames, buildPostPreview } from "@/utils/post-helpers";
 import { asMongoId, asUserPublicId } from "@/types/branded";
+import { FeedPreferenceRepository } from "@/repositories/feed-preference.repository";
+import { classifyContent } from "@/services/feed/interests.policy";
+import { traceFeed } from "@/services/feed/feed-trace";
 
 @injectable()
 export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
@@ -24,6 +27,7 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
   PostDTO
 > {
   constructor(
+    @inject(TOKENS.Repositories.FeedPreference) private readonly preferences: FeedPreferenceRepository,
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
     @inject(TOKENS.Repositories.PostRead)
@@ -70,6 +74,8 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
 
     const postOwnerPublicId =
       await this.resolveOwnerPublicIdAsync(existingPost);
+    traceFeed("feed.action.received", { action: "like_toggle", postPublicId: existingPost.publicId,
+      postId: postInternalId, contentFeatures: existingPost.contentFeatures });
 
     await this.unitOfWork.executeInTransaction(async () => {
       const existingLike = await this.postLikeRepository.hasUserLiked(
@@ -88,6 +94,8 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
           postOwnerPublicId,
         );
       }
+      await this.preferences.setSignal(userMongoId, postInternalId, "like",
+        existingPost.contentFeatures ?? classifyContent(existingPost.body ?? "", postTags, Boolean(existingPost.image)), !existingLike);
       await this.eventBus.queueTransactional(
         new UserInteractedWithPostEvent(
           command.userPublicId,
@@ -103,11 +111,14 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
     const updatedPost = await this.postReadRepository.findByPublicId(
       command.postPublicId,
     );
+    traceFeed("feed.action.committed", { action: "like_toggle", postPublicId: command.postPublicId, likesCount: updatedPost?.likesCount });
     if (!updatedPost) {
       throw Errors.notFound("Post");
     }
 
-    return this.dtoService.toPostDTO(updatedPost);
+    const result = this.dtoService.toPostDTO(updatedPost);
+    result.isLikedByViewer = await this.postLikeRepository.hasUserLiked(postInternalId, userMongoId);
+    return result;
   }
 
   private async handleLike(

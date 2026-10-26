@@ -18,6 +18,11 @@ export interface IUserWriteRepository {
     publicId: UserPublicId,
     updateData: UpdateQuery<IUser>,
   ): Promise<IUser | null>;
+  issueEmailVerificationToken(
+    publicId: UserPublicId,
+    token: string,
+    expiresAt: Date,
+  ): Promise<IUser | null>;
   consumePasswordResetToken(
     resetTokenHash: string,
     newPassword: string,

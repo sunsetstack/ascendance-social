@@ -110,6 +110,8 @@ export function normalizeFeedPost(post: FeedPostSource): FeedPost {
   return {
     publicId: plainPost.publicId as string,
     body: (plainPost.body as string) ?? "",
+    editedAt: plainPost.editedAt as Date | undefined,
+    contentFeatures: plainPost.contentFeatures as FeedPost["contentFeatures"],
     slug: (plainPost.slug as string) ?? "",
     type:
       plainPost.type === "repost" || repostOf ? "repost" : "original",
@@ -132,6 +134,9 @@ export function normalizeFeedPost(post: FeedPostSource): FeedPost {
     rankScore: plainPost.rankScore as number | undefined,
     trendScore: plainPost.trendScore as number | undefined,
     isPersonalized: plainPost.isPersonalized as boolean | undefined,
+    isLikedByViewer: plainPost.isLikedByViewer as boolean | undefined,
+    isRepostedByViewer: plainPost.isRepostedByViewer as boolean | undefined,
+    feedReason: plainPost.feedReason as string | undefined,
   };
 }
 

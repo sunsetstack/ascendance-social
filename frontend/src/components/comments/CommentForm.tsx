@@ -6,6 +6,9 @@ import { useCreateComment } from "../../hooks/comments/useComments";
 import MentionInput from "../MentionInput";
 import { devError } from "@/lib/devLogger";
 import { buildAvatarUrl } from "@/lib/media";
+import ImageAttachmentInput from "../ImageAttachmentInput";
+import { Alert } from "@mui/material";
+import CharacterCounter, { COMMENT_CHARACTER_LIMIT } from "../CharacterCounter";
 
 interface CommentFormProps {
   postId: string;
@@ -14,19 +17,21 @@ interface CommentFormProps {
 const CommentForm: React.FC<CommentFormProps> = ({ postId }) => {
   const { user, isLoggedIn } = useAuth();
   const [content, setContent] = useState("");
+  const [image, setImage] = useState<File | null>(null);
   const createCommentMutation = useCreateComment();
 
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
 
-    if (!content.trim() || !isLoggedIn) return;
+    if ((!content.trim() && !image) || !isLoggedIn || content.length > COMMENT_CHARACTER_LIMIT || createCommentMutation.isPending) return;
 
     try {
       await createCommentMutation.mutateAsync({
         imagePublicId: postId,
-        commentData: { content: content.trim() },
+        commentData: { content: content.trim(), image: image ?? undefined },
       });
       setContent("");
+      setImage(null);
     } catch (error) {
       devError("Failed to create comment:", error);
     }
@@ -61,17 +66,21 @@ const CommentForm: React.FC<CommentFormProps> = ({ postId }) => {
             placeholder="Write a comment..."
             multiline
             maxRows={4}
+            maxLength={COMMENT_CHARACTER_LIMIT}
             disabled={createCommentMutation.isPending}
             sx={{ width: "100%" }}
           />
 
-          <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 1 }}>
+          <ImageAttachmentInput file={image} onChange={setImage} disabled={createCommentMutation.isPending} />
+          {createCommentMutation.isError && <Alert severity="error">Unable to post your comment. Please try again.</Alert>}
+          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1, mt: 1 }}>
+            <CharacterCounter value={content} limit={COMMENT_CHARACTER_LIMIT} />
             <Button
               type="submit"
               variant="contained"
               size="small"
               endIcon={<SendIcon />}
-              disabled={createCommentMutation.isPending || !content.trim()}
+              disabled={createCommentMutation.isPending || (!content.trim() && !image) || content.length > COMMENT_CHARACTER_LIMIT}
             >
               {createCommentMutation.isPending ? "Posting..." : "Post"}
             </Button>

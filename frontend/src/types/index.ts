@@ -6,6 +6,7 @@ import {
   UseQueryResult,
 } from "@tanstack/react-query";
 import type { Id } from "react-toastify";
+import type { ReactNode } from "react";
 
 // Base user interface matching backend DTOs
 export interface PublicUserDTO {
@@ -64,6 +65,7 @@ export interface IPost {
   publicId: string;
   slug?: string;
   body?: string; // Post text
+  editedAt?: Date;
   type?: "original" | "repost";
   repostCount?: number;
   repostOf?: {
@@ -122,6 +124,9 @@ export interface IPost {
   createdAt: Date;
 
   isLikedByViewer: boolean;
+  viewerLikeStateKnown?: boolean;
+  contentTopics?: string[];
+  feedReason?: string;
   isFavoritedByViewer: boolean;
   isRepostedByViewer: boolean;
   canDelete?: boolean;
@@ -151,6 +156,7 @@ export function isTextPost(post: IPost): boolean {
 }
 
 export interface IComment {
+  image?: { publicId?: string; url?: string; width?: number; height?: number } | null;
   id: string;
   content: string;
   postPublicId: string;
@@ -173,6 +179,7 @@ export interface IComment {
 }
 
 export interface CommentCreateDto {
+  image?: File;
   content: string;
   parentId?: string;
 }
@@ -232,6 +239,7 @@ export interface GalleryProps {
   isFetchingAll?: boolean;
   emptyTitle?: string;
   emptyDescription?: string;
+  emptyAction?: ReactNode;
   variant?: "feed" | "media";
   /** Logical feed identity used for anchor restoration and pending updates. */
   feedId?: string;
@@ -303,11 +311,17 @@ export interface ConversationSummaryDTO {
   unreadCount: number;
   isGroup: boolean;
   isClosed?: boolean;
+  isLocked?: boolean;
   closedReason?: "banned" | "deleted" | "unknown";
   title?: string;
 }
 
 export type MessagingUpdatePayload =
+  | {
+      type: "conversations_changed";
+      eventId?: string;
+      timestamp: string;
+    }
   | {
       type: "message_sent";
       eventId?: string;

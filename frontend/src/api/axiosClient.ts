@@ -5,6 +5,7 @@ import axios, {
   InternalAxiosRequestConfig,
 } from "axios";
 import { devWarn } from "@/lib/devLogger";
+import { clearFeedAction, isFeedTraceEnabled, latestFeedAction, rememberFeedAction, traceFeedClient } from "@/features/feed/feedTrace";
 import {
   getApiErrorPayload,
   resolveApiErrorMessage,
@@ -16,6 +17,7 @@ import {
 } from "./authRefreshCoordinator";
 
 interface RetryableRequestConfig extends InternalAxiosRequestConfig {
+  _feedStartedAt?: number;
   _retry?: boolean;
   _clientRequestId?: string;
   _clientRequestAttempt?: number;
@@ -111,6 +113,11 @@ axiosClient.interceptors.request.use((config) => {
   const clientRequestId = resolveClientRequestId(observableConfig);
   const requestAttempt = resolveClientRequestAttempt(observableConfig);
   const headers = (config.headers as AxiosRequestHeaders) ?? {};
+  const feedRequest = isFeedRequest(config.url);
+  observableConfig._feedStartedAt = performance.now();
+  if (feedRequest && config.method?.toLowerCase() === "get" && !observableConfig._causedByClientRequestId && isFeedTraceEnabled()) {
+    observableConfig._causedByClientRequestId = latestFeedAction();
+  }
 
   headers[CLIENT_REQUEST_ID_HEADER] = clientRequestId;
   headers[CLIENT_BOOT_ID_HEADER] = resolveClientBootId();
@@ -141,8 +148,14 @@ axiosClient.interceptors.request.use((config) => {
   observableConfig._clientRequestAttempt = requestAttempt;
   previousClientRequestId = clientRequestId;
   config.headers = headers;
+  if (feedRequest) traceFeedClient("feed.http.started", { clientRequestId, causedByClientRequestId: observableConfig._causedByClientRequestId,
+    attempt: requestAttempt, method: config.method, path: config.url?.split("?")[0] });
   return config;
 });
+
+function isFeedRequest(url?: string): boolean {
+  return Boolean(url && /^\/api\/(?:feed(?:\/|\?|$)|posts(?:\/|\?|$)|users\/like\/post\/)/.test(url));
+}
 
 const authRefreshCoordinator = new AuthRefreshCoordinator();
 
@@ -169,7 +182,24 @@ export default axiosClient;
 
 // Global response interceptor to catch auth expiry
 axiosClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const config = response.config as RetryableRequestConfig;
+    if (config.url === "/api/users/logout") clearFeedAction();
+    if (isFeedRequest(config.url)) {
+      if (config.method?.toLowerCase() !== "get" && config._clientRequestId) rememberFeedAction(config._clientRequestId);
+      const value = response.data;
+      traceFeedClient("feed.http.completed", { clientRequestId: config._clientRequestId,
+        causedByClientRequestId: config._causedByClientRequestId, serverRequestId: response.headers["x-request-id"],
+        status: response.status, durationMs: config._feedStartedAt === undefined ? undefined : performance.now() - config._feedStartedAt,
+        path: config.url?.split("?")[0], profile: value?.profile,
+        posts: Array.isArray(value?.data) ? value.data.map((post: Record<string, unknown>) => ({
+          publicId: post.publicId, rankScore: post.rankScore, reason: post.feedReason, likes: post.likes,
+          isLikedByViewer: post.isLikedByViewer, isRepostedByViewer: post.isRepostedByViewer,
+        })) : undefined,
+      });
+    }
+    return response;
+  },
   async (error: AxiosError<ApiErrorResponse>) => {
     const status = error.response?.status;
     const payload = getApiErrorPayload(error.response?.data);
@@ -184,6 +214,10 @@ axiosClient.interceptors.response.use(
     }
 
     const originalRequest = error.config as RetryableRequestConfig | undefined;
+    if (isFeedRequest(originalRequest?.url)) traceFeedClient("feed.http.failed", {
+      clientRequestId: originalRequest?._clientRequestId, serverRequestId: error.response?.headers["x-request-id"],
+      path: originalRequest?.url?.split("?")[0], status, code: error.code, message: error.message, stack: error.stack,
+    });
     const shouldRefresh = shouldAttemptAuthRefresh(
       status,
       originalRequest,

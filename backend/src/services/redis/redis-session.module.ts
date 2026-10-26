@@ -1,66 +1,20 @@
 import { RedisClientType } from "redis";
+import type {
+  AuthSessionMetadataPatchInput,
+  AuthSessionMetadataPatchOutcome,
+  AuthSessionRevocationInput,
+  AuthSessionRevocationOutcome,
+  AuthSessionRotationInput,
+  AuthSessionRotationOutcome,
+  AuthSessionRotationResult,
+  AuthSessionStore,
+  AuthSessionTouchInput,
+} from "@/application/ports/auth-session-store";
 
 type SessionRecord = {
   sid: string;
   publicId: string;
 };
-
-export type RefreshRotationOutcome =
-  | "rotated"
-  | "stale_previous"
-  | "missing"
-  | "revoked"
-  | "mismatch"
-  | "identity_mismatch"
-  | "invalid_record"
-  | "version_conflict";
-
-export interface CompareAndRotateSessionInput {
-  sid: string;
-  publicId: string;
-  presentedRefreshTokenHash: string;
-  nextRefreshTokenHash: string;
-  expectedRefreshVersion: number;
-  now: number;
-  previousRefreshTokenGraceUntil: number;
-  ttlSeconds: number;
-  ip?: string;
-  userAgent?: string;
-}
-
-export interface CompareAndRotateSessionResult<T> {
-  outcome: RefreshRotationOutcome;
-  session: T | null;
-}
-
-export type SessionMetadataPatchOutcome =
-  | "updated"
-  | "missing"
-  | "identity_mismatch"
-  | "invalid_record";
-
-export interface PatchSessionMetadataInput {
-  sid: string;
-  publicId: string;
-}
-
-export interface TouchSessionInput extends PatchSessionMetadataInput {
-  lastSeenAt: number;
-}
-
-export type RefreshSessionRevocationOutcome =
-  | "revoked"
-  | "missing"
-  | "inactive"
-  | "mismatch"
-  | "identity_mismatch"
-  | "invalid_record";
-
-export interface RevokeRefreshSessionInput {
-  sid: string;
-  presentedRefreshTokenHash: string;
-  now: number;
-}
 
 const COMPARE_AND_ROTATE_SESSION_SCRIPT = `
 local raw = redis.call("GET", KEYS[1])
@@ -239,15 +193,15 @@ export interface SessionWithTtl<T> {
   ttlSeconds: number;
 }
 
-export class RedisSessionModule {
+export class RedisSessionModule implements AuthSessionStore {
   constructor(private readonly client: RedisClientType) {}
 
-  async getSession<T>(sid: string): Promise<T | null> {
+  async get<T>(sid: string): Promise<T | null> {
     const raw = await this.client.get(this.sessionKey(sid));
     return raw ? (JSON.parse(raw) as T) : null;
   }
 
-  async saveSession<T extends SessionRecord>(
+  async save<T extends SessionRecord>(
     session: T,
     ttlSeconds: number,
   ): Promise<void> {
@@ -265,9 +219,9 @@ export class RedisSessionModule {
     await pipeline.exec();
   }
 
-  async compareAndRotateSession<T>(
-    input: CompareAndRotateSessionInput,
-  ): Promise<CompareAndRotateSessionResult<T>> {
+  async compareAndRotate<T>(
+    input: AuthSessionRotationInput,
+  ): Promise<AuthSessionRotationResult<T>> {
     const result = (await this.client.eval(COMPARE_AND_ROTATE_SESSION_SCRIPT, {
       keys: [
         this.sessionKey(input.sid),
@@ -288,7 +242,7 @@ export class RedisSessionModule {
         input.userAgent === undefined ? "0" : "1",
         input.userAgent ?? "",
       ],
-    })) as [RefreshRotationOutcome, string];
+    })) as [AuthSessionRotationOutcome, string];
 
     const [outcome, rawSession] = result;
     return {
@@ -297,27 +251,27 @@ export class RedisSessionModule {
     };
   }
 
-  async touchSession(
-    input: TouchSessionInput,
-  ): Promise<SessionMetadataPatchOutcome> {
+  async touch(
+    input: AuthSessionTouchInput,
+  ): Promise<AuthSessionMetadataPatchOutcome> {
     return this.client.eval(TOUCH_SESSION_SCRIPT, {
       keys: [this.sessionKey(input.sid)],
       arguments: [input.sid, input.publicId, String(input.lastSeenAt)],
-    }) as Promise<SessionMetadataPatchOutcome>;
+    }) as Promise<AuthSessionMetadataPatchOutcome>;
   }
 
-  async markSessionEmailVerified(
-    input: PatchSessionMetadataInput,
-  ): Promise<SessionMetadataPatchOutcome> {
+  async markEmailVerified(
+    input: AuthSessionMetadataPatchInput,
+  ): Promise<AuthSessionMetadataPatchOutcome> {
     return this.client.eval(MARK_SESSION_EMAIL_VERIFIED_SCRIPT, {
       keys: [this.sessionKey(input.sid)],
       arguments: [input.sid, input.publicId],
-    }) as Promise<SessionMetadataPatchOutcome>;
+    }) as Promise<AuthSessionMetadataPatchOutcome>;
   }
 
-  async revokeRefreshSession(
-    input: RevokeRefreshSessionInput,
-  ): Promise<RefreshSessionRevocationOutcome> {
+  async revokeByRefreshToken(
+    input: AuthSessionRevocationInput,
+  ): Promise<AuthSessionRevocationOutcome> {
     return this.client.eval(REVOKE_REFRESH_SESSION_SCRIPT, {
       keys: [this.sessionKey(input.sid)],
       arguments: [
@@ -325,17 +279,17 @@ export class RedisSessionModule {
         input.presentedRefreshTokenHash,
         String(input.now),
       ],
-    }) as Promise<RefreshSessionRevocationOutcome>;
+    }) as Promise<AuthSessionRevocationOutcome>;
   }
 
-  async removeSession(sid: string, publicId: string): Promise<void> {
+  async remove(sid: string, publicId: string): Promise<void> {
     const pipeline = this.client.multi();
     pipeline.del(this.sessionKey(sid));
     pipeline.sRem(this.userSessionsKey(publicId), sid);
     await pipeline.exec();
   }
 
-  async removeSessionMembership(publicId: string, sid: string): Promise<void> {
+  async removeMembership(publicId: string, sid: string): Promise<void> {
     await this.client.sRem(this.userSessionsKey(publicId), sid);
   }
 

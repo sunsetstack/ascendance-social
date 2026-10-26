@@ -10,6 +10,7 @@ import {
 export interface PostDTO {
   publicId: PostPublicId;
   body?: string; // text content of the post
+  editedAt?: Date;
   slug?: string;
   type?: "original" | "repost";
   repostCount?: number;

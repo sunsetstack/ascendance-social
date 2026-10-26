@@ -56,30 +56,30 @@ describe("FeedReadDao", () => {
     sinon.restore();
   });
 
-  it("keeps _id in hybrid feed projections so dedupe and cursors work", async () => {
-    const personalizedId = new Types.ObjectId();
-    const backfillId = new Types.ObjectId();
-    const personalizedDate = new Date("2024-01-02T00:00:00.000Z");
-    const backfillDate = new Date("2024-01-01T00:00:00.000Z");
+  it("keeps identities and snapshot progress in Following feed projections", async () => {
+    const firstId = new Types.ObjectId();
+    const secondId = new Types.ObjectId();
+    const firstDate = new Date("2024-01-02T00:00:00.000Z");
+    const secondDate = new Date("2024-01-01T00:00:00.000Z");
 
     mockModel.aggregate.returns({
       exec: sinon.stub().resolves([
         {
-          _id: personalizedId,
+          _id: firstId,
           publicId: "post-1",
-          createdAt: personalizedDate,
-          isPersonalized: true,
+          createdAt: firstDate,
+          rankScore: firstDate.getTime(),
         },
         {
-          _id: backfillId,
+          _id: secondId,
           publicId: "post-2",
-          createdAt: backfillDate,
-          isPersonalized: false,
+          createdAt: secondDate,
+          rankScore: secondDate.getTime(),
         },
       ]),
     });
 
-    const result = await dao.getFeedForUserCoreWithCursor(["000000000000000000000001"], [], { limit: 1 });
+    const result = await dao.getFollowingFeedWithCursor("000000000000000000000002", ["000000000000000000000001"], { limit: 1 });
 
     const pipeline = mockModel.aggregate.firstCall.args[0] as Array<Record<string, unknown>>;
     const projection = pipeline.find((stage) => "$project" in stage)?.$project as Record<
@@ -87,26 +87,26 @@ describe("FeedReadDao", () => {
       unknown
     >;
     const decodedCursor = decodeFeedCursor(result.nextCursor!, {
-      feed: "personalized",
-      orders: [FEED_CURSOR_ORDER.PERSONALIZED],
+      feed: "preview",
+      orders: [FEED_CURSOR_ORDER.PREVIEW_LATEST],
       source: "mongo",
     });
 
     expect(projection._id).to.equal(1);
     expect(projection.visibleIdentityId).to.equal(1);
-    expect(mockModel.aggregate.calledOnce).to.equal(true);
+    expect(mockModel.aggregate.calledTwice).to.equal(true);
     expect(result.data).to.have.length(1);
     expect(result.data[0].publicId).to.equal("post-1");
-    expect(decodedCursor?._id).to.equal(personalizedId.toString());
-    expect(decodedCursor?.phase).to.equal("personalized");
+    expect(decodedCursor?.snapshotId).to.equal(`${hashFeedCursorScope(["unit-snapshot"])}.1`);
+    expect(decodedCursor?.offset).to.equal(1);
   });
 
-  it("computes ranking score properly in ranked feed pipeline", async () => {
+  it("computes ranking score in the active Preview feed pipeline", async () => {
     mockModel.aggregate.returns({
       exec: sinon.stub().resolves([]),
     });
 
-    await dao.getRankedFeedWithCursor(["nature"], { limit: 10 });
+    await dao.getPreviewFeedWithCursor({ topics: ["nature"], sort: "relevant", includeReposts: true }, { limit: 10 });
 
     const pipeline = mockModel.aggregate.firstCall.args[0] as Array<Record<string, unknown>>;
 

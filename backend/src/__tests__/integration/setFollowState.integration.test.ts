@@ -118,7 +118,7 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
       .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(false);
 
-    const result = await bus.dispatch<{ action: string }>(
+    const result = await bus.dispatch(
       new SetFollowStateCommand(
         asUserPublicId(FOLLOWER_PID),
         asUserPublicId(FOLLOWEE_PID),
@@ -215,7 +215,7 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
       .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(true);
 
-    const result = await bus.dispatch<{ action: string }>(
+    const result = await bus.dispatch(
       new SetFollowStateCommand(
         asUserPublicId(FOLLOWER_PID),
         asUserPublicId(FOLLOWEE_PID),
@@ -290,7 +290,7 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
       .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(true);
 
-    const result = await bus.dispatch<{ action: string }>(
+    const result = await bus.dispatch(
       new SetFollowStateCommand(
         asUserPublicId(FOLLOWER_PID),
         asUserPublicId(FOLLOWEE_PID),
@@ -313,7 +313,7 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
       .resolves(makeUserDoc(FOLLOWEE_PID, FOLLOWEE_MID));
     stubs.followRepo.isFollowing.resolves(false);
 
-    const result = await bus.dispatch<{ action: string }>(
+    const result = await bus.dispatch(
       new SetFollowStateCommand(
         asUserPublicId(FOLLOWER_PID),
         asUserPublicId(FOLLOWEE_PID),
@@ -343,7 +343,7 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
       Errors.duplicate("Already following this user"),
     );
 
-    const result = await bus.dispatch<{ action: string }>(
+    const result = await bus.dispatch(
       new SetFollowStateCommand(
         asUserPublicId(FOLLOWER_PID),
         asUserPublicId(FOLLOWEE_PID),
@@ -367,7 +367,7 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
       createError("NotFoundError", "Not following this user"),
     );
 
-    const result = await bus.dispatch<{ action: string }>(
+    const result = await bus.dispatch(
       new SetFollowStateCommand(
         asUserPublicId(FOLLOWER_PID),
         asUserPublicId(FOLLOWEE_PID),
@@ -484,7 +484,7 @@ describe("SetFollowStateCommandHandler integration (via CommandBus)", () => {
     stubs.followRepo.isFollowing.resolves(false);
     stubs.redisService.invalidateByTags.rejects(new Error("redis down"));
 
-    const result = await bus.dispatch<{ action: string }>(
+    const result = await bus.dispatch(
       new SetFollowStateCommand(
         asUserPublicId(FOLLOWER_PID),
         asUserPublicId(FOLLOWEE_PID),

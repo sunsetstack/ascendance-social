@@ -22,7 +22,6 @@ export class GetTrendingTagsQueryHandler implements IQueryHandler<
   GetTrendingTagsQuery,
   GetTrendingTagsResult
 > {
-  private readonly CACHE_KEY_PREFIX = CacheKeyBuilder.getTrendingTagsPrefix();
   private readonly HISTORICAL_KEY = "trending_tags:historical";
 
   constructor(
@@ -79,9 +78,10 @@ export class GetTrendingTagsQueryHandler implements IQueryHandler<
             "[GetTrendingTagsQuery] Using historical trending tags fallback",
           );
           // cache the historical result with dormant TTL so we don't keep hitting DB
-          await this.redisService.set(
+          await this.redisService.setWithTags(
             cacheKey,
             historical,
+            [CacheKeyBuilder.getTrendingTagsTag()],
             AdaptiveTTL.TRENDING_TAGS.DORMANT,
           );
           return historical;
@@ -94,13 +94,19 @@ export class GetTrendingTagsQueryHandler implements IQueryHandler<
       const ttl = await this.calculateDynamicTTL(usedExtendedWindow);
 
       // cache with dynamic TTL
-      await this.redisService.set(cacheKey, result, ttl);
+      await this.redisService.setWithTags(
+        cacheKey,
+        result,
+        [CacheKeyBuilder.getTrendingTagsTag()],
+        ttl,
+      );
 
       // update historical cache if we have fresh data (not from extended window)
       if (tags.length > 0 && !usedExtendedWindow) {
-        await this.redisService.set(
+        await this.redisService.setWithTags(
           this.HISTORICAL_KEY,
           result,
+          [CacheKeyBuilder.getTrendingTagsTag()],
           AdaptiveTTL.TRENDING_TAGS.HISTORICAL,
         );
         logger.info(
@@ -203,22 +209,6 @@ export class GetTrendingTagsQueryHandler implements IQueryHandler<
     if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
     if (seconds < 86400) return `${Math.round(seconds / 3600)}h`;
     return `${Math.round(seconds / 86400)}d`;
-  }
-
-  /**
-   * Invalidate the trending tags cache when new posts with tags are created
-   */
-  async invalidateCache(): Promise<void> {
-    try {
-      const deleted = await this.redisService.del(`${this.CACHE_KEY_PREFIX}:*`);
-      logger.info(
-        `[GetTrendingTagsQuery] Cache invalidated (keys deleted: ${deleted})`,
-      );
-    } catch (error) {
-      logger.error("[GetTrendingTagsQuery] Failed to invalidate cache", {
-        error,
-      });
-    }
   }
 
   /**

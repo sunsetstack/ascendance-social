@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 import { RecordPostViewCommandHandler } from "@/application/commands/post/recordPostView/recordPostView.handler";
 import { RecordPostViewCommand } from "@/application/commands/post/recordPostView/recordPostView.command";
 import { TransactionQueueService } from "@/services/transaction-queue.service";
-import { FeedService } from "@/services/feed/feed.service";
+import { FeedMetaService } from "@/services/feed/feed-meta.service";
 import { PostViewRepository } from "@/repositories/postView.repository";
 import { BloomFilterService } from "@/services/redis/bloom-filter.service";
 import { asPostPublicId, asUserPublicId } from "@/types/branded";
@@ -15,7 +15,7 @@ describe("RecordPostViewCommandHandler", () => {
   let postWriteRepoStub: any;
   let postViewRepoStub: any;
   let userReadRepoStub: any;
-  let feedServiceStub: any;
+  let feedMetaServiceStub: any;
   let transactionQueueStub: any;
   let bloomFilterServiceStub: any;
   let unitOfWorkStub: any;
@@ -37,7 +37,7 @@ describe("RecordPostViewCommandHandler", () => {
     userReadRepoStub = {
       findByPublicId: sinon.stub(),
     };
-    feedServiceStub = sinon.createStubInstance(FeedService);
+    feedMetaServiceStub = sinon.createStubInstance(FeedMetaService);
     transactionQueueStub = sinon.createStubInstance(TransactionQueueService);
     bloomFilterServiceStub = sinon.createStubInstance(BloomFilterService);
     unitOfWorkStub = {
@@ -68,7 +68,7 @@ describe("RecordPostViewCommandHandler", () => {
       postWriteRepoStub,
       postViewRepoStub,
       userReadRepoStub,
-      feedServiceStub,
+      feedMetaServiceStub,
       transactionQueueStub,
       bloomFilterServiceStub,
       unitOfWorkStub,
@@ -115,6 +115,52 @@ describe("RecordPostViewCommandHandler", () => {
     expect(result).to.be.false;
     expect(postViewRepoStub.recordView.called).to.be.false;
     expect(transactionQueueStub.executeOrQueue.called).to.be.false;
+  });
+
+  it("resolves a confirmed duplicate only after the transaction has rejected", async () => {
+    const duplicate = Object.assign(new Error("duplicate view"), {
+      code: 11000,
+      keyValue: { post: postId, user: userId },
+    });
+    unitOfWorkStub.executeInTransaction.rejects(duplicate);
+    postViewRepoStub.hasViewed.resolves(true);
+
+    expect(await handler.execute(new RecordPostViewCommand(postPublicId, userPublicId))).to.equal(false);
+    expect(postViewRepoStub.hasViewed.calledOnceWithExactly(postId, userId)).to.equal(true);
+    expect(postWriteRepoStub.incrementViewCount.called).to.equal(false);
+    expect(transactionQueueStub.executeOrQueue.called).to.equal(false);
+    expect(bloomFilterServiceStub.add.calledOnce).to.equal(true);
+  });
+
+  it("does not turn an unrelated unique-index failure into an existing view", async () => {
+    unitOfWorkStub.executeInTransaction.rejects(Object.assign(new Error("duplicate id"), {
+      code: 11000, keyValue: { _id: new mongoose.Types.ObjectId() },
+    }));
+    let failure: unknown;
+    try {
+      await handler.execute(new RecordPostViewCommand(postPublicId, userPublicId));
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).to.be.instanceOf(Error);
+    expect(postViewRepoStub.hasViewed.called).to.equal(false);
+    expect(bloomFilterServiceStub.add.called).to.equal(false);
+  });
+
+  it("propagates a duplicate when the view cannot be confirmed after rollback", async () => {
+    unitOfWorkStub.executeInTransaction.rejects(Object.assign(new Error("duplicate view"), {
+      code: 11000, keyValue: { post: postId, user: userId },
+    }));
+    postViewRepoStub.hasViewed.resolves(false);
+    let failure: unknown;
+    try {
+      await handler.execute(new RecordPostViewCommand(postPublicId, userPublicId));
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).to.be.instanceOf(Error);
+    expect(bloomFilterServiceStub.add.called).to.equal(false);
+    expect(transactionQueueStub.executeOrQueue.called).to.equal(false);
   });
 
   it("should throw error if post not found", async () => {

@@ -124,3 +124,34 @@ export const verifyEmailAddressRateLimit = rateLimit({
     return `verify-email-address:${email || "unknown"}`;
   },
 });
+
+export const resendVerificationIpRateLimit = rateLimit({
+  ...getRateLimitStoreOptions("resend-verification-ip", {
+    passOnStoreError: false,
+  }),
+  windowMs:
+    Number(process.env.RESEND_VERIFICATION_IP_WINDOW_MS) || 60 * 60 * 1000,
+  max:
+    Number(process.env.RESEND_VERIFICATION_IP_MAX) || (isTestEnv ? 1000 : 20),
+  message: "Too many verification email requests, please try again later",
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) =>
+    `resend-verification-ip:${getIpRateLimitKey(req)}`,
+});
+
+export const resendVerificationAccountRateLimit = rateLimit({
+  ...getRateLimitStoreOptions("resend-verification-account", {
+    passOnStoreError: false,
+  }),
+  windowMs:
+    Number(process.env.RESEND_VERIFICATION_ACCOUNT_WINDOW_MS) || 60 * 1000,
+  max:
+    Number(process.env.RESEND_VERIFICATION_ACCOUNT_MAX) ||
+    (isTestEnv ? 1000 : 1),
+  message: "Please wait before requesting another verification email",
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) =>
+    `resend-verification-account:${req.decodedUser?.publicId || "unknown"}`,
+});

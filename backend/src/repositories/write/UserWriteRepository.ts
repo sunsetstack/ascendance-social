@@ -30,6 +30,7 @@ export class UserWriteRepository
     throw Errors.database(
       error instanceof Error ? error.message : String(error),
       {
+        cause: error,
         context: {
           operation,
           repository: "userWriteRepository",
@@ -96,6 +97,26 @@ export class UserWriteRepository
       return await this.updateUser({ publicId }, updateData);
     } catch (error) {
       this.handleWriteError(error, "updateByPublicId");
+    }
+  }
+
+  async issueEmailVerificationToken(
+    publicId: UserPublicId,
+    token: string,
+    expiresAt: Date,
+  ): Promise<IUser | null> {
+    try {
+      return await this.updateUser(
+        { publicId, isEmailVerified: false },
+        {
+          $set: {
+            emailVerificationToken: token,
+            emailVerificationExpires: expiresAt,
+          },
+        },
+      );
+    } catch (error) {
+      this.handleWriteError(error, "issueEmailVerificationToken");
     }
   }
 

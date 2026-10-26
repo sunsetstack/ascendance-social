@@ -47,6 +47,9 @@ export interface IConversation extends Document {
   lastMessage?: mongoose.Types.ObjectId;
   lastMessageAt?: Date;
   unreadCounts: Map<string, number>;
+  hiddenFor?: mongoose.Types.ObjectId[];
+  clearedAt?: Map<string, Date> | Record<string, Date>;
+  isLocked?: boolean;
   isGroup: boolean;
   isClosed: boolean;
   closedReason?: UnavailableParticipantReason;
@@ -104,6 +107,7 @@ export interface ConversationSummaryDTO {
   unreadCount: number;
   isGroup: boolean;
   isClosed?: boolean;
+  isLocked?: boolean;
   closedReason?: UnavailableParticipantReason;
   title?: string;
 }
@@ -167,6 +171,8 @@ export interface HydratedConversation {
   unreadCounts: Map<string, number> | Record<string, number>;
   isGroup: boolean;
   isClosed?: boolean;
+  isLocked?: boolean;
+  clearedAt?: Map<string, Date> | Record<string, Date>;
   closedReason?: UnavailableParticipantReason;
   title?: string;
   _id: mongoose.Types.ObjectId;

@@ -1,5 +1,7 @@
 import { expect } from "chai";
 import sinon from "sinon";
+import Conversation from "@/models/conversation.model";
+import Message from "@/models/message.model";
 import { MessageSentHandler } from "@/application/events/message/message-sent.handler";
 import { MessageSentEvent } from "@/application/events/message/message.event";
 import { NotificationRequestedHandler } from "@/application/events/notification/notification-requested.handler";
@@ -42,7 +44,12 @@ describe("stale account events", () => {
     const publish = sinon.stub().resolves();
     const dispatch = sinon.stub().resolves();
     const findByPublicId = sinon.stub().resolves(null);
+    const conversation = new Conversation({ participantHash: "fixture", participants: [] });
+    const message = new Message({ conversation: conversation._id, body: "Delayed message", createdAt: new Date() });
     const handler = new MessageSentHandler(
+      { findByPublicId: sinon.stub().resolves(conversation), acquireForMutation: sinon.stub().resolves(conversation) } as any,
+      { findByPublicId: sinon.stub().resolves(message) } as any,
+      { executeInTransaction: async (work: () => Promise<void>) => work() } as any,
       { publish } as any,
       { dispatch } as any,
       { findByPublicId } as any,
@@ -61,5 +68,6 @@ describe("stale account events", () => {
 
     expect(publish.called).to.equal(false);
     expect(dispatch.called).to.equal(false);
+    expect(findByPublicId.calledOnce).to.equal(true);
   });
 });

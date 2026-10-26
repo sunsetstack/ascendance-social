@@ -24,6 +24,11 @@ export interface FeedPostRepost {
 }
 
 export interface FeedPost {
+  editedAt?: Date;
+  contentFeatures?: import("@/services/feed/interests.policy").ContentFeatures;
+  isLikedByViewer?: boolean;
+  isRepostedByViewer?: boolean;
+  feedReason?: string;
   publicId: string;
   body: string;
   slug: string;

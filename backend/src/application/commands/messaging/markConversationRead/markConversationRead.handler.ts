@@ -9,6 +9,7 @@ import { MessageStatusUpdatedEvent } from "@/application/events/message/message.
 import { wrapError } from "@/utils/errors";
 import {
   ensureConversationAccess,
+  getConversationClearedAt,
   resolveParticipantPublicIds,
 } from "@/application/messaging/messaging-support";
 import { inject, injectable } from "tsyringe";
@@ -35,19 +36,23 @@ export class MarkConversationReadCommandHandler implements ICommandHandler<
     try {
       const { userPublicId, conversationPublicId } = command;
 
-      const { conversation, userInternalId, participantIds } =
-        await ensureConversationAccess(
-          this.conversationRepository,
-          this.userReadRepository,
-          userPublicId,
+      await this.unitOfWork.executeInTransaction(async () => {
+        await this.conversationRepository.acquireForMutation(
           conversationPublicId,
         );
+        const { conversation, userInternalId, participantIds } =
+          await ensureConversationAccess(
+            this.conversationRepository,
+            this.userReadRepository,
+            userPublicId,
+            conversationPublicId,
+          );
 
-      await this.unitOfWork.executeInTransaction(async () => {
         const conversationId = conversation._id.toString();
         await this.messageRepository.markConversationMessagesAsRead(
           conversationId,
           userInternalId,
+          getConversationClearedAt(conversation, userInternalId),
         );
         await this.conversationRepository.resetUnreadCount(
           conversationId,

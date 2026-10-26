@@ -7,7 +7,7 @@ export const createPostSchema = z
       .string()
       .trim()
       .min(1, "Body cannot be empty.")
-      .max(300, "Body cannot be longer than 300 characters.")
+      .max(600, "Body cannot be longer than 600 characters.")
       .transform(sanitize)
       .optional(),
     tags: z.preprocess(
@@ -21,12 +21,10 @@ export const createPostSchema = z
             ) {
               return parsed;
             }
-          } catch {
-            // if cant parse return empty arr
-            return [];
-          }
+          } catch { return val; }
+          return val;
         }
-        return Array.isArray(val) ? val : [];
+        return val === undefined ? [] : val;
       },
       z
         .array(z.string().trim().min(1).max(20))
@@ -105,7 +103,7 @@ export const searchByTagsSchema = z
   .object({
     tags: z.string().trim().min(1, "Tags query cannot be empty."),
     page: z.coerce.number().int().positive().optional().default(1),
-    limit: z.coerce.number().int().positive().optional().default(10),
+    limit: z.coerce.number().int().positive().max(100).optional().default(10),
   })
   .strict();
 
@@ -114,7 +112,7 @@ export const repostSchema = z
     body: z
       .string()
       .trim()
-      .max(300, "Body cannot be longer than 300 characters.")
+      .max(600, "Body cannot be longer than 600 characters.")
       .transform(sanitize)
       .optional(),
   })
@@ -130,3 +128,8 @@ export type UserPostsQuery = z.infer<typeof userPostsQuerySchema>;
 export type HandlePostsQuery = z.infer<typeof handlePostsQuerySchema>;
 export type SearchByTagsQuery = z.infer<typeof searchByTagsSchema>;
 export type RepostBody = z.infer<typeof repostSchema>;
+
+export const updatePostSchema = z.object({
+  body: z.string().trim().max(600, "Body cannot be longer than 600 characters.").transform(sanitize),
+}).strict();
+export type UpdatePostBody = z.infer<typeof updatePostSchema>;

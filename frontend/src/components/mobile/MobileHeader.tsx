@@ -1,188 +1,46 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Box,
-  Avatar,
-  IconButton,
-  TextField,
-  InputAdornment,
-} from "@mui/material";
-import { Menu as MenuIcon, Search as SearchIcon } from "@mui/icons-material";
-import { useTheme } from "@mui/material/styles";
+import { Avatar, Box, IconButton, TextField } from "@mui/material";
+import { Search, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../../hooks/context/useAuth";
 import { buildAvatarUrl } from "../../lib/media";
+import AppBrand from "../layout/AppBrand";
 
-const HEADER_HEIGHT = 48;
+const HEADER_HEIGHT = 80;
+interface MobileHeaderProps { onMenuClick: () => void }
 
-interface MobileHeaderProps {
-  onMenuClick: () => void;
+export default function MobileHeader({ onMenuClick }: MobileHeaderProps): React.ReactElement {
+	const { t } = useTranslation();
+	const navigate = useNavigate();
+	const { user } = useAuth();
+	const [query, setQuery] = useState("");
+	const [searchOpen, setSearchOpen] = useState(false);
+	const search = (event: React.FormEvent): void => {
+		event.preventDefault();
+		if (!query.trim()) return;
+		navigate(`/results?q=${encodeURIComponent(query.trim())}`);
+		setSearchOpen(false);
+		setQuery("");
+	};
+	return (
+		<Box component="header" sx={{ position: "sticky", top: 0, zIndex: 1000, minHeight: HEADER_HEIGHT, px: { xs: 2, sm: 3 },
+			pt: "env(safe-area-inset-top)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1,
+			bgcolor: "background.default", borderBottom: 1, borderColor: "divider" }}>
+			{searchOpen ? <Box component="form" onSubmit={search} sx={{ flex: 1, minWidth: 0 }}>
+				<TextField autoFocus fullWidth size="small" value={query} onChange={(event) => setQuery(event.target.value)}
+					placeholder={t("nav.search_placeholder")} inputProps={{ "aria-label": t("timeline.search") }} />
+			</Box> : <AppBrand onMenuClick={onMenuClick} />}
+			<Box sx={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
+				<IconButton aria-label={searchOpen ? t("timeline.close_search") : t("timeline.search")} onClick={() => setSearchOpen(!searchOpen)} sx={{ width: 40, height: 44 }}>
+					{searchOpen ? <X size={21} /> : <Search size={21} />}
+				</IconButton>
+				{user && !searchOpen && <IconButton aria-label={t("nav.profile")} onClick={() => navigate(`/profile/${user.handle}`)} sx={{ p: 0.5 }}>
+					<Avatar src={buildAvatarUrl(user.avatar, 32)} sx={{ width: 30, height: 30 }}>{user.username?.charAt(0)}</Avatar>
+				</IconButton>}
+			</Box>
+		</Box>
+	);
 }
-
-const MobileHeader: React.FC<MobileHeaderProps> = ({ onMenuClick }) => {
-  const theme = useTheme();
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
-
-  const fullAvatarUrl = buildAvatarUrl(user?.avatar, 32);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/results?q=${encodeURIComponent(searchQuery.trim())}`);
-      setSearchQuery("");
-      setIsSearchExpanded(false);
-    }
-  };
-
-  const handleSearchIconClick = () => {
-    if (isSearchExpanded && searchQuery.trim()) {
-      handleSearch({ preventDefault: () => {} } as React.FormEvent);
-    } else {
-      setIsSearchExpanded(!isSearchExpanded);
-    }
-  };
-
-  return (
-    <Box
-      component="header"
-      sx={{
-        position: "sticky",
-        top: 0,
-        zIndex: 1000,
-        height: HEADER_HEIGHT,
-        minHeight: HEADER_HEIGHT,
-        bgcolor: "rgba(0, 0, 0, 0.85)",
-        backdropFilter: "blur(12px)",
-        borderBottom: `1px solid ${theme.palette.divider}`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        px: 1,
-        // safe area for notched devices
-        paddingTop: "env(safe-area-inset-top)",
-      }}
-    >
-      {/* left: hamburger menu */}
-      <IconButton
-        onClick={onMenuClick}
-        aria-label="Open navigation menu"
-        sx={{
-          color: theme.palette.text.primary,
-          width: 44,
-          height: 44,
-        }}
-      >
-        <MenuIcon />
-      </IconButton>
-
-      {/* center: brand or search */}
-      <Box
-        sx={{
-          flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          mx: 1,
-        }}
-      >
-        {isSearchExpanded ? (
-          <Box
-            component="form"
-            onSubmit={handleSearch}
-            sx={{ width: "100%", maxWidth: 400 }}
-          >
-            <TextField
-              size="small"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-              fullWidth
-              onBlur={() => {
-                if (!searchQuery.trim()) {
-                  setIsSearchExpanded(false);
-                }
-              }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon
-                      sx={{ color: "text.secondary", fontSize: 20 }}
-                    />
-                  </InputAdornment>
-                ),
-                sx: {
-                  borderRadius: 3,
-                  bgcolor: "rgba(255, 255, 255, 0.08)",
-                  "& fieldset": { border: "none" },
-                  height: 36,
-                  fontSize: "0.875rem",
-                },
-              }}
-            />
-          </Box>
-        ) : (
-          <Box
-            component="span"
-            sx={{
-              fontFamily: '"Montserrat", sans-serif',
-              fontWeight: 800,
-              fontSize: "1.1rem",
-              color: theme.palette.primary.main,
-              letterSpacing: "-0.5px",
-            }}
-          >
-            Ascendance
-          </Box>
-        )}
-      </Box>
-
-      {/* right: search icon or avatar */}
-      {isSearchExpanded ? (
-        <IconButton
-          onClick={() => setIsSearchExpanded(false)}
-          aria-label="Close search"
-          sx={{
-            color: theme.palette.text.secondary,
-            width: 44,
-            height: 44,
-          }}
-        >
-          ✕
-        </IconButton>
-      ) : (
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-          <IconButton
-            onClick={handleSearchIconClick}
-            aria-label="Search"
-            sx={{
-              color: theme.palette.text.primary,
-              width: 44,
-              height: 44,
-            }}
-          >
-            <SearchIcon />
-          </IconButton>
-          {user && (
-            <Avatar
-              src={fullAvatarUrl}
-              onClick={() => navigate(`/profile/${user.handle}`)}
-              sx={{
-                width: 32,
-                height: 32,
-                cursor: "pointer",
-              }}
-            >
-              {user.username?.charAt(0).toUpperCase()}
-            </Avatar>
-          )}
-        </Box>
-      )}
-    </Box>
-  );
-};
-
-export default MobileHeader;
 export { HEADER_HEIGHT };
+

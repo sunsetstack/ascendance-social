@@ -15,7 +15,9 @@ const communitySchema = new Schema<ICommunity>(
 		slug: { type: String, required: true, unique: true, index: true },
 		description: { type: String, default: "" },
 		avatar: { type: String, default: "" },
+		avatarStoragePublicId: { type: String, required: false },
 		coverPhoto: { type: String, default: "" },
+		coverPhotoStoragePublicId: { type: String, required: false },
 		creatorId: { type: Schema.Types.ObjectId, ref: "User", required: true },
 		stats: {
 			memberCount: { type: Number, default: 1 },

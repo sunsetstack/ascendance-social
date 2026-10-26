@@ -1,10 +1,10 @@
-import type { ColdStartFeedGeneratedEvent } from "@/application/events/ColdStartFeedGenerated.event";
 import type {
   ImageAssetCleanupRequestedEvent,
   ImageDeletedEvent,
   ImageUploadedEvent,
 } from "@/application/events/image/image.event";
 import type {
+  ConversationsChangedEvent,
   MessageAttachmentsDeletedEvent,
   MessageSentEvent,
   MessageStatusUpdatedEvent,
@@ -14,6 +14,7 @@ import type {
   PostDeletedEvent,
   PostLikeCountReconciledEvent,
   PostUploadedEvent,
+  PostUpdatedEvent,
 } from "@/application/events/post/post.event";
 import type {
   UserAvatarChangedEvent,
@@ -26,7 +27,7 @@ import type {
 
 export const EventRegistry = {
   domain: {
-    ColdStartFeedGenerated: "ColdStartFeedGeneratedEvent",
+    ConversationsChanged: "ConversationsChangedEvent",
     ImageAssetCleanupRequested: "ImageAssetCleanupRequestedEvent",
     ImageDeleted: "ImageDeletedEvent",
     ImageUploaded: "ImageUploadedEvent",
@@ -37,6 +38,7 @@ export const EventRegistry = {
     PostDeleted: "PostDeletedEvent",
     PostLikeCountReconciled: "PostLikeCountReconciledEvent",
     PostUploaded: "PostUploadedEvent",
+    PostUpdated: "PostUpdatedEvent",
     UserAvatarChanged: "UserAvatarChangedEvent",
     UserBanned: "UserBannedEvent",
     UserCoverChanged: "UserCoverChangedEvent",
@@ -68,6 +70,7 @@ export const EventRegistry = {
     allNotificationsRead: "all_notifications_read",
   },
   realtimeMessageTypes: {
+    conversationsChanged: "conversations_changed",
     newImage: "new_image",
     newImageGlobal: "new_image_global",
     newPost: "new_post",
@@ -103,7 +106,7 @@ export type SocketServerEventName =
   (typeof EventRegistry.socketServerEvents)[keyof typeof EventRegistry.socketServerEvents];
 
 export interface EventPayloadRegistry {
-  ColdStartFeedGeneratedEvent: ColdStartFeedGeneratedEvent;
+  ConversationsChangedEvent: ConversationsChangedEvent;
   ImageAssetCleanupRequestedEvent: ImageAssetCleanupRequestedEvent;
   ImageDeletedEvent: ImageDeletedEvent;
   ImageUploadedEvent: ImageUploadedEvent;
@@ -114,6 +117,7 @@ export interface EventPayloadRegistry {
   PostDeletedEvent: PostDeletedEvent;
   PostLikeCountReconciledEvent: PostLikeCountReconciledEvent;
   PostUploadedEvent: PostUploadedEvent;
+  PostUpdatedEvent: PostUpdatedEvent;
   UserAvatarChangedEvent: UserAvatarChangedEvent;
   UserBannedEvent: UserBannedEvent;
   UserCoverChangedEvent: UserCoverChangedEvent;

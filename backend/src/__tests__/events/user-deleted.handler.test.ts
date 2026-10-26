@@ -10,7 +10,6 @@ describe("UserDeletedHandler", () => {
     const redis = {
       invalidateByTags: sinon.stub().resolves(),
       deletePatterns: sinon.stub().resolves(),
-      removePostsFromFeedsBatch: sinon.stub().resolves(),
       publish: sinon.stub().resolves(),
     } as unknown as RedisService;
     const handler = new UserDeletedHandler(redis);
@@ -37,13 +36,5 @@ describe("UserDeletedHandler", () => {
     const deletedPatterns = (redis.deletePatterns as sinon.SinonStub).firstCall
       .args[0] as string[];
     expect(deletedPatterns).to.include("user_data:related-user");
-    expect(deletedPatterns).to.include("following_ids:related-user");
-    expect(
-      (redis.removePostsFromFeedsBatch as sinon.SinonStub).calledOnceWithExactly(
-        ["departed-user", "follower-user"],
-        ["removed-post"],
-        "for_you",
-      ),
-    ).to.equal(true);
   });
 });

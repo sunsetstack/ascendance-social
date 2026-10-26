@@ -19,7 +19,6 @@ import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
 import { TagService } from "@/services/tag.service";
 import { ImageService } from "@/services/image.service";
-import { RedisService } from "@/services/redis.service";
 import { DTOService } from "@/services/dto.service";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { AmbiguousTransactionCommitError } from "@/database/transaction-errors";
@@ -36,12 +35,12 @@ import { Errors } from "@/utils/errors";
 import { sanitizeForMongo, sanitizeTextInput } from "@/utils/sanitizers";
 import { generateSlug } from "@/utils/helpers";
 import { logger } from "@/utils/winston";
-import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { ImageUploadStrategySelector } from "@/services/image/upload";
+import { classifyContent } from "@/services/feed/interests.policy";
 import { PublicId } from "@/utils/value-objects";
 import { TOKENS } from "@/types/tokens";
 
-const MAX_BODY_LENGTH = 300;
+const MAX_BODY_LENGTH = 600;
 const MAX_POST_MENTIONS = 10;
 
 interface TransactionResult {
@@ -72,7 +71,6 @@ export class CreatePostCommandHandler implements ICommandHandler<
     private readonly communityMemberRepository: CommunityMemberRepository,
     @inject(TOKENS.Services.Tag) private readonly tagService: TagService,
     @inject(TOKENS.Services.Image) private readonly imageService: ImageService,
-    @inject(TOKENS.Services.Redis) private readonly redisService: RedisService,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
     @inject(TOKENS.CQRS.Handlers.EventBus) private readonly eventBus: EventBus,
   ) {}
@@ -95,8 +93,11 @@ export class CreatePostCommandHandler implements ICommandHandler<
       // ── Phase 1: pre-commit work ──────────────────────────────────────────
       const user = await this.validateUser(command.userPublicId);
       const normalizedBody = this.normalizeBody(command.body);
+      const tagNames = this.tagService.collectTagNames(normalizedBody, command.tags);
+      if (!normalizedBody && !tagNames.length) {
+        throw Errors.validation("Add a description or hashtag to your post");
+      }
       this.validateMentionCount(normalizedBody);
-      this.tagService.collectTagNames(normalizedBody, command.tags);
 
       let communityInternalId: Types.ObjectId | null = null;
       if (command.communityPublicId) {
@@ -266,6 +267,7 @@ export class CreatePostCommandHandler implements ICommandHandler<
       normalizedBody,
       tagIds,
       imageSummary,
+      tagNames,
     );
 
     if (!post) {
@@ -326,6 +328,7 @@ export class CreatePostCommandHandler implements ICommandHandler<
     normalizedBody: string,
     tagIds: mongoose.Types.ObjectId[],
     imageSummary: AttachmentSummary,
+    tagNames: string[],
   ): Promise<IPost | null> {
     const postSlug =
       imageSummary.slug ??
@@ -337,6 +340,7 @@ export class CreatePostCommandHandler implements ICommandHandler<
         image: imageSummary.docId,
         tags: tagIds,
         slug: postSlug,
+        contentFeatures: classifyContent(normalizedBody, tagNames, Boolean(imageSummary.docId)),
       },
     );
   }
@@ -401,18 +405,6 @@ export class CreatePostCommandHandler implements ICommandHandler<
     if (!hydratedPost)
       throw new PostNotFoundError("Post not found after creation");
 
-    try {
-      await this.redisService.invalidateByTags([
-        CacheKeyBuilder.getUserFeedTag(result.user.publicId),
-      ]);
-    } catch (error) {
-      logger.warn("Failed to invalidate feed cache after post creation", {
-        postPublicId: result.post.publicId,
-        userPublicId: result.user.publicId,
-        error,
-      });
-    }
-
     const tagUsageCount = new Set(result.tagNames).size;
     if (tagUsageCount > 0) {
       await this.tagService.trackUsageActivity(tagUsageCount);
@@ -461,18 +453,6 @@ export class CreatePostCommandHandler implements ICommandHandler<
   }
 
   private normalizeBody(body?: string): string {
-    if (!body) return "";
-    try {
-      return sanitizeTextInput(body, MAX_BODY_LENGTH);
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("empty")) return "";
-      if (error instanceof Error && error.message.includes("exceed")) {
-        return sanitizeTextInput(
-          body.slice(0, MAX_BODY_LENGTH),
-          MAX_BODY_LENGTH,
-        );
-      }
-      return "";
-    }
+    return sanitizeTextInput(body ?? "", { maxLength: MAX_BODY_LENGTH, allowEmpty: true });
   }
 }

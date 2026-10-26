@@ -3,7 +3,7 @@ import { injectable, inject } from "tsyringe";
 import { IEventHandler } from "../interfaces/event-handler.interface";
 import { IEvent } from "../interfaces/event.interface";
 import { OutboxRepository } from "@/repositories/outbox.repository";
-import { requireTransactionSession } from "@/database/UnitOfWork";
+import { getTransactionSession, getTransactionTrace, requireTransactionSession } from "@/database/UnitOfWork";
 import { TOKENS } from "@/types/tokens";
 import { getCorrelationId } from "@/runtime/request-context";
 import type {
@@ -11,6 +11,7 @@ import type {
   RegisteredEventType,
 } from "@/application/common/events/event-registry";
 import { MetricsService } from "@/metrics/metrics.service";
+import { logger } from "@/utils/winston";
 
 type RegisteredEventHandler<TEvent = unknown> = {
   key: string;
@@ -56,11 +57,7 @@ export class EventBus {
    * @param event - The event instance to be published.
    */
   async publish<TEvent extends IEvent>(event: TEvent): Promise<void> {
-    const handlers = (this.subscriptions.get(event.type) ||
-      []) as RegisteredEventHandler<TEvent>[];
-
-    await Promise.all(handlers.map((handler) => handler.handle(event)));
-    this.metricsService.recordDomainEventPublished(event.type, "immediate");
+    await this.publishByType(event.type, event);
   }
 
   async publishByType<TEventType extends string>(
@@ -70,7 +67,19 @@ export class EventBus {
       : unknown,
   ): Promise<void> {
     const handlers = this.getRegisteredHandlers(eventType);
-    await Promise.all(handlers.map((handler) => handler.handle(eventPayload)));
+    if (!handlers.length) {
+      this.metricsService.recordDomainEventDispatchFailure(eventType, "no_handlers");
+      logger.warn("Immediate event has no registered handlers", { event: "domain.event.unhandled", eventType });
+      return;
+    }
+    await Promise.all(handlers.map(async (handler) => {
+      try { await handler.handle(eventPayload); }
+      catch (error) {
+        this.metricsService.recordDomainEventDispatchFailure(eventType, "handler_failed");
+        logger.error("Immediate event handler failed", { event: "domain.event.handler.failed", eventType, handler: handler.key, error });
+        throw error;
+      }
+    }));
     this.metricsService.recordDomainEventPublished(eventType, "immediate");
   }
 
@@ -91,29 +100,34 @@ export class EventBus {
     requireTransactionSession(
       "queueTransactional must be called within a UnitOfWork transaction context",
     );
+    const traceId = randomUUID();
     await this.outboxRepository.saveEvent(
       event.type,
       event,
-      randomUUID(),
+      traceId,
       getCorrelationId(),
     );
-    this.metricsService.recordDomainEventPublished(
-      event.type,
-      "transactional_outbox",
-    );
+    this.metricsService.recordDomainEventStaged(event.type);
+    logger.info("Outbox event staged pending transaction commit", {
+      event: "outbox.event.staged", eventType: event.type, traceId, ...getTransactionTrace(),
+    });
   }
 
   async queueDurable<TEvent extends IEvent>(event: TEvent): Promise<void> {
+    const transactional = Boolean(getTransactionSession());
+    const traceId = randomUUID();
     await this.outboxRepository.saveEvent(
       event.type,
       event,
-      randomUUID(),
+      traceId,
       getCorrelationId(),
     );
-    this.metricsService.recordDomainEventPublished(
-      event.type,
-      "durable_outbox",
-    );
+    if (transactional) this.metricsService.recordDomainEventStaged(event.type);
+    else this.metricsService.recordDomainEventPublished(event.type, "durable_outbox");
+    logger.info(transactional ? "Outbox event staged pending transaction commit" : "Outbox event persisted", {
+      event: transactional ? "outbox.event.staged" : "outbox.event.persisted",
+      eventType: event.type, traceId, ...getTransactionTrace(),
+    });
   }
 
   private resolveEventType<TEvent extends IEvent>(

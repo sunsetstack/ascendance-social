@@ -4,6 +4,7 @@ import { Box, Avatar, Typography, Badge, Collapse, alpha } from "@mui/material";
 import {
 	Home as HomeIcon,
 	Explore as ExploreIcon,
+  Interests as InterestsIcon,
 	Groups as GroupsIcon,
 	ChatBubbleOutline as ChatBubbleOutlineIcon,
 	Notifications as NotificationsIcon,
@@ -134,6 +135,7 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
 					: []),
 			],
 		},
+		{ label: t("interests.title"), icon: <InterestsIcon />, path: "/interests" },
 		{
 			label: t("nav.communities"),
 			icon: <GroupsIcon />,
@@ -300,7 +302,15 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
 			{/* backdrop */}
 			<Box
 				ref={backdropRef}
+				component="button"
+				type="button"
+				aria-label={t("timeline.close_navigation")}
+				data-testid="mobile-drawer-backdrop"
+				onClick={onClose}
 				sx={{
+					border: 0,
+					p: 0,
+					width: "100%",
 					position: "fixed",
 					inset: 0,
 					bgcolor: "black",
@@ -315,6 +325,9 @@ const MobileDrawer: React.FC<MobileDrawerProps> = ({
 			{/* drawer panel */}
 			<Box
 				ref={drawerRef}
+				role="dialog"
+				aria-modal="true"
+				aria-label={t("timeline.navigation")}
 				data-testid="mobile-drawer"
 				sx={{
 					position: "fixed",

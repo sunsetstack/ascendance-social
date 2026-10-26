@@ -86,9 +86,9 @@ const CommunityDetails: React.FC = () => {
 				{/* Banner / Cover Photo */}
 				<Box
 					sx={{
-						height: 200,
-						bgcolor: "grey.800",
-						background: coverPhotoUrl ? `url(${coverPhotoUrl})` : "linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)",
+						height: coverPhotoUrl ? { xs: 100, sm: 120 } : 64,
+						bgcolor: "background.paper",
+						backgroundImage: coverPhotoUrl ? `url(${coverPhotoUrl})` : "none",
 						backgroundSize: "cover",
 						backgroundPosition: "center",
 						position: "relative",
@@ -112,30 +112,30 @@ const CommunityDetails: React.FC = () => {
 					)}
 				</Box>
 
-				<Container maxWidth="md" sx={{ mt: -5 }}>
-					<Paper sx={{ p: 3, mb: 4, position: "relative", borderRadius: 2, backgroundColor: "transparent" }}>
+				<Container maxWidth="md" sx={{ mt: -2 }}>
+					<Paper elevation={0} sx={{ p: 2, mb: 2, position: "relative", borderRadius: 2, backgroundColor: "transparent" }}>
 						<Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-							<Box sx={{ mt: -8 }}>
+							<Box sx={{ mt: -4 }}>
 								<Avatar
 									src={getAvatarUrl()}
 									sx={{
-										width: 120,
-										height: 120,
+										width: 72,
+										height: 72,
 										border: "4px solid",
 										borderColor: "background.paper",
 										bgcolor: "primary.main",
-										fontSize: "3rem",
+										fontSize: "2rem",
 									}}
 								>
 									{community.name.charAt(0).toUpperCase()}
 								</Avatar>
 							</Box>
-							<Box sx={{ mt: 2, display: "flex", gap: 1 }}>
+							<Box sx={{ display: "flex", gap: 1 }}>
 								{community.isAdmin && (
 									<Button
 										variant="outlined"
 										onClick={() => setEditModalOpen(true)}
-										sx={{ borderRadius: 20, textTransform: "none", fontWeight: "bold" }}
+										sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }}
 									>
 										Edit
 									</Button>
@@ -145,7 +145,7 @@ const CommunityDetails: React.FC = () => {
 										variant={community.isMember ? "outlined" : "contained"}
 										onClick={handleJoinLeave}
 										disabled={isJoining || isLeaving}
-										sx={{ borderRadius: 20, textTransform: "none", fontWeight: "bold" }}
+										sx={{ borderRadius: 2, textTransform: "none", fontWeight: 600 }}
 									>
 										{community.isMember ? "Leave" : "Join"}
 									</Button>
@@ -153,8 +153,8 @@ const CommunityDetails: React.FC = () => {
 							</Box>
 						</Box>
 
-						<Box sx={{ mt: 2 }}>
-							<Typography variant="h4" component="h1" fontWeight="bold" gutterBottom>
+						<Box sx={{ mt: 1 }}>
+							<Typography variant="h5" component="h1" fontWeight={700} gutterBottom>
 								{community.name}
 							</Typography>
 							<Typography variant="body1" color="text.secondary" paragraph>
@@ -191,13 +191,13 @@ const CommunityDetails: React.FC = () => {
 
 					{/* Post creation prompt for community members */}
 					{isLoggedIn && community.isMember && (
-						<Paper sx={{ mb: 4, p: 2, borderRadius: 2, backgroundColor: "transparent" }}>
+						<Paper elevation={0} sx={{ mb: 2, p: 1.5, borderRadius: 2, border: 1, borderColor: "divider", backgroundColor: "transparent" }}>
 							<CreatePost defaultCommunityPublicId={community.publicId} />
 						</Paper>
 					)}
 
 					<Box>
-						<Typography variant="h5" sx={{ mb: 2, fontWeight: "bold" }}>
+						<Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
 							Posts
 						</Typography>
 						<Gallery

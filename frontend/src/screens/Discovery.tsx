@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { Link as RouterLink, Navigate, useLocation, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   Box,
   Typography,
@@ -80,6 +81,7 @@ const feedToIndex: Record<string, number> = {
 };
 
 const Discovery: React.FC = () => {
+  const { t } = useTranslation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("md"));
   const location = useLocation();
@@ -138,7 +140,7 @@ const Discovery: React.FC = () => {
   const forYouPosts =
     forYouFeedQuery.data?.pages.flatMap((page) => page.data) ?? [];
 
-  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
+  const handleTabChange = (_event: React.SyntheticEvent | null, newValue: number) => {
     if (newValue !== activeTab) {
       window.scrollTo({ top: 0, behavior: "auto" });
     }
@@ -224,6 +226,8 @@ const Discovery: React.FC = () => {
       </>
     );
   }
+
+  if (requestedFeed === "custom") return <Navigate to="/interests" replace />;
 
   return (
     <>
@@ -469,6 +473,18 @@ const Discovery: React.FC = () => {
                       isFetchingAll={forYouFeedQuery.isFetching}
                       feedId={forYouFeedId}
                       onRefresh={forYouFeedQuery.refreshFeed}
+                      emptyTitle={t("feed.for_you_empty_title")}
+                      emptyDescription={t("feed.for_you_empty_description")}
+                      emptyAction={
+                        <Box sx={{ display: "flex", gap: 1, justifyContent: "center", flexWrap: "wrap" }}>
+                          <Button variant="contained" onClick={() => handleTabChange(null, 0)}>
+                            {t("feed.browse_latest")}
+                          </Button>
+                          <Button component={RouterLink} to="/communities">
+                            {t("feed.find_communities")}
+                          </Button>
+                        </Box>
+                      }
                     />
                   )}
                 </Box>
@@ -477,7 +493,7 @@ const Discovery: React.FC = () => {
           </Box>
 
           {/* Empty State */}
-          {!isLoggedIn && (
+          {!isLoggedIn && activeTab !== 3 && (
             <Box sx={{ textAlign: "center", py: 6, px: 2 }}>
               <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
                 Sign in to see your personalized "For You" feed based on your

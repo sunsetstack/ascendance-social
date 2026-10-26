@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { IPost, PostStatus } from "@/types";
 import { MongoId } from "@/types/branded";
+import type { ContentFeatures } from "@/services/feed/interests.policy";
 
 /**
  * Write-only repository interface for post mutations
@@ -23,6 +24,7 @@ export interface IPostWriteRepository {
       image: mongoose.Types.ObjectId | null;
       tags: mongoose.Types.ObjectId[];
       slug: string;
+      contentFeatures?: ContentFeatures;
     },
   ): Promise<IPost | null>;
   updatePostStatus(

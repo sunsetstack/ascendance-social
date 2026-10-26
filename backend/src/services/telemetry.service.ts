@@ -42,22 +42,47 @@ interface AggregatedMetrics {
   }[];
 }
 
+interface ScrollDepthAggregate {
+  count: number;
+  totalDepth: number;
+  reachedThresholds: Record<number, number>;
+}
+
+interface FlowCompletionAggregate {
+  count: number;
+  totalDuration: number;
+}
+
 // in-memory storage for aggregated metrics
 // in production, this would go to a time-series database or analytics service
 interface MetricsBucket {
   ttfiValues: number[];
-  scrollDepths: Map<string, number[]>;
+  scrollDepths: Map<string, ScrollDepthAggregate>;
   flowStarts: Map<string, number>;
-  flowCompletes: Map<string, { count: number; durations: number[] }>;
-  flowAbandons: Map<string, { count: number; reasons: Map<string, number> }>;
+  flowCompletes: Map<string, FlowCompletionAggregate>;
+  flowAbandons: Map<string, number>;
+  feedDimensions: Set<string>;
+  flowDimensions: Set<string>;
+  invalidEvents: number;
+  coalescedDimensions: number;
+  droppedSamples: number;
 }
+
+const SCROLL_THRESHOLDS = [25, 50, 75, 90, 100] as const;
+const OTHER_DIMENSION = "__other__";
+const CREATE_POST_FLOW_TYPE = "create_post";
 
 @injectable()
 export class TelemetryService {
   private currentBucket: MetricsBucket;
   private bucketStartTime: number;
   private readonly BUCKET_DURATION = 5 * 60 * 1000; // 5 minutes
-  private readonly MAX_ARRAY_SIZE = 10_000;
+  private readonly MAX_TTFI_SAMPLES = 10_000;
+  private readonly MAX_FEED_DIMENSIONS = 128;
+  private readonly MAX_FLOW_DIMENSIONS = 32;
+  private readonly MAX_FEED_ID_LENGTH = 512;
+  private readonly MAX_FLOW_TYPE_LENGTH = 64;
+  private readonly MAX_FLOW_DURATION_MS = 60 * 60 * 1000;
   private rotationTimer: ReturnType<typeof setInterval>;
 
   constructor() {
@@ -82,6 +107,11 @@ export class TelemetryService {
       flowStarts: new Map(),
       flowCompletes: new Map(),
       flowAbandons: new Map(),
+      feedDimensions: new Set([OTHER_DIMENSION]),
+      flowDimensions: new Set([OTHER_DIMENSION, CREATE_POST_FLOW_TYPE]),
+      invalidEvents: 0,
+      coalescedDimensions: 0,
+      droppedSamples: 0,
     };
   }
 
@@ -99,6 +129,9 @@ export class TelemetryService {
       ttfiSamples: summary.ttfi.count,
       ttfiAvg: summary.ttfi.avg,
       flowsTracked: summary.flows.length,
+      invalidEvents: this.currentBucket.invalidEvents,
+      coalescedDimensions: this.currentBucket.coalescedDimensions,
+      droppedSamples: this.currentBucket.droppedSamples,
     });
   }
 
@@ -128,75 +161,167 @@ export class TelemetryService {
       case "flow_abandon":
         this.processFlowAbandon(event);
         break;
+      default:
+        this.currentBucket.invalidEvents++;
     }
   }
 
   private processTTFI(event: TelemetryEvent): void {
-    const duration = event.data.duration as number;
-    if (typeof duration === "number" && duration > 0 && duration < 60000) {
-      if (this.currentBucket.ttfiValues.length < this.MAX_ARRAY_SIZE) {
-        this.currentBucket.ttfiValues.push(duration);
+    const duration = event.data.duration;
+    if (
+      typeof duration !== "number" ||
+      !Number.isFinite(duration) ||
+      duration <= 0 ||
+      duration >= 60_000
+    ) {
+      this.currentBucket.invalidEvents++;
+      return;
+    }
+
+    if (this.currentBucket.ttfiValues.length >= this.MAX_TTFI_SAMPLES) {
+      this.currentBucket.droppedSamples++;
+      return;
+    }
+
+    this.currentBucket.ttfiValues.push(duration);
+  }
+
+  private processScrollDepth(event: TelemetryEvent): void {
+    const feedId = this.normalizeDimension(
+      event.data.feedId,
+      this.MAX_FEED_ID_LENGTH,
+    );
+    const depth = event.data.depth;
+
+    if (
+      !feedId ||
+      typeof depth !== "number" ||
+      !Number.isFinite(depth) ||
+      !Number.isInteger(depth) ||
+      depth < 0 ||
+      depth > 100
+    ) {
+      this.currentBucket.invalidEvents++;
+      return;
+    }
+
+    const admittedFeedId = this.admitDimension(
+      feedId,
+      this.currentBucket.feedDimensions,
+      this.MAX_FEED_DIMENSIONS,
+    );
+    if (!this.currentBucket.scrollDepths.has(admittedFeedId)) {
+      this.currentBucket.scrollDepths.set(admittedFeedId, {
+        count: 0,
+        totalDepth: 0,
+        reachedThresholds: { 25: 0, 50: 0, 75: 0, 90: 0, 100: 0 },
+      });
+    }
+
+    const aggregate = this.currentBucket.scrollDepths.get(admittedFeedId)!;
+    aggregate.count++;
+    aggregate.totalDepth += depth;
+    for (const threshold of SCROLL_THRESHOLDS) {
+      if (depth >= threshold) {
+        aggregate.reachedThresholds[threshold]++;
       }
     }
   }
 
-  private processScrollDepth(event: TelemetryEvent): void {
-    const feedId = event.data.feedId as string;
-    const depth = event.data.depth as number;
-
-    if (!feedId || typeof depth !== "number") return;
-
-    if (!this.currentBucket.scrollDepths.has(feedId)) {
-      this.currentBucket.scrollDepths.set(feedId, []);
-    }
-    const depths = this.currentBucket.scrollDepths.get(feedId)!;
-    if (depths.length < this.MAX_ARRAY_SIZE) {
-      depths.push(depth);
-    }
-  }
-
   private processFlowStart(event: TelemetryEvent): void {
-    const flowType = event.data.flowType as string;
-    if (!flowType) return;
+    const flowType = this.resolveFlowType(event.data.flowType);
+    if (!flowType) {
+      this.currentBucket.invalidEvents++;
+      return;
+    }
 
     const current = this.currentBucket.flowStarts.get(flowType) || 0;
     this.currentBucket.flowStarts.set(flowType, current + 1);
   }
 
   private processFlowComplete(event: TelemetryEvent): void {
-    const flowType = event.data.flowType as string;
-    const duration = event.data.duration as number;
-    if (!flowType) return;
+    const normalizedFlowType = this.normalizeDimension(
+      event.data.flowType,
+      this.MAX_FLOW_TYPE_LENGTH,
+    );
+    const duration = event.data.duration;
+    if (
+      !normalizedFlowType ||
+      typeof duration !== "number" ||
+      !Number.isFinite(duration) ||
+      duration < 0 ||
+      duration > this.MAX_FLOW_DURATION_MS
+    ) {
+      this.currentBucket.invalidEvents++;
+      return;
+    }
+
+    const flowType = this.admitDimension(
+      normalizedFlowType,
+      this.currentBucket.flowDimensions,
+      this.MAX_FLOW_DIMENSIONS,
+    );
 
     if (!this.currentBucket.flowCompletes.has(flowType)) {
       this.currentBucket.flowCompletes.set(flowType, {
         count: 0,
-        durations: [],
+        totalDuration: 0,
       });
     }
 
     const data = this.currentBucket.flowCompletes.get(flowType)!;
     data.count++;
-    if (typeof duration === "number" && data.durations.length < this.MAX_ARRAY_SIZE) {
-      data.durations.push(duration);
-    }
+    data.totalDuration += duration;
   }
 
   private processFlowAbandon(event: TelemetryEvent): void {
-    const flowType = event.data.flowType as string;
-    const reason = (event.data.reason as string) || "unknown";
-    if (!flowType) return;
-
-    if (!this.currentBucket.flowAbandons.has(flowType)) {
-      this.currentBucket.flowAbandons.set(flowType, {
-        count: 0,
-        reasons: new Map(),
-      });
+    const flowType = this.resolveFlowType(event.data.flowType);
+    if (!flowType) {
+      this.currentBucket.invalidEvents++;
+      return;
     }
 
-    const data = this.currentBucket.flowAbandons.get(flowType)!;
-    data.count++;
-    data.reasons.set(reason, (data.reasons.get(reason) || 0) + 1);
+    const current = this.currentBucket.flowAbandons.get(flowType) || 0;
+    this.currentBucket.flowAbandons.set(flowType, current + 1);
+  }
+
+  private resolveFlowType(value: unknown): string | null {
+    const flowType = this.normalizeDimension(
+      value,
+      this.MAX_FLOW_TYPE_LENGTH,
+    );
+    if (!flowType) return null;
+
+    return this.admitDimension(
+      flowType,
+      this.currentBucket.flowDimensions,
+      this.MAX_FLOW_DIMENSIONS,
+    );
+  }
+
+  private normalizeDimension(value: unknown, maxLength: number): string | null {
+    if (typeof value !== "string") return null;
+
+    const normalized = value.trim();
+    return normalized.length > 0 && normalized.length <= maxLength
+      ? normalized
+      : null;
+  }
+
+  private admitDimension(
+    dimension: string,
+    admittedDimensions: Set<string>,
+    maxDimensions: number,
+  ): string {
+    if (admittedDimensions.has(dimension)) return dimension;
+
+    if (admittedDimensions.size < maxDimensions) {
+      admittedDimensions.add(dimension);
+      return dimension;
+    }
+
+    this.currentBucket.coalescedDimensions++;
+    return OTHER_DIMENSION;
   }
 
   private computeSummary(): AggregatedMetrics {
@@ -215,20 +340,17 @@ export class TelemetryService {
     };
 
     const scrollDepth: AggregatedMetrics["scrollDepth"] = [];
-    for (const [feedId, depths] of this.currentBucket.scrollDepths) {
+    for (const [feedId, aggregate] of this.currentBucket.scrollDepths) {
       const avgMaxDepth =
-        depths.length > 0
-          ? Math.round(depths.reduce((a, b) => a + b, 0) / depths.length)
+        aggregate.count > 0
+          ? Math.round(aggregate.totalDepth / aggregate.count)
           : 0;
 
-      const reachedThresholds: Record<number, number> = {};
-      for (const threshold of [25, 50, 75, 90, 100]) {
-        reachedThresholds[threshold] = depths.filter(
-          (d) => d >= threshold,
-        ).length;
-      }
-
-      scrollDepth.push({ feedId, avgMaxDepth, reachedThresholds });
+      scrollDepth.push({
+        feedId,
+        avgMaxDepth,
+        reachedThresholds: { ...aggregate.reachedThresholds },
+      });
     }
 
     const flows: AggregatedMetrics["flows"] = [];
@@ -242,26 +364,20 @@ export class TelemetryService {
       const started = this.currentBucket.flowStarts.get(flowType) || 0;
       const completeData = this.currentBucket.flowCompletes.get(flowType) || {
         count: 0,
-        durations: [],
+        totalDuration: 0,
       };
-      const abandonData = this.currentBucket.flowAbandons.get(flowType) || {
-        count: 0,
-        reasons: new Map(),
-      };
+      const abandoned = this.currentBucket.flowAbandons.get(flowType) || 0;
 
       const avgDuration =
-        completeData.durations.length > 0
-          ? Math.round(
-              completeData.durations.reduce((a, b) => a + b, 0) /
-                completeData.durations.length,
-            )
+        completeData.count > 0
+          ? Math.round(completeData.totalDuration / completeData.count)
           : 0;
 
       flows.push({
         flowType,
         started,
         completed: completeData.count,
-        abandoned: abandonData.count,
+        abandoned,
         completionRate:
           started > 0 ? Math.round((completeData.count / started) * 100) : 0,
         avgDuration,

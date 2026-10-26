@@ -2,12 +2,13 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { inject, injectable } from "tsyringe";
 import type { UserAuthenticationLookup } from "@/application/ports/user-authentication-lookup";
+import type { IUserWriteRepository } from "@/repositories/interfaces";
 import {
   DTOService,
   AdminUserDTO,
   AuthenticatedUserDTO,
 } from "@/services/dto.service";
-import { Errors } from "@/utils/errors";
+import { ErrorCode, Errors } from "@/utils/errors";
 import { DecodedUser, IUser } from "@/types";
 import { AuthSessionService } from "@/services/auth-session.service";
 import { EmailService } from "@/services/email.service";
@@ -16,6 +17,7 @@ import { TOKENS } from "@/types/tokens";
 import { asSessionId, UserPublicId } from "@/types/branded";
 import { verifyPassword } from "@/application/common/policies/password.policy";
 import { logger } from "@/utils/winston";
+import { UserFactory } from "@/utils/user.factory";
 
 export interface AuthSessionContext {
   ip?: string;
@@ -53,6 +55,8 @@ export class AuthService {
   constructor(
     @inject(TOKENS.Repositories.UserAuthenticationLookup)
     private readonly userReadRepository: UserAuthenticationLookup,
+    @inject(TOKENS.Repositories.UserWrite)
+    private readonly userWriteRepository: IUserWriteRepository,
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
     @inject(TOKENS.Services.AuthSession)
     private readonly authSessionService: AuthSessionService,
@@ -73,7 +77,7 @@ export class AuthService {
   ): Promise<AuthenticatedSessionResult> {
     const user = await this.userReadRepository.findByEmail(email);
     if (!user || !(await verifyPassword(password, user.password))) {
-      throw Errors.authentication("Invalid email or password");
+      throw Errors.authentication("Invalid email or password", { errorCode: ErrorCode.INVALID_CREDENTIALS });
     }
     if (user.isBanned) {
       throw Errors.forbidden("Account banned");
@@ -88,6 +92,24 @@ export class AuthService {
     );
 
     return { user: userDTO, ...tokens };
+  }
+
+  async resendVerificationEmail(publicId: UserPublicId): Promise<void> {
+    const token = UserFactory.generateVerificationToken();
+    const expiresAt = UserFactory.getVerificationExpiry();
+    const user = await this.userWriteRepository.issueEmailVerificationToken(
+      publicId,
+      token,
+      expiresAt,
+    );
+
+    if (!user) {
+      throw Errors.validation(
+        "Email verification is already complete or unavailable",
+      );
+    }
+
+    await this.emailService.sendEmailVerification(user.email, token);
   }
 
   /**
