@@ -1,4 +1,5 @@
 import axiosClient from "./axiosClient";
+import { mapComment } from "../lib/mappers";
 import {
   IComment,
   CommentCreateDto,
@@ -30,7 +31,7 @@ export const createComment = async (
     payload,
     { headers: { "Content-Type": "multipart/form-data" } },
   );
-  return response.data;
+  return mapComment(response.data);
 };
 
 /**
@@ -48,7 +49,7 @@ export const getCommentsByPostId = async (
     },
   );
 
-  return response.data;
+  return { ...response.data, comments: response.data.comments.map(mapComment) };
 };
 
 /**
@@ -66,7 +67,7 @@ export const getCommentReplies = async (
       params: { page, limit, parentId: parentCommentId },
     },
   );
-  return response.data;
+  return { ...response.data, comments: response.data.comments.map(mapComment) };
 };
 
 // Legacy alias for backward compatibility
@@ -83,7 +84,7 @@ export const updateComment = async (
     `${BASE_URL}/comments/${commentId}`,
     commentData,
   );
-  return response.data;
+  return mapComment(response.data);
 };
 
 /**
@@ -107,7 +108,7 @@ export const getCommentsByUserId = async (
       params: { page, limit },
     },
   );
-  return response.data;
+  return { ...response.data, comments: response.data.comments.map(mapComment) };
 };
 
 /**
@@ -133,7 +134,11 @@ export const getCommentThread = async (
   const response = await axiosClient.get(
     `${BASE_URL}/comments/${commentId}/thread`,
   );
-  return response.data;
+  return {
+    ...response.data,
+    comment: mapComment(response.data.comment),
+    ancestors: response.data.ancestors.map(mapComment),
+  };
 };
 
 export const getCommentDirectReplies = async (
@@ -147,5 +152,5 @@ export const getCommentDirectReplies = async (
       params: { page, limit },
     },
   );
-  return response.data;
+  return { ...response.data, comments: response.data.comments.map(mapComment) };
 };

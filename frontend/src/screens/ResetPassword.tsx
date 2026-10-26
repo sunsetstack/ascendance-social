@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Alert, Box, Button, Container, Paper, TextField, Typography } from "@mui/material";
 import { useResetPassword } from "../hooks/user/useUserResetPassword";
 import { devError } from "@/lib/devLogger";
@@ -11,7 +11,8 @@ const readResetToken = (): string => {
 };
 
 const ResetPassword = () => {
-	const [token] = useState(readResetToken);
+	const { search, hash } = useLocation();
+	const [token, setToken] = useState(readResetToken);
 
 	const [newPassword, setNewPassword] = useState<string>("");
 	const [confirmPassword, setConfirmPassword] = useState<string>("");
@@ -19,12 +20,15 @@ const ResetPassword = () => {
 	const [confirmPasswordError, setConfirmPasswordError] = useState<string>("");
 	const [errorMessage, setErrorMessage] = useState<string>("");
 
-	const { mutateAsync: reset, isPending, isSuccess } = useResetPassword();
+	const { mutateAsync: reset, isPending, isSuccess, reset: resetStatus } = useResetPassword();
 
 	useLayoutEffect(() => {
 		if (!window.location.search && !window.location.hash) return;
+		setToken(readResetToken());
+		setErrorMessage("");
+		resetStatus();
 		window.history.replaceState(window.history.state, document.title, window.location.pathname);
-	}, []);
+	}, [search, hash, resetStatus]);
 
 	const validateNewPassword = (value: string) => {
 		if (!value.trim()) return "New password is required";

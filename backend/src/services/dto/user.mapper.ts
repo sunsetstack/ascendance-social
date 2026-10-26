@@ -18,9 +18,9 @@ export function toPublicUserDTO(user: IUser): PublicUserDTO {
     cover: user.cover,
     bio: user.bio,
     createdAt: user.createdAt,
-    postCount: resolvePostCount(user),
-    followerCount: resolveFollowerCount(user),
-    followingCount: resolveFollowingCount(user),
+    postCount: resolveCount(user.postCount),
+    followerCount: resolveCount(user.followerCount),
+    followingCount: resolveCount(user.followingCount),
   };
 }
 
@@ -71,31 +71,6 @@ export function toAdminDTO(user: IUser): AdminUserDTO {
   };
 }
 
-function resolvePostCount(user: IUser): number {
-  if (typeof user.postCount === "number" && Number.isFinite(user.postCount)) {
-    return user.postCount;
-  }
-  return 0;
-}
-
-function resolveFollowerCount(user: IUser): number {
-  if (
-    typeof user.followerCount === "number" &&
-    Number.isFinite(user.followerCount)
-  ) {
-    return user.followerCount;
-  }
-
-  return 0;
-}
-
-function resolveFollowingCount(user: IUser): number {
-  if (
-    typeof user.followingCount === "number" &&
-    Number.isFinite(user.followingCount)
-  ) {
-    return user.followingCount;
-  }
-
-  return 0;
+function resolveCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }

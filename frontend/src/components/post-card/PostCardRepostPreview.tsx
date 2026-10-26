@@ -37,7 +37,7 @@ export const PostCardRepostPreview: React.FC<PostCardRepostPreviewProps> = ({
 				mt: 1.5,
 				border: "1px solid",
 				borderColor: "divider",
-				borderRadius: 3,
+				borderRadius: 4,
 				p: 1.5,
 				cursor: "pointer",
 				"&:hover": {
@@ -80,13 +80,14 @@ export const PostCardRepostPreview: React.FC<PostCardRepostPreviewProps> = ({
 			{post.repostOf.image && repostImageUrl && (
 				<Box
 					sx={{
-						borderRadius: 2,
+						borderRadius: 4,
 						overflow: "hidden",
-						width: "100%",
-						maxHeight: "400px",
+						width: "fit-content",
+						maxWidth: "100%",
+						border: 1,
+						borderColor: "divider",
 						display: "flex",
 						justifyContent: "center",
-						bgcolor: "black",
 					}}
 				>
 					<img
@@ -94,22 +95,23 @@ export const PostCardRepostPreview: React.FC<PostCardRepostPreviewProps> = ({
 						srcSet={repostImageSrcSet}
 						width={repostImageWidth}
 						height={repostImageHeight}
-						sizes="(max-width: 600px) 100vw, 511px"
+						sizes="(max-width: 639px) calc(100vw - 112px), 528px"
 						alt={t("post.reposted_content")}
 						loading="lazy"
 						decoding="async"
 						style={{
-							width: "100%",
+							width: "auto",
+							maxWidth: "100%",
 							height: "auto",
-							maxHeight: "400px",
-							objectFit: "cover",
+							maxHeight: "420px",
+							objectFit: "contain",
 							display: "block",
 						}}
 					/>
 				</Box>
 			)}
 
-			<Box sx={{ display: "flex", gap: 2, mt: 1, color: "text.secondary" }}>
+			<Box sx={{ display: "flex", flexWrap: "wrap", columnGap: 2, rowGap: 0.5, mt: 1, color: "text.secondary" }}>
 				<Typography variant="caption">
 					{formatCount(post.repostOf.likes || 0)} {t("post.likes")}
 				</Typography>

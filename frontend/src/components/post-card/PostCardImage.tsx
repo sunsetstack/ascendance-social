@@ -24,16 +24,15 @@ export const PostCardImage: React.FC<PostCardImageProps> = ({
 	return (
 		<Box
 			sx={{
-				mt: 1.5,
-				borderRadius: 3.5,
+				mt: 1.25,
+				borderRadius: 4,
 				overflow: "hidden",
 				border: "1px solid",
 				borderColor: "divider",
-				width: "100%",
-				maxHeight: "600px",
+				width: "fit-content",
+				maxWidth: "100%",
 				display: "flex",
 				justifyContent: "center",
-				bgcolor: "#05070a",
 			}}
 		>
 			<img
@@ -41,16 +40,17 @@ export const PostCardImage: React.FC<PostCardImageProps> = ({
 				srcSet={srcSet}
 				width={width}
 				height={height}
-				sizes="(max-width: 600px) calc(100vw - 64px), 553px"
+				sizes="(max-width: 639px) calc(100vw - 86px), 554px"
 				alt={alt}
 				loading={prioritizeImage ? "eager" : "lazy"}
 				{...{ fetchpriority: prioritizeImage ? "high" : "auto" }}
 				decoding="async"
 				style={{
-					width: "100%",
+					width: "auto",
+					maxWidth: "100%",
 					height: "auto",
-					maxHeight: "600px",
-					objectFit: "cover",
+					maxHeight: "420px",
+					objectFit: "contain",
 					display: "block",
 				}}
 			/>

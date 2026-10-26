@@ -3,6 +3,7 @@ import { inject, injectable } from "tsyringe";
 import { EventBus } from "@/application/common/buses/event.bus";
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { PostDeletedEvent } from "@/application/events/post/post.event";
+import { ImageAssetCleanupRequestedEvent } from "@/application/events/image/image.event";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRepository";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
@@ -80,6 +81,9 @@ export class UnrepostPostCommandHandler implements ICommandHandler<
             ),
           ),
         );
+      }
+      for (const asset of cleanup.imageAssets) {
+        await this.eventBus.queueTransactional(new ImageAssetCleanupRequestedEvent("repost-deleted", asset.storagePublicId));
       }
     });
 

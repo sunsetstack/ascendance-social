@@ -2,6 +2,7 @@ import mongoose, { Schema } from "mongoose";
 import { v4 as uuidv4 } from "uuid";
 import { IPost } from "@/types";
 import { contentFeaturesSchema } from "./feed-profile.model";
+import { sanitizedTextLength } from "@/utils/sanitizers";
 
 const authorSchema = new Schema(
 	{
@@ -35,8 +36,12 @@ const postSchema = new Schema<IPost>(
 		body: {
 			type: String,
 			trim: true,
-			maxlength: 300,
+			validate: {
+				validator: (body: string | null | undefined): boolean => !body || sanitizedTextLength(body) <= 600,
+				message: "Post cannot exceed 600 characters",
+			},
 		},
+		editedAt: { type: Date },
     contentFeatures: { type: contentFeaturesSchema },
 		slug: {
 			type: String,

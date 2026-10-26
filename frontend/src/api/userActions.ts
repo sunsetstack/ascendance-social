@@ -7,7 +7,7 @@ export const followUser = async (publicId: string) => {
 };
 
 // Like/unlike a post by its public ID
-export const likePost = async (postPublicId: string) => {
+export const likePost = async (postPublicId: string): Promise<{ likes: number; isLikedByViewer: boolean }> => {
   const response = await axiosClient.post(
     `/api/users/like/post/${postPublicId}`,
   );

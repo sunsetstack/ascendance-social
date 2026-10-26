@@ -6,7 +6,7 @@ import { AddFavoriteCommand } from "@/application/commands/favorite/addFavorite/
 import { RemoveFavoriteCommand } from "@/application/commands/favorite/removeFavorite/removeFavorite.command";
 import { GetFavoritesQuery } from "@/application/queries/favorite/getFavorites/getFavorites.query";
 import { Errors } from "@/utils/errors";
-import { TypedRequest, PaginationResult, PostDTO } from "@/types";
+import { TypedRequest } from "@/types";
 import { TOKENS } from "@/types/tokens";
 import { asPostPublicId } from "@/types/branded";
 import type { PublicIdParams as PostPublicIdParams } from "@/utils/schemas/post.schemas";
@@ -89,7 +89,7 @@ export class FavoriteController {
     const safeLimit =
       Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 20;
 
-    const favorites = await this.queryBus.execute<PaginationResult<PostDTO>>(
+    const favorites = await this.queryBus.execute(
       new GetFavoritesQuery(viewerPublicId, safePage, safeLimit),
     );
     res.status(200).json(favorites);

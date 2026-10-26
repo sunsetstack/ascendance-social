@@ -31,7 +31,7 @@ export class KickMemberCommandHandler implements ICommandHandler<
     private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UserWrite)
     private readonly userWriteRepository: IUserWriteRepository,
-    @inject(UnitOfWork) private uow: UnitOfWork,
+    @inject(TOKENS.Repositories.UnitOfWork) private uow: UnitOfWork,
   ) {}
 
   async execute(command: KickMemberCommand): Promise<void> {
@@ -65,38 +65,42 @@ export class KickMemberCommandHandler implements ICommandHandler<
     }
     const targetUserId = targetUser._id as Types.ObjectId;
 
-    // 1. Verify Admin Permissions
-    const adminMember =
-      await this.communityMemberRepository.findByCommunityAndUser(
-        communityId,
-        adminId,
-      );
-    if (
-      !adminMember ||
-      (adminMember.role !== "admin" && adminMember.role !== "moderator")
-    ) {
-      throw Errors.forbidden("Only admins or moderators can kick members");
-    }
-
-    // 2. Verify Target exists and is not an admin
-    const targetMember =
-      await this.communityMemberRepository.findByCommunityAndUser(
-        communityId,
-        targetUserId,
-      );
-    if (!targetMember) {
-      throw Errors.notFound("Resource");
-    }
-    if (targetMember.role === "admin") {
-      throw Errors.forbidden("Cannot kick an admin");
-    }
-
     await this.uow.executeInTransaction(async () => {
+      // 1. Verify Admin Permissions
+      const adminMember =
+        await this.communityMemberRepository.findByCommunityAndUser(
+          communityId,
+          adminId,
+        );
+      if (
+        !adminMember ||
+        (adminMember.role !== "admin" && adminMember.role !== "moderator")
+      ) {
+        throw Errors.forbidden("Only admins or moderators can kick members");
+      }
+
+      // 2. Verify Target exists and is not an admin
+      const targetMember =
+        await this.communityMemberRepository.findByCommunityAndUser(
+          communityId,
+          targetUserId,
+        );
+      if (!targetMember) {
+        throw Errors.notFound("Resource");
+      }
+      if (targetMember.role === "admin") {
+        throw Errors.forbidden("Cannot kick an admin");
+      }
+
       // 3. Remove Member
-      await this.communityMemberRepository.deleteByCommunityAndUser(
-        communityId,
-        targetUserId,
-      );
+      const deleted =
+        await this.communityMemberRepository.deleteByCommunityAndUser(
+          communityId,
+          targetUserId,
+        );
+      if (!deleted) {
+        throw Errors.notFound("Resource");
+      }
 
       // 4. Update User Cache (Remove from array)
       await this.userWriteRepository.update(

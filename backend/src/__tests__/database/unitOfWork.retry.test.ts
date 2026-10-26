@@ -455,6 +455,10 @@ describe("UnitOfWork deterministic transaction fault injection", () => {
       ),
     );
 
+    expect(unitOfWork.getObservabilityMetrics()).to.include({ successfulTransactions: 1,
+      failedTransactions: 0, ambiguousTransactions: 0, totalAttempts: 1,
+      commitAttempts: 2, commitRetries: 1, bodyRetries: 0 });
+
     expect(evidence).to.deep.equal({
       ...createEvidence(),
       bodyInvocationCount: 1,
@@ -498,6 +502,9 @@ describe("UnitOfWork deterministic transaction fault injection", () => {
     expect(finalError).to.be.instanceOf(AmbiguousTransactionCommitError);
     expect(finalError.cause).to.equal(ambiguous);
     expect(finalError.commitAttempts).to.equal(3);
+    expect(unitOfWork.getObservabilityMetrics()).to.include({ successfulTransactions: 0,
+      failedTransactions: 0, ambiguousTransactions: 1, totalAttempts: 1,
+      commitAttempts: 3, commitRetries: 2, bodyRetries: 0 });
     expect(evidence, evidenceMessage(evidence)).to.deep.equal({
       ...createEvidence(),
       bodyInvocationCount: 1,

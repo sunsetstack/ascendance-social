@@ -7,6 +7,21 @@ import {
   ConversationMessagesResponse,
 } from "@/types";
 
+export type ConversationAction = "delete" | "purge" | "lock" | "unlock";
+
+export const manageConversation = async (
+  conversationId: string,
+  action: ConversationAction,
+): Promise<void> => {
+  const path = `/api/messaging/conversations/${conversationId}`;
+  if (action === "lock") {
+    await axiosClient.post(`${path}/lock`);
+  } else {
+    const suffix = action === "delete" ? "" : action === "unlock" ? "/lock" : "/purge";
+    await axiosClient.delete(`${path}${suffix}`);
+  }
+};
+
 export const fetchConversations = async (
   params: { page?: number; limit?: number } = {},
 ): Promise<ConversationListResponse> => {

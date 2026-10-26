@@ -2,16 +2,13 @@ import { useEffect, useState } from "react";
 import { Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Chip, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { Link as RouterLink, useSearchParams } from "react-router-dom";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import axiosClient from "../api/axiosClient";
 import { useAuth } from "../hooks/context/useAuth";
 import Gallery from "../components/Gallery";
-import { mapPost } from "../lib/mappers";
 import type { InterestsResult } from "../features/feed/interests";
-import type { FeedPreviewPage } from "../api/postApi";
-import { feedIdentities } from "../features/feed/feedIdentity";
-import { useIsFeedRestoreNavigation } from "../features/feed/feedRestoration";
+import { useInterestFeed } from "../hooks/posts/useInterestFeed";
 
 export default function Interests() {
   const { t, i18n } = useTranslation();
@@ -28,29 +25,10 @@ export default function Interests() {
   const sort = params.get("sort") ?? "newest";
   const valid = !!catalogue.data?.catalogue.some((item) => item.id === topic)
     && ["newest", "top"].includes(sort) && params.getAll("topic").length <= 1 && params.getAll("sort").length <= 1;
-  const feedId = feedIdentities.preview(`interests:${topic}:${sort}`, user?.publicId);
-  const restoring = useIsFeedRestoreNavigation(feedId);
-  const queryKey = ["interestFeed", feedId] as const;
-  const feed = useInfiniteQuery({
-    queryKey,
-    queryFn: async ({ pageParam, signal }) => {
-      const query = new URLSearchParams({ topics: topic, sort, limit: "10" });
-      if (pageParam) query.set("cursor", pageParam);
-      const { data } = await axiosClient.get<FeedPreviewPage>(`/api/feed/interests/posts?${query}`, { signal });
-      return { ...data, data: data.data.map(mapPost) };
-    },
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (page) => page.hasMore ? page.nextCursor : undefined,
-    enabled: !loading && valid,
-    maxPages: 6,
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    ...(restoring ? { refetchOnMount: false } : {}),
-  });
+  const feed = useInterestFeed(topic, sort, !loading && valid);
   const mutation = useMutation({
-    mutationFn: async (action: "select" | "reset") => {
-      if (action === "reset") await axiosClient.delete("/api/feed/preferences");
-      else await axiosClient.put("/api/feed/interests", { selected: draft ?? catalogue.data?.profile?.selected ?? [] });
+    mutationFn: async () => {
+      await axiosClient.put("/api/feed/interests", { selected: draft ?? catalogue.data?.profile?.selected ?? [] });
     },
     onSuccess: async () => {
       setDraft(null);
@@ -67,7 +45,6 @@ export default function Interests() {
     return item ? (i18n.resolvedLanguage?.startsWith("bg") ? item.nameBg : item.name) : id;
   };
   const selected = draft ?? catalogue.data?.profile?.selected ?? [];
-  const learned = Object.entries(catalogue.data?.profile?.topics ?? {}).filter(([, score]) => score >= 0.1).sort((a, b) => b[1] - a[1]);
 
   return <Box sx={{ width: "100%", minWidth: 0 }}>
     <Box sx={{ p: 2, borderBottom: 1, borderColor: "divider" }}>
@@ -75,7 +52,7 @@ export default function Interests() {
       <Typography color="text.secondary" sx={{ mt: 1 }}>{t("interests.description")}</Typography>
       {catalogue.isPending ? <Typography sx={{ mt: 2 }}>{t("interests.loading")}</Typography> : catalogue.isError ?
         <Alert severity="error" action={<Button onClick={() => void catalogue.refetch()}>{t("feed.retry")}</Button>}>{t("interests.load_failed")}</Alert> : <>
-        <Accordion disableGutters elevation={0} sx={{ mt: 2, bgcolor: "transparent", border: 1, borderColor: "divider", "&:before": { display: "none" } }}>
+        {isLoggedIn && <Accordion disableGutters elevation={0} sx={{ mt: 2, bgcolor: "transparent", border: 1, borderColor: "divider", "&:before": { display: "none" } }}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />}><Typography>{t("interests.preferences")}</Typography></AccordionSummary>
         <AccordionDetails>
         <Typography component="h2" variant="subtitle1" sx={{ mb: 1 }}>{t("interests.chosen")}</Typography>
@@ -85,25 +62,12 @@ export default function Interests() {
             aria-pressed={selected.includes(item.id)} disabled={mutation.isPending}
             onClick={() => { mutation.reset(); setDraft(selected.includes(item.id) ? selected.filter((id) => id !== item.id) : [...selected, item.id]); }} />)}
         </Stack>
-        {isLoggedIn ? <Button sx={{ mt: 1 }} disabled={draft === null || mutation.isPending} onClick={() => mutation.mutate("select")}>{t("interests.save")}</Button>
+        {isLoggedIn ? <Button sx={{ mt: 1 }} disabled={draft === null || mutation.isPending} onClick={() => mutation.mutate()}>{t("interests.save")}</Button>
           : <Button component={RouterLink} to="/login" sx={{ mt: 1 }}>{t("interests.sign_in")}</Button>}
-        {isLoggedIn && <Box sx={{ mt: 2 }}>
-          <Typography component="h2" variant="subtitle1">{t("interests.learned")}</Typography>
-          <Typography variant="body2" color="text.secondary">{t("interests.learned_help")}</Typography>
-          <Stack direction="row" useFlexGap flexWrap="wrap" gap={1} sx={{ mt: 1 }}>
-            {learned.map(([id]) => <Chip key={id} label={label(id)} size="small" />)}
-            {!learned.length && <Typography variant="body2">{t("interests.no_learning")}</Typography>}
-          </Stack>
-          <Stack direction="row" useFlexGap flexWrap="wrap" gap={1} sx={{ mt: 1 }}>
-            {Object.entries(catalogue.data.profile?.formats ?? {}).filter(([, score]) => score >= 0.1)
-              .sort((a, b) => b[1] - a[1]).map(([format]) => <Chip key={format} size="small" variant="outlined" label={t(`content_formats.${format}`)} />)}
-          </Stack>
-          <Button disabled={mutation.isPending} onClick={() => mutation.mutate("reset")}>{t("interests.reset_learning")}</Button>
-        </Box>}
         {mutation.isError && <Alert severity="error">{t("interests.save_failed")}</Alert>}
         {mutation.isSuccess && <Alert severity="success">{t("interests.saved")}</Alert>}
         </AccordionDetails>
-        </Accordion>
+        </Accordion>}
         <Typography component="h2" variant="h6" sx={{ mt: 3, mb: 1 }}>{t("interests.browse")}</Typography>
         <Stack direction="row" useFlexGap flexWrap="wrap" gap={1}>
           {catalogue.data.catalogue.map((item) => <Chip key={item.id} label={label(item.id)}
@@ -122,7 +86,7 @@ export default function Interests() {
       <Gallery posts={feed.data?.pages.flatMap((page) => page.data) ?? []}
         fetchNextPage={() => void feed.fetchNextPage()} hasNextPage={!!feed.hasNextPage}
         isFetchingNext={feed.isFetchingNextPage} isLoadingAll={feed.isPending} isFetchingAll={feed.isFetching}
-        feedId={feedId} onRefresh={() => client.resetQueries({ queryKey, exact: true })}
+        feedId={feed.feedId} onRefresh={feed.refreshFeed}
         emptyTitle={t("interests.empty")} emptyDescription={t(sort === "top" ? "interests.empty_top_help" : "interests.empty_help")} />}
   </Box>;
 }

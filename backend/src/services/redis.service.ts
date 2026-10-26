@@ -6,18 +6,6 @@ import { MetricsService } from "../metrics/metrics.service";
 import { RedisNotificationModule } from "./redis/redis-notification.module";
 import { RedisFeedModule } from "./redis/redis-feed.module";
 import { RedisStreamModule } from "./redis/redis-stream.module";
-import {
-  CompareAndRotateSessionInput,
-  CompareAndRotateSessionResult,
-  PatchSessionMetadataInput,
-  RedisSessionModule,
-  RefreshSessionRevocationOutcome,
-  RevokeRefreshSessionInput,
-  SessionMetadataPatchOutcome,
-  SessionWithTtl,
-  TouchSessionInput,
-} from "./redis/redis-session.module";
-import { RedisFeedType } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
 import { XPendingRangeEntry, XClaimReply } from "./redis/redis-stream.module";
 import { RedisConnectionModule } from "./redis/redis-connection.module";
@@ -62,7 +50,6 @@ export class RedisService {
   private readonly notificationModule: RedisNotificationModule;
   private readonly feedModule: RedisFeedModule;
   private readonly streamModule: RedisStreamModule;
-  private readonly sessionModule: RedisSessionModule;
 
   constructor(
     @inject(TOKENS.Services.Metrics)
@@ -90,7 +77,6 @@ export class RedisService {
     this.notificationModule = new RedisNotificationModule(client);
     this.feedModule = new RedisFeedModule(client, metricsService);
     this.streamModule = new RedisStreamModule(client);
-    this.sessionModule = new RedisSessionModule(client);
 
     this.connectionModule.start();
   }
@@ -165,14 +151,6 @@ export class RedisService {
     return this.cacheModule.ttl(key);
   }
 
-  async merge<T extends Record<string, unknown>>(
-    key: string,
-    value: Partial<T>,
-    ttl?: number,
-  ): Promise<void> {
-    return this.cacheModule.merge(key, value, ttl);
-  }
-
   async del(keyPattern: string): Promise<number> {
     return this.cacheModule.del(keyPattern);
   }
@@ -210,6 +188,15 @@ export class RedisService {
     ttl?: number,
   ): Promise<void> {
     return this.taggedCacheModule.setWithTags(key, value, tags, ttl);
+  }
+
+  async patchWithTags(
+    key: string,
+    patch: Readonly<Record<string, unknown>>,
+    tags: readonly string[],
+    ttl?: number,
+  ): Promise<void> {
+    return this.taggedCacheModule.patchWithTags(key, patch, tags, ttl);
   }
 
   async setManyWithTags<T>(
@@ -267,6 +254,10 @@ export class RedisService {
     return this.notificationModule.getUserNotificationIds(userId, start, end);
   }
 
+  async clearNotificationCaches(userIds: string[], notificationIds: string[]): Promise<void> {
+    return this.notificationModule.clearNotificationCaches(userIds, notificationIds);
+  }
+
   async markNotificationRead(notificationId: string): Promise<void> {
     return this.notificationModule.markNotificationRead(notificationId);
   }
@@ -277,162 +268,6 @@ export class RedisService {
 
   async getUnreadNotificationCount(userId: string): Promise<number> {
     return this.notificationModule.getUnreadNotificationCount(userId);
-  }
-
-  async getAuthSession<T>(sid: string): Promise<T | null> {
-    return this.sessionModule.getSession<T>(sid);
-  }
-
-  async saveAuthSession<T extends { sid: string; publicId: string }>(
-    session: T,
-    ttlSeconds: number,
-  ): Promise<void> {
-    return this.sessionModule.saveSession(session, ttlSeconds);
-  }
-
-  async compareAndRotateAuthSession<T>(
-    input: CompareAndRotateSessionInput,
-  ): Promise<CompareAndRotateSessionResult<T>> {
-    return this.sessionModule.compareAndRotateSession<T>(input);
-  }
-
-  async touchAuthSession(
-    input: TouchSessionInput,
-  ): Promise<SessionMetadataPatchOutcome> {
-    return this.sessionModule.touchSession(input);
-  }
-
-  async markAuthSessionEmailVerified(
-    input: PatchSessionMetadataInput,
-  ): Promise<SessionMetadataPatchOutcome> {
-    return this.sessionModule.markSessionEmailVerified(input);
-  }
-
-  async revokeAuthSessionByRefreshToken(
-    input: RevokeRefreshSessionInput,
-  ): Promise<RefreshSessionRevocationOutcome> {
-    return this.sessionModule.revokeRefreshSession(input);
-  }
-
-  async removeAuthSession(sid: string, publicId: string): Promise<void> {
-    return this.sessionModule.removeSession(sid, publicId);
-  }
-
-  async removeAuthSessionMembership(
-    publicId: string,
-    sid: string,
-  ): Promise<void> {
-    return this.sessionModule.removeSessionMembership(publicId, sid);
-  }
-
-  async getUserAuthSessionIds(publicId: string): Promise<string[]> {
-    return this.sessionModule.getUserSessionIds(publicId);
-  }
-
-  async deleteUserAuthSessions(
-    publicId: string,
-    sessionIds: string[],
-  ): Promise<void> {
-    return this.sessionModule.deleteUserSessions(publicId, sessionIds);
-  }
-
-  async getAuthSessionTtl(sid: string): Promise<number> {
-    return this.sessionModule.getSessionTtl(sid);
-  }
-
-  async getAuthSessionsWithTtl<T>(
-    sessionIds: string[],
-  ): Promise<Array<SessionWithTtl<T>>> {
-    return this.sessionModule.getSessionsWithTtl<T>(sessionIds);
-  }
-
-  async addToFeed(
-    userId: string,
-    postId: string,
-    timestamp: number,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<void> {
-    return this.feedModule.addToFeed(userId, postId, timestamp, feedType);
-  }
-
-  async addToFeedsBatch(
-    userIds: string[],
-    postId: string,
-    timestamp: number,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<void> {
-    return this.feedModule.addToFeedsBatch(
-      userIds,
-      postId,
-      timestamp,
-      feedType,
-    );
-  }
-
-  async getFeedPage(
-    userId: string,
-    page: number,
-    limit: number,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<string[]> {
-    return this.feedModule.getFeedPage(userId, page, limit, feedType);
-  }
-
-  async getFeedWithCursor(
-    userId: string,
-    limit: number,
-    cursor?: string,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<{
-    ids: string[];
-    hasMore: boolean;
-    nextCursor?: string;
-    snapshotId?: string;
-    consumedOffset?: number;
-  }> {
-    return this.feedModule.getFeedWithCursor(userId, limit, cursor, feedType);
-  }
-
-  async removeFromFeed(
-    userId: string,
-    postId: string,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<void> {
-    return this.feedModule.removeFromFeed(userId, postId, feedType);
-  }
-
-  async removeFromFeedsBatch(
-    userIds: string[],
-    postId: string,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<void> {
-    return this.feedModule.removeFromFeedsBatch(userIds, postId, feedType);
-  }
-
-  async removePostsFromFeedsBatch(
-    userIds: string[],
-    postIds: string[],
-    feedType: RedisFeedType = "for_you",
-  ): Promise<void> {
-    return this.feedModule.removePostsFromFeedsBatch(
-      userIds,
-      postIds,
-      feedType,
-    );
-  }
-
-  async invalidateFeed(
-    userId: string,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<void> {
-    return this.feedModule.invalidateFeed(userId, feedType);
-  }
-
-  async getFeedSize(
-    userId: string,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<number> {
-    return this.feedModule.getFeedSize(userId, feedType);
   }
 
   async cleanupOrphanedTags(): Promise<void> {
@@ -467,26 +302,6 @@ export class RedisService {
     key = "trending:posts",
   ): Promise<void> {
     return this.feedModule.updateTrendingScore(postId, score, key);
-  }
-
-  async incrTrendingScore(
-    postId: string,
-    delta: number,
-    key = "trending:posts",
-  ): Promise<number> {
-    return this.feedModule.incrTrendingScore(postId, delta, key);
-  }
-
-  async getTrendingRange(
-    start: number,
-    end: number,
-    key = "trending:posts",
-  ): Promise<string[]> {
-    return this.feedModule.getTrendingRange(start, end, key);
-  }
-
-  async getTrendingCount(key = "trending:posts"): Promise<number> {
-    return this.feedModule.getTrendingCount(key);
   }
 
   async getTrendingFeedWithCursor(

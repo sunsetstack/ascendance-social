@@ -55,6 +55,7 @@ import {
   MessagesConversationList,
 } from "../components/messages/MessagesConversationList";
 import { MessageDTO } from "../types";
+import { isAxiosError } from "axios";
 
 const CONVERSATION_PANEL_WIDTH = 380;
 const CONVERSATION_PRESENCE_HEARTBEAT_MS = 30_000;
@@ -73,6 +74,7 @@ const Messages = () => {
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const markedAsReadRef = useRef<Set<string>>(new Set());
   const markReadPendingRef = useRef<Set<string>>(new Set());
+  const unavailableConversationIds = useRef<Set<string>>(new Set());
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedMessage, setSelectedMessage] = useState<MessageDTO | null>(
@@ -119,7 +121,10 @@ const Messages = () => {
     };
   }, [selectedConversationId, socket]);
 
-  const firstConversationId = conversations[0]?.publicId;
+  const firstConversationId = conversations.find(
+    (conversation) =>
+      !unavailableConversationIds.current.has(conversation.publicId),
+  )?.publicId;
 
   useEffect(() => {
     if (!selectedConversationId && firstConversationId && !isMobile) {
@@ -167,6 +172,27 @@ const Messages = () => {
   }, [selectedConversation?.publicId, selectedConversation?.unreadCount]);
 
   const messagesQuery = useConversationMessages(selectedConversationId);
+
+  useEffect(() => {
+    if (
+      isAxiosError(messagesQuery.error) &&
+      [403, 404].includes(messagesQuery.error.response?.status ?? 0)
+    ) {
+      if (selectedConversationId) {
+        unavailableConversationIds.current.add(selectedConversationId);
+      }
+      navigate("/messages", { replace: true });
+    }
+  }, [messagesQuery.error, selectedConversationId, navigate]);
+
+  useEffect(() => {
+    if (selectedConversation?.isLocked) {
+      setIsEditing(false);
+      setAnchorEl(null);
+      setSelectedMessage(null);
+      setDeleteConfirmationOpen(false);
+    }
+  }, [selectedConversation?.isLocked]);
 
   const messages = useMemo(() => {
     const pages = messagesQuery.data?.pages ?? [];
@@ -264,6 +290,7 @@ const Messages = () => {
   const deleteMessage = useDeleteMessage();
 
   const handleSelectConversation = (conversationId: string) => {
+    unavailableConversationIds.current.delete(conversationId);
     setActionError(null);
     navigate(`?conversation=${conversationId}`);
   };
@@ -274,6 +301,7 @@ const Messages = () => {
       !draftBody.trim() ||
       !selectedConversationId ||
       selectedConversation?.isClosed ||
+      selectedConversation?.isLocked ||
       sendMessage.isPending ||
       editMessage.isPending
     )
@@ -319,6 +347,7 @@ const Messages = () => {
     message: MessageDTO,
   ) => {
     event.preventDefault();
+    if (selectedConversation?.isLocked) return;
     if (message.sender.publicId !== user?.publicId) return;
     setAnchorEl(event.currentTarget);
     setSelectedMessage(message);
@@ -345,7 +374,11 @@ const Messages = () => {
   };
 
   const handleDeleteConfirm = async () => {
-    if (!selectedMessage || !selectedConversationId) return;
+    if (
+      !selectedMessage ||
+      !selectedConversationId ||
+      selectedConversation?.isLocked
+    ) return;
 
     setActionError(null);
 
@@ -527,6 +560,15 @@ const Messages = () => {
           onRetry={() => void conversationsQuery.refetch()}
           onLoadMore={() => void conversationsQuery.fetchNextPage()}
           onSelect={handleSelectConversation}
+          isAdmin={Boolean(user?.isAdmin)}
+          onRemoved={(id) => {
+            if (id === selectedConversationId) {
+              setDraftBody("");
+              setIsEditing(false);
+              setSelectedMessage(null);
+              navigate("/messages", { replace: true });
+            }
+          }}
         />
       </Box>
 
@@ -751,6 +793,11 @@ const Messages = () => {
                   readable, but no new replies can be sent.
                 </Alert>
               )}
+              {selectedConversation?.isLocked && (
+                <Alert severity="warning" sx={{ mb: 1 }}>
+                  Conversation locked by admin
+                </Alert>
+              )}
               {actionError && !deleteConfirmationOpen && (
                 <Alert
                   severity="error"
@@ -805,6 +852,7 @@ const Messages = () => {
                   disabled={
                     sendMessage.isPending ||
                     editMessage.isPending ||
+                    selectedConversation?.isLocked ||
                     selectedConversation?.isClosed
                   }
                   InputProps={{
@@ -826,6 +874,7 @@ const Messages = () => {
                     !draftBody.trim() ||
                     sendMessage.isPending ||
                     editMessage.isPending ||
+                    selectedConversation?.isLocked ||
                     selectedConversation?.isClosed
                   }
                   sx={{

@@ -1,6 +1,9 @@
 import { inject, injectable } from "tsyringe";
 import { Types, UpdateQuery } from "mongoose";
+import { v4 as uuidv4 } from "uuid";
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
+import { EventBus } from "@/application/common/buses/event.bus";
+import { ImageAssetCleanupRequestedEvent } from "@/application/events/image/image.event";
 import { CreateCommunityCommand } from "./createCommunity.command";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
@@ -9,13 +12,18 @@ import type {
   IUserWriteRepository,
 } from "@/repositories/interfaces";
 import { UnitOfWork } from "@/database/UnitOfWork";
+import { AmbiguousTransactionCommitError } from "@/database/transaction-errors";
 import { Errors } from "@/utils/errors";
 import { generateSlug } from "@/utils/helpers";
 import { logger } from "@/utils/winston";
 import { ICommunity, IUser } from "@/types";
 import type { IImageStorageService } from "@/types";
 import { TOKENS } from "@/types/tokens";
-import { asMongoId, asUserPublicId } from "@/types/branded";
+import {
+  asCommunityPublicId,
+  asMongoId,
+  asUserPublicId,
+} from "@/types/branded";
 
 @injectable()
 export class CreateCommunityCommandHandler implements ICommandHandler<
@@ -31,9 +39,11 @@ export class CreateCommunityCommandHandler implements ICommandHandler<
     private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UserWrite)
     private readonly userWriteRepository: IUserWriteRepository,
-    @inject(UnitOfWork) private uow: UnitOfWork,
+    @inject(TOKENS.Repositories.UnitOfWork) private uow: UnitOfWork,
     @inject(TOKENS.Services.ImageStorage)
     private readonly imageStorageService: IImageStorageService,
+    @inject(TOKENS.CQRS.Handlers.EventBus)
+    private readonly eventBus: EventBus,
   ) {}
 
   async execute(command: CreateCommunityCommand): Promise<ICommunity> {
@@ -48,6 +58,7 @@ export class CreateCommunityCommandHandler implements ICommandHandler<
     const userId = user._id as Types.ObjectId;
 
     const slug = generateSlug(name);
+    const publicId = asCommunityPublicId(uuidv4());
 
     // Check if slug exists
     const existing = await this.communityRepository.findBySlug(slug);
@@ -66,7 +77,7 @@ export class CreateCommunityCommandHandler implements ICommandHandler<
             originalName: command.avatarOriginalName,
             mimeType: command.avatarMimeType,
           },
-          slug,
+          publicId,
         );
         avatarUrl = uploadResult.url;
         avatarPublicId = uploadResult.publicId;
@@ -84,10 +95,14 @@ export class CreateCommunityCommandHandler implements ICommandHandler<
       return await this.uow.executeInTransaction(async () => {
         // 1. Create Community
         const community = await this.communityRepository.create({
+          publicId,
           name,
           slug,
           description,
           avatar: avatarUrl,
+          ...(avatarPublicId
+            ? { avatarStoragePublicId: avatarPublicId }
+            : {}),
           creatorId: userId,
           stats: { memberCount: 1, postCount: 0 },
         });
@@ -119,21 +134,53 @@ export class CreateCommunityCommandHandler implements ICommandHandler<
         return community;
       });
     } catch (error) {
-      if (avatarPublicId) {
-        try {
-          await this.imageStorageService.deleteImage(avatarPublicId);
-        } catch (deleteError) {
-          logger.error("Failed to rollback community avatar upload", {
-            error: deleteError,
-          });
-          throw Errors.storage(
-            deleteError instanceof Error
-              ? deleteError.message
-              : "Failed to rollback community avatar upload",
-          );
-        }
+      if (avatarPublicId && error instanceof AmbiguousTransactionCommitError) {
+        logger.warn(
+          "Preserving community avatar after ambiguous transaction commit",
+          {
+            error,
+            storagePublicId: avatarPublicId,
+            communityPublicId: publicId,
+            slug,
+          },
+        );
+      } else if (avatarPublicId) {
+        await this.cleanupUploadedAsset(avatarPublicId, publicId, slug);
       }
       throw error;
+    }
+  }
+
+  private async cleanupUploadedAsset(
+    storagePublicId: string,
+    communityPublicId: string,
+    slug: string,
+  ): Promise<void> {
+    await this.eventBus
+      .queueDurable(
+        new ImageAssetCleanupRequestedEvent(
+          "community-create-failed",
+          storagePublicId,
+        ),
+      )
+      .catch((error) => {
+        logger.error("Failed to queue community avatar cleanup", {
+          error,
+          storagePublicId,
+          communityPublicId,
+          slug,
+        });
+      });
+
+    try {
+      await this.imageStorageService.deleteImage(storagePublicId);
+    } catch (error) {
+      logger.error("Failed to rollback community avatar upload", {
+        error,
+        storagePublicId,
+        communityPublicId,
+        slug,
+      });
     }
   }
 }

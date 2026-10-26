@@ -1,15 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useParams, Link as RouterLink, useLocation, useNavigate } from "react-router-dom";
 import { usePostById } from "../hooks/posts/usePosts";
 import { useLikePost, useFavoritePost } from "../hooks/user/useUserAction";
 import { useAuth } from "../hooks/context/useAuth";
 import {
   useDeletePost,
-  useRepostPost,
-  useUnrepostPost,
 } from "../hooks/posts/usePosts";
 import RichText from "../components/RichText";
-import QuotePostDialog from "../components/QuotePostDialog";
 import { useTranslation } from "react-i18next";
 import { devError } from "@/lib/devLogger";
 import {
@@ -31,6 +28,7 @@ import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder";
 import BookmarkIcon from "@mui/icons-material/Bookmark";
 import BookmarkBorderIcon from "@mui/icons-material/BookmarkBorder";
 import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 import RepeatIcon from "@mui/icons-material/Repeat";
 import GroupsIcon from "@mui/icons-material/Groups";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
@@ -43,9 +41,13 @@ import {
   transformCloudinaryUrl,
 } from "../lib/media";
 
+const RepostDialog = lazy(() => import("../components/RepostDialog"));
+const EditPostDialog = lazy(() => import("../components/EditPostDialog"));
+
 const PostView = () => {
   const { t } = useTranslation();
-  const [quoting, setQuoting] = useState(false);
+  const [reposting, setReposting] = useState(false);
+  const [editing, setEditing] = useState(false);
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { hash } = useLocation();
@@ -54,11 +56,9 @@ const PostView = () => {
   const theme = useTheme();
 
   const { data: post, isLoading, isError, error } = usePostById(id || "");
-  const { mutate: likePostMutation } = useLikePost();
+  const { mutate: likePostMutation, isPending: isLiking } = useLikePost();
   const { mutate: toggleFavoriteMutation } = useFavoritePost();
   const deleteMutation = useDeletePost();
-  const { mutate: triggerRepost } = useRepostPost();
-  const { mutate: triggerUnrepost } = useUnrepostPost();
 
   const isFavorited = post?.isFavoritedByViewer ?? false;
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
@@ -189,25 +189,7 @@ const PostView = () => {
       return;
     }
 
-    // For repost cards, target the original post
-    const targetId =
-      post.type === "repost" && post.repostOf?.publicId
-        ? post.repostOf.publicId
-        : post.publicId;
-
-    if (hasReposted) {
-      triggerUnrepost(
-        { postPublicId: targetId },
-        {
-          onSuccess: () => {
-            // If viewing own repost, it's now deleted — navigate back
-            if (isOwnRepost) navigate(-1);
-          },
-        },
-      );
-    } else {
-      triggerRepost({ postPublicId: targetId });
-    }
+    setReposting(true);
   };
 
   const handleToggleFavorite = () => {
@@ -354,6 +336,8 @@ const PostView = () => {
                 </Typography>
               </Box>
             </Box>
+            <Box sx={{ display: "flex", gap: 0.5 }}>
+            {isOwner && <IconButton aria-label={t("composer.edit_post")} onClick={() => setEditing(true)} size="small"><EditIcon fontSize="small" /></IconButton>}
             {(isOwner || post.canDelete) && (
               <IconButton
                 aria-label="Delete post"
@@ -365,7 +349,10 @@ const PostView = () => {
                 <DeleteIcon fontSize="small" />
               </IconButton>
             )}
+            </Box>
           </Box>
+
+          {post.editedAt && <Typography variant="caption" color="text.secondary">{t("composer.edited")}</Typography>}
 
           {/* Post Body */}
           {post.body && (
@@ -601,6 +588,7 @@ const PostView = () => {
             <IconButton
               aria-label={isLiked ? "Unlike post" : "Like post"}
               onClick={handleLikePost}
+              disabled={isLiking}
               color={isLiked ? "primary" : "default"}
             >
               {isLiked ? <FavoriteIcon /> : <FavoriteBorderIcon />}
@@ -612,7 +600,6 @@ const PostView = () => {
             >
               <RepeatIcon />
             </IconButton>
-            <Button disabled={!!hasReposted} onClick={() => isLoggedIn ? setQuoting(true) : navigate("/login")}>{t("attachments.quote")}</Button>
             <IconButton
               aria-label={
                 isFavorited ? "Remove from favorites" : "Add to favorites"
@@ -633,7 +620,8 @@ const PostView = () => {
           </Box>
         </Box>
 
-        <QuotePostDialog key={post.publicId} open={quoting} postPublicId={post.publicId} onClose={() => setQuoting(false)} />
+        {reposting && <Suspense fallback={null}><RepostDialog post={post} hasReposted={!!hasReposted} onClose={() => setReposting(false)} onUndone={() => { if (isOwnRepost) navigate(-1); }} /></Suspense>}
+        {editing && <Suspense fallback={null}><EditPostDialog post={post} onClose={() => setEditing(false)} /></Suspense>}
 
         {/* Image Modal */}
         <Modal

@@ -35,6 +35,8 @@ export {
   loginEmailRateLimit,
   loginIpRateLimit,
   registerIpRateLimit,
+  resendVerificationAccountRateLimit,
+  resendVerificationIpRateLimit,
   resetPasswordIpRateLimit,
   verifyEmailAddressRateLimit,
   verifyEmailIpRateLimit,

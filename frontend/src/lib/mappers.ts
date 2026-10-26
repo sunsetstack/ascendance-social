@@ -1,7 +1,23 @@
-import { IImage, IPost, Notification } from "../types";
+import { IComment, IImage, IPost, Notification } from "../types";
 import { devWarn } from "@/lib/devLogger";
 
 type RawRecord = Record<string, unknown>;
+
+const textEntities: Record<string, string> = {
+	"&amp;": "&",
+	"&lt;": "<",
+	"&gt;": ">",
+	"&quot;": '"',
+};
+
+// Decode the sanitizer's serialized text once; React still renders it as text.
+function decodeSanitizedText(text: string): string {
+	return text.replace(/&(?:amp|lt|gt|quot);/g, (entity) => textEntities[entity]);
+}
+
+export function mapComment(comment: IComment): IComment {
+	return { ...comment, content: decodeSanitizedText(comment.content) };
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -107,7 +123,7 @@ export function mapPost(rawInput: unknown): IPost {
 			repostOf = {
 				publicId: repostPublicId,
 				user: repostUser,
-				body: extractSafeString(repostSource.body),
+				body: typeof repostSource.body === "string" ? decodeSanitizedText(repostSource.body) : undefined,
 				slug: extractSafeString(repostSource.slug),
 				image: repostImage,
 				likes:
@@ -126,7 +142,8 @@ export function mapPost(rawInput: unknown): IPost {
 	const post: IPost = {
 		publicId: String(raw.publicId || ""),
 		slug: raw.slug ? String(raw.slug) : undefined,
-		body: raw.body ? String(raw.body) : undefined,
+		body: raw.body ? decodeSanitizedText(String(raw.body)) : undefined,
+		editedAt: raw.editedAt ? new Date(String(raw.editedAt)) : undefined,
 		type: repostOf ? "repost" : "original",
 		repostCount: typeof raw.repostCount === "number" ? raw.repostCount : 0,
 		repostOf,
@@ -195,14 +212,6 @@ export function mapImage(rawInput: unknown): IImage {
 	}
 
 	return post as IImage;
-}
-
-/**
- * Maps an array of raw posts
- */
-export function mapPosts(rawArray: unknown[]): IPost[] {
-	if (!Array.isArray(rawArray)) return [];
-	return rawArray.map(mapPost);
 }
 
 // Map raw notification to frontend Notification

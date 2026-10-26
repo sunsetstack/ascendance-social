@@ -5,7 +5,7 @@ import mongoose from "mongoose";
 import { RecordPostViewCommandHandler } from "@/application/commands/post/recordPostView/recordPostView.handler";
 import { RecordPostViewCommand } from "@/application/commands/post/recordPostView/recordPostView.command";
 import { TransactionQueueService } from "@/services/transaction-queue.service";
-import { FeedService } from "@/services/feed/feed.service";
+import { FeedMetaService } from "@/services/feed/feed-meta.service";
 import { PostViewRepository } from "@/repositories/postView.repository";
 import { BloomFilterService } from "@/services/redis/bloom-filter.service";
 import { asPostPublicId, asUserPublicId } from "@/types/branded";
@@ -15,7 +15,7 @@ describe("RecordPostViewCommandHandler", () => {
   let postWriteRepoStub: any;
   let postViewRepoStub: any;
   let userReadRepoStub: any;
-  let feedServiceStub: any;
+  let feedMetaServiceStub: any;
   let transactionQueueStub: any;
   let bloomFilterServiceStub: any;
   let unitOfWorkStub: any;
@@ -37,7 +37,7 @@ describe("RecordPostViewCommandHandler", () => {
     userReadRepoStub = {
       findByPublicId: sinon.stub(),
     };
-    feedServiceStub = sinon.createStubInstance(FeedService);
+    feedMetaServiceStub = sinon.createStubInstance(FeedMetaService);
     transactionQueueStub = sinon.createStubInstance(TransactionQueueService);
     bloomFilterServiceStub = sinon.createStubInstance(BloomFilterService);
     unitOfWorkStub = {
@@ -68,7 +68,7 @@ describe("RecordPostViewCommandHandler", () => {
       postWriteRepoStub,
       postViewRepoStub,
       userReadRepoStub,
-      feedServiceStub,
+      feedMetaServiceStub,
       transactionQueueStub,
       bloomFilterServiceStub,
       unitOfWorkStub,

@@ -1,6 +1,7 @@
 import { Model, PipelineStage } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { FeedPost, IPost, PaginationOptions, PaginationResult } from "@/types";
+import type { PopulatedRepostRead } from "@/types";
 import type { IPostReadRepository } from "../interfaces/IPostReadRepository";
 import { TOKENS } from "@/types/tokens";
 import {
@@ -9,7 +10,7 @@ import {
   UserPublicId,
   asMongoId,
 } from "@/types/branded";
-import { Errors, handleMongoError } from "@/utils/errors";
+import { Errors, wrapError, handleMongoError } from "@/utils/errors";
 import { getTransactionSession } from "@/database/UnitOfWork";
 import { addRequestContextBreadcrumb } from "@/runtime/request-context";
 import type { PostSearchLookup } from "@/application/ports/post-search-lookup";
@@ -76,9 +77,7 @@ export class PostReadRepository
 
       return await this.model.aggregate<FeedPost>(pipeline).exec();
     } catch (error: unknown) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      throw wrapError(error, "DatabaseError");
     }
   }
 
@@ -112,9 +111,7 @@ export class PostReadRepository
       if (session) query.session(session);
       return await query.exec();
     } catch (error: unknown) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      throw wrapError(error, "DatabaseError");
     }
   }
 
@@ -124,9 +121,7 @@ export class PostReadRepository
     try {
       return await this.model.findOne(filter).exec();
     } catch (error: unknown) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      throw wrapError(error, "DatabaseError");
     }
   }
 
@@ -140,60 +135,52 @@ export class PostReadRepository
       if (session) query.session(session);
       return await query.exec();
     } catch (error: unknown) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      throw wrapError(error, "DatabaseError");
     }
   }
 
   async findByPublicId(publicId: PostPublicId): Promise<IPost | null> {
+    return this.findPopulatedPost({ publicId });
+  }
+
+  async findBySlug(slug: string): Promise<IPost | null> {
+    return this.findPopulatedPost({ slug });
+  }
+
+  private async findPopulatedPost(
+    filter: { publicId: PostPublicId } | { slug: string },
+  ): Promise<IPost | null> {
     try {
       const session = this.getSession();
       const query = this.model
-        .findOne(withActivePostFilter({ publicId }))
+        .findOne(withActivePostFilter(filter))
         .select(
-          "publicId user author body slug type repostOf repostCount image tags likesCount commentsCount viewsCount createdAt updatedAt communityId",
+          "publicId user author body contentFeatures slug type repostOf repostCount image tags likesCount commentsCount viewsCount createdAt editedAt updatedAt communityId",
         )
         .populate("tags", "tag")
         .populate({ path: "image", select: "_id url publicId slug width height createdAt" })
         .populate({ path: "communityId", select: "publicId name slug avatar" })
         .populate({
           path: "repostOf",
-          select: "publicId body image user author tags",
-          populate: [
-            { path: "image", select: "_id url publicId slug width height createdAt" },
-            { path: "tags", select: "tag" },
-            {
-              path: "user",
-              select: "publicId handle username avatar profile displayName",
-            },
-          ],
+          select: {
+            publicId: 1,
+            body: 1,
+            slug: 1,
+            likesCount: 1,
+            repostCount: 1,
+            commentsCount: 1,
+            author: 1,
+            image: 1,
+          } satisfies Record<keyof PopulatedRepostRead, 1>,
+          populate: {
+            path: "image",
+            select: "_id url publicId slug width height createdAt",
+          },
         });
       if (session) query.session(session);
       return await query.exec();
     } catch (error: unknown) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-  }
-
-  async findBySlug(slug: string): Promise<IPost | null> {
-    try {
-      const session = this.getSession();
-      const query = this.model
-        .findOne(withActivePostFilter({ slug }))
-        .populate("tags", "tag")
-        .populate({
-          path: "image",
-          select: "url publicId slug width height createdAt -_id",
-        });
-      if (session) query.session(session);
-      return await query.exec();
-    } catch (error: unknown) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      throw wrapError(error, "DatabaseError");
     }
   }
 
@@ -233,9 +220,7 @@ export class PostReadRepository
       ];
       return await this.model.aggregate<FeedPost>(pipeline).exec();
     } catch (error: unknown) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      throw wrapError(error, "DatabaseError");
     }
   }
 
@@ -254,9 +239,7 @@ export class PostReadRepository
       ];
       return await this.model.aggregate<FeedPost>(pipeline).exec();
     } catch (error: unknown) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      throw wrapError(error, "DatabaseError");
     }
   }
 
@@ -304,9 +287,7 @@ export class PostReadRepository
       const total = result?.totalCount[0]?.count ?? 0;
       return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
     } catch (error: unknown) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      throw wrapError(error, "DatabaseError");
     }
   }
 
@@ -349,9 +330,7 @@ export class PostReadRepository
       const total = result?.totalCount[0]?.count ?? 0;
       return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
     } catch (error: unknown) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      throw wrapError(error, "DatabaseError");
     }
   }
 
@@ -388,9 +367,7 @@ export class PostReadRepository
 
       return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
     } catch (error: unknown) {
-      throw Errors.database(
-        error instanceof Error ? error.message : String(error),
-      );
+      throw wrapError(error, "DatabaseError");
     }
   }
 

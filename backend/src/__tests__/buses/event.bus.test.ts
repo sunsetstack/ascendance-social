@@ -128,4 +128,10 @@ describe("EventBus", () => {
     handlers.pop();
     expect(eventBus.getRegisteredHandlers("TestEvent")).to.have.lengthOf(2);
   });
+
+  it("does not count a handlerless immediate event as published", async () => {
+    await eventBus.publish(new TestEvent("unrouted"));
+    sinon.assert.calledOnceWithExactly(metricsService.recordDomainEventDispatchFailure, "TestEvent", "no_handlers");
+    sinon.assert.notCalled(metricsService.recordDomainEventPublished);
+  });
 });

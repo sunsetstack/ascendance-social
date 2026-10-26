@@ -1,144 +1,65 @@
-import { describe, beforeEach, afterEach, it } from "mocha";
-import * as chai from "chai";
+import { describe, it } from "mocha";
 import { expect } from "chai";
-import chaiAsPromised from "chai-as-promised";
-import sinon, { SinonStub } from "sinon";
-
+import sinon from "sinon";
 import { GetForYouFeedQueryHandler } from "@/application/queries/feed/getForYouFeed/getForYouFeed.handler";
 import { GetForYouFeedQuery } from "@/application/queries/feed/getForYouFeed/getForYouFeed.query";
-import {
-	encodeFeedCursor,
-	FEED_CURSOR_ORDER,
-	hashFeedCursorScope,
-} from "@/utils/feedCursor";
-
-chai.use(chaiAsPromised);
+import { Errors } from "@/utils/errors";
 
 describe("GetForYouFeedQueryHandler", () => {
-	let handler: GetForYouFeedQueryHandler;
+  const viewer = "169a5f61-f74c-4800-9659-3d2cd27f2423";
+  const internalId = "507f1f77bcf86cd799439011";
+  const profile = { selected: ["finance"], topics: { crypto: 2 }, formats: { image: 3 }, revision: 7 };
 
-	let mockFeedReadDao: { getRankedFeedWithCursor: SinonStub };
-	let mockPostReadRepository: {
-		findPostsByPublicIds: SinonStub;
-		getRankedFeedWithCursor: SinonStub;
-	};
-	let mockUserReadRepository: { findByPublicId: SinonStub };
-	let mockUserPreferenceRepository: { getTopUserTags: SinonStub };
-	let mockRedisService: { getFeedWithCursor: SinonStub; addToFeed: SinonStub };
-	let mockFeedEnrichmentService: { enrichFeedWithCurrentData: SinonStub };
+  function fixture() {
+    const feeds = { getInterestFeedWithCursor: sinon.stub().resolves({ data: [], hasMore: false }) };
+    const users = { findByPublicId: sinon.stub().resolves({ _id: internalId }) };
+    const preferences = { read: sinon.stub().resolves(profile) };
+    const enrichment = { enrichFeedWithCurrentData: sinon.stub().callsFake(async (posts: unknown[]) => posts) };
+    return { feeds, users, preferences, enrichment,
+      handler: new GetForYouFeedQueryHandler(feeds as never, users as never, preferences as never, enrichment as never) };
+  }
 
-	beforeEach(() => {
-		mockFeedReadDao = { getRankedFeedWithCursor: sinon.stub() };
-		mockPostReadRepository = {
-			findPostsByPublicIds: sinon.stub(),
-			getRankedFeedWithCursor: sinon.stub(),
-		};
-		mockUserReadRepository = { findByPublicId: sinon.stub() };
-		mockUserPreferenceRepository = { getTopUserTags: sinon.stub() };
-		mockRedisService = {
-			getFeedWithCursor: sinon.stub(),
-			addToFeed: sinon.stub().resolves(),
-		};
-		mockFeedEnrichmentService = { enrichFeedWithCurrentData: sinon.stub() };
+  it("passes chosen, learned, and format preferences together with the authenticated viewer", async () => {
+    const f = fixture();
+    const result = await f.handler.execute(new GetForYouFeedQuery(viewer, 1, 10));
+    expect(f.preferences.read.calledOnceWithExactly(internalId)).to.equal(true);
+    expect(f.feeds.getInterestFeedWithCursor.firstCall.args).to.deep.equal([
+      { topics: [], sort: "personalized", viewer, viewerMongoId: internalId, profile, destination: "for-you" },
+      { limit: 10, cursor: undefined },
+    ]);
+    expect(result).to.deep.equal({ data: [], hasMore: false, nextCursor: undefined, page: 1, limit: 10, total: 0, totalPages: 0 });
+  });
 
-		handler = new GetForYouFeedQueryHandler(
-			mockFeedReadDao as any,
-			mockPostReadRepository as any,
-			mockUserReadRepository as any,
-			mockUserPreferenceRepository as any,
-			mockRedisService as any,
-			mockFeedEnrichmentService as any,
-		);
-	});
+  it("preserves pinned traversal and hydrates identity after ranking", async () => {
+    const f = fixture();
+    f.feeds.getInterestFeedWithCursor.resolves({ data: [{ publicId: "post", author: { publicId: "author", handle: "old", username: "Old" }, tags: [] }], hasMore: true, nextCursor: "next" });
+    f.enrichment.enrichFeedWithCurrentData.resolves([{ publicId: "post", user: { handle: "current" } }]);
+    const result = await f.handler.execute(new GetForYouFeedQuery(viewer, 2, 10, "pinned"));
+    expect(f.preferences.read.called).to.equal(false);
+    expect(f.feeds.getInterestFeedWithCursor.firstCall.args).to.deep.equal([
+      { topics: [], sort: "personalized", viewer, viewerMongoId: internalId, profile: undefined, destination: "for-you" },
+      { limit: 10, cursor: "pinned" },
+    ]);
+    expect(f.enrichment.enrichFeedWithCurrentData.firstCall.args[0][0].user.handle).to.equal("old");
+    expect(result.data[0].user.handle).to.equal("current");
+    expect(result.nextCursor).to.equal("next");
+  });
 
-	afterEach(() => {
-		sinon.restore();
-	});
+  it("does not rank or read another profile when the authenticated account is missing", async () => {
+    const f = fixture(); f.users.findByPublicId.resolves(null);
+    const error = await f.handler.execute(new GetForYouFeedQuery(viewer, 1, 10)).catch((reason: unknown) => reason);
+    expect(error).to.include({ statusCode: 404, message: "User not found" });
+    expect(f.preferences.read.called).to.equal(false); expect(f.feeds.getInterestFeedWithCursor.called).to.equal(false);
+  });
 
-	it("returns from Redis feed when ZSET hit", async () => {
-		mockRedisService.getFeedWithCursor.resolves({ ids: ["p1"], hasMore: false, nextCursor: undefined });
-		mockPostReadRepository.findPostsByPublicIds.resolves([
-			{
-				publicId: "p1",
-				body: "b1",
-				slug: "s1",
-				createdAt: new Date(),
-				likesCount: 1,
-				commentsCount: 0,
-				viewsCount: 0,
-				author: { publicId: "u1", handle: "h", username: "n", avatar: "" },
-				tags: [],
-			},
-		]);
-		mockFeedEnrichmentService.enrichFeedWithCurrentData.callsFake(async (posts: any) => posts);
-
-		const result = await handler.execute(new GetForYouFeedQuery("viewer", 1, 10));
-
-		expect(mockFeedReadDao.getRankedFeedWithCursor.called).to.be.false;
-		expect(result.data[0].publicId).to.equal("p1");
-		expect(result.total).to.equal(0);
-	});
-
-	it("generates from DB and populates ZSET on first-page miss", async () => {
-		mockRedisService.getFeedWithCursor.resolves({ ids: [], hasMore: false, nextCursor: undefined });
-		mockUserReadRepository.findByPublicId.resolves({ _id: "userObjectId" });
-		mockUserPreferenceRepository.getTopUserTags.resolves([{ tag: "cats" }]);
-		mockFeedReadDao.getRankedFeedWithCursor.resolves({
-			data: [
-				{
-					publicId: "p1",
-					body: "b1",
-					slug: "s1",
-					createdAt: new Date(),
-					likesCount: 1,
-					commentsCount: 0,
-					viewsCount: 0,
-					author: { publicId: "u1", handle: "h", username: "n", avatar: "" },
-					tags: [],
-				},
-			],
-			hasMore: false,
-			nextCursor: undefined,
-		});
-		mockFeedEnrichmentService.enrichFeedWithCurrentData.callsFake(async (posts: any) => posts);
-
-		const result = await handler.execute(new GetForYouFeedQuery("viewer", 1, 10));
-
-		expect(mockFeedReadDao.getRankedFeedWithCursor.calledOnce).to.be.true;
-		expect(mockRedisService.addToFeed.called).to.be.true;
-		expect(result.data[0].publicId).to.equal("p1");
-	});
-
-	it("does not populate ZSET when cursor pagination is used", async () => {
-		mockRedisService.getFeedWithCursor.resolves({ ids: [], hasMore: false, nextCursor: undefined });
-		mockUserReadRepository.findByPublicId.resolves({ _id: "userObjectId" });
-		mockUserPreferenceRepository.getTopUserTags.resolves([]);
-		mockFeedReadDao.getRankedFeedWithCursor.resolves({ data: [], hasMore: false, nextCursor: undefined });
-		mockFeedEnrichmentService.enrichFeedWithCurrentData.callsFake(async (posts: any) => posts);
-
-		const cursor = encodeFeedCursor({
-			feed: "for-you",
-			order: FEED_CURSOR_ORDER.FOR_YOU,
-			source: "mongo",
-			snapshotId: `${hashFeedCursorScope(["unit-snapshot"])}.1`,
-			offset: 10,
-			scope: hashFeedCursorScope(["unit-scope"]),
-		});
-		await handler.execute(new GetForYouFeedQuery("viewer", 2, 10, cursor));
-		expect(mockRedisService.addToFeed.called).to.be.false;
-	});
-
-	it("preserves not-found errors", async () => {
-		mockRedisService.getFeedWithCursor.resolves({ ids: [], hasMore: false, nextCursor: undefined });
-		mockUserReadRepository.findByPublicId.resolves(null);
-
-		const error = await handler
-			.execute(new GetForYouFeedQuery("viewer", 1, 10))
-			.then(
-				() => undefined,
-				(reason) => reason,
-			);
-
-		expect(error).to.include({ statusCode: 404, message: "User not found" });
-	});
+  it("propagates storage and cursor failures without substituting another feed", async () => {
+    for (const boundary of ["preferences", "feeds"] as const) {
+      const f = fixture();
+      const failure = boundary === "feeds" ? Errors.validation("Cursor belongs to another viewer") : Errors.database("Preference store unavailable");
+      if (boundary === "feeds") f.feeds.getInterestFeedWithCursor.rejects(failure);
+      else f.preferences.read.rejects(failure);
+      const error = await f.handler.execute(new GetForYouFeedQuery(viewer, 1, 10)).catch((reason: unknown) => reason);
+      expect(error).to.equal(failure); expect(f.enrichment.enrichFeedWithCurrentData.called).to.equal(false);
+    }
+  });
 });

@@ -5,6 +5,7 @@ import { IOutboxEvent } from "@/models/outbox.model";
 import { TOKENS } from "@/types/tokens";
 import { Errors } from "@/utils/errors";
 import { EventRegistry } from "@/application/common/events/event-registry";
+import { getRequestContext } from "@/runtime/request-context";
 
 const DEFAULT_MAX_OUTBOX_ATTEMPTS = 5;
 const configuredMaxOutboxAttempts = Number(
@@ -43,6 +44,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
     try {
       const session = this.getSession();
       const eventPayload = this.preparePayload(eventType, payload, traceId);
+      const context = getRequestContext();
       const outboxDocs = await this.model.create(
         [
           {
@@ -50,6 +52,8 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
             payload: eventPayload,
             traceId,
             correlationId,
+            ...(context?.clientRequestId ? { clientRequestId: context.clientRequestId } : {}),
+            ...(context?.causedByClientRequestId ? { causedByClientRequestId: context.causedByClientRequestId } : {}),
             processed: false,
             processing: false,
             processedHandlers: [],
@@ -62,6 +66,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to save outbox event",
+        { cause: error },
       );
     }
   }
@@ -86,6 +91,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to fetch unprocessed events",
+        { cause: error },
       );
     }
   }
@@ -149,6 +155,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to claim pending outbox events",
+        { cause: error },
       );
     }
   }
@@ -166,6 +173,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to count pending outbox events",
+        { cause: error },
       );
     }
   }
@@ -220,6 +228,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to inspect outbox backlog",
+        { cause: error },
       );
     }
   }
@@ -253,6 +262,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to mark event as processed",
+        { cause: error },
       );
     }
   }
@@ -274,6 +284,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to mark handler as processed",
+        { cause: error },
       );
     }
   }
@@ -317,6 +328,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to mark event as failed",
+        { cause: error },
       );
     }
   }
@@ -354,6 +366,7 @@ export class OutboxRepository extends BaseRepository<IOutboxEvent> {
       throw Errors.database(
         (error instanceof Error ? error.message : String(error)) ??
           "failed to requeue exhausted outbox event",
+        { cause: error },
       );
     }
   }

@@ -13,7 +13,8 @@ import sinon from "sinon";
 
 import { QueryBus } from "@/application/common/buses/query.bus";
 import { CommandBus } from "@/application/common/buses/command.bus";
-import { EventBus } from "@/application/common/buses/event.bus";
+import { FeedProfile, FeedSignal } from "@/models/feed-profile.model";
+import { FeedPreferenceRepository } from "@/repositories/feed-preference.repository";
 import { GetForYouFeedQuery } from "@/application/queries/feed/getForYouFeed/getForYouFeed.query";
 import { GetForYouFeedQueryHandler } from "@/application/queries/feed/getForYouFeed/getForYouFeed.handler";
 import { GetNewFeedQuery } from "@/application/queries/feed/getNewFeed/getNewFeed.query";
@@ -31,20 +32,13 @@ import Post from "@/models/post.model";
 import { FeedReadDao } from "@/repositories/read/FeedReadDao";
 import { PostReadRepository } from "@/repositories/read/PostReadRepository";
 import type { IUserReadRepository } from "@/repositories/interfaces";
-import { FollowRepository } from "@/repositories/follow.repository";
 import { TagRepository } from "@/repositories/tag.repository";
-import { UserPreferenceRepository } from "@/repositories/userPreference.repository";
 import { FeedRoutes } from "@/routes/feed.routes";
 import { PostRoutes } from "@/routes/post.routes";
 import { AuthMiddlewareService } from "@/middleware/authentication.middleware";
 import { DTOService } from "@/services/dto.service";
-import { FeedCoreService } from "@/services/feed/feed-core.service";
 import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
-import { FeedFanoutService } from "@/services/feed/feed-fanout.service";
-import { FeedInteractionService } from "@/services/feed/feed-interaction.service";
-import { FeedMetaService } from "@/services/feed/feed-meta.service";
 import { FeedReadService } from "@/services/feed/feed-read.service";
-import { FeedService } from "@/services/feed/feed.service";
 import { RedisService } from "@/services/redis.service";
 import { RedisFeedCache } from "@/services/redis/capabilities/redis-feed-cache";
 import { RedisUserLookup } from "@/services/redis/capabilities/redis-user-lookup";
@@ -146,7 +140,7 @@ function toPostDocument(spec: SeedPost): Record<string, unknown> {
       avatarUrl: "",
       displayName: authorPublicId,
     },
-    body: `post ${spec.order}`,
+    body: spec.type === "repost" ? "" : `post ${spec.order}`,
     tags: [],
     likesCount: spec.likes ?? 0,
     commentsCount: spec.comments ?? 0,
@@ -316,16 +310,12 @@ describe("Feed cursor/source contract integration", function () {
   let redisService: RedisService;
   let feedReadDao: FeedReadDao;
   let postReadRepository: PostReadRepository;
-  let feedCoreService: FeedCoreService;
   let feedEnrichmentService: FeedEnrichmentService;
   let feedReadService: FeedReadService;
-  let feedFanoutService: FeedFanoutService;
-  let feedService: FeedService;
   let personalizedHandler: GetPersonalizedFeedQueryHandler;
   let forYouHandler: GetForYouFeedQueryHandler;
   let trendingHandler: GetTrendingFeedQueryHandler;
   let newHandler: GetNewFeedQueryHandler;
-  let followingIds: string[] = [];
 
   const userReadRepository = {
     findByPublicId: async (publicId: string) =>
@@ -343,19 +333,6 @@ describe("Feed cursor/source contract integration", function () {
         username: publicId,
         avatar: "",
       })),
-  };
-
-  const userPreferenceRepository = {
-    getTopUserTags: async () => [],
-  };
-
-  const followRepository = {
-    getFollowingObjectIds: async () => followingIds,
-    getFollowerPublicIdsByPublicId: async () => [],
-  };
-
-  const eventBus = {
-    publish: async () => undefined,
   };
 
   const dtoService = {
@@ -406,46 +383,19 @@ describe("Feed cursor/source contract integration", function () {
     );
     const feedCache = new RedisFeedCache(redisService);
     feedEnrichmentService = new FeedEnrichmentService(userLookup, feedCache);
-    feedCoreService = new FeedCoreService(
-      feedReadDao,
-      postReadRepository,
-      userReadRepository as unknown as IUserReadRepository,
-      userPreferenceRepository as unknown as UserPreferenceRepository,
-      followRepository as unknown as FollowRepository,
-      eventBus as unknown as EventBus,
-      redisService,
-    );
     feedReadService = new FeedReadService(
       feedReadDao,
       redisService,
       dtoService as unknown as DTOService,
       feedEnrichmentService,
-      feedCoreService,
-    );
-    feedFanoutService = new FeedFanoutService(
-      feedReadDao,
-      followRepository as unknown as FollowRepository,
-      redisService,
-    );
-    feedService = new FeedService(
-      feedReadService,
-      {} as FeedInteractionService,
-      {} as FeedMetaService,
-      feedFanoutService,
-    );
-    personalizedHandler = new GetPersonalizedFeedQueryHandler(
-      redisService,
-      feedEnrichmentService,
-      feedCoreService,
     );
     forYouHandler = new GetForYouFeedQueryHandler(
       feedReadDao,
-      postReadRepository,
       userReadRepository as unknown as IUserReadRepository,
-      userPreferenceRepository as unknown as UserPreferenceRepository,
-      redisService,
+      new FeedPreferenceRepository(FeedProfile, FeedSignal),
       feedEnrichmentService,
     );
+    personalizedHandler = new GetPersonalizedFeedQueryHandler(forYouHandler);
     trendingHandler = new GetTrendingFeedQueryHandler(
       feedReadDao,
       postReadRepository,
@@ -456,7 +406,6 @@ describe("Feed cursor/source contract integration", function () {
   });
 
   beforeEach(async () => {
-    followingIds = [];
     await mongoose.connection.db!.collection("posts").deleteMany({});
     await redisService.clientInstance.flushDb();
   });
@@ -492,7 +441,7 @@ describe("Feed cursor/source contract integration", function () {
       };
       next();
     };
-    const routes = new FeedRoutes(new FeedController(queryBus), {
+    const routes = new FeedRoutes(new FeedController(queryBus, new CommandBus()), {
       required: () => attachViewer,
       optional: () => attachViewer,
     } as unknown as AuthMiddlewareService);
@@ -504,7 +453,7 @@ describe("Feed cursor/source contract integration", function () {
 
   function buildLegacyPostsApp(): express.Express {
     const queryBus = new QueryBus();
-    queryBus.register(GetPostsQuery, new GetPostsQueryHandler(feedService));
+    queryBus.register(GetPostsQuery, new GetPostsQueryHandler(feedReadService));
     const controller = new PostController({} as CommandBus, queryBus);
     const passThrough: RequestHandler = (_req, _res, next) => next();
     const routes = new PostRoutes(controller, {
@@ -598,10 +547,9 @@ describe("Feed cursor/source contract integration", function () {
     );
     const expectedIds = descendingPublicIds(7);
     const ranked = await walkCursor(async (cursor) => ({
-      result: await feedReadDao.getRankedFeedWithCursor([], {
+      result: await feedReadDao.getInterestFeedWithCursor({ topics: [], sort: "personalized", viewer: viewerPublicId, viewerMongoId: String(viewerInternalId) }, {
         limit: 2,
         cursor,
-        weights: { recency: 0, popularity: 1, tagMatch: 0 },
       }),
       dataSource: "mongo:ranked",
     }));
@@ -646,19 +594,17 @@ describe("Feed cursor/source contract integration", function () {
       })),
     );
     const expectedIds = descendingPublicIds(6);
-    const first = await feedReadDao.getRankedFeedWithCursor([], {
+    const first = await feedReadDao.getInterestFeedWithCursor({ topics: [], sort: "personalized", viewer: viewerPublicId, viewerMongoId: String(viewerInternalId) }, {
       limit: 2,
-      weights: { recency: 0, popularity: 1, tagMatch: 0 },
     });
     await Post.updateOne(
       { _id: objectIdFor(3) },
       { $set: { likesCount: 1_000 } },
     );
     const continuation = await walkCursor(async (cursor, page) => ({
-      result: await feedReadDao.getRankedFeedWithCursor([], {
+      result: await feedReadDao.getInterestFeedWithCursor({ topics: [], sort: "personalized", viewer: viewerPublicId, viewerMongoId: String(viewerInternalId) }, {
         limit: 2,
         cursor: page === 1 ? first.nextCursor : cursor,
-        weights: { recency: 0, popularity: 1, tagMatch: 0 },
       }),
       dataSource: "mongo:ranked",
     }));
@@ -701,11 +647,9 @@ describe("Feed cursor/source contract integration", function () {
     let cursor: string | undefined;
 
     for (let page = 1; page <= 100; page += 1) {
-      const result = await feedReadDao.getRankedFeedWithCursor([], {
+      const result = await feedReadDao.getInterestFeedWithCursor({ topics: [], sort: "personalized", viewer: viewerPublicId, viewerMongoId: String(viewerInternalId), destination: "home" }, {
         limit: 2,
         cursor,
-        cursorFeed: "personalized",
-        weights: { recency: 0, popularity: 1, tagMatch: 0 },
       });
       expect(result.nextCursor, `page ${page} must continue`).to.be.a("string");
       cursor = result.nextCursor!;
@@ -714,6 +658,8 @@ describe("Feed cursor/source contract integration", function () {
         orders: [FEED_CURSOR_ORDER.PERSONALIZED_RANKED],
         source: "mongo",
       });
+      const snapshotKey = `feed_cursor_snapshot:v1:${decoded.snapshotId}`;
+      expect(await redisService.clientInstance.exists(snapshotKey)).to.equal(1);
       const raw = decoded as unknown as Record<string, unknown>;
       progression.push({
         page,
@@ -723,11 +669,7 @@ describe("Feed cursor/source contract integration", function () {
           ? raw.seenPublicIds.length
           : 0,
         pending: Array.isArray(raw.pending) ? raw.pending.length : 0,
-        cacheKeyLength: CacheKeyBuilder.getPersonalizedCursorFeedKey(
-          viewerPublicId,
-          cursor,
-          2,
-        ).length,
+        cacheKeyLength: snapshotKey.length,
         snapshotId: decoded.snapshotId,
       });
       expect(decoded.version).to.equal(FEED_CURSOR_VERSION);
@@ -763,7 +705,7 @@ describe("Feed cursor/source contract integration", function () {
     expect(snapshotTtl, diagnostics).to.be.at.most(3_600);
   });
 
-  it("continues from personalized candidates into New without returning prior-page identities", async () => {
+  it("continues the personalized snapshot across authors without returning prior-page identities", async () => {
     await seedPosts([
       ...[8, 7, 6].map((order) => ({
         order,
@@ -772,52 +714,61 @@ describe("Feed cursor/source contract integration", function () {
       })),
       ...[5, 4, 3, 2, 1].map((order) => ({ order })),
     ]);
-    followingIds = [followedAuthorId.toHexString()];
     const expectedIds = descendingPublicIds(8);
     const observed = await walkCursor(async (cursor, page) => ({
       result: await personalizedHandler.execute(
         new GetPersonalizedFeedQuery(viewerPublicId, page, 2, cursor),
       ),
-      dataSource: "mongo:personalized+new",
+      dataSource: "mongo:ranked",
     }));
-    const expected = expectedJourney(expectedIds, 2, "mongo:personalized+new");
+    const expected = expectedJourney(expectedIds, 2, "mongo:ranked");
 
     assertContract(
       "F03 personalized exhaustion",
-      "The cross-source traversal must preserve one global visible sequence when personalized candidates run out.",
+      "Personalized snapshot traversal must preserve one global visible sequence across authors.",
       withDiagnostics(expected, expectedIds),
       withDiagnostics(observed, expectedIds),
     );
   });
 
-  it("does not let a duplicate fallback sentinel suppress hasMore", async () => {
+  it("keeps hasMore and unique visible identities after personalized deduplication", async () => {
     await seedPosts([
       {
         order: 5,
         authorId: followedAuthorId,
         authorPublicId: "feed-followed-author",
       },
-      ...[4, 3, 2, 1].map((order) => ({ order })),
+      ...[4, 3, 2].map((order) => ({ order })),
+      { order: 1, type: "repost", repostOfOrder: 5 },
     ]);
-    followingIds = [followedAuthorId.toHexString()];
     const result = await personalizedHandler.execute(
       new GetPersonalizedFeedQuery(viewerPublicId, 1, 2),
     );
-    const observed = observePage(result, "mongo:personalized+new");
+    const observed = observePage(result, "mongo:ranked");
     const expected: PageObservation = {
       ids: [publicIdFor(5), publicIdFor(4)],
       hasMore: true,
       nextCursor: "present",
-      dataSource: "mongo:personalized+new",
-      cursorSource: "mongo:personalized+new",
+      dataSource: "mongo:ranked",
+      cursorSource: "mongo:ranked",
     };
 
     assertContract(
-      "F03 duplicate fallback sentinel",
+      "F03 personalized identity deduplication",
       "Deduplication must happen before the limit+1 sentinel decides hasMore and nextCursor.",
       expected,
       observed,
     );
+    const rest = await walkCursor(async (cursor, page) => ({
+      result: await personalizedHandler.execute(
+        new GetPersonalizedFeedQuery(
+          viewerPublicId, page + 1, 2, page === 1 ? result.nextCursor : cursor,
+        ),
+      ),
+      dataSource: "mongo:ranked",
+    }));
+    expect([...result.data.map((post) => post.publicId), ...rest.identities])
+      .to.deep.equal(descendingPublicIds(5, 2));
   });
 
   it("does not skip the first New identity after a full Trending page exhausts", async () => {
@@ -921,7 +872,7 @@ describe("Feed cursor/source contract integration", function () {
     );
   });
 
-  it("does not reinterpret a Mongo ranked cursor as a Redis public-ID cursor", async () => {
+  it("keeps the Mongo preference cursor when legacy Redis entries appear between pages", async () => {
     await seedPosts(
       Array.from({ length: 6 }, (_, index) => ({
         order: index + 1,
@@ -929,7 +880,6 @@ describe("Feed cursor/source contract integration", function () {
         likes: 5,
       })),
     );
-    sinon.stub(redisService, "addToFeed").resolves();
     const first = await forYouHandler.execute(
       new GetForYouFeedQuery(viewerPublicId, 1, 2),
     );
@@ -940,7 +890,7 @@ describe("Feed cursor/source contract integration", function () {
     });
     expect(decoded.snapshotId).to.be.a("string");
 
-    const key = CacheKeyBuilder.getRedisFeedKey("for_you", viewerPublicId);
+    const key = `feed:for_you:${viewerPublicId}`;
     await redisService.clientInstance.zAdd(
       key,
       Array.from({ length: 6 }, (_, index) => ({
@@ -954,7 +904,7 @@ describe("Feed cursor/source contract integration", function () {
     const observed: JourneyObservation = {
       pages: [
         observePage(first, "mongo:ranked"),
-        observePage(second, "redis:for-you"),
+        observePage(second, "mongo:ranked"),
       ],
       identities: [...first.data, ...second.data].map((post) => post.publicId),
       termination: "max-pages",
@@ -978,8 +928,8 @@ describe("Feed cursor/source contract integration", function () {
           ids: expectedIds.slice(2),
           hasMore: true,
           nextCursor: "present",
-          dataSource: "redis:for-you",
-          cursorSource: "redis:for-you",
+          dataSource: "mongo:ranked",
+          cursorSource: "mongo:ranked",
         },
       ],
       identities: expectedIds,
@@ -987,14 +937,14 @@ describe("Feed cursor/source contract integration", function () {
     };
 
     assertContract(
-      "F05 Mongo-to-Redis cursor handoff",
-      "A cursor emitted from Mongo must remain opaque to Redis and page two must not repeat page one.",
+      "F05 Mongo preference cursor isolation",
+      "Legacy Redis entries must not change the Mongo snapshot source or repeat page one.",
       withDiagnostics(expected, expectedIds),
       withDiagnostics(observed, expectedIds),
     );
   });
 
-  it("does not restart Mongo when a Redis cursor reaches a cold For You cache", async () => {
+  it("ignores a conflicting legacy ZSET and continues the pinned preference snapshot when it is removed", async () => {
     await seedPosts(
       Array.from({ length: 6 }, (_, index) => ({
         order: index + 1,
@@ -1002,25 +952,25 @@ describe("Feed cursor/source contract integration", function () {
         likes: index + 1,
       })),
     );
-    sinon.stub(redisService, "addToFeed").resolves();
-    const key = CacheKeyBuilder.getRedisFeedKey("for_you", viewerPublicId);
+    const key = `feed:for_you:${viewerPublicId}`;
     await redisService.clientInstance.zAdd(
       key,
       Array.from({ length: 6 }, (_, index) => ({
-        score: index + 1,
+        score: 6 - index,
         value: `redis-feed-${String(index + 1).padStart(2, "0")}`,
       })),
     );
     const first = await forYouHandler.execute(
       new GetForYouFeedQuery(viewerPublicId, 1, 2),
     );
+    expect(decodeFeedCursor(first.nextCursor!, { feed: "for-you", orders: [FEED_CURSOR_ORDER.FOR_YOU] }).source).to.equal("mongo");
     await redisService.clientInstance.del(key);
     const second = await forYouHandler.execute(
       new GetForYouFeedQuery(viewerPublicId, 2, 2, first.nextCursor),
     );
     const observed: JourneyObservation = {
       pages: [
-        observePage(first, "redis:for-you"),
+        observePage(first, "mongo:ranked"),
         observePage(second, "mongo:ranked"),
       ],
       identities: [...first.data, ...second.data].map((post) => post.publicId),
@@ -1038,8 +988,8 @@ describe("Feed cursor/source contract integration", function () {
           ids: expectedIds.slice(0, 2),
           hasMore: true,
           nextCursor: "present",
-          dataSource: "redis:for-you",
-          cursorSource: "redis:for-you",
+          dataSource: "mongo:ranked",
+          cursorSource: "mongo:ranked",
         },
         {
           ids: expectedIds.slice(2),
@@ -1054,14 +1004,15 @@ describe("Feed cursor/source contract integration", function () {
     };
 
     assertContract(
-      "F05 Redis-to-Mongo cursor handoff",
-      "A Redis cursor must not be decoded as a Mongo rank cursor and restart the database traversal.",
+      "F05 preference snapshot isolation",
+      "Legacy ZSET contents and removal must not override preference ranking or restart pagination.",
       withDiagnostics(expected, expectedIds),
       withDiagnostics(observed, expectedIds),
     );
   });
 
-  it("returns the same complete For You sequence with cold and warm Redis", async () => {
+  it("populates a complete For You snapshot and consumes it across fresh requests", async () => {
+    sinon.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
     await seedPosts(
       Array.from({ length: 7 }, (_, index) => ({
         order: index + 1,
@@ -1069,44 +1020,49 @@ describe("Feed cursor/source contract integration", function () {
         likes: index + 1,
       })),
     );
-    const ranked = await feedReadDao.getRankedFeedWithCursor([], { limit: 20 });
-    const scored = ranked.data as Array<FeedPost & { rankScore: number }>;
-    const expectedIds = scored.map((post) => post.publicId);
-    sinon.stub(redisService, "addToFeed").resolves();
-
-    const cold = await walkCursor(async (cursor, page) => ({
-      result: await (async () => {
-        if (cursor) {
-          await new Promise((resolve) => setTimeout(resolve, 20));
-        }
-        return forYouHandler.execute(
-          new GetForYouFeedQuery(viewerPublicId, page, 3, cursor),
-        );
-      })(),
-      dataSource: "mongo:ranked",
-    }));
-
-    const key = CacheKeyBuilder.getRedisFeedKey("for_you", viewerPublicId);
-    await redisService.clientInstance.zAdd(
-      key,
-      scored.map((post) => ({
-        score: post.rankScore,
-        value: post.publicId,
-      })),
+    const expectedIds = Array.from({ length: 7 }, (_, index) =>
+      `stable-feed-${String(7 - index).padStart(2, "0")}`,
     );
-    const warm = await walkCursor(async (cursor, page) => ({
-      result: await forYouHandler.execute(
-        new GetForYouFeedQuery(viewerPublicId, page, 3, cursor),
+    const aggregate = sinon.spy(Post, "aggregate");
+    const rankingBuilds = () => aggregate.getCalls().filter(({ args }) =>
+      (args[0] as mongoose.PipelineStage[]).some((stage) =>
+        "$addFields" in stage && "rankBreakdown" in stage.$addFields,
       ),
-      dataSource: "redis:for-you",
-    }));
+    ).length;
+    const snapshotIds: string[] = [];
+    const fetchFreshPage = async (cursor: string | undefined, page: number) => {
+      const dao = new FeedReadDao(Post, { findByTags: async () => [] } as unknown as TagRepository, redisService);
+      const handler = new GetForYouFeedQueryHandler(
+        dao,
+        userReadRepository as unknown as IUserReadRepository,
+        new FeedPreferenceRepository(FeedProfile, FeedSignal),
+        feedEnrichmentService,
+      );
+      const result = await handler.execute(new GetForYouFeedQuery(viewerPublicId, page, 3, cursor));
+      if (result.nextCursor) {
+        const decoded = decodeFeedCursor(result.nextCursor, { feed: "for-you", orders: [FEED_CURSOR_ORDER.FOR_YOU] });
+        snapshotIds.push(decoded.snapshotId);
+        const stored = await redisService.getFeedCursorSnapshot(decoded.snapshotId);
+        expect(stored?.entries.map((entry) => entry.publicId)).to.deep.equal(expectedIds);
+      }
+      return { result, dataSource: "mongo:ranked" };
+    };
+
+    const cold = await walkCursor(fetchFreshPage);
+    expect(rankingBuilds()).to.equal(1);
+    expect(new Set(snapshotIds).size).to.equal(1);
+
+    const warm = await walkCursor(fetchFreshPage);
+    expect(rankingBuilds()).to.equal(1);
+    expect(snapshotIds).to.have.length(4);
+    expect(new Set(snapshotIds).size).to.equal(1);
     const expected = {
       cold: withDiagnostics(
         expectedJourney(expectedIds, 3, "mongo:ranked"),
         expectedIds,
       ),
       warm: withDiagnostics(
-        expectedJourney(expectedIds, 3, "redis:for-you"),
+        expectedJourney(expectedIds, 3, "mongo:ranked"),
         expectedIds,
       ),
     };
@@ -1117,7 +1073,7 @@ describe("Feed cursor/source contract integration", function () {
 
     assertContract(
       "F05 cold/warm For You equivalence",
-      "Cold Mongo and warm Redis must expose the same identities, page boundaries, exhaustion flag, and terminal cursor semantics.",
+      "A cold request must persist every ranked entry; fresh requests must consume that snapshot without rebuilding or losing later pages.",
       expected,
       observed,
     );
@@ -1230,7 +1186,7 @@ describe("Feed cursor/source contract integration", function () {
     await seedPosts(
       Array.from({ length: 45 }, (_, index) => ({ order: index + 1 })),
     );
-    const worker = new NewFeedWarmCacheWorker(feedService);
+    const worker = new NewFeedWarmCacheWorker(feedReadService);
     await worker.init();
     const daoSpy = sinon.spy(feedReadDao, "getNewFeedWithCursor");
     const first = await feedReadService.getNewFeed(1, 20, false);

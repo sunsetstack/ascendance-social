@@ -7,6 +7,8 @@ import { registerGlobalProcessHandlers } from "@/runtime/process-handlers";
 import { logNonHttpTerminalError } from "@/runtime/non-http-error-logger";
 import { AdminRemovalGuardService } from "@/services/admin-removal-guard.service";
 import { TOKENS } from "@/types/tokens";
+import { UnitOfWork } from "@/database/UnitOfWork";
+import { MetricsService } from "@/metrics/metrics.service";
 
 let runtimeInitialized = false;
 
@@ -25,6 +27,9 @@ export async function initializeBackendRuntime(): Promise<void> {
     .ensureInitialized();
 
   initCQRS();
+  const unitOfWork = container.resolve<UnitOfWork>(TOKENS.Repositories.UnitOfWork);
+  container.resolve<MetricsService>(TOKENS.Services.Metrics)
+    .registerTransactionMetrics(() => unitOfWork.getObservabilityMetrics());
   runtimeInitialized = true;
 }
 

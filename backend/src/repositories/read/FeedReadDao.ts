@@ -35,8 +35,19 @@ import {
   normalizeObjectId,
   withActivePostFilter,
 } from "@/repositories/post-pipeline.helpers";
+import {
+  buildCreatedAtCursorFilter,
+  buildNewFeedPipeline,
+  buildSnapshotHydrationPipeline,
+  buildTrendingSnapshotPipeline,
+  getVisibleIdentityStages,
+} from "@/repositories/feed-pipeline.helpers";
 import { RedisService } from "@/services/redis.service";
 import type { FeedPreviewDefinition } from "@/types/customFeeds/feed-preview.types";
+import { INTEREST_POLICY_VERSION, type ContentFeatures, type InterestFeedDefinition } from "@/services/feed/interests.policy";
+import { buildInterestScoreStages, INTEREST_FORMAT_PRIOR, interestFormatShares, interestRankingReason, mixInterestFormats, topicAffinities } from "@/services/feed/interest-ranking.policy";
+import type { InterestRankBreakdown } from "@/services/feed/interest-ranking.policy";
+import { traceFeed } from "@/services/feed/feed-trace";
 import {
   buildTrendingScoreStages,
   resolveTrendingScoreWeights,
@@ -45,8 +56,9 @@ import {
 type ProjectedFeedPost = FeedPost & {
   _id?: mongoose.Types.ObjectId;
   visibleIdentityId?: mongoose.Types.ObjectId;
-  isPersonalized?: boolean;
 };
+
+const INTEREST_CURSOR_SCOPE_VERSION = 1;
 
 @injectable()
 export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
@@ -71,6 +83,49 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
   >();
 
   private readonly TAG_ID_CACHE_TTL_MS = 5 * 60 * 1000;
+
+  async getFollowingFeedWithCursor(
+    viewerMongoId: string,
+    followingIds: string[],
+    options: CursorPaginationOptions,
+  ): Promise<CursorPaginationResult<FeedPost>> {
+    try {
+      const order = FEED_CURSOR_ORDER.PREVIEW_LATEST;
+      const authors = [...new Set(followingIds)].sort();
+      const eligibility = { user: { $in: this.toObjectIds(authors) } };
+      const scope = hashFeedCursorScope(["following-v1", viewerMongoId, authors]);
+      const decoded = options.cursor
+        ? decodeFeedCursor<"preview", FeedCursorOrder>(options.cursor, { feed: "preview", orders: [order], source: "mongo" })
+        : null;
+      if (decoded && decoded.scope !== scope) throw Errors.validation("Following changed. Refresh this feed.");
+      if (!authors.length) return { data: [], hasMore: false };
+      const snapshotRef = decoded
+        ? { id: decoded.snapshotId, snapshot: await this.redisService.requireFeedCursorSnapshot(decoded.snapshotId, {
+          feed: "preview", order, source: "mongo", scope,
+        }) }
+        : await this.redisService.getOrCreateFeedCursorSnapshot(scope, async () => {
+          const entries = await this.model.aggregate<{
+            _id: mongoose.Types.ObjectId; publicId: string; visibleIdentityId: mongoose.Types.ObjectId; rankScore: number;
+          }>([
+            { $match: withActivePostFilter(eligibility) },
+            { $sort: { createdAt: -1, _id: -1 } },
+            ...getVisibleIdentityStages(),
+            { $sort: { createdAt: -1, _id: -1 } },
+            { $limit: MAX_FEED_CURSOR_SNAPSHOT_ITEMS },
+            { $project: { _id: 1, publicId: 1, visibleIdentityId: 1, rankScore: { $toLong: "$createdAt" } } },
+          ]).exec();
+          return this.buildScoreSnapshot("preview", order, entries, "rankScore", scope);
+        });
+      const page = await this.readScoreSnapshotPage(snapshotRef.snapshot, decoded?.offset ?? 0,
+        options.limit ?? 20, "rankScore", eligibility, viewerMongoId);
+      return { data: page.data, hasMore: page.hasMore,
+        nextCursor: page.hasMore ? encodeFeedCursor({ feed: "preview", order, source: "mongo", scope,
+          snapshotId: snapshotRef.id, offset: page.nextOffset }) : undefined };
+    } catch (error) {
+      if (isAppError(error)) throw error;
+      throw Errors.database("Failed to load following feed", { cause: error });
+    }
+  }
 
   async getPreviewFeedWithCursor(
     definition: FeedPreviewDefinition,
@@ -121,7 +176,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
               { $match: withActivePostFilter(eligibility) },
               ...scoreStages,
               { $sort: { rankScore: -1, _id: -1 } },
-              ...this.getVisibleIdentityStages(),
+              ...getVisibleIdentityStages(),
               { $sort: { rankScore: -1, _id: -1 } },
               { $limit: MAX_FEED_CURSOR_SNAPSHOT_ITEMS },
               { $project: { _id: 1, publicId: 1, visibleIdentityId: 1, rankScore: 1 } },
@@ -148,100 +203,86 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
     }
   }
 
-  async getFeedForUserCoreWithCursor(
-    followingIds: string[],
-    favoriteTags: string[],
+  async getInterestFeedWithCursor(
+    definition: InterestFeedDefinition,
     options: CursorPaginationOptions,
-  ): Promise<CursorPaginationResult<FeedPost>> {
-    try {
-      const limit = options.limit ?? 20;
-      const followingObjectIds = followingIds.map(
-        (id) => new mongoose.Types.ObjectId(id),
-      );
-      const favoriteTagIds = await this.loadFavoriteTagIds(favoriteTags);
-      const scope = hashFeedCursorScope([
-        "personalized",
-        followingObjectIds.map(String).sort(),
-        favoriteTagIds.map(String).sort(),
-      ]);
-      const decodedCursor = options.cursor
-        ? decodeFeedCursor(options.cursor, {
-            feed: "personalized",
-            orders: [FEED_CURSOR_ORDER.PERSONALIZED],
-            source: "mongo",
-          })
-        : null;
-      if (decodedCursor && decodedCursor.scope !== scope) {
-        throw Errors.validation("Feed cursor does not match this personalized feed");
-      }
-      const phase = decodedCursor?.phase ?? "personalized";
-      if (phase !== "personalized" && phase !== "backfill") {
-        throw Errors.validation("Invalid personalized feed cursor phase");
-      }
-
-      const cursorFilter = this.buildPersonalizedCursorFilter(
-        phase,
-        decodedCursor,
-      );
-      const personalizationChecks: Record<string, unknown>[] = [];
-      if (followingObjectIds.length > 0) {
-        personalizationChecks.push({ $in: ["$user", followingObjectIds] });
-      }
-      if (favoriteTagIds.length > 0) {
-        personalizationChecks.push({
-          $gt: [
-            { $size: { $setIntersection: ["$tags", favoriteTagIds] } },
-            0,
-          ],
+  ): Promise<FeedSnapshotPaginationResult<FeedPost>> {
+    const limit = options.limit ?? 20;
+    const topics = [...new Set(definition.topics)].sort();
+    const now = new Date();
+    const weekStart = new Date(now.getTime() - 7 * 86_400_000);
+    const eligibility = {
+      ...(topics.length ? { "contentFeatures.topics.id": { $in: topics } } : {}),
+      ...(definition.sort === "top" ? { createdAt: { $gte: weekStart } } : {}),
+    };
+    const feed = definition.sort === "personalized" ? (definition.destination === "home" ? "personalized" : "for-you") : "preview";
+    const order = feed === "personalized" ? FEED_CURSOR_ORDER.PERSONALIZED_RANKED : feed === "for-you" ? FEED_CURSOR_ORDER.FOR_YOU
+      : definition.sort === "newest" ? FEED_CURSOR_ORDER.PREVIEW_LATEST : FEED_CURSOR_ORDER.PREVIEW_RELEVANT;
+    const scope = hashFeedCursorScope(["interests-explained-v1", INTEREST_CURSOR_SCOPE_VERSION, feed, topics, definition.sort, definition.viewer ?? "guest"]);
+    traceFeed("feed.rank.requested", { destination: feed, topics, sort: definition.sort,
+      continuation: Boolean(options.cursor), profileRevision: definition.profile?.revision });
+    const decoded = options.cursor ? decodeFeedCursor(options.cursor, { feed, orders: [order], source: "mongo" }) : null;
+    if (decoded && decoded.scope !== scope) throw Errors.validation("Feed cursor does not match these interests");
+    let built = false;
+    const snapshotRef = decoded ? {
+      id: decoded.snapshotId,
+      snapshot: await this.redisService.requireFeedCursorSnapshot(decoded.snapshotId, { feed, order, source: "mongo", scope }),
+    } : await this.redisService.getOrCreateFeedCursorSnapshot(
+      hashFeedCursorScope([scope, INTEREST_POLICY_VERSION, definition.profile?.revision ?? 0, "rank-breakdown-topic-format-mix-v1"]),
+      async () => {
+        built = true;
+        traceFeed("feed.rank.build.started", { destination: feed, scope, asOf: now.toISOString(), profile: definition.profile,
+          topicAffinities: Object.fromEntries(topicAffinities(definition.profile)) });
+        const scoreStages: PipelineStage[] = definition.sort === "newest"
+          ? [{ $addFields: { rankScore: { $toLong: "$createdAt" } } }]
+          : definition.sort === "top"
+            ? [{ $addFields: { rankScore: { $add: [{ $ifNull: ["$likesCount", 0] }, { $multiply: [2, { $ifNull: ["$repostCount", 0] }] }] } } }]
+            : buildInterestScoreStages(definition.profile, now);
+        const formatShares = definition.sort === "personalized" ? interestFormatShares(definition.profile) : undefined;
+        const candidateStages: PipelineStage[] = formatShares ? [
+          { $setWindowFields: { partitionBy: "$contentFeatures.format", sortBy: { rankScore: -1, _id: -1 }, output: { formatRank: { $sum: 1, window: { documents: ["unbounded", "current"] } } } } },
+          { $match: { formatRank: { $lte: MAX_FEED_CURSOR_SNAPSHOT_ITEMS } } },
+          { $sort: { rankScore: -1, _id: -1 } },
+        ] : [{ $sort: { rankScore: -1, _id: -1 } }, { $limit: MAX_FEED_CURSOR_SNAPSHOT_ITEMS }];
+        const entries = await this.model.aggregate<{
+          _id: mongoose.Types.ObjectId; publicId: string; visibleIdentityId: mongoose.Types.ObjectId; rankScore: number; contentFeatures?: ContentFeatures; rankBreakdown?: InterestRankBreakdown;
+        }>([
+          { $match: withActivePostFilter(eligibility) },
+          ...scoreStages,
+          { $sort: { rankScore: -1, _id: -1 } },
+          ...getVisibleIdentityStages(),
+          ...candidateStages,
+          { $project: { _id: 1, publicId: 1, visibleIdentityId: 1, rankScore: 1, contentFeatures: 1, rankBreakdown: 1 } },
+        ]).exec();
+        const ranked = (formatShares ? mixInterestFormats(entries, formatShares, topicAffinities(definition.profile)) : entries).slice(0, MAX_FEED_CURSOR_SNAPSHOT_ITEMS);
+        const snapshot = this.buildScoreSnapshot(feed, order, ranked, "rankScore", scope);
+        const basePositions = formatShares ? new Map(entries.map((entry, index) => [entry.publicId, index])) : undefined;
+        if (formatShares) traceFeed("feed.format.mix.planned", { destination: feed, scope, formatShares,
+          evidence: definition.profile?.formats, priorPerFormat: INTEREST_FORMAT_PRIOR, candidates: entries.length, retained: ranked.length });
+        if (definition.sort === "personalized") snapshot.entries.forEach((entry, index) => {
+          const candidate = ranked[index];
+          entry.reason = interestRankingReason(candidate.contentFeatures, definition.profile);
+          entry.rankBreakdown = candidate.rankBreakdown;
+          if (formatShares && candidate.contentFeatures && Object.hasOwn(formatShares, candidate.contentFeatures.format)) {
+            entry.formatMix = { format: candidate.contentFeatures.format, share: formatShares[candidate.contentFeatures.format], basePosition: basePositions!.get(entry.publicId)! };
+          }
         });
-      }
-
-      const pipeline: PipelineStage[] = [
-        { $match: ACTIVE_POST_FILTER },
-        {
-          $addFields: {
-            isPersonalized:
-              personalizationChecks.length > 0
-                ? { $or: personalizationChecks }
-                : false,
-          },
-        },
-        { $sort: { isPersonalized: -1, createdAt: -1, _id: -1 } },
-        ...this.getVisibleIdentityStages(),
-        ...(cursorFilter ? [{ $match: cursorFilter }] : []),
-        { $sort: { isPersonalized: -1, createdAt: -1, _id: -1 } },
-        { $limit: limit + 1 },
-        ...getStandardLookups(),
-        {
-          $project: {
-            ...getStandardProjectionFields(),
-            _id: 1,
-            visibleIdentityId: 1,
-            isPersonalized: 1,
-          },
-        },
-      ];
-
-      const fetched = await this.model
-        .aggregate<ProjectedFeedPost>(pipeline)
-        .exec();
-      const hasMore = fetched.length > limit;
-      const results = fetched.slice(0, limit);
-      const nextCursor =
-        hasMore && results.length > 0
-          ? this.buildPersonalizedCursor(results, scope)
-          : undefined;
-      const data = results.map(
-        ({ _id, visibleIdentityId: _visibleIdentityId, ...rest }) => rest,
-      );
-      return { data, hasMore, nextCursor };
-    } catch (error: unknown) {
-      if (isAppError(error)) throw error;
-      throw Errors.database(
-        (error instanceof Error ? error.message : String(error)) ??
-          "failed to generate cursor feed",
-      );
-    }
+        return snapshot;
+      },
+    );
+    traceFeed("feed.snapshot.ready", { destination: feed, snapshotId: snapshotRef.id,
+      source: decoded ? "continuation" : built ? "build_attempt" : "reused", entries: snapshotRef.snapshot.entries.length });
+    const page = await this.readScoreSnapshotPage(snapshotRef.snapshot, decoded?.offset ?? 0, limit, "rankScore", eligibility, definition.viewerMongoId);
+    return {
+      data: page.data,
+      hasMore: page.hasMore,
+      nextCursor: !page.hasMore ? undefined : feed === "preview"
+        ? encodeFeedCursor({ feed: "preview", order: definition.sort === "newest" ? FEED_CURSOR_ORDER.PREVIEW_LATEST : FEED_CURSOR_ORDER.PREVIEW_RELEVANT,
+            source: "mongo", scope, snapshotId: snapshotRef.id, offset: page.nextOffset })
+        : this.buildRankedSnapshotCursor(feed, snapshotRef.id, page.nextOffset, scope),
+      snapshotId: snapshotRef.id,
+      consumedOffset: page.nextOffset,
+    };
   }
 
   /**
@@ -494,7 +535,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
             source: "mongo",
           })
         : null;
-      const cursorFilter = this.buildCreatedAtCursorFilter(
+      const cursorFilter = buildCreatedAtCursorFilter(
         decodedCursor,
         direction,
       );
@@ -512,29 +553,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         exclusionSnapshot?.excludedIdentityIds ?? [],
       );
 
-      const sortDirection = direction === "forward" ? -1 : 1;
-
-      const pipeline: PipelineStage[] = [
-        { $match: ACTIVE_POST_FILTER },
-        { $sort: { createdAt: -1, _id: -1 } },
-        ...this.getVisibleIdentityStages(),
-        ...(seenIdentityIds.length > 0
-          ? [{ $match: { visibleIdentityId: { $nin: seenIdentityIds } } }]
-          : []),
-        ...(cursorFilter ? [{ $match: cursorFilter }] : []),
-        { $sort: { createdAt: sortDirection, _id: sortDirection } },
-        { $limit: limit + 1 },
-        ...getStandardLookups(),
-        {
-          $project: {
-            ...getStandardProjectionFields(),
-            _id: 1,
-            visibleIdentityId: 1,
-            createdAt: 1,
-            viewsCount: { $ifNull: ["$viewsCount", 0] },
-          },
-        },
-      ];
+      const pipeline = buildNewFeedPipeline(limit, direction, cursorFilter, seenIdentityIds);
 
       let results = await this.model.aggregate(pipeline).exec();
 
@@ -629,36 +648,13 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
             ]),
             async () => {
               const asOf = new Date();
-              const sinceDate = new Date(
-                asOf.getTime() - timeWindowDays * 24 * 60 * 60 * 1000,
-              );
               const entries = await this.model
                 .aggregate<{
                   _id: mongoose.Types.ObjectId;
                   publicId: string;
                   visibleIdentityId: mongoose.Types.ObjectId;
                   trendScore: number;
-                }>([
-                  {
-                    $match: withActivePostFilter({
-                      createdAt: { $gte: sinceDate },
-                      likesCount: { $gte: minLikes },
-                    }),
-                  },
-                  ...buildTrendingScoreStages(asOf, weights),
-                  { $sort: { trendScore: -1, _id: -1 } },
-                  ...this.getVisibleIdentityStages(),
-                  { $sort: { trendScore: -1, _id: -1 } },
-                  { $limit: MAX_FEED_CURSOR_SNAPSHOT_ITEMS + 1 },
-                  {
-                    $project: {
-                      _id: 1,
-                      publicId: 1,
-                      visibleIdentityId: 1,
-                      trendScore: 1,
-                    },
-                  },
-                ])
+                }>(buildTrendingSnapshotPipeline(asOf, timeWindowDays, minLikes, weights))
                 .exec();
               return this.buildScoreSnapshot(
                 "trending",
@@ -699,231 +695,6 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
           "failed to build cursor-paginated trending feed",
       );
     }
-  }
-
-  /**
-   * Cursor-based pagination for ranked feed
-   * @pattern Cursor Pagination with Weighted Scoring
-   * @complexity scores computed once before cursor filtering
-   * @performance Handles deep pagination efficiently without O(skip) overhead
-   * @param favoriteTags - Tag names for tag-match scoring component
-   * @param options - Cursor navigation with custom score weights
-   * @returns {Promise<CursorPaginationResult<FeedPost>>} Ranked posts with rank scores and cursors
-   * @throws {DatabaseError} if cursor decoding or ranking fails
-   */
-
-  async getRankedFeedWithCursor(
-    favoriteTags: string[],
-    options: CursorPaginationOptions & {
-      cursorFeed?: "for-you" | "personalized";
-      weights?: { recency?: number; popularity?: number; tagMatch?: number };
-    },
-  ): Promise<FeedSnapshotPaginationResult<FeedPost>> {
-    try {
-      const limit = options.limit ?? 20;
-      const weights = {
-        recency: 0.5,
-        popularity: 0.3,
-        tagMatch: 0.2,
-        ...options.weights,
-      };
-      const cursorFeed = options.cursorFeed ?? "for-you";
-      const cursorOrder =
-        cursorFeed === "personalized"
-          ? FEED_CURSOR_ORDER.PERSONALIZED_RANKED
-          : FEED_CURSOR_ORDER.FOR_YOU;
-      const recentThresholdDays = 90;
-      const favoriteTagIds = await this.loadFavoriteTagIds(favoriteTags);
-      const hasTagPreferences = favoriteTagIds.length > 0;
-      const scope = hashFeedCursorScope([
-        "mongo-ranked",
-        cursorFeed,
-        favoriteTagIds.map(String).sort(),
-        weights,
-        recentThresholdDays,
-      ]);
-      const decodedCursor = options.cursor
-        ? decodeFeedCursor(options.cursor, {
-            feed: cursorFeed,
-            orders: [cursorOrder],
-            source: "mongo",
-          })
-        : null;
-      if (decodedCursor && decodedCursor.scope !== scope) {
-        throw Errors.validation("Feed cursor does not match this ranked feed");
-      }
-
-      const snapshotRef = decodedCursor
-        ? {
-            id: decodedCursor.snapshotId,
-            snapshot: await this.redisService.requireFeedCursorSnapshot(
-              decodedCursor.snapshotId,
-              {
-                feed: cursorFeed,
-                order: cursorOrder,
-                source: "mongo",
-                scope,
-              },
-            ),
-          }
-        : await this.redisService.getOrCreateFeedCursorSnapshot(
-            scope,
-            async () => {
-              const asOf = new Date();
-              const sinceDate = new Date(
-                asOf.getTime() - recentThresholdDays * 24 * 60 * 60 * 1000,
-              );
-              const entries = await this.model
-                .aggregate<{
-                  _id: mongoose.Types.ObjectId;
-                  publicId: string;
-                  visibleIdentityId: mongoose.Types.ObjectId;
-                  rankScore: number;
-                }>([
-                  {
-                    $match: withActivePostFilter({
-                      createdAt: { $gte: sinceDate },
-                    }),
-                  },
-                  ...this.getRankScoreStages(
-                    asOf,
-                    favoriteTagIds,
-                    hasTagPreferences,
-                    weights,
-                  ),
-                  { $sort: { rankScore: -1, _id: -1 } },
-                  ...this.getVisibleIdentityStages(),
-                  { $sort: { rankScore: -1, _id: -1 } },
-                  { $limit: MAX_FEED_CURSOR_SNAPSHOT_ITEMS + 1 },
-                  {
-                    $project: {
-                      _id: 1,
-                      publicId: 1,
-                      visibleIdentityId: 1,
-                      rankScore: 1,
-                    },
-                  },
-                ])
-                .exec();
-              return this.buildScoreSnapshot(
-                cursorFeed,
-                cursorOrder,
-                entries,
-                "rankScore",
-                scope,
-              );
-            },
-          );
-
-      const page = await this.readScoreSnapshotPage(
-        snapshotRef.snapshot,
-        decodedCursor?.offset ?? 0,
-        limit,
-        "rankScore",
-      );
-      const nextCursor = page.hasMore
-        ? this.buildRankedSnapshotCursor(
-            cursorFeed,
-            snapshotRef.id,
-            page.nextOffset,
-            scope,
-          )
-        : undefined;
-      return {
-        data: page.data,
-        hasMore: page.hasMore,
-        nextCursor,
-        snapshotId: snapshotRef.id,
-        consumedOffset: page.nextOffset,
-      };
-    } catch (error: unknown) {
-      if (isAppError(error)) throw error;
-      throw Errors.database(
-        (error instanceof Error ? error.message : String(error)) ??
-          "failed to build cursor-paginated ranked feed",
-      );
-    }
-  }
-
-  private getVisibleIdentityStages(): PipelineStage[] {
-    return [
-      {
-        $group: {
-          _id: { $ifNull: ["$repostOf", "$_id"] },
-          post: { $first: "$$ROOT" },
-        },
-      },
-      {
-        $replaceRoot: {
-          newRoot: {
-            $mergeObjects: ["$post", { visibleIdentityId: "$_id" }],
-          },
-        },
-      },
-    ];
-  }
-
-  private buildCreatedAtCursorFilter(
-    cursor: FeedCursorPayload | null,
-    direction: "forward" | "backward",
-  ): Record<string, unknown> | null {
-    if (!cursor) return null;
-    const createdAt = "createdAt" in cursor ? cursor.createdAt : undefined;
-    const id = "_id" in cursor ? cursor._id : undefined;
-    if (createdAt === undefined && id === undefined) return null;
-    if (!createdAt || !id) {
-      throw Errors.validation("Invalid chronological feed cursor");
-    }
-
-    let cursorId: mongoose.Types.ObjectId;
-    try {
-      cursorId = new mongoose.Types.ObjectId(id);
-    } catch {
-      throw Errors.validation("Invalid chronological feed cursor");
-    }
-    const cursorDate = new Date(createdAt);
-    const comparison = direction === "forward" ? "$lt" : "$gt";
-    return {
-      $or: [
-        { createdAt: { [comparison]: cursorDate } },
-        { createdAt: cursorDate, _id: { [comparison]: cursorId } },
-      ],
-    };
-  }
-
-  private buildPersonalizedCursorFilter(
-    phase: "personalized" | "backfill",
-    cursor: FeedCursorPayload | null,
-  ): Record<string, unknown> | null {
-    const chronological = this.buildCreatedAtCursorFilter(cursor, "forward");
-    if (phase === "backfill") {
-      return chronological
-        ? { $and: [{ isPersonalized: false }, chronological] }
-        : { isPersonalized: false };
-    }
-    if (!chronological) return null;
-    return {
-      $or: [
-        { isPersonalized: false },
-        { $and: [{ isPersonalized: true }, chronological] },
-      ],
-    };
-  }
-
-  private buildPersonalizedCursor(
-    results: ProjectedFeedPost[],
-    scope: string,
-  ): string {
-    const lastItem = results[results.length - 1];
-    return encodeFeedCursor({
-      feed: "personalized",
-      order: FEED_CURSOR_ORDER.PERSONALIZED,
-      source: "mongo",
-      phase: lastItem.isPersonalized ? "personalized" : "backfill",
-      createdAt: new Date(lastItem.createdAt).toISOString(),
-      _id: String(lastItem._id),
-      scope,
-    });
   }
 
   private buildNewCursor(
@@ -1029,6 +800,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
     limit: number,
     scoreField: "rankScore" | "trendScore",
     eligibility: Record<string, unknown> = {},
+    viewerMongoId?: string,
   ): Promise<{ data: FeedPost[]; hasMore: boolean; nextOffset: number }> {
     const collected: Array<{
       index: number;
@@ -1042,23 +814,12 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       const batch = snapshot.entries.slice(scanOffset, scanOffset + batchSize);
       const objectIds = this.toObjectIds(batch.map((entry) => entry._id));
       const posts = await this.model
-        .aggregate<ProjectedFeedPost>([
-          {
-            $match: withActivePostFilter({
-              ...eligibility,
-              _id: { $in: objectIds },
-            }),
-          },
-          ...getStandardLookups(),
-          {
-            $project: {
-              ...getStandardProjectionFields(),
-              _id: 1,
-              createdAt: 1,
-              viewsCount: { $ifNull: ["$viewsCount", 0] },
-            },
-          },
-        ])
+        .aggregate<ProjectedFeedPost>(buildSnapshotHydrationPipeline(
+          objectIds,
+          limit + 1 - collected.length,
+          eligibility,
+          viewerMongoId,
+        ))
         .exec();
       const byId = new Map(posts.map((post) => [String(post._id), post]));
 
@@ -1068,6 +829,7 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
         if (!post) continue;
         (post as ProjectedFeedPost & Record<string, unknown>)[scoreField] =
           entry.score;
+        if (entry.reason) post.feedReason = entry.reason;
         collected.push({ index: scanOffset + index, post, entry });
         if (collected.length > limit) break;
       }
@@ -1080,6 +842,17 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
       visible.length > 0
         ? visible[visible.length - 1].index + 1
         : snapshot.entries.length;
+    for (const { entry, post, index } of visible) traceFeed("feed.rank.served", {
+      destination: snapshot.feed, scope: snapshot.scope, position: index, postPublicId: entry.publicId,
+      score: entry.score, reason: entry.reason, rankBreakdown: entry.rankBreakdown,
+      formatMix: entry.formatMix,
+      classification: post.contentFeatures ? {
+        version: post.contentFeatures.version,
+        topics: post.contentFeatures.topics.map((topic) => ({ id: topic.id, weight: topic.weight })),
+        format: post.contentFeatures.format,
+      } : undefined, isLikedByViewer: post.isLikedByViewer,
+      isRepostedByViewer: post.isRepostedByViewer,
+    });
     const data = visible.map(({ post }) => {
       const result: Partial<ProjectedFeedPost> = { ...post };
       delete result._id;

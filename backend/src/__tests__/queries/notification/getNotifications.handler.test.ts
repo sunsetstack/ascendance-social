@@ -11,6 +11,7 @@ chai.use(chaiAsPromised);
 describe("GetNotificationsQueryHandler", () => {
 	let handler: GetNotificationsQueryHandler;
 	let notificationRepository: {
+		findExistingIds: sinon.SinonStub;
 		getNotifications: sinon.SinonStub;
 		getNotificationsBeforeTimestamp: sinon.SinonStub;
 	};
@@ -21,6 +22,7 @@ describe("GetNotificationsQueryHandler", () => {
 
 	beforeEach(() => {
 		notificationRepository = {
+			findExistingIds: sinon.stub().resolves(new Set()),
 			getNotifications: sinon.stub(),
 			getNotificationsBeforeTimestamp: sinon.stub(),
 		};

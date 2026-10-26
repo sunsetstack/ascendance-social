@@ -9,7 +9,6 @@ import { UserActionRepository } from "@/repositories/userAction.repository";
 import { RedisService } from "../redis.service";
 import { Errors } from "@/utils/errors";
 import { logger } from "@/utils/winston";
-import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { TOKENS } from "@/types/tokens";
 import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
 import { createHash } from "node:crypto";
@@ -91,11 +90,6 @@ export class FeedInteractionService {
         }
       }
     });
-
-    await this.redisService.invalidateFeed(userPublicId, "for_you");
-
-    const invalidationTags = [CacheKeyBuilder.getUserFeedTag(userPublicId)];
-    await this.redisService.invalidateByTags(invalidationTags);
 
     const timestamp = identity.timestamp.toISOString();
     await this.redisService.publish(

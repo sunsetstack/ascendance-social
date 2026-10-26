@@ -1,120 +1,87 @@
-import React from "react";
-import { Box, Button, Typography, alpha, useTheme } from "@mui/material";
-import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import { useEffect, useState } from "react";
+import { Box, Button, Chip, Stack, Typography } from "@mui/material";
 import { Link as RouterLink } from "react-router-dom";
-import WhoToFollow from "./WhoToFollow";
-import SearchBox from "./SearchBox";
-import TrendingTags from "./TrendingTags";
-import { useAuth } from "../hooks/context/useAuth";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useAuth } from "../hooks/context/useAuth";
+import { useSocket } from "../hooks/context/useSocket";
+import { useNotifications } from "../hooks/notifications/useNotification";
+import { useNewFeed } from "../hooks/posts/usePosts";
+import axiosClient from "../api/axiosClient";
+import type { InterestsResult } from "../features/feed/interests";
+import SearchBox from "./SearchBox";
 
-const RightSidebar: React.FC = () => {
-  const { t } = useTranslation();
-  const { isLoggedIn } = useAuth();
-  const theme = useTheme();
+interface RightSidebarProps { onPostClick: () => void }
 
-  return (
-    <Box
-      component="aside"
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 2.25,
-        pb: 4,
-        height: "100%",
-      }}
-    >
-      {/* Search Box - Sticky at top */}
-      <Box
-        sx={{
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-          bgcolor: "transparent",
-          pb: 1.25,
-          pt: 1.5,
-        }}
-      >
-        <SearchBox />
-      </Box>
+export default function RightSidebar({ onPostClick }: RightSidebarProps): React.ReactElement {
+	const { t, i18n } = useTranslation();
+	const { user, loading } = useAuth();
+	const socket = useSocket();
+	const [connected, setConnected] = useState(socket?.connected ?? false);
+	const { notifications, isError, refetch } = useNotifications();
+	const interests = useQuery({
+		queryKey: ["interests", user?.publicId ?? "guest"],
+		queryFn: async ({ signal }) => (await axiosClient.get<InterestsResult>("/api/feed/interests", { signal })).data,
+		enabled: !loading,
+	});
+	const latest = useNewFeed({ enabled: !loading, limit: 5 });
+	const question = latest.data?.pages.flatMap((page) => page.data).find((post) => post.body?.includes("?") && post.commentsCount === 0);
+	const replies = user ? notifications.filter((item) => !item.isRead && ["comment", "comment_reply", "mention"].includes(item.actionType)
+		&& item.targetId && ["post", "image", "comment"].includes(item.targetType ?? "")).slice(0, 2) : [];
+	const chosen = interests.data?.catalogue.filter((topic) => interests.data?.profile?.selected.includes(topic.id)) ?? [];
+	const cardSx = { p: 2, border: 1, borderColor: "divider", borderRadius: 4, bgcolor: "background.default", minWidth: 0 };
 
-      {/* Trending Tags */}
-      <Box
-        sx={{
-          bgcolor: alpha(theme.palette.background.paper, 0.82),
-          borderRadius: 5,
-          overflow: "hidden",
-          border: `1px solid ${theme.palette.divider}`,
-          boxShadow: "0 20px 50px rgba(0, 0, 0, 0.18)",
-        }}
-      >
-        <TrendingTags />
-      </Box>
+	useEffect(() => {
+		setConnected(socket?.connected ?? false);
+		if (!socket) return;
+		const connect = (): void => setConnected(true);
+		const disconnect = (): void => setConnected(false);
+		socket.on("connect", connect);
+		socket.on("disconnect", disconnect);
+		return () => { socket.off("connect", connect); socket.off("disconnect", disconnect); };
+	}, [socket]);
 
-      {/* Who to Follow - not shown when logged in or when in messages screen*/}
-      {isLoggedIn && (
-        <Box
-          sx={{
-            bgcolor: alpha(theme.palette.background.paper, 0.82),
-            borderRadius: 5,
-            overflow: "hidden",
-            border: `1px solid ${theme.palette.divider}`,
-          }}
-        >
-          <WhoToFollow limit={3} />
-        </Box>
-      )}
-
-      {/* Login prompt for non-authenticated users */}
-      {!isLoggedIn && (
-        <Box
-          sx={{
-            p: 3,
-            borderRadius: 5,
-            border: `1px solid ${theme.palette.divider}`,
-            textAlign: "left",
-            overflow: "hidden",
-            position: "relative",
-            background: `linear-gradient(145deg, ${alpha(theme.palette.primary.main, 0.14)}, ${alpha(theme.palette.secondary.main, 0.09)} 55%, ${alpha(theme.palette.background.paper, 0.88)})`,
-            boxShadow: "0 20px 50px rgba(0, 0, 0, 0.18)",
-            "&::after": {
-              content: '""',
-              position: "absolute",
-              width: 130,
-              height: 130,
-              borderRadius: "50%",
-              right: -70,
-              top: -75,
-              background: alpha(theme.palette.primary.main, 0.13),
-              filter: "blur(2px)",
-            },
-          }}
-        >
-          <Typography
-            variant="overline"
-            sx={{ color: "primary.light", fontWeight: 800, letterSpacing: "0.14em" }}
-          >
-            {t("marketing.guest_cta_eyebrow")}
-          </Typography>
-          <Typography variant="h5" sx={{ mt: 0.5, mb: 1, fontWeight: 800, letterSpacing: "-0.03em" }}>
-            {t("marketing.new_to_ascendance")}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.6, mb: 2.25 }}>
-            {t("marketing.sign_up_timeline")}
-          </Typography>
-          <Button
-            component={RouterLink}
-            to="/register"
-            variant="contained"
-            endIcon={<ArrowForwardRoundedIcon />}
-            sx={{ px: 2.25, py: 1, background: "linear-gradient(90deg, #0ea5e9, #7c3aed)" }}
-          >
-            {t("auth.join")}
-          </Button>
-        </Box>
-      )}
-    </Box>
-  );
-};
-
-export default RightSidebar;
+	return (
+		<Box component="aside" aria-label={t("timeline.now")} sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+			<Box sx={{ "& > form": { borderRadius: 999, bgcolor: "transparent" } }}><SearchBox /></Box>
+			<Box component="section" sx={cardSx}>
+			<Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+				<Typography component="h2" sx={{ fontSize: "1.375rem", fontWeight: 700 }}>{t("timeline.now")}</Typography>
+				<Typography variant="caption" color="text.secondary" sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+					<Box component="span" sx={{ width: 7, height: 7, borderRadius: "50%", bgcolor: connected ? "#57d5a1" : "text.secondary" }} />
+					{connected ? t("timeline.live") : t("timeline.offline")}
+				</Typography>
+			</Box>
+			<Box sx={{ mt: 2 }}>
+				<Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t("timeline.continue_conversation")}</Typography>
+				{isError ? <Button onClick={() => void refetch()}>{t("feed.retry")}</Button> : replies.length ? replies.map((reply) => (
+					<Box key={reply.id} sx={{ mb: 1.5 }}>
+						<Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: "anywhere" }}>{reply.targetPreview || t("timeline.reply_from", { name: reply.actorUsername || reply.actorHandle || t("post.unknown_user") })}</Typography>
+						<Button component={RouterLink} to={`/posts/${reply.targetId}#comments`} sx={{ px: 0, mt: 0.5 }}>{t("timeline.open_replies")} →</Button>
+					</Box>
+				)) : <><Typography variant="body2">{t("timeline.no_replies")}</Typography><Button component={RouterLink} to={user ? "/notifications" : "/login"} sx={{ px: 0, mt: 0.75 }}>{user ? t("nav.notifications") : t("auth.login")} →</Button></>}
+			</Box>
+			</Box>
+			<Box component="section" sx={cardSx}>
+				<Typography component="h3" variant="body1" fontWeight={700} sx={{ mb: 1 }}>{t("timeline.join_conversation")}</Typography>
+				{question ? <><Typography variant="body2" sx={{ fontWeight: 600, overflowWrap: "anywhere" }}>{question.body?.slice(0, 160)}</Typography><Button component={RouterLink} to={`/posts/${question.publicId}#comments`} sx={{ px: 0, mt: 0.5 }}>{t("timeline.first_reply")} →</Button></> :
+					<><Typography variant="body2">{t("timeline.discover_conversation")}</Typography><Button component={RouterLink} to="/discover?feed=latest" sx={{ px: 0, mt: 0.5 }}>{t("feed.browse_latest")} →</Button></>}
+			</Box>
+			<Box component="section" sx={cardSx}>
+				<Typography component="h3" variant="body1" fontWeight={700}>{t("interests.chosen")}</Typography>
+				{interests.isError ? <Button onClick={() => void interests.refetch()}>{t("feed.retry")}</Button> : chosen.length ?
+					<Stack direction="row" useFlexGap flexWrap="wrap" gap={0.75} sx={{ my: 1.5 }}>{chosen.map((topic) => <Chip key={topic.id}
+						label={i18n.resolvedLanguage?.startsWith("bg") ? topic.nameBg : topic.name} size="small" component={RouterLink} clickable
+						to={`/interests?topic=${topic.id}`} sx={{ bgcolor: "#172431", color: "#b4ddf2", borderColor: "#2a4255" }} />)}</Stack> :
+					<Typography variant="body2" sx={{ my: 1.5 }}>{t("timeline.choose_topics")}</Typography>}
+				<Button component={RouterLink} to="/interests" sx={{ px: 0 }}>{t("timeline.manage_interests")} →</Button>
+			</Box>
+			<Box component="section" sx={cardSx}>
+				<Typography variant="caption" sx={{ color: "primary.main", letterSpacing: "0.04em" }}>{t("timeline.prompt_eyebrow")}</Typography>
+				<Typography component="h3" sx={{ fontWeight: 700, my: 1 }}>{t("timeline.prompt_title")}</Typography>
+				<Typography variant="body2" color="text.secondary">{t("timeline.prompt_body")}</Typography>
+				<Button variant="outlined" fullWidth onClick={onPostClick} sx={{ mt: 2 }}>{t("timeline.add_take")}</Button>
+			</Box>
+		</Box>
+	);
+}

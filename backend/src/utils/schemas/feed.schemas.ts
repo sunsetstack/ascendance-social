@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MAX_FEED_CURSOR_ENCODED_LENGTH } from "@/utils/feedCursor";
+import { isInterestId, INTERESTS } from "@/services/feed/interests.policy";
 
 const feedPaginationBaseSchema = z
   .object({
@@ -15,6 +16,18 @@ const feedPaginationBaseSchema = z
   .strict();
 
 export const feedPaginationQuerySchema = feedPaginationBaseSchema;
+
+const interestId = z.string().refine(isInterestId, "Unknown interest");
+export const interestFeedQuerySchema = feedPaginationBaseSchema.omit({ page: true }).extend({
+  topics: z.preprocess(
+    (value) => value === undefined ? [] : typeof value === "string" ? [value] : value,
+    z.array(interestId).max(INTERESTS.length),
+  ).transform((topics) => [...new Set(topics)].sort()),
+  sort: z.enum(["newest", "top"]).optional().default("newest"),
+});
+export const selectInterestsSchema = z.object({ selected: z.array(interestId).max(INTERESTS.length) }).strict();
+export type InterestFeedQuery = z.infer<typeof interestFeedQuerySchema>;
+export type SelectInterestsBody = z.infer<typeof selectInterestsSchema>;
 
 export const feedPreviewQuerySchema = feedPaginationBaseSchema.omit({ page: true }).extend({
   topics: z.preprocess(

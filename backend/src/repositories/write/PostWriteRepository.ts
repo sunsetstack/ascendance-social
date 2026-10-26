@@ -6,6 +6,7 @@ import { BaseRepository } from "../base.repository";
 import { TOKENS } from "@/types/tokens";
 import { MongoId } from "@/types/branded";
 import { Errors } from "@/utils/errors";
+import type { ContentFeatures } from "@/services/feed/interests.policy";
 
 @injectable()
 export class PostWriteRepository
@@ -46,6 +47,7 @@ export class PostWriteRepository
     } catch (error: unknown) {
       throw Errors.database(
         error instanceof Error ? error.message : String(error),
+        { cause: error },
       );
     }
   }
@@ -56,6 +58,7 @@ export class PostWriteRepository
       image: mongoose.Types.ObjectId | null;
       tags: mongoose.Types.ObjectId[];
       slug: string;
+      contentFeatures?: ContentFeatures;
     },
   ): Promise<IPost | null> {
     try {
@@ -76,6 +79,7 @@ export class PostWriteRepository
     } catch (error: unknown) {
       throw Errors.database(
         error instanceof Error ? error.message : String(error),
+        { cause: error },
       );
     }
   }
@@ -97,6 +101,7 @@ export class PostWriteRepository
     } catch (error: unknown) {
       throw Errors.database(
         error instanceof Error ? error.message : String(error),
+        { cause: error },
       );
     }
   }
@@ -113,6 +118,7 @@ export class PostWriteRepository
     } catch (error: unknown) {
       throw Errors.database(
         error instanceof Error ? error.message : String(error),
+        { cause: error },
       );
     }
   }
@@ -129,6 +135,7 @@ export class PostWriteRepository
     } catch (error: unknown) {
       throw Errors.database(
         error instanceof Error ? error.message : String(error),
+        { cause: error },
       );
     }
   }
@@ -143,6 +150,7 @@ export class PostWriteRepository
     } catch (error: unknown) {
       throw Errors.database(
         error instanceof Error ? error.message : String(error),
+        { cause: error },
       );
     }
   }
@@ -187,6 +195,7 @@ export class PostWriteRepository
     } catch (error: unknown) {
       throw Errors.database(
         error instanceof Error ? error.message : String(error),
+        { cause: error },
       );
     }
   }

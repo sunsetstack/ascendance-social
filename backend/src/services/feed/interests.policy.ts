@@ -1,4 +1,4 @@
-export const INTEREST_POLICY_VERSION = 1;
+export const INTEREST_POLICY_VERSION = 2;
 
 export const INTERESTS = [
   { id: "finance", name: "Business & finance", nameBg: "Бизнес и финанси", keywords: ["business", "finance", "investing", "investment", "stock market", "interest rates", "inflation", "entrepreneur", "startup", "бизнес", "финанси", "инвестиции", "инфлация"], tags: ["business", "finance", "investing", "stocks", "economy"] },
@@ -21,6 +21,7 @@ export interface ContentFeatures {
 }
 export interface InterestProfile {
   selected: string[];
+  onboardingCompleted?: boolean;
   topics: Record<string, number>;
   formats: Partial<Record<ContentFormat, number>>;
   revision: number;
@@ -42,10 +43,31 @@ function normalize(value: string): string {
   return value.normalize("NFKC").toLocaleLowerCase("en");
 }
 
-function containsPhrase(text: string, phrase: string): boolean {
-  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}(?=$|[^\\p{L}\\p{N}_])`, "u").test(text);
-}
+const KEYWORD_FORMS: Readonly<Record<string, readonly string[]>> = {
+  investment: ["investments"], entrepreneur: ["entrepreneurs"], startup: ["startups"],
+  "interest rates": ["interest rate"], "stock market": ["stock markets"],
+  government: ["governments"], election: ["elections"], parliament: ["parliaments"],
+  technology: ["technologies"], climate: ["climates"], workout: ["workouts"],
+  concert: ["concerts"], painting: ["paintings"], championship: ["championships"],
+  "video game": ["video games"], cryptocurrency: ["cryptocurrencies"],
+  "инвестиции": ["инвестиция", "инвестицията", "инвестициите", "инвестирам", "инвестиране"],
+  "правителство": ["правителството", "правителства", "правителствата"],
+  "избори": ["изборите"], "парламент": ["парламентът", "парламента"],
+  "технологии": ["технология", "технологията", "технологиите"],
+  "тренировка": ["тренировки", "тренировката", "тренировките"],
+  "фотография": ["фотографията"], "първенство": ["първенства", "първенството", "първенствата"],
+  "крипто": ["криптовалута", "криптовалутата", "криптовалути", "криптовалутите"],
+  "видеоигри": ["видеоигра", "видеоиграта", "видеоигрите"],
+};
+
+const interestMatchers = INTERESTS.map(interest => {
+  const groups = interest.keywords.map(word => {
+    const forms = [word, ...(KEYWORD_FORMS[word] ?? [])];
+    const alternatives = forms.map(form => form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+    return { forms, pattern: new RegExp(`(?:^|[^\\p{L}\\p{N}_])(?:${alternatives})(?=$|[^\\p{L}\\p{N}_])`, "u") };
+  });
+  return { id: interest.id, groups, tags: new Set([...interest.tags, ...groups.flatMap(group => group.forms)]) };
+});
 
 export function classifyContent(body: string, tags: string[], hasImage: boolean): ContentFeatures {
   const text = normalize(body.replace(/#[\p{L}\p{N}_]+/gu, " "));
@@ -53,9 +75,9 @@ export function classifyContent(body: string, tags: string[], hasImage: boolean)
     ...tags.map((tag) => normalize(tag.replace(/^#/, ""))),
     ...Array.from(body.matchAll(/#([\p{L}\p{N}_]+)/gu), (match) => normalize(match[1])),
   ]);
-  const topics = INTERESTS.flatMap((interest) => {
-    const keywordMatches = interest.keywords.filter((word) => containsPhrase(text, word)).length;
-    const tagMatch = [...interest.tags, ...interest.keywords].some((tag) => normalizedTags.has(tag));
+  const topics = interestMatchers.flatMap((interest) => {
+    const keywordMatches = interest.groups.filter(group => group.pattern.test(text)).length;
+    const tagMatch = [...normalizedTags].some(tag => interest.tags.has(tag));
     const weight = Math.min(1, keywordMatches * 0.6 + (tagMatch ? 0.2 : 0));
     return weight > 0 ? [{ id: interest.id, weight }] : [];
   });

@@ -1,12 +1,16 @@
 import mongoose, { Schema } from "mongoose";
 import { IComment } from "@/types";
+import { sanitizedTextLength } from "@/utils/sanitizers";
 const commentSchema = new Schema<IComment>(
 	{
 		content: {
 			type: String,
-			required: true,
+			required: false,
 			trim: true,
-			maxlength: 500,
+			validate: {
+				validator: (content: string | null | undefined): boolean => !content || sanitizedTextLength(content) <= 500,
+				message: "Comment cannot exceed 500 characters",
+			},
 		},
 		postId: {
 			type: Schema.Types.ObjectId,
@@ -14,6 +18,14 @@ const commentSchema = new Schema<IComment>(
 			required: true,
 			index: true, // Index for fast queries by postid
 		},
+    image: {
+      type: new Schema({
+        docId: { type: Schema.Types.ObjectId, ref: "Image", required: true },
+        publicId: { type: String, required: true }, url: { type: String, required: true },
+        width: Number, height: Number,
+      }, { _id: false }),
+      default: null,
+    },
 		parentId: {
 			type: Schema.Types.ObjectId,
 			ref: "Comment",

@@ -26,15 +26,15 @@ const SearchBox: React.FC = () => {
       onSubmit={handleSearchSubmit}
       sx={{
         position: "relative",
-        borderRadius: 9999,
+        borderRadius: 2,
         backgroundColor: isFocused
           ? "transparent"
-          : alpha(theme.palette.common.white, 0.08),
-        border: `1px solid ${isFocused ? theme.palette.primary.main : "transparent"}`,
+          : theme.palette.background.paper,
+        border: `1px solid ${isFocused ? theme.palette.primary.main : theme.palette.divider}`,
         "&:hover": {
           backgroundColor: isFocused
             ? "transparent"
-            : alpha(theme.palette.common.white, 0.12),
+            : theme.palette.action.hover,
         },
         width: "100%",
         transition: "all 0.2s ease",

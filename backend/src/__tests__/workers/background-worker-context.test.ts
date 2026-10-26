@@ -7,7 +7,7 @@ import {
 } from "redis";
 import { getRequestContext } from "@/runtime/request-context";
 import { errorLogger, logger } from "@/utils/winston";
-import { FeedFanoutService } from "@/services/feed/feed-fanout.service";
+import { FeedReadService } from "@/services/feed/feed-read.service";
 import { NewFeedWarmCacheWorker } from "@/workers/_impl/newFeedWarmCache.worker.impl";
 import { ProfileSyncWorker } from "@/workers/_impl/profile-sync.worker.impl";
 import { createTrendingWorker } from "./trending-worker.test-helper";
@@ -823,16 +823,17 @@ describe("background worker request-context roots", () => {
     expect(terminalRecord.error.message).to.equal(prewarmFailure.message);
   });
 
-  it("propagates original FeedFanout DAO and cache failures without local logging", async () => {
+  it("propagates original feed-warmer DAO and cache failures without local logging", async () => {
     const queryFailure = new Error("feed query failed");
-    const queryService = new FeedFanoutService(
+    const queryService = new FeedReadService(
       {
         getNewFeedWithCursor: sinon.stub().rejects(queryFailure),
       } as any,
-      {} as any,
       {
         setWithTags: sinon.stub().resolves(),
       } as any,
+      {} as any,
+      {} as any,
     );
     const serviceError = sinon.stub(logger, "error");
     let caught: unknown;
@@ -846,7 +847,7 @@ describe("background worker request-context roots", () => {
     expect(caught).to.equal(queryFailure);
 
     const cacheFailure = new Error("cache write failed");
-    const cacheService = new FeedFanoutService(
+    const cacheService = new FeedReadService(
       {
         getNewFeedWithCursor: sinon.stub().resolves({
           data: [],
@@ -855,10 +856,11 @@ describe("background worker request-context roots", () => {
           prevCursor: undefined,
         }),
       } as any,
-      {} as any,
       {
         setWithTags: sinon.stub().rejects(cacheFailure),
       } as any,
+      {} as any,
+      {} as any,
     );
     caught = undefined;
     try {

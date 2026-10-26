@@ -1,6 +1,7 @@
 import { UserPublicId, PostPublicId, MongoId } from "@/types/branded";
 import mongoose, { Document } from "mongoose";
 import { Types } from "mongoose";
+import type { AttachmentSummary } from "@/types/customPosts/posts.types";
 
 export type CommentDeletionReason =
   | "comment_removed"
@@ -8,6 +9,7 @@ export type CommentDeletionReason =
   | "account_banned";
 
 export interface IComment extends Document {
+  image?: AttachmentSummary | null;
   _id: mongoose.Types.ObjectId;
   content: string;
   postId: mongoose.Types.ObjectId;
@@ -62,6 +64,7 @@ export interface CommentsPaginationResponse {
 }
 
 export interface TransformedComment {
+  image?: Omit<AttachmentSummary, "docId"> | null;
   id: string;
   content: string;
   postPublicId: PostPublicId;
@@ -85,6 +88,7 @@ export interface TransformedComment {
 
 // interface for populated comment from lean() query
 export interface PopulatedCommentLean {
+  image?: AttachmentSummary | null;
   _id: Types.ObjectId;
   content: string;
   postId: { publicId: PostPublicId };

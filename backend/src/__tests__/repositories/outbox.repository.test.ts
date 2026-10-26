@@ -7,6 +7,9 @@ import {
   OutboxRepository,
 } from "@/repositories/outbox.repository";
 import { createRecord } from "../helpers/outbox-fixtures";
+import { mongo } from "mongoose";
+import { isRetryableTransactionBodyError } from "@/database/transaction-retry";
+import { serializeError } from "@/utils/error-serialization";
 
 describe("OutboxRepository query and update contracts", () => {
   const eventId = "507f1f77bcf86cd799439011";
@@ -21,6 +24,16 @@ describe("OutboxRepository query and update contracts", () => {
     repository = new OutboxRepository(OutboxModel);
   });
   afterEach(() => sandbox.restore());
+
+  it("retains the Mongo cause, stack and retry evidence when an outbox insert fails", async () => {
+    const failure = new mongo.MongoServerError({ message: "write conflict", code: 112, errorLabels: ["TransientTransactionError"] });
+    sandbox.stub(OutboxModel, "create").rejects(failure);
+    const result = await repository.saveEvent("TestEvent", { payload: "fixture" }, "event-trace").catch((error: unknown) => error);
+    expect(result).to.be.instanceOf(Error);
+    expect((result as Error).cause).to.equal(failure);
+    expect(serializeError(result).cause?.stack).to.equal(failure.stack);
+    expect(isRetryableTransactionBodyError(result)).to.equal(true);
+  });
 
   function useUpdateResult(
     modifiedCount: number,

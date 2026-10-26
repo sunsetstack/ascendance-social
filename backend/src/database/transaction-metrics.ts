@@ -10,6 +10,16 @@ export interface TransactionMetrics {
   availablePermits: number;
 }
 
+export interface TransactionObservabilityMetrics extends TransactionMetrics {
+  commitAttempts: number;
+  bodyRetries: number;
+  commitRetries: number;
+  ambiguousTransactions: number;
+  rejectedTransactions: number;
+  durationSeconds: number;
+  queueWaitSeconds: number;
+}
+
 type MutableTransactionMetrics = {
   totalAttempts: number;
   successfulTransactions: number;
@@ -28,6 +38,32 @@ const EMPTY_METRICS = (): MutableTransactionMetrics => ({
 
 export class TransactionMetricsTracker {
   private metrics: MutableTransactionMetrics = EMPTY_METRICS();
+  private commitAttempts = 0;
+  private bodyRetries = 0;
+  private commitRetries = 0;
+  private ambiguousTransactions = 0;
+  private rejectedTransactions = 0;
+  private durationSeconds = 0;
+  private queueWaitSeconds = 0;
+
+  recordCommitAttempt(): void { this.commitAttempts++; }
+  recordRetry(phase: "body" | "commit"): void {
+    if (phase === "body") this.bodyRetries++;
+    else this.commitRetries++;
+  }
+  recordAmbiguous(): void { this.ambiguousTransactions++; }
+  recordRejected(): void { this.rejectedTransactions++; }
+  recordDuration(durationMs: number, queueWaitMs: number): void {
+    this.durationSeconds += Math.max(0, durationMs) / 1000;
+    this.queueWaitSeconds += Math.max(0, queueWaitMs) / 1000;
+  }
+
+  observabilitySnapshot(semaphore: TransactionSemaphore): TransactionObservabilityMetrics {
+    return { ...this.snapshot(semaphore), commitAttempts: this.commitAttempts,
+      bodyRetries: this.bodyRetries, commitRetries: this.commitRetries,
+      ambiguousTransactions: this.ambiguousTransactions, rejectedTransactions: this.rejectedTransactions,
+      durationSeconds: this.durationSeconds, queueWaitSeconds: this.queueWaitSeconds };
+  }
 
   recordAttempt(): void {
     this.metrics.totalAttempts++;
@@ -64,5 +100,8 @@ export class TransactionMetricsTracker {
 
   reset(): void {
     this.metrics = EMPTY_METRICS();
+    this.commitAttempts = this.bodyRetries = this.commitRetries = 0;
+    this.ambiguousTransactions = this.rejectedTransactions = 0;
+    this.durationSeconds = this.queueWaitSeconds = 0;
   }
 }

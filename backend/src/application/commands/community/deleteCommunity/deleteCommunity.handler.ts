@@ -74,13 +74,25 @@ export class DeleteCommunityCommandHandler implements ICommandHandler<
 
     await this.uow.executeInTransaction(async () => {
       const session = requireTransactionSession();
+      const currentCommunity = await this.communityRepository.findById(
+        asMongoId(communityId.toString()),
+      );
+      if (!currentCommunity) {
+        throw Errors.notFound("Community");
+      }
+
       const postIds =
         await this.contentCleanupService.findPostIdsByCommunity(communityId);
       const cleanup =
         await this.contentCleanupService.deletePostGraph(postIds);
 
       await this.communityMemberRepository.deleteByCommunityId(communityId);
-      await this.communityRepository.delete(asMongoId(communityId.toString()));
+      const deleted = await this.communityRepository.delete(
+        asMongoId(communityId.toString()),
+      );
+      if (!deleted) {
+        throw Errors.notFound("Community");
+      }
       await this.userModel.updateMany(
         { "joinedCommunities._id": communityId },
         { $pull: { joinedCommunities: { _id: communityId } } },
@@ -103,6 +115,23 @@ export class DeleteCommunityCommandHandler implements ICommandHandler<
             asset.url,
             asUserPublicId(userPublicId),
             asUserPublicId(asset.ownerPublicId || userPublicId),
+          ),
+        );
+      }
+      const communityMediaStorageIds = new Set(
+        [
+          currentCommunity.avatarStoragePublicId,
+          currentCommunity.coverPhotoStoragePublicId,
+        ].filter(
+          (storagePublicId): storagePublicId is string =>
+            typeof storagePublicId === "string" && storagePublicId.length > 0,
+        ),
+      );
+      for (const storagePublicId of communityMediaStorageIds) {
+        await this.eventBus.queueTransactional(
+          new ImageAssetCleanupRequestedEvent(
+            "community-deleted",
+            storagePublicId,
           ),
         );
       }

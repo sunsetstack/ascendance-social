@@ -21,7 +21,7 @@ describe("RedisSessionModule", () => {
 
     const module = new RedisSessionModule(client as any);
 
-    await module.saveSession(
+    await module.save(
       {
         sid: "session-1",
         publicId: "user-1",

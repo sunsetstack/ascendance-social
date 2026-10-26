@@ -174,11 +174,18 @@ describe("OutboxWorker ownership", () => {
     ]);
     sinon.assert.calledOnce(terminalLogger);
     sinon.assert.calledOnce(warningLogger);
-    sinon.assert.calledOnce(infoLogger);
-    expect(logArguments(infoLogger.firstCall)[1]).to.include({
-      event: "outbox.event.processed",
-      eventId: "507f1f77bcf86cd799439012",
-    });
+    expect(infoLogger.getCalls().map((call) => {
+      const details = logArguments(call)[1] as { event: string; eventId: string };
+      return [details.event, details.eventId];
+    })).to.deep.equal([
+      ["outbox.event.claimed", "507f1f77bcf86cd799439011"],
+      ["outbox.handler.started", "507f1f77bcf86cd799439011"],
+      ["outbox.handler.acknowledged", "507f1f77bcf86cd799439011"],
+      ["outbox.event.claimed", "507f1f77bcf86cd799439012"],
+      ["outbox.handler.started", "507f1f77bcf86cd799439012"],
+      ["outbox.handler.acknowledged", "507f1f77bcf86cd799439012"],
+      ["outbox.event.processed", "507f1f77bcf86cd799439012"],
+    ]);
     const order = [
       handleSpy.firstCall,
       outboxRepository.markHandlerProcessed.firstCall,

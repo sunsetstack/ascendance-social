@@ -85,7 +85,8 @@ describe("RepostPostCommandHandler", () => {
 		};
 
 		handler = new RepostPostCommandHandler(
-			mockUnitOfWork as any,
+      { run: (_input: unknown, _user: unknown, write: (image: null) => Promise<unknown>) => mockUnitOfWork.executeInTransaction(() => write(null)) } as any,
+      { setSignal: sinon.stub().resolves() } as any,
 			mockPostReadRepository as any,
 			mockPostWriteRepository as any,
 			mockUserReadRepository as any,

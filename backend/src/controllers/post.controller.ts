@@ -4,6 +4,7 @@ import { CommandBus } from "@/application/common/buses/command.bus";
 import { QueryBus } from "@/application/common/buses/query.bus";
 import { CreatePostCommand } from "@/application/commands/post/createPost/createPost.command";
 import { DeletePostCommand } from "@/application/commands/post/deletePost/deletePost.command";
+import { UpdatePostCommand } from "@/application/commands/post/updatePost/updatePost.command";
 import { RecordPostViewCommand } from "@/application/commands/post/recordPostView/recordPostView.command";
 import { RepostPostCommand } from "@/application/commands/post/repostPost/repostPost.command";
 import { UnrepostPostCommand } from "@/application/commands/post/unrepostPost/unrepostPost.command";
@@ -16,16 +17,8 @@ import { SearchPostsByTagsQuery } from "@/application/queries/post/searchPostsBy
 import { GetAllTagsQuery } from "@/application/queries/tags/getAllTags/getAllTags.query";
 import { GetUserByHandleQuery } from "@/application/queries/users/getUserByHandle/getUserByHandle.query";
 import { Errors } from "@/utils/errors";
-import {
-  ITag,
-  PaginationResult,
-  PostDTO,
-  TypedRequest,
-  UserPostsResult,
-} from "@/types";
-import { streamPaginatedResponse } from "@/utils/streamResponse";
+import { TypedRequest } from "@/types";
 import { safeFireAndForget } from "@/utils/helpers";
-import { PublicUserDTO } from "@/services/dto.service";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 import { asPostPublicId, asUserPublicId } from "@/types/branded";
@@ -38,14 +31,12 @@ import type {
   SearchByTagsQuery as SearchByTagsQueryParams,
   SlugParams,
   UserPostsQuery,
+  UpdatePostBody,
 } from "@/utils/schemas/post.schemas";
 import type { HandleParams as UserHandleParams } from "@/utils/schemas/user.schemas";
 
 /** Regex to strip file extensions (e.g., .png, .jpg) from slugs/IDs */
 const FILE_EXTENSION_REGEX = /\.[a-z0-9]{2,5}$/i;
-
-/** Threshold for enabling streaming responses (items) */
-import { STREAM_THRESHOLD } from "@/utils/post-helpers";
 
 type EmptyParams = Record<string, never>;
 type EmptyBody = Record<string, never>;
@@ -63,7 +54,7 @@ export class PostController {
   ): Promise<void> => {
     const { decodedUser, file } = req;
     // Zod validation middleware has already processed and validated req.body
-    const { body: bodyText, communityPublicId } = req.body;
+    const { body: bodyText, communityPublicId, tags } = req.body;
 
     if (!file && (!bodyText || bodyText.trim().length === 0)) {
       throw Errors.validation("Provide either an image or body text", {
@@ -81,15 +72,22 @@ export class PostController {
     const command = new CreatePostCommand(
       decodedUser.publicId,
       bodyText,
-      undefined,
+      tags,
       undefined,
       originalName,
       communityPublicId,
       file?.buffer,
       file?.mimetype,
     );
-    const postDTO = await this.commandBus.dispatch<PostDTO>(command);
+    const postDTO = await this.commandBus.dispatch(command);
     res.status(201).json(postDTO);
+  };
+
+  updatePost = async (req: TypedRequest<PostPublicIdParams, UpdatePostBody>, res: Response): Promise<void> => {
+    if (!req.decodedUser?.publicId) throw Errors.authentication("User information missing");
+    const publicId = asPostPublicId(req.params.publicId);
+    await this.commandBus.dispatch(new UpdatePostCommand(publicId, req.decodedUser.publicId, req.body.body));
+    res.json(await this.queryBus.execute(new GetPostByPublicIdQuery(publicId, req.decodedUser.publicId)));
   };
 
   listPosts = async (
@@ -109,20 +107,11 @@ export class PostController {
       userId,
     );
 
-    const posts = await this.queryBus.execute<PaginationResult<PostDTO>>(
+    const posts = await this.queryBus.execute(
       new GetPostsQuery(page, limit, userId),
     );
 
-    if (posts.data.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(res, posts.data, {
-        total: posts.total,
-        page: posts.page,
-        limit: posts.limit,
-        totalPages: posts.totalPages,
-      });
-    } else {
-      res.json(posts);
-    }
+    res.json(posts);
   };
 
   getPostsByUserPublicId = async (
@@ -139,18 +128,9 @@ export class PostController {
       sortBy,
       sortOrder,
     );
-    const posts = await this.queryBus.execute<UserPostsResult>(query);
+    const posts = await this.queryBus.execute(query);
 
-    if (posts.data.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(res, posts.data, {
-        total: posts.total,
-        page: posts.page,
-        limit: posts.limit,
-        totalPages: posts.totalPages,
-      });
-    } else {
-      res.json(posts);
-    }
+    res.json(posts);
   };
 
   getLikedPostsByUserPublicId = async (
@@ -169,18 +149,9 @@ export class PostController {
       sortBy,
       sortOrder,
     );
-    const posts = await this.queryBus.execute<PaginationResult<PostDTO>>(query);
+    const posts = await this.queryBus.execute(query);
 
-    if (posts.data.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(res, posts.data, {
-        total: posts.total,
-        page: posts.page,
-        limit: posts.limit,
-        totalPages: posts.totalPages,
-      });
-    } else {
-      res.json(posts);
-    }
+    res.json(posts);
   };
 
   getPostsByHandle = async (
@@ -191,10 +162,10 @@ export class PostController {
     const { page, limit } = req.query;
 
     const userQuery = new GetUserByHandleQuery(handle);
-    const user = await this.queryBus.execute<PublicUserDTO>(userQuery);
+    const user = await this.queryBus.execute(userQuery);
 
     const query = new GetPostsByUserQuery(user.publicId, page, limit);
-    const posts = await this.queryBus.execute<PaginationResult<PostDTO>>(query);
+    const posts = await this.queryBus.execute(query);
 
     res.status(200).json(posts);
   };
@@ -211,11 +182,11 @@ export class PostController {
         sanitizedSlug,
       );
     const post = looksLikeUUID
-      ? await this.queryBus.execute<PostDTO>(
-          new GetPostByPublicIdQuery(asPostPublicId(sanitizedSlug)),
+      ? await this.queryBus.execute(
+          new GetPostByPublicIdQuery(asPostPublicId(sanitizedSlug), viewerPublicId),
         )
-      : await this.queryBus.execute<PostDTO>(
-          new GetPostBySlugQuery(sanitizedSlug),
+      : await this.queryBus.execute(
+          new GetPostBySlugQuery(sanitizedSlug, viewerPublicId),
         );
 
     if (viewerPublicId && post.publicId) {
@@ -239,7 +210,7 @@ export class PostController {
       asPostPublicId(sanitizedPublicId),
       viewerPublicId,
     );
-    const postDTO = await this.queryBus.execute<PostDTO>(command);
+    const postDTO = await this.queryBus.execute(command);
 
     if (viewerPublicId) {
       safeFireAndForget(
@@ -264,23 +235,14 @@ export class PostController {
 
     const query = new SearchPostsByTagsQuery(tagArray, page, limit);
     const postDTO =
-      await this.queryBus.execute<PaginationResult<PostDTO>>(query);
+      await this.queryBus.execute(query);
 
-    if (postDTO.data.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(res, postDTO.data, {
-        total: postDTO.total,
-        page: postDTO.page,
-        limit: postDTO.limit,
-        totalPages: postDTO.totalPages,
-      });
-    } else {
-      res.status(200).json(postDTO);
-    }
+    res.status(200).json(postDTO);
   };
 
   listTags = async (_req: TypedRequest, res: Response): Promise<void> => {
     const query = new GetAllTagsQuery();
-    const result = await this.queryBus.execute<ITag[]>(query);
+    const result = await this.queryBus.execute(query);
     res.json(result);
   };
 
@@ -321,8 +283,11 @@ export class PostController {
       decodedUser.publicId,
       asPostPublicId(sanitizedPublicId),
       body,
+      req.file?.buffer,
+      req.file?.mimetype,
+      req.file?.originalname,
     );
-    const postDTO = await this.commandBus.dispatch<PostDTO>(command);
+    const postDTO = await this.commandBus.dispatch(command);
     res.status(201).json(postDTO);
   };
 

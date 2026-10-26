@@ -583,6 +583,11 @@ const attachCorrelationId = winston.format((info) => {
         requestContextValue(requestContext, "userId"),
       );
     }
+    for (const key of ["clientRequestId", "causedByClientRequestId"]) {
+      if (hasOwnProperty(requestContext, key)) {
+        attachIfMissing(info, key, () => requestContextValue(requestContext, key));
+      }
+    }
   } catch {
     // The contract formatter has already produced a safe envelope.
   }
@@ -688,22 +693,21 @@ const jsonLogFormat = createJsonLogFormat();
 const consoleLogFormat = createConsoleLogFormat();
 
 const isTest = process.env.NODE_ENV === "test";
-const isProduction = process.env.NODE_ENV === "production";
+const useJsonConsole = process.env.NODE_ENV === "production" || process.env.LOG_OUTPUT === "stdout";
 const logLevel = process.env.LOG_LEVEL || "info";
 const testTransport = isTest
   ? new winston.transports.Console({ silent: true })
   : null;
-const combinedTransport = isTest
+const combinedTransport = isTest || useJsonConsole
   ? null
   : new winston.transports.File({ filename: "app.log" });
-const productionConsoleTransport = isProduction
+const productionConsoleTransport = useJsonConsole && !isTest
   ? new winston.transports.Console({
-      format: jsonLogFormat,
       stderrLevels: ["error"],
     })
   : null;
 const developmentConsoleTransport =
-  !isProduction && !isTest
+  !useJsonConsole && !isTest
     ? new winston.transports.Console({
         format: consoleLogFormat,
       })
@@ -713,7 +717,7 @@ export const logger = winston.createLogger({
   level: logLevel,
   format: jsonLogFormat,
   transports: [
-    ...(isProduction ? [] : combinedTransport ? [combinedTransport] : []),
+    ...(useJsonConsole ? [] : combinedTransport ? [combinedTransport] : []),
     ...(testTransport ? [testTransport] : []),
     ...(productionConsoleTransport ? [productionConsoleTransport] : []),
     ...(developmentConsoleTransport ? [developmentConsoleTransport] : []),
@@ -725,7 +729,7 @@ export const httpLogger = winston.createLogger({
   format: jsonLogFormat,
   transports: isTest
     ? [...(testTransport ? [testTransport] : [])]
-    : isProduction
+    : useJsonConsole
       ? [...(productionConsoleTransport ? [productionConsoleTransport] : [])]
     : [
         new winston.transports.File({ filename: "http-requests.log" }),
@@ -738,7 +742,7 @@ export const behaviourLogger = winston.createLogger({
   format: jsonLogFormat,
   transports: isTest
     ? [...(testTransport ? [testTransport] : [])]
-    : isProduction
+    : useJsonConsole
       ? [...(productionConsoleTransport ? [productionConsoleTransport] : [])]
     : [
         new winston.transports.File({ filename: "app-behaviour.log" }),
@@ -752,10 +756,10 @@ export const errorLogger = winston.createLogger({
   transports: [
     ...(isTest
       ? []
-      : isProduction
+      : useJsonConsole
         ? []
         : [new winston.transports.File({ filename: "errors.log" })]),
-    ...(!isProduction && combinedTransport ? [combinedTransport] : []),
+    ...(!useJsonConsole && combinedTransport ? [combinedTransport] : []),
     ...(testTransport ? [testTransport] : []),
     ...(productionConsoleTransport ? [productionConsoleTransport] : []),
     ...(developmentConsoleTransport ? [developmentConsoleTransport] : []),
@@ -767,7 +771,7 @@ export const detailedRequestLogger = winston.createLogger({
   format: jsonLogFormat,
   transports: isTest
     ? [...(testTransport ? [testTransport] : [])]
-    : isProduction
+    : useJsonConsole
       ? [...(productionConsoleTransport ? [productionConsoleTransport] : [])]
     : [
         new winston.transports.File({ filename: "detailed-requests.log" }),
@@ -780,7 +784,7 @@ export const redisLogger = winston.createLogger({
   format: createJsonLogFormat(),
   transports: isTest
     ? [...(testTransport ? [testTransport] : [])]
-    : isProduction
+    : useJsonConsole
       ? [...(productionConsoleTransport ? [productionConsoleTransport] : [])]
     : [
         new winston.transports.File({ filename: "redis.log" }),

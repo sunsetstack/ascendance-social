@@ -14,6 +14,7 @@ import { IPost, PostDTO } from "@/types";
 import { TOKENS } from "@/types/tokens";
 import { getPostAuthorCommunityRole } from "./getPostAuthorCommunityRole";
 import { buildPostViewerContext } from "./getPostViewerContext";
+import type { UserPublicId } from "@/types/branded";
 
 @injectable()
 export class GetPostByPublicIdQueryHandler implements IQueryHandler<
@@ -42,6 +43,10 @@ export class GetPostByPublicIdQueryHandler implements IQueryHandler<
       throw Errors.notFound("Post");
     }
 
+    return this.toViewerDTO(post, query.viewerPublicId);
+  }
+
+  async toViewerDTO(post: IPost, viewerPublicId?: UserPublicId): Promise<PostDTO> {
     const dto = this.dtoService.toPostDTO(post);
 
     const authorCommunityRole = await getPostAuthorCommunityRole(
@@ -52,10 +57,10 @@ export class GetPostByPublicIdQueryHandler implements IQueryHandler<
       dto.authorCommunityRole = authorCommunityRole;
     }
 
-    if (query.viewerPublicId) {
+    if (viewerPublicId) {
       const viewerContext = await buildPostViewerContext(
         post,
-        query.viewerPublicId,
+        viewerPublicId,
         {
           postReadRepository: this.postReadRepository,
           userReadRepository: this.userReadRepository,
@@ -66,10 +71,7 @@ export class GetPostByPublicIdQueryHandler implements IQueryHandler<
       );
 
       if (viewerContext) {
-        dto.isLikedByViewer = viewerContext.isLikedByViewer;
-        dto.isFavoritedByViewer = viewerContext.isFavoritedByViewer;
-        dto.isRepostedByViewer = viewerContext.isRepostedByViewer;
-        dto.canDelete = viewerContext.canDelete;
+        Object.assign(dto, viewerContext);
       }
     }
 

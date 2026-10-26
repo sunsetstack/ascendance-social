@@ -52,6 +52,7 @@ export class CommentRepository extends BaseRepository<IComment> {
     return {
       id: comment._id.toString(),
       content: comment.content,
+      image: comment.image ? { publicId: comment.image.publicId, url: comment.image.url, width: comment.image.width, height: comment.image.height } : null,
       postPublicId: comment.postId?.publicId ?? "",
       parentId: comment.parentId ? comment.parentId.toString() : null,
       replyCount: comment.replyCount,
@@ -351,39 +352,6 @@ export class CommentRepository extends BaseRepository<IComment> {
         .exec();
       if (!comment || !comment.userId) return false;
       return comment.userId.toString() === userId;
-    } catch (error) {
-      handleMongoError(error);
-    }
-  }
-
-  /**
-   * Hard-delete all comments associated with a post.
-   * Returns the number of documents removed.
-   */
-  async deleteCommentsByPostId(postId: string): Promise<number> {
-    try {
-      const session = this.getSession();
-      const result = await this.model
-        .deleteMany({ postId }, { session })
-        .exec();
-      return result.deletedCount || 0;
-    } catch (error) {
-      handleMongoError(error);
-    }
-  }
-
-  /**
-   * Hard-delete all comments authored by a user.
-   * Returns the number of documents removed.
-   */
-  async deleteCommentsByUserId(userId: string): Promise<number> {
-    try {
-      const session = this.getSession();
-
-      const result = await this.model
-        .deleteMany({ userId }, { session })
-        .exec();
-      return result.deletedCount || 0;
     } catch (error) {
       handleMongoError(error);
     }

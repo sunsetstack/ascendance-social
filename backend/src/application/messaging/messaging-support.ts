@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { sessionALS } from "@/database/UnitOfWork";
 import { ConversationRepository } from "@/repositories/conversation.repository";
 import { MessageRepository } from "@/repositories/message.repository";
 import type { IUserReadRepository } from "@/repositories/interfaces";
@@ -70,6 +69,10 @@ export async function ensureConversationAccess(
     throw Errors.forbidden("You do not have access to this conversation");
   }
 
+  if (conversation.hiddenFor?.some((id) => id.toString() === userInternalId)) {
+    throw Errors.notFound("Conversation");
+  }
+
   return {
     conversation,
     userInternalId,
@@ -81,22 +84,12 @@ export async function resolveParticipantPublicIds(
   userReadRepository: Pick<IUserReadRepository, "findById">,
   participantIds: string[],
 ): Promise<UserPublicId[]> {
-  const alsSession = sessionALS.getStore();
-  void alsSession;
-
-  const docs = await Promise.all(
-    participantIds.map(async (participantId) => {
-      try {
-        return await userReadRepository.findById(participantId as MongoId);
-      } catch {
-        return null;
-      }
-    }),
-  );
-
-  return docs
-    .map((doc) => doc?.publicId)
-    .filter((publicId): publicId is UserPublicId => Boolean(publicId));
+  const publicIds: UserPublicId[] = [];
+  for (const participantId of participantIds) {
+    const user = await userReadRepository.findById(participantId as MongoId);
+    if (user?.publicId) publicIds.push(user.publicId);
+  }
+  return publicIds;
 }
 
 export function mapConversationSummary(
@@ -138,8 +131,10 @@ export function mapConversationSummary(
     });
   }
 
+  const clearedAt = getConversationClearedAt(conversation, userInternalId);
   const hasLastMessage =
     conversation.lastMessage &&
+    (!clearedAt || conversation.lastMessage.createdAt > clearedAt) &&
     (conversation.lastMessage.publicId || conversation.lastMessage._id);
   const lastMessage =
     hasLastMessage && conversation.lastMessage
@@ -159,9 +154,20 @@ export function mapConversationSummary(
     unreadCount: unreadCounts[userInternalId] || 0,
     isGroup: Boolean(conversation.isGroup),
     isClosed: Boolean(conversation.isClosed),
+    isLocked: Boolean(conversation.isLocked),
     closedReason: conversation.closedReason,
     title: conversation.title,
   };
+}
+
+export function getConversationClearedAt(
+  conversation: Pick<HydratedConversation, "clearedAt">,
+  userInternalId: string,
+): Date | undefined {
+  const value = conversation.clearedAt instanceof Map
+    ? conversation.clearedAt.get(userInternalId)
+    : conversation.clearedAt?.[userInternalId];
+  return value ? new Date(value) : undefined;
 }
 
 export function assertMessageOwnedByUser(
@@ -205,4 +211,22 @@ export async function requireMessage(
     throw Errors.notFound("Message");
   }
   return message;
+}
+
+export async function requireWritableMessageConversation(
+  conversations: ConversationRepository,
+  message: IMessage,
+  userInternalId: string,
+): Promise<ConversationAccessResult["conversation"]> {
+  const existing = await conversations.findById(message.conversation.toString() as MongoId);
+  if (!existing) throw Errors.notFound("Conversation");
+  const conversation = await conversations.acquireForMutation(existing.publicId);
+  const clearedAt = getConversationClearedAt(conversation, userInternalId);
+  if (!getParticipantIds(conversation.participants).includes(userInternalId) ||
+      conversation.hiddenFor?.some((id) => id.toString() === userInternalId) ||
+      (clearedAt && message.createdAt <= clearedAt)) {
+    throw Errors.notFound("Message");
+  }
+  if (conversation.isLocked) throw Errors.forbidden("Conversation locked by admin");
+  return conversation;
 }

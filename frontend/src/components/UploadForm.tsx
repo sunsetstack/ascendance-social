@@ -23,11 +23,13 @@ const UploadForm: React.FC<UploadFormProps> = ({ onClose }) => {
       <Box
         sx={{
           position: "relative",
-          width: "100%",
+          width: "calc(100% - 24px)",
           maxWidth: 600,
           bgcolor: "background.paper",
           borderRadius: 2,
-          boxShadow: 24,
+          border: 1,
+          borderColor: "divider",
+          boxShadow: "0 20px 60px rgba(0, 0, 0, 0.4)",
           maxHeight: "90vh",
           overflow: "auto",
         }}
@@ -51,7 +53,9 @@ const UploadForm: React.FC<UploadFormProps> = ({ onClose }) => {
         </Box>
 
         {/* CreatePost Component */}
-        <CreatePost onClose={onClose} />
+        <Box sx={{ p: { xs: 1.5, sm: 2 } }}>
+          <CreatePost onClose={onClose} />
+        </Box>
       </Box>
     </Modal>
   );

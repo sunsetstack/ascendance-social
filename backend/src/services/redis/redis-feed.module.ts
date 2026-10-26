@@ -1,7 +1,4 @@
 import { RedisClientType } from "redis";
-import { CacheKeyBuilder, RedisFeedType } from "@/utils/cache/CacheKeyBuilder";
-import { redisLogger } from "@/utils/winston";
-import { addRequestContextBreadcrumb } from "@/runtime/request-context";
 import {
   decodeFeedCursor,
   encodeFeedCursor,
@@ -16,9 +13,6 @@ import {
 import { Errors } from "@/utils/errors";
 import type { MetricsService } from "@/metrics/metrics.service";
 
-/** How long per-user feed ZSETs live in Redis (1 hour). */
-const FEED_TTL_SECONDS = 3600;
-const FEED_WRITE_BATCH_SIZE = 500;
 const MAX_SNAPSHOT_STRING_LENGTH = 128;
 
 export class RedisFeedModule {
@@ -37,227 +31,12 @@ export class RedisFeedModule {
     >,
   ) {}
 
-  async addToFeed(
-    userId: string,
-    postId: string,
-    timestamp: number,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<void> {
-    const feedKey = CacheKeyBuilder.getRedisFeedKey(feedType, userId);
-    const pipeline = this.client.multi();
-    pipeline.zAdd(feedKey, { score: timestamp, value: postId });
-    pipeline.expire(feedKey, FEED_TTL_SECONDS);
-    await pipeline.exec();
-  }
-
-  async addToFeedsBatch(
-    userIds: string[],
-    postId: string,
-    timestamp: number,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<void> {
-    if (userIds.length === 0) return;
-
-    const uniqueUserIds = [...new Set(userIds)];
-    for (let i = 0; i < uniqueUserIds.length; i += FEED_WRITE_BATCH_SIZE) {
-      const batch = uniqueUserIds.slice(i, i + FEED_WRITE_BATCH_SIZE);
-      const pipeline = this.client.multi();
-      for (const userId of batch) {
-        const feedKey = CacheKeyBuilder.getRedisFeedKey(feedType, userId);
-        pipeline.zAdd(feedKey, { score: timestamp, value: postId });
-        pipeline.expire(feedKey, FEED_TTL_SECONDS);
-      }
-      await pipeline.exec();
-    }
-  }
-
-  async getFeedPage(
-    userId: string,
-    page: number,
-    limit: number,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<string[]> {
-    const feedKey = CacheKeyBuilder.getRedisFeedKey(feedType, userId);
-    const start = (page - 1) * limit;
-    const end = start + limit - 1;
-
-    redisLogger.debug("getFeedPage called", {
-      userId,
-      feedType,
-      page,
-      limit,
-      feedKey,
-    });
-
-    try {
-      const result = await this.client.zRange(feedKey, start, end, {
-        REV: true,
-      });
-      redisLogger.info("getFeedPage result", {
-        userId,
-        feedType,
-        count: result.length,
-      });
-      return result;
-    } catch {
-      addRequestContextBreadcrumb("redis.feed.page.fallback", {
-        operation: "getFeedPage",
-        feedType,
-        page,
-      });
-      redisLogger.warn("Redis feed page fallback", {
-        event: "redis.feed.page.fallback",
-        feedType,
-        page,
-      });
-      return [];
-    }
-  }
-
-  async getFeedWithCursor(
-    userId: string,
-    limit: number,
-    cursor?: string,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<{
-    ids: string[];
-    hasMore: boolean;
-    nextCursor?: string;
-    snapshotId?: string;
-    consumedOffset?: number;
-  }> {
-    const key = CacheKeyBuilder.getRedisFeedKey(feedType, userId);
-    const scope = hashFeedCursorScope(["redis-feed", key]);
-    const decoded = cursor
-      ? decodeFeedCursor(cursor, {
-          feed: "for-you",
-          orders: [FEED_CURSOR_ORDER.FOR_YOU],
-          source: "redis",
-        })
-      : null;
-    if (decoded && decoded.scope !== scope) {
-      throw Errors.validation("Feed cursor does not match this user feed");
-    }
-
-    const snapshotRef = decoded
-      ? {
-          id: decoded.snapshotId,
-          snapshot: await this.requireFeedCursorSnapshot(decoded.snapshotId, {
-            feed: "for-you",
-            order: FEED_CURSOR_ORDER.FOR_YOU,
-            source: "redis",
-            scope,
-          }),
-        }
-      : await this.getOrCreateFeedCursorSnapshot(
-          `redis-feed:${key}`,
-          async () => this.buildRedisSnapshot(key, "for-you", FEED_CURSOR_ORDER.FOR_YOU, scope),
-        );
-
-    return this.paginateSnapshot(
-      snapshotRef,
-      decoded?.offset ?? 0,
-      limit,
-      (offset) =>
-        encodeFeedCursor({
-          feed: "for-you",
-          order: FEED_CURSOR_ORDER.FOR_YOU,
-          source: "redis",
-          snapshotId: snapshotRef.id,
-          offset,
-          scope,
-        }),
-    );
-  }
-
-  async removeFromFeed(
-    userId: string,
-    postId: string,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<void> {
-    await this.client.zRem(
-      CacheKeyBuilder.getRedisFeedKey(feedType, userId),
-      postId,
-    );
-  }
-
-  async removeFromFeedsBatch(
-    userIds: string[],
-    postId: string,
-    feedType: RedisFeedType = "for_you",
-  ): Promise<void> {
-    if (userIds.length === 0) return;
-
-    const uniqueUserIds = [...new Set(userIds)];
-    for (let i = 0; i < uniqueUserIds.length; i += FEED_WRITE_BATCH_SIZE) {
-      const batch = uniqueUserIds.slice(i, i + FEED_WRITE_BATCH_SIZE);
-      const pipeline = this.client.multi();
-      for (const userId of batch) {
-        pipeline.zRem(CacheKeyBuilder.getRedisFeedKey(feedType, userId), postId);
-      }
-      await pipeline.exec();
-    }
-  }
-
-  async removePostsFromFeedsBatch(
-    userIds: string[],
-    postIds: string[],
-    feedType: RedisFeedType = "for_you",
-  ): Promise<void> {
-    if (userIds.length === 0 || postIds.length === 0) return;
-
-    const uniqueUserIds = [...new Set(userIds)];
-    const uniquePostIds = [...new Set(postIds)];
-    for (let index = 0; index < uniqueUserIds.length; index += FEED_WRITE_BATCH_SIZE) {
-      const batch = uniqueUserIds.slice(index, index + FEED_WRITE_BATCH_SIZE);
-      const pipeline = this.client.multi();
-      for (const userId of batch) {
-        pipeline.zRem(
-          CacheKeyBuilder.getRedisFeedKey(feedType, userId),
-          uniquePostIds,
-        );
-      }
-      await pipeline.exec();
-    }
-  }
-
-  async invalidateFeed(userId: string, feedType: RedisFeedType = "for_you"): Promise<void> {
-    await this.client.del(CacheKeyBuilder.getRedisFeedKey(feedType, userId));
-  }
-
-  async getFeedSize(userId: string, feedType: RedisFeedType = "for_you"): Promise<number> {
-    return await this.client.zCard(
-      CacheKeyBuilder.getRedisFeedKey(feedType, userId),
-    );
-  }
-
   async updateTrendingScore(
     postId: string,
     score: number,
     key = "trending:global",
   ): Promise<void> {
     await this.client.zAdd(key, [{ score: Number(score), value: postId }]);
-  }
-
-  async incrTrendingScore(
-    postId: string,
-    delta: number,
-    key = "trending:global",
-  ): Promise<number> {
-    const newScore = await this.client.zIncrBy(key, delta, postId);
-    return Number(newScore);
-  }
-
-  async getTrendingRange(
-    start: number,
-    end: number,
-    key = "trending:posts",
-  ): Promise<string[]> {
-    return await this.client.zRange(key, start, end, { REV: true });
-  }
-
-  async getTrendingCount(key = "trending:posts"): Promise<number> {
-    return await this.client.zCard(key);
   }
 
   async getTrendingFeedWithCursor(
@@ -289,7 +68,7 @@ export class RedisFeedModule {
         }
       : await this.getOrCreateFeedCursorSnapshot(
           `redis-feed:${key}`,
-          async () => this.buildRedisSnapshot(key, "trending", FEED_CURSOR_ORDER.TRENDING),
+          async () => this.buildRedisSnapshot(key),
         );
 
     return this.paginateSnapshot(
@@ -408,12 +187,7 @@ export class RedisFeedModule {
     return snapshot;
   }
 
-  private async buildRedisSnapshot(
-    key: string,
-    feed: "for-you" | "trending",
-    order: typeof FEED_CURSOR_ORDER.FOR_YOU | typeof FEED_CURSOR_ORDER.TRENDING,
-    scope?: string,
-  ): Promise<FeedCursorSnapshot> {
+  private async buildRedisSnapshot(key: string): Promise<FeedCursorSnapshot> {
     const items = await this.client.zRangeWithScores(
       key,
       0,
@@ -425,10 +199,9 @@ export class RedisFeedModule {
     }
     return {
       version: 1,
-      feed,
-      order,
+      feed: "trending",
+      order: FEED_CURSOR_ORDER.TRENDING,
       source: "redis",
-      scope,
       entries: items.map((item) => ({
         _id: item.value,
         publicId: item.value,
@@ -521,7 +294,7 @@ export class RedisFeedModule {
             key !== "_id" &&
             key !== "publicId" &&
             key !== "visibleIdentityId" &&
-            key !== "score",
+            key !== "score" && key !== "reason" && key !== "rankBreakdown" && key !== "formatMix",
         ) ||
         typeof entry._id !== "string" ||
         typeof entry.publicId !== "string" ||
@@ -533,6 +306,22 @@ export class RedisFeedModule {
         entry.publicId.length > MAX_SNAPSHOT_STRING_LENGTH ||
         entry.visibleIdentityId.length > MAX_SNAPSHOT_STRING_LENGTH ||
         (entry.score !== undefined && !Number.isFinite(entry.score)) ||
+        (entry.rankBreakdown !== undefined && (
+          entry.rankBreakdown === null || typeof entry.rankBreakdown !== "object" ||
+          Object.keys(entry.rankBreakdown).length !== 4 ||
+          ["freshness", "popularity", "topic", "format"].some((key) => {
+            const value = entry.rankBreakdown![key as keyof typeof entry.rankBreakdown];
+            return typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1;
+          }) || entry.score === undefined ||
+          Math.abs(Object.values(entry.rankBreakdown).reduce((sum, value) => sum + value, 0) - entry.score) > 1e-12
+        )) ||
+        (entry.formatMix !== undefined && (
+          entry.formatMix === null || typeof entry.formatMix !== "object" || Object.keys(entry.formatMix).length !== 3 ||
+          !["text", "image", "mixed"].includes(entry.formatMix.format) ||
+          typeof entry.formatMix.share !== "number" || !Number.isFinite(entry.formatMix.share) || entry.formatMix.share <= 0 || entry.formatMix.share > 1 ||
+          !Number.isSafeInteger(entry.formatMix.basePosition) || entry.formatMix.basePosition < 0
+        )) ||
+        (entry.reason !== undefined && (typeof entry.reason !== "string" || !/^(?:(?:chosen|learned):[a-z]{1,32}|format:(?:text|image|mixed)|activity)$/.test(entry.reason))) ||
         entryIds.has(entry._id)
       ) {
         throw Errors.validation("Invalid feed cursor snapshot entry");

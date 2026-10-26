@@ -10,7 +10,7 @@ import type { IWorker } from "./IWorker";
 /**
  * @pattern Template Method
  *
- * Abstract base for workers that poll on a fixed interval.
+ * Abstract base for workers that poll between completed ticks.
  *
  * Lifecycle:
  *  - `start()` fires `tick()` immediately, then re-schedules via setTimeout
@@ -65,6 +65,10 @@ export abstract class BasePollingWorker implements IWorker {
   /** The actual work performed each cycle. Implement in subclass. */
   protected abstract tick(): Promise<void>;
 
+  protected getPollDelayMs(): number {
+    return this.intervalMs;
+  }
+
   private schedule(): void {
     if (!this.isRunning) return;
     this.currentTick = this.executeTick();
@@ -95,7 +99,7 @@ export abstract class BasePollingWorker implements IWorker {
       },
     ).finally(() => {
       if (this.isRunning) {
-        this.timer = setTimeout(() => this.schedule(), this.intervalMs);
+        this.timer = setTimeout(() => this.schedule(), this.getPollDelayMs());
       }
     });
   }

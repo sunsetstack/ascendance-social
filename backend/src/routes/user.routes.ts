@@ -12,6 +12,8 @@ import {
   loginEmailRateLimit,
   loginIpRateLimit,
   registerIpRateLimit,
+  resendVerificationAccountRateLimit,
+  resendVerificationIpRateLimit,
   resetPasswordIpRateLimit,
   verifyEmailAddressRateLimit,
   verifyEmailIpRateLimit,
@@ -118,6 +120,14 @@ export class UserRoutes {
       new ValidationMiddleware({ body: verifyEmailSchema }).validate(),
       verifyEmailAddressRateLimit,
       asyncHandler(this.authController.verifyEmail),
+    );
+
+    this.router.post(
+      "/resend-verification-email",
+      resendVerificationIpRateLimit,
+      this.authAllowUnverified,
+      resendVerificationAccountRateLimit,
+      asyncHandler(this.authController.resendVerificationEmail),
     );
 
     // Public user data endpoints

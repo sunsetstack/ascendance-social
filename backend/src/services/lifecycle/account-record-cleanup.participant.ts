@@ -47,6 +47,8 @@ export class MongoAccountRecordCleanupParticipant
     }
 
     this.addProfileAssets(imageAssets, user);
+    await db.collection("feedprofiles").deleteMany({ userId }, { session });
+    await db.collection("feedsignals").deleteMany({ userId }, { session });
 
     await db
       .collection("userpreferences")

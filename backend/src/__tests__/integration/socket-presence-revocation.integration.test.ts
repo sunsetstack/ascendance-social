@@ -12,7 +12,7 @@ import {
 import type { Socket as ServerSocket } from "socket.io";
 import { WebSocketServer } from "@/server/socketServer";
 import { RedisService } from "@/services/redis.service";
-import { RedisAuthSessionStore } from "@/services/redis/capabilities/redis-auth-session.store";
+import { RedisSessionModule } from "@/services/redis/redis-session.module";
 import { AuthSessionService } from "@/services/auth-session.service";
 import { AuthMiddlewareService } from "@/middleware/authentication.middleware";
 import { MetricsService } from "@/metrics/metrics.service";
@@ -70,6 +70,7 @@ describe("Socket presence revocation with real Redis", function () {
   );
   let sandbox: sinon.SinonSandbox;
   let redis: RedisService;
+  let sessionStore: RedisSessionModule;
   let sessions: AuthSessionService;
   let server: WebSocketServer;
   let http: HttpServer;
@@ -105,6 +106,7 @@ describe("Socket presence revocation with real Redis", function () {
     const internalId = new Types.ObjectId();
     const metrics = sandbox.createStubInstance(MetricsService);
     redis = new RedisService(metrics);
+    sessionStore = new RedisSessionModule(redis.clientInstance);
     await redis.clientInstance.connect();
     duplicate = sandbox.spy(redis.clientInstance, "duplicate");
     const users = sandbox.createStubInstance(UserReadRepository);
@@ -130,7 +132,7 @@ describe("Socket presence revocation with real Redis", function () {
         }),
     );
     sessions = new AuthSessionService(
-      new RedisAuthSessionStore(redis),
+      sessionStore,
       users,
       redis,
     );
@@ -235,7 +237,7 @@ describe("Socket presence revocation with real Redis", function () {
     if (redis) {
       await redis.unsubscribeAll();
       if (redis.clientInstance.isOpen) {
-        await redis.removeAuthSession(sid, userId);
+        await sessionStore.remove(sid, userId);
         await redis.clientInstance.quit();
       }
     }

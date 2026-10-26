@@ -2,7 +2,6 @@ import { IEventHandler } from "@/application/common/interfaces/event-handler.int
 import { inject, injectable } from "tsyringe";
 import { UserUsernameChangedEvent } from "./user-interaction.event";
 import { RedisService } from "@/services/redis.service";
-import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 import { EventRegistry } from "@/application/common/events/event-registry";
@@ -28,9 +27,6 @@ export class UserUsernameChangedHandler implements IEventHandler<UserUsernameCha
 
     const userTags = [`user_data:${event.userPublicId}`];
     await this.redis.invalidateByTags(userTags);
-
-    const feedTags = [CacheKeyBuilder.getUserFeedTag(event.userPublicId)];
-    await this.redis.invalidateByTags(feedTags);
 
     await this.redis.publish(EventRegistry.redisChannels.profileSnapshotUpdates, {
       type: EventRegistry.socketPayloadTypes.usernameChanged,

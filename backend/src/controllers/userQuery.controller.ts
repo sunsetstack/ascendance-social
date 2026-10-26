@@ -12,7 +12,6 @@ import type {
 } from "@/utils/schemas/user.schemas";
 import { TOKENS } from "@/types/tokens";
 import { asUserPublicId } from "@/types/branded";
-import { PublicUserDTO } from "@/services/dto.service";
 
 type EmptyParams = Record<string, never>;
 type EmptyBody = Record<string, never>;
@@ -29,7 +28,7 @@ export class UserQueryController {
   ): Promise<void> => {
     const { handle } = req.params;
     const query = new GetUserByHandleQuery(handle);
-    const userDTO = await this.queryBus.execute<PublicUserDTO>(query);
+    const userDTO = await this.queryBus.execute(query);
     res.status(200).json(userDTO);
   };
 
@@ -39,7 +38,7 @@ export class UserQueryController {
   ): Promise<void> => {
     const { publicId } = req.params;
     const query = new GetUserByPublicIdQuery(asUserPublicId(publicId));
-    const userDTO = await this.queryBus.execute<PublicUserDTO>(query);
+    const userDTO = await this.queryBus.execute(query);
     res.status(200).json(userDTO);
   };
 

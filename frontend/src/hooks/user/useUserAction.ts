@@ -18,7 +18,7 @@ import {
   WhoToFollowResponse,
 } from "../../types";
 import { devError } from "@/lib/devLogger";
-import { postInteractionQueryFilter, updatePostInCache } from "../posts/postCache";
+import { postInteractionQueryFilter, updatePostInCache, updatePostCaches } from "../posts/postCache";
 import { latestFeedAction, traceFeedClient } from "@/features/feed/feedTrace";
 
 /**All hooks use public ids */
@@ -153,6 +153,7 @@ export const useFollowUser = () => {
       };
     },
     onSuccess: (_data, publicId) => {
+      void queryClient.resetQueries({ queryKey: ["followingFeed"] });
       queryClient.invalidateQueries({
         queryKey: ["isFollowing", publicId],
         exact: true,
@@ -281,17 +282,20 @@ export const useLikePost = () => {
       const detail = queryClient.getQueryData<IPost>(["post", postPublicId]);
       const shouldLike = !(detail ?? previousPosts[0]?.post)?.isLikedByViewer;
       traceFeedClient("feed.cache.like.optimistic", { postPublicId, shouldLike, affectedQueries: previousPosts.length });
-      queryClient.setQueriesData(postInteractionQueryFilter, (data: unknown) =>
-        updatePostInCache(data, postPublicId, (post) => ({
-          ...post,
-          likes: Math.max(
-            0,
-            post.likes + Number(shouldLike) - Number(!!post.isLikedByViewer),
-          ),
-          isLikedByViewer: shouldLike,
-        })),
-      );
+      updatePostCaches(queryClient, postPublicId, (post) => ({
+        ...post,
+        likes: Math.max(
+          0,
+          post.likes + Number(shouldLike) - Number(!!post.isLikedByViewer),
+        ),
+        isLikedByViewer: shouldLike,
+      }));
       return { previousPosts };
+    },
+    onSuccess: (updated, postPublicId) => {
+      updatePostCaches(queryClient, postPublicId, (post) => ({ ...post,
+        likes: updated.likes, isLikedByViewer: updated.isLikedByViewer, viewerLikeStateKnown: true,
+      }));
     },
     onError: (_error, postPublicId, context) => {
       traceFeedClient("feed.cache.like.rollback", { postPublicId, affectedQueries: context?.previousPosts.length ?? 0 });
@@ -314,9 +318,6 @@ export const useLikePost = () => {
     },
   });
 };
-
-// Legacy alias for backward compatibility
-export const useLikeImage = useLikePost;
 
 // Check if current LOGGED IN user is following the profile they're visiting by publicid
 export const useIsFollowing = (

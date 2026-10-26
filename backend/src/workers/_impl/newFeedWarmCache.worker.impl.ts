@@ -1,6 +1,6 @@
 import { inject, injectable } from "tsyringe";
 import * as cron from "node-cron";
-import { FeedService } from "@/services/feed/feed.service";
+import { FeedReadService } from "@/services/feed/feed-read.service";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 import {
@@ -21,8 +21,8 @@ export class NewFeedWarmCacheWorker {
   private shutdown?: Promise<void>;
 
   constructor(
-    @inject(TOKENS.Services.Feed)
-    private readonly feedService: FeedService,
+    @inject(TOKENS.Services.FeedRead)
+    private readonly feedReadService: FeedReadService,
   ) {}
 
   async init(): Promise<void> {
@@ -93,7 +93,7 @@ export class NewFeedWarmCacheWorker {
 
   private async run(): Promise<void> {
     logger.info("Running new feed warm cache worker...");
-    await this.feedService.prewarmNewFeed();
+    await this.feedReadService.prewarmNewFeed();
     logger.info("New feed warm cache worker completed successfully");
   }
 

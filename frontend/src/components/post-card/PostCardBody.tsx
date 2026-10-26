@@ -24,7 +24,8 @@ export const PostCardBody: React.FC<PostCardBodyProps> = ({ body, hasImage }) =>
 				lineHeight: 1.5,
 				whiteSpace: "pre-wrap",
 				wordBreak: "break-word",
-				mb: hasImage ? 1.5 : 0,
+				mb: hasImage ? 0.5 : 0,
+				fontSize: "1.125rem",
 			}}
 		>
 			<RichText

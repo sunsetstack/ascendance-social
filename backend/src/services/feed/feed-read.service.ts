@@ -2,12 +2,9 @@ import { inject, injectable } from "tsyringe";
 import type { RedisService } from "../redis.service";
 import type { DTOService } from "../dto.service";
 import type { FeedEnrichmentService } from "./feed-enrichment.service";
-import type { FeedCoreService } from "./feed-core.service";
-import { AppError, Errors } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { CacheConfig } from "@/config/cacheConfig";
 import { CacheKeyBuilder } from "@/utils/cache/CacheKeyBuilder";
-import { asUserPublicId } from "@/types/branded";
 import { CoreFeed, FeedPost, PaginationResult, PostDTO } from "@/types";
 import { TOKENS } from "@/types/tokens";
 import type { IFeedReadDao } from "@/repositories/interfaces";
@@ -24,80 +21,7 @@ export class FeedReadService {
     @inject(TOKENS.Services.DTO) private readonly dtoService: DTOService,
     @inject(TOKENS.Services.FeedEnrichment)
     private readonly feedEnrichmentService: FeedEnrichmentService,
-    @inject(TOKENS.Services.FeedCore)
-    private readonly feedCoreService: FeedCoreService,
   ) {}
-
-  public async getPersonalizedFeed(
-    userId: string,
-    page: number,
-    limit: number,
-  ): Promise<PaginationResult<PostDTO>> {
-    logger.info(
-      `Running partitioned getPersonalizedFeed for userId: ${userId}`,
-    );
-    const safePage = Math.max(1, Math.floor(page || 1));
-    const safeLimit = Math.min(100, Math.max(1, Math.floor(limit || 20)));
-
-    try {
-      const coreFeedKey = CacheKeyBuilder.getCoreFeedKey(
-        userId,
-        safePage,
-        safeLimit,
-      );
-      let coreFeed = await this.redisService.getWithTags<CoreFeed>(coreFeedKey);
-
-      if (!coreFeed) {
-        logger.info("Core feed cache miss, generating...");
-        const cursorFeed =
-          await this.feedCoreService.generatePersonalizedCoreFeed(
-            asUserPublicId(userId),
-            safeLimit,
-          );
-        coreFeed = {
-          data: cursorFeed.data,
-          limit: safeLimit,
-          page: safePage,
-          total: 0,
-          totalPages: 0,
-          hasMore: cursorFeed.hasMore,
-          nextCursor: cursorFeed.nextCursor,
-          prevCursor: cursorFeed.prevCursor,
-        } as CoreFeed;
-
-        const tags = [
-          CacheKeyBuilder.getUserFeedTag(userId),
-          CacheKeyBuilder.getFeedPageTag(safePage),
-          CacheKeyBuilder.getFeedLimitTag(safeLimit),
-        ];
-        await this.redisService.setWithTags(coreFeedKey, coreFeed, tags, 300);
-      } else {
-        logger.info("Core feed cache hit");
-      }
-
-      const enrichedFeed =
-        await this.feedEnrichmentService.enrichFeedWithCurrentData(
-          coreFeed!.data,
-        );
-
-      return {
-        ...coreFeed,
-        data: this.mapToPostDTOArray(enrichedFeed),
-        total: coreFeed!.total ?? 0,
-        page: coreFeed!.page ?? safePage,
-        totalPages: coreFeed!.totalPages ?? 0,
-        limit: coreFeed!.limit ?? safeLimit,
-      };
-    } catch (error) {
-      if (error instanceof AppError) {
-        throw error;
-      }
-
-      throw Errors.internal("Could not generate personalized feed", {
-        cause: error,
-      });
-    }
-  }
 
   public async getTrendingFeed(
     page: number,
@@ -230,6 +154,49 @@ export class FeedReadService {
       page: cached.page ?? safePage,
       totalPages: cached.totalPages ?? 0,
     };
+  }
+
+  public async prewarmNewFeed(): Promise<void> {
+    logger.info("Pre-warming New feed cache...");
+    const limit = 20;
+    let cursor: string | undefined;
+    for (let page = 1; page <= 3; page++) {
+      const requestCursor = cursor;
+      const key = requestCursor
+        ? CacheKeyBuilder.getNewFeedCursorKey(requestCursor, limit)
+        : CacheKeyBuilder.getNewFeedKey(page, limit);
+      const cursorResult = await this.feedReadDao.getNewFeedWithCursor({
+        limit,
+        cursor: requestCursor,
+      });
+      const core: CoreFeed & { headCursor?: string } = {
+        data: cursorResult.data as FeedPost[],
+        limit,
+        page,
+        total: 0,
+        totalPages: 0,
+        hasMore: cursorResult.hasMore,
+        nextCursor: cursorResult.nextCursor,
+        prevCursor: cursorResult.prevCursor,
+        headCursor: cursorResult.prevCursor,
+      };
+      cursor = cursorResult.nextCursor;
+      await this.redisService.setWithTags(
+        key,
+        core,
+        [
+          CacheKeyBuilder.getNewFeedTag(),
+          CacheKeyBuilder.getFeedPageTag(page),
+          CacheKeyBuilder.getFeedLimitTag(limit),
+        ],
+        3600,
+      );
+      logger.info(`Pre-warmed New feed page ${page}`);
+      if (!cursorResult.nextCursor || !cursorResult.hasMore) {
+        break;
+      }
+    }
+    logger.info("New feed cache pre-warming complete");
   }
 
   private async getNewFeedDelta(

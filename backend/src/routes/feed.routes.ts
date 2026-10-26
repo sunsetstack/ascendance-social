@@ -11,6 +11,8 @@ import {
   feedPreviewQuerySchema,
   newFeedQuerySchema,
   trendingTagsQuerySchema,
+  interestFeedQuerySchema,
+  selectInterestsSchema,
 } from "@/utils/schemas/feed.schemas";
 
 @injectable()
@@ -31,6 +33,17 @@ export class FeedRoutes {
   }
 
   private initializeRoutes(): void {
+    this.router.get("/following", this.auth,
+      new ValidationMiddleware({ query: feedPaginationQuerySchema }).validate(),
+      asyncHandler(this.controller.getFollowingFeed));
+    this.router.get("/interests", this.optionalAuth, asyncHandler(this.controller.getInterests));
+    this.router.put("/interests", this.auth,
+      new ValidationMiddleware({ body: selectInterestsSchema }).validate(),
+      asyncHandler(this.controller.selectInterests));
+    this.router.delete("/preferences", this.auth, asyncHandler(this.controller.resetPreferences));
+    this.router.get("/interests/posts", this.optionalAuth,
+      new ValidationMiddleware({ query: interestFeedQuerySchema }).validate(),
+      asyncHandler(this.controller.getInterestFeed));
     this.router.get(
       "/preview",
       this.optionalAuth,

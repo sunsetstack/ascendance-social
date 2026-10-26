@@ -31,14 +31,6 @@ export class ImageUploadHandler implements IEventHandler<ImageUploadedEvent> {
 
       tagsToInvalidate.push(CacheKeyBuilder.getTrendingFeedTag());
 
-      // invalidate uploader's own feeds
-      tagsToInvalidate.push(
-        CacheKeyBuilder.getUserFeedTag(event.uploaderPublicId),
-      );
-      tagsToInvalidate.push(
-        CacheKeyBuilder.getUserForYouFeedTag(event.uploaderPublicId),
-      );
-
       logger.info(
         `[IMAGE_UPLOAD_HANDLER] Getting followers for user: ${event.uploaderPublicId}`,
       );
@@ -62,28 +54,12 @@ export class ImageUploadHandler implements IEventHandler<ImageUploadedEvent> {
         `[IMAGE_UPLOAD_HANDLER] Total affected users: ${affectedUsers.length}`,
       );
 
-      // Batch processing to prevent Redis pipeline overflow or event loop blocking
+      // Publish audience updates in batches
       const BATCH_SIZE = 500;
 
       if (affectedUsers.length > 0) {
         for (let i = 0; i < affectedUsers.length; i += BATCH_SIZE) {
           const batch = affectedUsers.slice(i, i + BATCH_SIZE);
-          const batchTags: string[] = [];
-          const batchPatterns: string[] = [];
-
-          batch.forEach((userId) => {
-            // Tags for invalidation
-            batchTags.push(CacheKeyBuilder.getUserFeedTag(userId));
-            batchTags.push(CacheKeyBuilder.getUserForYouFeedTag(userId));
-
-            // Patterns for cleanup
-            batchPatterns.push(...CacheKeyBuilder.getUserFeedPatterns(userId));
-          });
-
-          // Execute batch invalidation
-          await this.redis.invalidateByTags(batchTags);
-          await this.redis.deletePatterns(batchPatterns);
-
           // Publish real-time updates for this batch
           await this.redis.publish(
             EventRegistry.redisChannels.feedUpdates,
@@ -108,15 +84,6 @@ export class ImageUploadHandler implements IEventHandler<ImageUploadedEvent> {
         `[IMAGE_UPLOAD_HANDLER] Invalidating cache with ${tagsToInvalidate.length} tags`,
       );
       await this.redis.invalidateByTags(tagsToInvalidate);
-
-      // pattern-based cleanup (backup) for any keys without tag metadata
-      const patterns = [
-        ...CacheKeyBuilder.getUserFeedPatterns(event.uploaderPublicId),
-        CacheKeyBuilder.getTrendingFeedPattern(),
-        // do NOT clear new_feed - lazy refresh only
-      ];
-
-      await this.redis.deletePatterns(patterns);
 
       // do NOT publish global discovery feed update - new feed refreshes on-demand only
 

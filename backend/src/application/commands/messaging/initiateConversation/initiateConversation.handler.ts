@@ -82,6 +82,13 @@ export class InitiateConversationCommandHandler implements ICommandHandler<
         });
       }
 
+      await this.unitOfWork.executeInTransaction(async () => {
+        const current = await this.conversationRepository.acquireForMutation(conversation!.publicId);
+        await this.conversationRepository.findOneAndUpdate({ _id: current._id }, {
+          $pull: { hiddenFor: new mongoose.Types.ObjectId(userInternalId) },
+        });
+      });
+
       const hydratedConversation =
         await this.conversationRepository.findByPublicId(
           conversation.publicId,

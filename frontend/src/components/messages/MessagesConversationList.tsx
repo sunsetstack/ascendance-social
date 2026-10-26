@@ -14,6 +14,8 @@ import {
   useTheme,
 } from "@mui/material";
 import type { ConversationSummaryDTO } from "../../types";
+import LockOutlined from "@mui/icons-material/LockOutlined";
+import { ConversationActions } from "./ConversationActions";
 
 interface MessagesConversationListProps {
   conversations: ConversationSummaryDTO[];
@@ -26,6 +28,8 @@ interface MessagesConversationListProps {
   onRetry: () => void;
   onLoadMore: () => void;
   onSelect: (conversationId: string) => void;
+  onRemoved: (conversationId: string) => void;
+  isAdmin: boolean;
 }
 
 export const formatTimestamp = (timestamp: string): string => {
@@ -87,6 +91,8 @@ export const MessagesConversationList: FC<MessagesConversationListProps> = ({
   onRetry,
   onLoadMore,
   onSelect,
+  onRemoved,
+  isAdmin,
 }) => {
   const theme = useTheme();
 
@@ -124,100 +130,114 @@ export const MessagesConversationList: FC<MessagesConversationListProps> = ({
             );
             const lastMessagePreview =
               conversation.lastMessage?.body ?? "No messages yet";
-            const isSelected =
-              conversation.publicId === selectedConversationId;
+            const isSelected = conversation.publicId === selectedConversationId;
 
             return (
-              <ListItemButton
+              <ConversationActions
                 key={conversation.publicId}
-                selected={isSelected}
-                onClick={() => onSelect(conversation.publicId)}
-                sx={{
-                  alignItems: "flex-start",
-                  py: 2,
-                  px: 2,
-                  borderRight: isSelected
-                    ? `2px solid ${theme.palette.primary.main}`
-                    : "2px solid transparent",
-                  bgcolor: isSelected
-                    ? alpha(theme.palette.primary.main, 0.05)
-                    : "transparent",
-                  "&:hover": {
-                    bgcolor: alpha(theme.palette.text.primary, 0.03),
-                  },
-                }}
+                conversation={conversation}
+                isAdmin={isAdmin}
+                onRemoved={onRemoved}
               >
-                <ListItemAvatar sx={{ minWidth: 56 }}>
-                  <Avatar
-                    src={avatarUrl}
-                    alt={title}
-                    sx={{ width: 40, height: 40 }}
-                  >
-                    {otherParticipant?.username?.charAt(0).toUpperCase()}
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary={
-                    <Box
-                      sx={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "baseline",
-                      }}
+                <ListItemButton
+                  selected={isSelected}
+                  onClick={() => onSelect(conversation.publicId)}
+                  sx={{
+                    alignItems: "flex-start",
+                    py: 2,
+                    px: 2,
+                    pr: 5,
+                    borderRight: isSelected
+                      ? `2px solid ${theme.palette.primary.main}`
+                      : "2px solid transparent",
+                    bgcolor: isSelected
+                      ? alpha(theme.palette.primary.main, 0.05)
+                      : "transparent",
+                    "&:hover": {
+                      bgcolor: alpha(theme.palette.text.primary, 0.03),
+                    },
+                  }}
+                >
+                  <ListItemAvatar sx={{ minWidth: 56 }}>
+                    <Avatar
+                      src={avatarUrl}
+                      alt={title}
+                      sx={{ width: 40, height: 40 }}
                     >
+                      {otherParticipant?.username?.charAt(0).toUpperCase()}
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={
                       <Box
                         sx={{
                           display: "flex",
-                          alignItems: "center",
-                          gap: 0.5,
-                          overflow: "hidden",
+                          justifyContent: "space-between",
+                          alignItems: "baseline",
                         }}
                       >
-                        <Typography
-                          variant="subtitle1"
-                          fontWeight={700}
-                          noWrap
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 0.5,
+                            overflow: "hidden",
+                          }}
                         >
-                          {title}
-                        </Typography>
-                        {otherParticipant?.handle && (
                           <Typography
-                            variant="body2"
-                            color="text.secondary"
+                            variant="subtitle1"
+                            fontWeight={700}
                             noWrap
                           >
-                            @{otherParticipant.handle}
+                            {title}
                           </Typography>
-                        )}
+                          {otherParticipant?.handle && (
+                            <Typography
+                              variant="body2"
+                              color="text.secondary"
+                              noWrap
+                            >
+                              @{otherParticipant.handle}
+                            </Typography>
+                          )}
+                          {conversation.isLocked && (
+                            <LockOutlined
+                              fontSize="small"
+                              aria-label="Conversation locked by admin"
+                            />
+                          )}
+                        </Box>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ ml: 1, whiteSpace: "nowrap" }}
+                        >
+                          {conversation.lastMessageAt
+                            ? formatTimestamp(conversation.lastMessageAt)
+                            : ""}
+                        </Typography>
                       </Box>
+                    }
+                    secondary={
                       <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ ml: 1, whiteSpace: "nowrap" }}
+                        variant="body2"
+                        color={
+                          conversation.unreadCount > 0
+                            ? "text.primary"
+                            : "text.secondary"
+                        }
+                        fontWeight={conversation.unreadCount > 0 ? 700 : 400}
+                        noWrap
+                        sx={{ mt: 0.5 }}
                       >
-                        {conversation.lastMessageAt
-                          ? formatTimestamp(conversation.lastMessageAt)
-                          : ""}
+                        {conversation.isLocked
+                          ? "Conversation locked by admin"
+                          : lastMessagePreview}
                       </Typography>
-                    </Box>
-                  }
-                  secondary={
-                    <Typography
-                      variant="body2"
-                      color={
-                        conversation.unreadCount > 0
-                          ? "text.primary"
-                          : "text.secondary"
-                      }
-                      fontWeight={conversation.unreadCount > 0 ? 700 : 400}
-                      noWrap
-                      sx={{ mt: 0.5 }}
-                    >
-                      {lastMessagePreview}
-                    </Typography>
-                  }
-                />
-              </ListItemButton>
+                    }
+                  />
+                </ListItemButton>
+              </ConversationActions>
             );
           })}
 
@@ -232,9 +252,7 @@ export const MessagesConversationList: FC<MessagesConversationListProps> = ({
               }}
             >
               <Button onClick={onLoadMore} disabled={isFetchingNextPage}>
-                {isFetchingNextPage
-                  ? "Loading..."
-                  : "Load more conversations"}
+                {isFetchingNextPage ? "Loading..." : "Load more conversations"}
               </Button>
             </Box>
           )}

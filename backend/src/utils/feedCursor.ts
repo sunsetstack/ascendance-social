@@ -123,6 +123,9 @@ export interface FeedCursorSnapshotEntry {
   publicId: string;
   visibleIdentityId: string;
   score?: number;
+  reason?: string;
+  rankBreakdown?: { freshness: number; popularity: number; topic: number; format: number };
+  formatMix?: { format: "text" | "image" | "mixed"; share: number; basePosition: number };
 }
 
 export interface FeedCursorSnapshot {

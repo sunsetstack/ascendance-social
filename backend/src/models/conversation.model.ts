@@ -51,6 +51,9 @@ const conversationSchema = new Schema<IConversation>(
       of: Number,
       default: {},
     },
+    hiddenFor: [{ type: Schema.Types.ObjectId, ref: "User" }],
+    clearedAt: { type: Map, of: Date, default: {} },
+    isLocked: { type: Boolean, default: false },
     isGroup: {
       type: Boolean,
       default: false,

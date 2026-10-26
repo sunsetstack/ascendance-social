@@ -10,6 +10,10 @@ describe("MessagingRoutes", () => {
   it("rejects multipart message attachments before the controller runs", async () => {
     const sendMessage = sinon.stub();
     const controller = {
+      deleteConversation: sinon.stub(),
+      purgeConversation: sinon.stub(),
+      lockConversation: sinon.stub(),
+      unlockConversation: sinon.stub(),
       deleteMessage: sinon.stub(),
       editMessage: sinon.stub(),
       getConversationMessages: sinon.stub(),
@@ -21,6 +25,7 @@ describe("MessagingRoutes", () => {
     const allowAuth: RequestHandler = (_req, _res, next) => next();
     const routes = new MessagingRoutes(controller as any, {
       required: sinon.stub().returns(allowAuth),
+      adminOnly: sinon.stub().returns(allowAuth),
     } as any);
     const app = express();
     app.use("/api/messaging", routes.getRouter());

@@ -15,6 +15,7 @@ import {
 import { postPublicIdSchema } from "@/utils/schemas/post.schemas";
 import { publicIdSchema as userPublicIdSchema } from "@/utils/schemas/user.schemas";
 import { TOKENS } from "@/types/tokens";
+import upload, { validateImageUpload } from "@/config/multer";
 
 @injectable()
 export class CommentRoutes {
@@ -93,6 +94,8 @@ export class CommentRoutes {
     this.router.post(
       "/posts/:postPublicId/comments",
       this.auth,
+      upload.single("image"),
+      validateImageUpload,
       new ValidationMiddleware({
         params: postPublicIdSchema,
         body: createCommentSchema,

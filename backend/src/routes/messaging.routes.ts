@@ -33,6 +33,7 @@ const parseMessageBody: RequestHandler = (req, res, next) => {
 export class MessagingRoutes {
   private readonly router: express.Router;
   private readonly auth: RequestHandler;
+  private readonly adminOnly: RequestHandler;
 
   constructor(
     @inject(TOKENS.Controllers.Messaging)
@@ -42,11 +43,36 @@ export class MessagingRoutes {
   ) {
     this.router = express.Router();
     this.auth = authMiddlewareService.required();
+    this.adminOnly = authMiddlewareService.adminOnly();
     this.initializeRoutes();
   }
 
   private initializeRoutes(): void {
     this.router.use(this.auth);
+
+    this.router.delete(
+      "/conversations/:conversationId",
+      new ValidationMiddleware({ params: conversationParamsSchema }).validate(),
+      asyncHandler(this.messagingController.deleteConversation),
+    );
+    this.router.delete(
+      "/conversations/:conversationId/purge",
+      this.adminOnly,
+      new ValidationMiddleware({ params: conversationParamsSchema }).validate(),
+      asyncHandler(this.messagingController.purgeConversation),
+    );
+    this.router.post(
+      "/conversations/:conversationId/lock",
+      this.adminOnly,
+      new ValidationMiddleware({ params: conversationParamsSchema }).validate(),
+      asyncHandler(this.messagingController.lockConversation),
+    );
+    this.router.delete(
+      "/conversations/:conversationId/lock",
+      this.adminOnly,
+      new ValidationMiddleware({ params: conversationParamsSchema }).validate(),
+      asyncHandler(this.messagingController.unlockConversation),
+    );
 
     this.router.get(
       "/conversations",

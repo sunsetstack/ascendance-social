@@ -1,6 +1,7 @@
 import { ICommandHandler } from "@/application/common/interfaces/command-handler.interface";
 import { DeleteMessageCommand } from "./deleteMessage.command";
 import { MessageRepository } from "@/repositories/message.repository";
+import { ConversationRepository } from "@/repositories/conversation.repository";
 import type { IUserReadRepository } from "@/repositories/interfaces";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { wrapError } from "@/utils/errors";
@@ -9,6 +10,7 @@ import { TOKENS } from "@/types/tokens";
 import {
   assertMessageOwnedByUser,
   requireMessage,
+  requireWritableMessageConversation,
   requireUserInternalId,
 } from "@/application/messaging/messaging-support";
 
@@ -18,6 +20,8 @@ export class DeleteMessageCommandHandler implements ICommandHandler<
   void
 > {
   constructor(
+    @inject(TOKENS.Repositories.Conversation)
+    private readonly conversationRepository: ConversationRepository,
     @inject(TOKENS.Repositories.Message)
     private readonly messageRepository: MessageRepository,
     @inject(TOKENS.Repositories.UserRead)
@@ -30,19 +34,24 @@ export class DeleteMessageCommandHandler implements ICommandHandler<
     try {
       const { userPublicId, messageId } = command;
 
-      const userInternalId = await requireUserInternalId(
-        this.userReadRepository,
-        userPublicId,
-      );
-      const message = await requireMessage(this.messageRepository, messageId);
-      assertMessageOwnedByUser(
-        message,
-        userPublicId,
-        userInternalId,
-        "You can only delete your own messages",
-      );
-
       await this.unitOfWork.executeInTransaction(async () => {
+        const userInternalId = await requireUserInternalId(
+          this.userReadRepository,
+          userPublicId,
+        );
+        const message = await requireMessage(this.messageRepository, messageId);
+        assertMessageOwnedByUser(
+          message,
+          userPublicId,
+          userInternalId,
+          "You can only delete your own messages",
+        );
+
+        await requireWritableMessageConversation(
+          this.conversationRepository,
+          message,
+          userInternalId,
+        );
         await this.messageRepository.updateMessage(messageId, {
           body: "message deleted by user",
           attachments: [],

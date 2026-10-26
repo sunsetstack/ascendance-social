@@ -7,7 +7,7 @@ import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRep
 import type { IPostWriteRepository } from "@/repositories/interfaces/IPostWriteRepository";
 import { PostViewRepository } from "@/repositories/postView.repository";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
-import { FeedService } from "@/services/feed/feed.service";
+import { FeedMetaService } from "@/services/feed/feed-meta.service";
 import { TransactionQueueService } from "@/services/transaction-queue.service";
 import { BloomFilterService } from "@/services/redis/bloom-filter.service";
 import { UnitOfWork } from "@/database/UnitOfWork";
@@ -46,7 +46,8 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
     private readonly postViewRepository: PostViewRepository,
     @inject(TOKENS.Repositories.UserRead)
     private readonly userReadRepository: IUserReadRepository,
-    @inject(TOKENS.Services.Feed) private readonly feedService: FeedService,
+    @inject(TOKENS.Services.FeedMeta)
+    private readonly feedMetaService: FeedMetaService,
     @inject(TOKENS.Services.TransactionQueue)
     private readonly transactionQueue: TransactionQueueService,
     @inject(TOKENS.Services.BloomFilter)
@@ -61,7 +62,7 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
           payload.postPublicId,
         );
         if (updatedPost?.viewsCount !== undefined) {
-          await this.feedService.updatePostViewMeta(
+          await this.feedMetaService.updatePostViewMeta(
             payload.postPublicId,
             updatedPost.viewsCount,
           );

@@ -4,6 +4,7 @@ import type { ContentFeatures } from "@/services/feed/interests.policy";
 export interface StoredFeedProfile {
   userId: mongoose.Types.ObjectId;
   selected: string[];
+  onboardingCompleted?: boolean;
   revision: number;
   resetAt: Date;
 }
@@ -25,6 +26,7 @@ export const contentFeaturesSchema = new Schema<ContentFeatures>({
 const profileSchema = new Schema<StoredFeedProfile>({
   userId: { type: Schema.Types.ObjectId, ref: "User", required: true, unique: true },
   selected: { type: [String], default: [] },
+  onboardingCompleted: { type: Boolean, default: false },
   revision: { type: Number, default: 0 },
   resetAt: { type: Date, default: () => new Date(0) },
 });

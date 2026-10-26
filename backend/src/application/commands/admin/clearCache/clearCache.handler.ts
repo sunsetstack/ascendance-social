@@ -29,6 +29,7 @@ export class ClearCacheCommandHandler implements ICommandHandler<
     if (patternToDelete === "all_feeds") {
       const patterns = [
         ...CacheKeyBuilder.getGlobalFeedPatterns(true),
+        `${CacheKeyBuilder.getTrendingTagsPrefix()}:*`,
         "tag:*",
         "key_tags:*",
       ];

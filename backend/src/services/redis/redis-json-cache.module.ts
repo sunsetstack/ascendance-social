@@ -54,16 +54,6 @@ export class RedisJsonCacheModule {
     return await this.client.ttl(key);
   }
 
-  async merge<T extends Record<string, unknown>>(
-    key: string,
-    value: Partial<T>,
-    ttl?: number,
-  ): Promise<void> {
-    const existing = await this.get<T>(key);
-    const next = existing ? { ...existing, ...value } : value;
-    await this.set(key, next, ttl);
-  }
-
   async del(keyPattern: string): Promise<number> {
     let cursor = 0;
     let deletedCount = 0;

@@ -14,6 +14,7 @@ import { RedisFeedModule } from "@/services/redis/redis-feed.module";
 import type { RedisService } from "@/services/redis.service";
 import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
 import { QueryBus } from "@/application/common/buses/query.bus";
+import { CommandBus } from "@/application/common/buses/command.bus";
 import { GetFeedPreviewQuery } from "@/application/queries/feed/getFeedPreview/getFeedPreview.query";
 import { GetFeedPreviewQueryHandler } from "@/application/queries/feed/getFeedPreview/getFeedPreview.handler";
 import { FeedController } from "@/controllers/feed.controller";
@@ -61,7 +62,7 @@ const databaseName = `ascendance_preview_regression_${randomUUID().replaceAll("-
     const bus = new QueryBus();
     bus.register(GetFeedPreviewQuery, new GetFeedPreviewQueryHandler(dao, enrichment));
     app = express();
-    app.use("/api/feed", new FeedRoutes(new FeedController(bus), auth as never).getRouter());
+    app.use("/api/feed", new FeedRoutes(new FeedController(bus, new CommandBus()), auth as never).getRouter());
     app.use("/api/posts", new PostRoutes({
       listTags: async (_req: Request, res: Response) => { res.json(await Tag.find({}).lean()); },
     } as never, auth as never).getRouter());
@@ -79,7 +80,7 @@ const databaseName = `ascendance_preview_regression_${randomUUID().replaceAll("-
     await Post.collection.insertMany(tagSets.map((postTags, index) => ({
       _id: ids[index], publicId: `preview-${index + 1}`, user: authorId,
       author: { _id: authorId, publicId: authorPublicId, handle: "author", username: "Old author", avatarUrl: "" },
-      body: `Preview post ${index + 1}`, tags: postTags,
+      body: index === 4 ? "" : `Preview post ${index + 1}`, tags: postTags,
       likesCount: index === 2 ? 8 : 0, commentsCount: 0, viewsCount: 0,
       type: index === 4 ? "repost" : "original", repostOf: index === 4 ? ids[3] : null,
       status: index === 5 ? "pending" : "active",

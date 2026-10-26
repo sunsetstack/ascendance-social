@@ -24,6 +24,7 @@ const OUTBOX_RETRY_JITTER_RATIO = 0.2;
 @injectable()
 export class OutboxWorker extends BasePollingWorker {
   private readonly workerId = randomUUID();
+  private continueImmediately = false;
 
   constructor(
     @inject(TOKENS.Repositories.Outbox)
@@ -35,7 +36,12 @@ export class OutboxWorker extends BasePollingWorker {
     super("OutboxWorker", 2000);
   }
 
+  protected getPollDelayMs(): number {
+    return this.continueImmediately ? 0 : this.intervalMs;
+  }
+
   protected async tick(): Promise<void> {
+    this.continueImmediately = false;
     const limit = 50;
     const configuredClaimMs = Number(
       process.env.OUTBOX_CLAIM_TIMEOUT_MS || "60000",
@@ -52,7 +58,10 @@ export class OutboxWorker extends BasePollingWorker {
       backlog.oldestPendingAt,
     );
 
-    if (pendingCount === 0) return;
+    if (pendingCount === 0) {
+      this.metricsService.recordOutboxPollCompleted();
+      return;
+    }
 
     let batchSize = 0;
     for (let index = 0; index < limit; index++) {
@@ -73,20 +82,36 @@ export class OutboxWorker extends BasePollingWorker {
         {
           correlationId,
           requestStartTime: process.hrtime.bigint(),
+          clientRequestId: record.clientRequestId,
+          causedByClientRequestId: record.causedByClientRequestId,
         },
         () => this.withClaimRenewal(eventId, staleClaimMs, async (assertOwnership) => {
+          logger.info("Outbox event claimed", {
+            event: "outbox.event.claimed", eventId, eventType: record.eventType, traceId,
+            retryAttempt: record.retries, handlers: handlers.map((handler) => handler.key),
+            processedHandlers: [...processedHandlers],
+          });
           addRequestContextBreadcrumb("worker.outbox.received", {
             eventId,
             eventType: record.eventType,
             retryAttempt: record.retries,
           });
           let handlerInProgress = false;
+          let currentHandler: string | undefined;
           try {
+            if (handlers.length === 0) {
+              this.metricsService.recordOutboxDeliveryIssue(record.eventType, "no_handlers");
+              throw new Error("Outbox event has no registered handlers");
+            }
             for (const handler of handlers) {
               assertOwnership();
               if (processedHandlers.has(handler.key)) {
                 continue;
               }
+              currentHandler = handler.key;
+              logger.info("Outbox handler started", {
+                event: "outbox.handler.started", eventId, eventType: record.eventType, traceId, handler: handler.key,
+              });
 
               addRequestContextBreadcrumb("worker.outbox.handler.enter", {
                 eventId,
@@ -112,6 +137,10 @@ export class OutboxWorker extends BasePollingWorker {
                 handler: handler.key,
               });
               processedHandlers.add(handler.key);
+              logger.info("Outbox handler checkpoint persisted", {
+                event: "outbox.handler.acknowledged", eventId, eventType: record.eventType, traceId, handler: handler.key,
+              });
+              currentHandler = undefined;
             }
 
             assertOwnership();
@@ -166,6 +195,7 @@ export class OutboxWorker extends BasePollingWorker {
                 },
               );
             } catch (markFailure) {
+              this.metricsService.recordOutboxDeliveryIssue(record.eventType, "failure_persistence");
               throw attachErrorBreadcrumbSnapshot(new AggregateError(
                 [error, markFailure],
                 "Outbox event failure could not be recorded",
@@ -207,6 +237,8 @@ export class OutboxWorker extends BasePollingWorker {
               operation: "worker.outbox.handle_message",
               operationId: correlationId,
               worker: "OutboxWorker",
+              handler: currentHandler,
+              phase: !handlers.length ? "routing" : handlerInProgress ? "handler" : "checkpoint_or_completion",
               messageType: record.eventType,
               messageId: eventId,
               attempt: retryAttempt,
@@ -224,6 +256,7 @@ export class OutboxWorker extends BasePollingWorker {
                 traceId,
                 correlationId,
               });
+              this.metricsService.recordOutboxDeliveryIssue(record.eventType, "ownership_lost");
             }
             return { processed: false };
           }
@@ -237,6 +270,8 @@ export class OutboxWorker extends BasePollingWorker {
         );
         logger.info("Outbox event processed", {
           event: "outbox.event.processed",
+          clientRequestId: record.clientRequestId,
+          causedByClientRequestId: record.causedByClientRequestId,
           worker: "OutboxWorker",
           eventId,
           eventType: record.eventType,
@@ -255,6 +290,8 @@ export class OutboxWorker extends BasePollingWorker {
       updatedBacklog.exhaustedCount,
       updatedBacklog.oldestPendingAt,
     );
+    this.metricsService.recordOutboxPollCompleted();
+    this.continueImmediately = batchSize === limit && updatedBacklog.pendingCount > 0;
   }
 
   private async withClaimRenewal<T>(

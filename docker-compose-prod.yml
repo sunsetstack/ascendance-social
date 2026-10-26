@@ -37,6 +37,7 @@ services:
       <<: &backend-environment
         ENABLE_WORKERS: "false"
         NODE_ENV: production
+        FEED_TRACE_ENABLED: ${FEED_TRACE_ENABLED:-false}
         TRUST_PROXY: ${TRUST_PROXY:-1}
         GIT_SHA: ${GIT_SHA:-unknown}
         MONGODB_URI: ${MONGODB_URI}
@@ -168,6 +169,7 @@ services:
     environment:
       CONTAINERS: "1"
       INFO: "1"
+      NETWORKS: "1"
       POST: "0"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -226,6 +228,7 @@ services:
 
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts:/etc/prometheus/alerts:ro
       - prometheus_data:/prometheus
 
     networks:

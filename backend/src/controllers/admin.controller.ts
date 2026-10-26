@@ -7,9 +7,7 @@ import { DeletePostCommand } from "@/application/commands/post/deletePost/delete
 import { DeleteUserCommand } from "@/application/commands/users/deleteUser/deleteUser.command";
 import { GetAllPostsAdminQuery } from "@/application/queries/post/getAllPostsAdmin/getAllPostsAdmin.query";
 import { GetDashboardStatsQuery } from "@/application/queries/admin/getDashboardStats/getDashboardStats.query";
-import { DashboardStatsResult } from "@/application/queries/admin/getDashboardStats/getDashboardStats.handler";
-import { PaginationResult, PostDTO, TypedRequest } from "@/types";
-import { streamPaginatedResponse } from "@/utils/streamResponse";
+import { TypedRequest } from "@/types";
 import { GetAllUsersAdminQuery } from "@/application/queries/admin/getAllUsersAdmin/getAllUsersAdmin.query";
 import { GetAdminUserProfileQuery } from "@/application/queries/admin/getAdminUserProfile/getAdminUserProfile.query";
 import { GetUserStatsQuery } from "@/application/queries/admin/getUserStats/getUserStats.query";
@@ -17,17 +15,14 @@ import { GetRecentActivityQuery } from "@/application/queries/admin/getRecentAct
 import { GetAuthActivityLogsQuery } from "@/application/queries/admin/getAuthActivityLogs/getAuthActivityLogs.query";
 import { GetRequestLogsQuery } from "@/application/queries/admin/getRequestLogs/getRequestLogs.query";
 import { BanUserCommand } from "@/application/commands/admin/banUser/banUser.command";
-import type { BanUserResult } from "@/application/commands/admin/banUser/banUser.handler";
 import { UnbanUserCommand } from "@/application/commands/admin/unbanUser/unbanUser.command";
 import { PromoteToAdminCommand } from "@/application/commands/admin/promoteToAdmin/promoteToAdmin.command";
 import { DemoteFromAdminCommand } from "@/application/commands/admin/demoteFromAdmin/demoteFromAdmin.command";
 import { ClearCacheCommand } from "@/application/commands/admin/clearCache/clearCache.command";
 import { DeleteCommentCommand } from "@/application/commands/comments/deleteComment/deleteComment.command";
 import { RemoveFavoriteAdminCommand } from "@/application/commands/favorite/removeFavoriteAdmin/removeFavoriteAdmin.command";
-import { AdminUserDTO } from "@/services/dto.service";
 import { escapeRegex } from "@/utils/sanitizers";
 import { TOKENS } from "@/types/tokens";
-import { ClearCacheResult } from "@/application/commands/admin/clearCache/clearCache.handler";
 import { asPostPublicId, asUserPublicId } from "@/types/branded";
 import type {
   AdminFavoriteParams,
@@ -44,8 +39,6 @@ import type { CommentIdParams } from "@/utils/schemas/comment.schemas";
 import type { PublicIdParams as PostPublicIdParams } from "@/utils/schemas/post.schemas";
 import type { PublicIdParams as UserPublicIdParams } from "@/utils/schemas/user.schemas";
 
-/** Threshold for enabling streaming responses (items) */
-import { STREAM_THRESHOLD } from "@/utils/post-helpers";
 import { UserAuthenticationLookup } from "@/application/ports/user-authentication-lookup";
 import { RedisService } from "@/services/redis.service";
 import { verifyPassword } from "@/application/common/policies/password.policy";
@@ -178,24 +171,15 @@ export class AdminUserController {
     };
     const query = new GetAllUsersAdminQuery(options);
     const result =
-      await this.queryBus.execute<PaginationResult<AdminUserDTO>>(query);
+      await this.queryBus.execute(query);
 
-    if (result.data.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(res, result.data, {
-        total: result.total,
-        page: result.page,
-        limit: result.limit,
-        totalPages: result.totalPages,
-      });
-    } else {
-      res.status(200).json(result);
-    }
+    res.status(200).json(result);
   };
 
   getUser = async (req: TypedRequest<UserPublicIdParams>, res: Response) => {
     const { publicId } = req.params;
     const query = new GetAdminUserProfileQuery(asUserPublicId(publicId));
-    const adminDTO = await this.queryBus.execute<AdminUserDTO>(query);
+    const adminDTO = await this.queryBus.execute(query);
     res.status(200).json(adminDTO);
   };
 
@@ -248,14 +232,14 @@ export class AdminUserController {
       decodedUser.publicId,
       reason,
     );
-    const result = await this.commandBus.dispatch<BanUserResult>(command);
+    const result = await this.commandBus.dispatch(command);
     res.status(200).json(result);
   };
 
   unbanUser = async (req: TypedRequest<UserPublicIdParams>, res: Response) => {
     const { publicId } = req.params;
     const command = new UnbanUserCommand(asUserPublicId(publicId));
-    const result = await this.commandBus.dispatch<AdminUserDTO>(command);
+    const result = await this.commandBus.dispatch(command);
     res.status(200).json(result);
   };
 
@@ -271,7 +255,7 @@ export class AdminUserController {
       sortBy,
       sortOrder,
     };
-    const posts = await this.queryBus.execute<PaginationResult<PostDTO>>(
+    const posts = await this.queryBus.execute(
       new GetAllPostsAdminQuery(
         options.page,
         options.limit,
@@ -280,16 +264,7 @@ export class AdminUserController {
       ),
     );
 
-    if (posts.data.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(res, posts.data, {
-        total: posts.total,
-        page: posts.page,
-        limit: posts.limit,
-        totalPages: posts.totalPages,
-      });
-    } else {
-      res.status(200).json(posts);
-    }
+    res.status(200).json(posts);
   };
 
   deleteImage = async (
@@ -339,7 +314,7 @@ export class AdminUserController {
 
   // === DASHBOARD STATS ===
   getDashboardStats = async (_req: TypedRequest, res: Response) => {
-    const stats = await this.queryBus.execute<DashboardStatsResult>(
+    const stats = await this.queryBus.execute(
       new GetDashboardStatsQuery(),
     );
     res.status(200).json(stats);
@@ -367,7 +342,7 @@ export class AdminUserController {
   ) => {
     const { publicId } = req.params;
     const command = new PromoteToAdminCommand(asUserPublicId(publicId));
-    const result = await this.commandBus.dispatch<AdminUserDTO>(command);
+    const result = await this.commandBus.dispatch(command);
     res.status(200).json(result);
   };
 
@@ -384,7 +359,7 @@ export class AdminUserController {
       asUserPublicId(publicId),
       adminPublicId,
     );
-    const result = await this.commandBus.dispatch<AdminUserDTO>(command);
+    const result = await this.commandBus.dispatch(command);
     res.status(200).json(result);
   };
 
@@ -393,7 +368,7 @@ export class AdminUserController {
     req: TypedRequest<EmptyParams, EmptyBody, CacheClearQuery>,
     res: Response,
   ) => {
-    const result = await this.commandBus.dispatch<ClearCacheResult>(
+    const result = await this.commandBus.dispatch(
       new ClearCacheCommand(req.query.pattern),
     );
     res.status(200).json(result);
@@ -444,18 +419,9 @@ export class AdminUserController {
     };
     const query = new GetRequestLogsQuery(options);
     const result =
-      await this.queryBus.execute<PaginationResult<unknown>>(query);
+      await this.queryBus.execute(query);
 
-    if (Array.isArray(result.data) && result.data.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(res, result.data, {
-        total: result.total,
-        page: result.page,
-        limit: result.limit,
-        totalPages: result.totalPages,
-      });
-    } else {
-      res.status(200).json(result);
-    }
+    res.status(200).json(result);
   };
 
   getAuthActivityLogs = async (
@@ -501,17 +467,8 @@ export class AdminUserController {
       search,
     };
     const query = new GetAuthActivityLogsQuery(options);
-    const result = await this.queryBus.execute<PaginationResult<unknown>>(query);
+    const result = await this.queryBus.execute(query);
 
-    if (Array.isArray(result.data) && result.data.length >= STREAM_THRESHOLD) {
-      streamPaginatedResponse(res, result.data, {
-        total: result.total,
-        page: result.page,
-        limit: result.limit,
-        totalPages: result.totalPages,
-      });
-    } else {
-      res.status(200).json(result);
-    }
+    res.status(200).json(result);
   };
 }

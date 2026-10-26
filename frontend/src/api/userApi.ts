@@ -12,7 +12,7 @@ import {
 } from "../types";
 import axios, { AxiosError } from "axios";
 import { devError } from "@/lib/devLogger";
-import { mapPost } from "@/lib/mappers";
+import { mapComment, mapPost } from "@/lib/mappers";
 
 /** Wraps an async API call, logging any error in development before re-throwing. */
 async function withDevError<T>(label: string, fn: () => Promise<T>): Promise<T> {
@@ -150,7 +150,7 @@ export const fetchUserComments = (
   withDevError("Error fetching user comments:", () =>
     axiosClient
       .get<CommentsPaginationResponse>(`/api/users/${userPublicId}/comments?page=${page}&limit=${limit}&sortBy=${sortBy}&sortOrder=${sortOrder}`)
-      .then((r) => r.data),
+      .then((r) => ({ ...r.data, comments: r.data.comments.map(mapComment) })),
   );
 
 export const updateUserAvatar = async (
@@ -291,4 +291,8 @@ export const verifyEmail = async (payload: {
 }): Promise<AuthenticatedUserDTO | AdminUserDTO> => {
   const response = await axiosClient.post("/api/users/verify-email", payload);
   return response.data;
+};
+
+export const resendVerificationEmail = async (): Promise<void> => {
+  await axiosClient.post("/api/users/resend-verification-email");
 };

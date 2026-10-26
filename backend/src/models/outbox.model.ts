@@ -5,6 +5,8 @@ export interface IOutboxEvent extends Document {
   payload: any;
   traceId: string;
   correlationId?: string;
+  clientRequestId?: string;
+  causedByClientRequestId?: string;
   processed: boolean;
   error?: string;
   retries: number;
@@ -39,6 +41,8 @@ const outboxSchema = new Schema<IOutboxEvent>(
       index: true,
       sparse: true,
     },
+    clientRequestId: { type: String },
+    causedByClientRequestId: { type: String },
     processed: {
       type: Boolean,
       default: false,

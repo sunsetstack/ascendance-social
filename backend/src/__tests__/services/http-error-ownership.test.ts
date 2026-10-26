@@ -34,7 +34,6 @@ function createFeedReadService(getWithTags: () => Promise<unknown>): FeedReadSer
     { getWithTags } as never,
     {} as never,
     {} as never,
-    {} as never,
   );
 }
 
@@ -96,7 +95,7 @@ describe("HTTP error log ownership", () => {
     try {
       const response = await request(
         buildErrorApp(async () => {
-          await feedReadService.getPersonalizedFeed("user-public-123", 1, 20);
+          await feedReadService.getNewFeed(1, 20);
         }),
       )
         .get("/failure")
@@ -106,9 +105,9 @@ describe("HTTP error log ownership", () => {
       expect(localError.notCalled).to.equal(true);
       expect(terminalError.calledOnce).to.equal(true);
       const terminalRecord = terminalError.firstCall.args[0] as {
-        error?: { cause?: { message?: string } };
+        error?: { message?: string };
       };
-      expect(terminalRecord.error?.cause?.message).to.equal(original.message);
+      expect(terminalRecord.error?.message).to.equal(original.message);
     } finally {
       sandbox.restore();
     }
@@ -122,7 +121,7 @@ describe("HTTP error log ownership", () => {
 
     let caught: unknown;
     try {
-      await feedReadService.getPersonalizedFeed("user-public-123", 1, 20);
+      await feedReadService.getNewFeed(1, 20);
     } catch (error) {
       caught = error;
     }

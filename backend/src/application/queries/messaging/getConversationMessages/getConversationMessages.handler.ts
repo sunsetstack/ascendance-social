@@ -11,6 +11,7 @@ import { wrapError } from "@/utils/errors";
 import { PaginatedMessageResult } from "@/types";
 import {
   ensureConversationAccess,
+  getConversationClearedAt,
   resolveParticipantPublicIds,
 } from "@/application/messaging/messaging-support";
 import { inject, injectable } from "tsyringe";
@@ -45,60 +46,67 @@ export class GetConversationMessagesQueryHandler implements IQueryHandler<
         limit = 30,
       } = query;
 
-      const { conversation, userInternalId, participantIds } =
-        await ensureConversationAccess(
-          this.conversationRepository,
-          this.userReadRepository,
-          userPublicId,
+      return await this.unitOfWork.executeInTransaction(async () => {
+        await this.conversationRepository.acquireForMutation(
           conversationPublicId,
         );
-      const conversationId = conversation._id.toString();
+        const { conversation, userInternalId, participantIds } =
+          await ensureConversationAccess(
+            this.conversationRepository,
+            this.userReadRepository,
+            userPublicId,
+            conversationPublicId,
+          );
+        const conversationId = conversation._id.toString();
+        const clearedAt = getConversationClearedAt(
+          conversation,
+          userInternalId,
+        );
 
-      if (page === 1) {
-        await this.unitOfWork.executeInTransaction(async () => {
+        if (page === 1) {
           const updated =
             await this.messageRepository.markConversationMessagesAsDelivered(
               conversationId,
               userInternalId,
+              clearedAt,
             );
-          if (!updated) {
-            return;
+          if (updated) {
+            const participantPublicIds = await resolveParticipantPublicIds(
+              this.userReadRepository,
+              participantIds,
+            );
+
+            await this.eventBus.queueTransactional(
+              new MessageStatusUpdatedEvent(
+                conversation.publicId,
+                participantPublicIds,
+                "delivered",
+              ),
+            );
           }
+        }
 
-          const participantPublicIds = await resolveParticipantPublicIds(
-            this.userReadRepository,
-            participantIds,
-          );
-
-          await this.eventBus.queueTransactional(
-            new MessageStatusUpdatedEvent(
-              conversation.publicId,
-              participantPublicIds,
-              "delivered",
-            ),
-          );
-        });
-      }
-
-      const result = await this.messageRepository.findMessagesByConversation(
-        conversationId,
-        page,
-        limit,
-      );
-      const messages = result.data
-        .slice()
-        .reverse()
-        .map((message) =>
-          this.dtoService.toPublicMessageDTO(message, conversation.publicId),
+        const result = await this.messageRepository.findMessagesByConversation(
+          conversationId,
+          page,
+          limit,
+          clearedAt,
         );
+        const messages = result.data
+          .slice()
+          .reverse()
+          .map((message) =>
+            this.dtoService.toPublicMessageDTO(message, conversation.publicId),
+          );
 
-      return {
-        messages,
-        total: result.total,
-        page,
-        limit,
-        totalPages: result.totalPages,
-      };
+        return {
+          messages,
+          total: result.total,
+          page,
+          limit,
+          totalPages: result.totalPages,
+        };
+      });
     } catch (error) {
       if (error instanceof Error && error.name === "AppError") throw error;
       throw wrapError(error, "InternalServerError", {

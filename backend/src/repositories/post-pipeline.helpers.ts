@@ -85,6 +85,8 @@ export function getStandardProjectionFields(): Record<string, unknown> {
     _id: 0,
     publicId: 1,
     body: 1,
+    editedAt: 1,
+    contentFeatures: 1,
     slug: 1,
     type: 1,
     repostCount: 1,

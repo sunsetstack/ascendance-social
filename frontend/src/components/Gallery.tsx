@@ -17,9 +17,7 @@ import {
   Button,
   Typography,
   CircularProgress,
-  Card,
   Skeleton,
-  CardActions,
 } from "@mui/material";
 import { useTranslation } from "react-i18next";
 import { telemetry } from "../lib/telemetry";
@@ -268,30 +266,28 @@ const Gallery: React.FC<GalleryProps> = ({
       );
     }
     return Array.from({ length: 3 }).map((_, i) => (
-      <Card
+      <Box
         key={i}
         sx={{
           width: "100%",
-          borderBottom: "1px solid rgba(99, 102, 241, 0.1)",
-          borderRadius: 0,
-          boxShadow: "none",
+          borderBottom: 1,
+          borderColor: "divider",
+          display: "flex",
+          gap: 1.25,
+          p: 2,
         }}
       >
-        <Skeleton
-          variant="rectangular"
-          height={400}
-          sx={{ bgcolor: "rgba(99, 102, 241, 0.1)" }}
-        />
-        <CardActions sx={{ p: 2 }}>
-          <Skeleton variant="text" width="60%" height={24} />
-          <Skeleton
-            variant="circular"
-            width={40}
-            height={40}
-            sx={{ ml: "auto" }}
-          />
-        </CardActions>
-      </Card>
+        <Skeleton variant="circular" width={42} height={42} sx={{ flexShrink: 0 }} />
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Skeleton variant="text" width="65%" height={24} />
+          <Skeleton variant="text" width="95%" />
+          <Skeleton variant="text" width="80%" />
+          {i === 0 && <Skeleton variant="rounded" height={220} sx={{ mt: 1.5, borderRadius: 3 }} />}
+          <Box sx={{ display: "flex", justifyContent: "space-between", mt: 2 }}>
+            {Array.from({ length: 4 }).map((_, action) => <Skeleton key={action} width={32} height={20} />)}
+          </Box>
+        </Box>
+      </Box>
     ));
   };
 
@@ -418,12 +414,9 @@ const Gallery: React.FC<GalleryProps> = ({
               textAlign: "center",
               py: 8,
               px: 4,
-              border: "1px solid rgba(99, 102, 241, 0.2)",
-              borderRadius: 3,
               width: "100%",
               boxSizing: "border-box",
               mx: "auto",
-              mt: 4,
               maxWidth: "600px",
             }}
           >

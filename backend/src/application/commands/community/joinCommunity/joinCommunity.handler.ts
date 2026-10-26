@@ -31,7 +31,7 @@ export class JoinCommunityCommandHandler implements ICommandHandler<
     private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UserWrite)
     private readonly userWriteRepository: IUserWriteRepository,
-    @inject(UnitOfWork) private uow: UnitOfWork,
+    @inject(TOKENS.Repositories.UnitOfWork) private uow: UnitOfWork,
   ) {}
 
   async execute(command: JoinCommunityCommand): Promise<void> {

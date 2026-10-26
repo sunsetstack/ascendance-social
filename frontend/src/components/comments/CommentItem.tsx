@@ -33,6 +33,7 @@ import { Alert } from "@mui/material";
 import { buildMediaUrl } from "@/lib/media";
 import { devError } from "@/lib/devLogger";
 import { buildAvatarUrl } from "@/lib/media";
+import CharacterCounter, { COMMENT_CHARACTER_LIMIT } from "../CharacterCounter";
 
 interface CommentItemProps {
   comment: IComment;
@@ -75,7 +76,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
       return;
     }
 
-    if (!replyContent.trim() && !replyImage) return;
+    if ((!replyContent.trim() && !replyImage) || replyContent.length > COMMENT_CHARACTER_LIMIT || createCommentMutation.isPending) return;
 
     try {
       await createCommentMutation.mutateAsync({
@@ -131,7 +132,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
   };
 
   const handleSaveEdit = async () => {
-    if (editContent.trim() === "") return;
+    if (editContent.trim() === "" || editContent.length > COMMENT_CHARACTER_LIMIT || updateCommentMutation.isPending) return;
 
     try {
       await updateCommentMutation.mutateAsync({
@@ -350,8 +351,9 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
               variant="outlined"
               size="small"
               placeholder="Write a comment..."
-              inputProps={{ maxLength: 500 }}
+              inputProps={{ maxLength: COMMENT_CHARACTER_LIMIT }}
             />
+            <CharacterCounter value={editContent} limit={COMMENT_CHARACTER_LIMIT} />
             <Box sx={{ display: "flex", gap: 1 }}>
               <Button
                 size="small"
@@ -359,7 +361,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
                 startIcon={<SaveIcon />}
                 onClick={handleSaveEdit}
                 disabled={
-                  updateCommentMutation.isPending || editContent.trim() === ""
+                  updateCommentMutation.isPending || editContent.trim() === "" || editContent.length > COMMENT_CHARACTER_LIMIT
                 }
               >
                 Save
@@ -458,9 +460,11 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
               size="small"
               placeholder={`Reply to ${comment.user?.username || "comment"}...`}
               value={replyContent}
+                inputProps={{ maxLength: COMMENT_CHARACTER_LIMIT }}
               onChange={(e) => setReplyContent(e.target.value)}
               multiline
             />
+              <Box sx={{ mt: 1 }}><CharacterCounter value={replyContent} limit={COMMENT_CHARACTER_LIMIT} /></Box>
             <ImageAttachmentInput file={replyImage} onChange={setReplyImage} disabled={createCommentMutation.isPending} />
             {createCommentMutation.isError && <Alert severity="error">Unable to post your reply. Please try again.</Alert>}
             <Box
@@ -479,7 +483,7 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment }) => {
                 variant="contained"
                 onClick={handleReplySubmit}
                 disabled={
-                  (!replyContent.trim() && !replyImage) || createCommentMutation.isPending
+                    (!replyContent.trim() && !replyImage) || createCommentMutation.isPending || replyContent.length > COMMENT_CHARACTER_LIMIT
                 }
               >
                 Reply

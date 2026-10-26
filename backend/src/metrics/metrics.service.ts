@@ -1,6 +1,7 @@
 import { injectable } from "tsyringe";
 import client from "prom-client";
 import type { Request, Response, NextFunction, RequestHandler } from "express";
+import type { TransactionObservabilityMetrics } from "@/database/transaction-metrics";
 
 /**
  * manages prometheus metrics for the backend including http requests,
@@ -16,6 +17,10 @@ export class MetricsService {
   private readonly redisUp: client.Gauge<string>;
   private readonly optionalAuthFailuresTotal: client.Counter<string>;
   private readonly domainEventsPublishedTotal: client.Counter<string>;
+  private readonly domainEventsStagedTotal: client.Counter<string>;
+  private readonly domainEventDispatchFailures: client.Counter<string>;
+  private readonly outboxDeliveryIssues: client.Counter<string>;
+  private readonly outboxLastPollCompleted: client.Gauge<string>;
   private readonly realtimeEventsPublishedTotal: client.Counter<string>;
   private readonly socketEventsEmittedTotal: client.Counter<string>;
   private readonly outboxPendingEvents: client.Gauge<string>;
@@ -29,6 +34,9 @@ export class MetricsService {
   private readonly feedCursorSnapshotBuildCollisions: client.Counter<string>;
   private readonly feedCursorSnapshotBytes: client.Histogram<string>;
   private readonly feedCursorSnapshotBuildDuration: client.Histogram<string>;
+  private readonly conversationActions: client.Counter<string>;
+  private readonly conversationActionDuration: client.Histogram<string>;
+  private readonly conversationCleanupAttempts: client.Counter<string>;
 
   constructor() {
     this.registry = new client.Registry();
@@ -88,8 +96,29 @@ export class MetricsService {
 
     this.domainEventsPublishedTotal = new client.Counter({
       name: "domain_events_published_total",
-      help: "Domain events published by delivery mode",
+      help: "Successful immediate dispatches or acknowledged nontransactional outbox writes; not end-to-end delivery",
       labelNames: ["event_type", "mode"],
+      registers: [this.registry],
+    });
+
+    this.domainEventsStagedTotal = new client.Counter({
+      name: "domain_events_staged_total",
+      help: "Transactional outbox writes before commit, including rolled back and retried attempts",
+      labelNames: ["event_type"], registers: [this.registry],
+    });
+    this.domainEventDispatchFailures = new client.Counter({
+      name: "domain_event_dispatch_failures_total",
+      help: "Immediate event dispatch failures and events with no registered handlers",
+      labelNames: ["event_type", "reason"], registers: [this.registry],
+    });
+    this.outboxDeliveryIssues = new client.Counter({
+      name: "outbox_delivery_issues_total",
+      help: "Outbox routing, ownership and failure-persistence issues",
+      labelNames: ["event_type", "reason"], registers: [this.registry],
+    });
+    this.outboxLastPollCompleted = new client.Gauge({
+      name: "outbox_last_poll_completed_timestamp_seconds",
+      help: "Last successfully completed outbox poll, including empty polls",
       registers: [this.registry],
     });
 
@@ -179,6 +208,35 @@ export class MetricsService {
       buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10],
       registers: [this.registry],
     });
+    this.conversationActions = new client.Counter({
+      name: "conversation_actions_total",
+      help: "Conversation mutations by confirmed outcome; ambiguous commits are reported separately",
+      labelNames: ["action", "outcome"], registers: [this.registry],
+    });
+    this.conversationActionDuration = new client.Histogram({
+      name: "conversation_action_duration_seconds",
+      help: "Conversation mutation latency including transaction retries",
+      labelNames: ["action", "outcome"], registers: [this.registry],
+      buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+    });
+    this.conversationCleanupAttempts = new client.Counter({
+      name: "conversation_cleanup_attempts_total",
+      help: "Conversation cache and request-log cleanup attempts, including retries",
+      labelNames: ["outcome"], registers: [this.registry],
+    });
+  }
+
+  public recordConversationAction(
+    action: "delete" | "purge" | "lock" | "unlock",
+    outcome: "succeeded" | "rejected" | "failed" | "ambiguous",
+    durationMs: number,
+  ): void {
+    this.conversationActions.labels(action, outcome).inc();
+    this.conversationActionDuration.labels(action, outcome).observe(durationMs / 1000);
+  }
+
+  public recordConversationCleanup(outcome: "succeeded" | "failed"): void {
+    this.conversationCleanupAttempts.labels(outcome).inc();
   }
 
   public httpMetricsMiddleware(): RequestHandler {
@@ -229,6 +287,65 @@ export class MetricsService {
     this.domainEventsPublishedTotal
       .labels(eventType || "unknown", mode || "unknown")
       .inc();
+  }
+
+  public recordDomainEventStaged(eventType: string): void {
+    this.domainEventsStagedTotal.labels(eventType).inc();
+  }
+
+  public recordDomainEventDispatchFailure(eventType: string, reason: "no_handlers" | "handler_failed"): void {
+    this.domainEventDispatchFailures.labels(eventType, reason).inc();
+  }
+
+  public recordOutboxDeliveryIssue(eventType: string, reason: "no_handlers" | "ownership_lost" | "failure_persistence"): void {
+    this.outboxDeliveryIssues.labels(eventType, reason).inc();
+  }
+
+  public recordOutboxPollCompleted(): void {
+    this.outboxLastPollCompleted.set(Date.now() / 1000);
+  }
+
+  public registerTransactionMetrics(read: () => TransactionObservabilityMetrics): void {
+    new client.Counter({
+      name: "transactions_total", help: "Completed outer UnitOfWork operations by confirmed outcome",
+      labelNames: ["outcome"], registers: [this.registry],
+      collect() {
+        const value = read();
+        this.reset();
+        this.labels("committed").inc(value.successfulTransactions);
+        this.labels("failed").inc(value.failedTransactions);
+        this.labels("ambiguous").inc(value.ambiguousTransactions);
+        this.labels("rejected").inc(value.rejectedTransactions);
+      },
+    });
+    new client.Counter({
+      name: "transaction_attempts_total", help: "Transaction callback and commit attempts",
+      labelNames: ["phase"], registers: [this.registry],
+      collect() { const value = read(); this.reset(); this.labels("body").inc(value.totalAttempts); this.labels("commit").inc(value.commitAttempts); },
+    });
+    new client.Counter({
+      name: "transaction_retries_total", help: "Scheduled transaction body and commit retries",
+      labelNames: ["phase"], registers: [this.registry],
+      collect() { const value = read(); this.reset(); this.labels("body").inc(value.bodyRetries); this.labels("commit").inc(value.commitRetries); },
+    });
+    new client.Counter({
+      name: "transaction_duration_seconds_total", help: "Total outer operation duration including queue wait and cleanup",
+      registers: [this.registry],
+      collect() { this.reset(); this.inc(read().durationSeconds); },
+    });
+    new client.Counter({
+      name: "transaction_queue_wait_seconds_total", help: "Total transaction admission wait including rejected operations",
+      registers: [this.registry],
+      collect() { this.reset(); this.inc(read().queueWaitSeconds); },
+    });
+    new client.Gauge({
+      name: "transaction_queue_length", help: "Current outer UnitOfWork operations waiting for a transaction permit",
+      registers: [this.registry], collect() { this.set(read().currentQueueLength); },
+    });
+    new client.Gauge({
+      name: "transaction_available_permits", help: "Available UnitOfWork transaction permits",
+      registers: [this.registry], collect() { this.set(read().availablePermits); },
+    });
   }
 
   public recordRealtimeEventPublished(

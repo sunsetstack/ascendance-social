@@ -5,7 +5,6 @@ import { useBottomNav } from "../context/BottomNav/BottomNavContext";
 import {
 	Home as HomeIcon,
 	Search as SearchIcon,
-  Interests as InterestsIcon,
 	Notifications as NotificationsIcon,
 	MailOutline as MailIcon,
 	Groups as GroupsIcon,
@@ -31,7 +30,7 @@ const BottomNav: React.FC = () => {
 		if (path === "/") return 0;
 		if (path.startsWith("/discover")) return 1;
 		if (path.startsWith("/communities")) return 2;
-    if (path.startsWith("/interests")) return 5;
+		if (path.startsWith("/interests")) return -1;
 		if (!isLoggedIn && (path === "/login" || path === "/register")) return 3;
 		if (path === "/notifications") return 3;
 		if (path === "/messages") return 4;
@@ -98,7 +97,6 @@ const BottomNav: React.FC = () => {
 						}}
 					/>
 
-          <BottomNavigationAction component={RouterLink} to="/interests" value={5} label={t("interests.title")} icon={<InterestsIcon />} />
 					{isLoggedIn ? (
 						<>
 							<BottomNavigationAction

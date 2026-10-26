@@ -6,6 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  type FeedPreviewPage,
   fetchPostByPublicId,
   fetchPostBySlug,
   uploadPost,
@@ -18,6 +19,7 @@ import {
   fetchForYouFeed,
   repostPost,
   unrepostPost,
+  updatePost,
 } from "../../api/postApi";
 import { IPost, ITag, PaginatedResponse } from "../../types";
 import { useAuth } from "../context/useAuth";
@@ -25,19 +27,21 @@ import { mapPost } from "../../lib/mappers";
 import { devError } from "@/lib/devLogger";
 import {
 	removePostFromFeedCaches,
-	updatePostDetailCaches,
-	updatePostInInfiniteFeeds,
+	removePostDetailAndCommentCaches,
+	updatePostCaches,
 	refreshFirstFeedPage,
+	postInteractionQueryFilter,
 } from "./postCache";
 import { feedIdentities } from "../../features/feed/feedIdentity";
 import { useIsFeedRestoreNavigation } from "../../features/feed/feedRestoration";
 import { latestFeedAction, traceFeedClient } from "../../features/feed/feedTrace";
+import axiosClient from "../../api/axiosClient";
 
 const MAX_FEED_PAGES = 6;
 const FEED_PAGE_SIZE = 5;
 const HOME_FEED_GC_TIME = 5 * 60 * 1000;
 
-export const usePosts = () => {
+export const usePosts = (options?: { enabled?: boolean }) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const homeFeedId = feedIdentities.home(user?.publicId);
@@ -67,6 +71,7 @@ export const usePosts = () => {
       return undefined;
     },
     initialPageParam: 1,
+    enabled: options?.enabled ?? true,
     maxPages: MAX_FEED_PAGES,
     staleTime: 0,
     gcTime: HOME_FEED_GC_TIME,
@@ -96,8 +101,9 @@ export const usePostByPublicId = (publicId: string) => {
 };
 
 export const usePostBySlug = (slug: string) => {
+  const { user } = useAuth();
   return useQuery<IPost, Error>({
-    queryKey: ["post", "slug", slug],
+    queryKey: ["post", "slug", slug, user?.publicId],
     queryFn: async () => {
       const rawPost = await fetchPostBySlug(slug);
       return mapPost(rawPost);
@@ -213,17 +219,7 @@ export const useDeletePost = () => {
     onSuccess: (_data, publicId) => {
       removePostFromFeedCaches(queryClient, publicId);
 
-      // Remove the post detail and comments from cache immediately so they cannot
-      // be background-refetched while PostView is still mounted.
-      queryClient.removeQueries({
-        predicate: (query) => {
-          const key = query.queryKey as unknown[];
-          return (
-            (key[0] === "post" && key.includes(publicId)) ||
-            (key[0] === "comments" && key[1] === "post" && key[2] === publicId)
-          );
-        },
-      });
+      removePostDetailAndCommentCaches(queryClient, publicId);
 
       // Broader invalidations for counts / profile data
       queryClient.invalidateQueries({ queryKey: ["user"] });
@@ -232,6 +228,19 @@ export const useDeletePost = () => {
     },
     onError: (error: Error) => {
       devError("Error deleting post:", error);
+    },
+  });
+};
+
+export const useUpdatePost = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ publicId, body }: { publicId: string; body: string }) => updatePost(publicId, body),
+    onSuccess: async (raw, { publicId }) => {
+      const post = mapPost(raw);
+      await client.cancelQueries(postInteractionQueryFilter);
+      updatePostCaches(client, publicId,
+        (current) => ({ ...current, body: post.body, editedAt: post.editedAt }));
     },
   });
 };
@@ -250,8 +259,7 @@ export const useRepostPost = () => {
         isRepostedByViewer: true,
       });
 
-      updatePostDetailCaches(queryClient, postPublicId, applyRepostState);
-      updatePostInInfiniteFeeds(queryClient, postPublicId, applyRepostState);
+      updatePostCaches(queryClient, postPublicId, applyRepostState);
 
       queryClient.invalidateQueries({
         queryKey: ["post", "publicId", postPublicId],
@@ -289,8 +297,7 @@ export const useUnrepostPost = () => {
       queryClient.invalidateQueries({ queryKey: ["interests"] });
       queryClient.invalidateQueries({ queryKey: ["interestFeed"] });
 
-      updatePostDetailCaches(queryClient, postPublicId, clearRepostState);
-      updatePostInInfiniteFeeds(queryClient, postPublicId, clearRepostState);
+      updatePostCaches(queryClient, postPublicId, clearRepostState);
 
       queryClient.invalidateQueries({
         queryKey: ["post", "publicId", postPublicId],
@@ -382,6 +389,31 @@ export const useTrendingFeed = (options?: {
     fetchTrendingFeed(1, limit),
   );
   return { ...query, refreshFeed };
+};
+
+export const useFollowingFeed = (enabled: boolean) => {
+  const { user } = useAuth();
+  const client = useQueryClient();
+  const feedId = feedIdentities.following(user?.publicId);
+  const restoring = useIsFeedRestoreNavigation(feedId);
+  const queryKey = ["followingFeed", feedId] as const;
+  const query = useInfiniteQuery({
+    queryKey,
+    queryFn: async ({ pageParam, signal }) => {
+      const params = new URLSearchParams({ limit: "10" });
+      if (pageParam) params.set("cursor", pageParam);
+      const { data } = await axiosClient.get<FeedPreviewPage>(`/api/feed/following?${params}`, { signal });
+      return { ...data, data: data.data.map(mapPost) };
+    },
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.hasMore ? page.nextCursor : undefined,
+    enabled: enabled && !!user,
+    maxPages: MAX_FEED_PAGES,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    ...(restoring ? { refetchOnMount: false } : {}),
+  });
+  return { ...query, feedId, refreshFeed: () => client.resetQueries({ queryKey, exact: true }) };
 };
 
 export const useNewFeed = (options?: { enabled?: boolean; limit?: number }) => {

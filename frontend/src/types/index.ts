@@ -65,6 +65,7 @@ export interface IPost {
   publicId: string;
   slug?: string;
   body?: string; // Post text
+  editedAt?: Date;
   type?: "original" | "repost";
   repostCount?: number;
   repostOf?: {
@@ -310,11 +311,17 @@ export interface ConversationSummaryDTO {
   unreadCount: number;
   isGroup: boolean;
   isClosed?: boolean;
+  isLocked?: boolean;
   closedReason?: "banned" | "deleted" | "unknown";
   title?: string;
 }
 
 export type MessagingUpdatePayload =
+  | {
+      type: "conversations_changed";
+      eventId?: string;
+      timestamp: string;
+    }
   | {
       type: "message_sent";
       eventId?: string;

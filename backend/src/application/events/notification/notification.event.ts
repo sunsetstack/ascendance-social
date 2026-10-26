@@ -1,4 +1,11 @@
-import { UserPublicId, PostPublicId, ImagePublicId, MongoId } from "@/types/branded";
+import {
+	ConversationPublicId,
+	ImagePublicId,
+	MessagePublicId,
+	MongoId,
+	PostPublicId,
+	UserPublicId,
+} from "@/types/branded";
 import { IEvent } from "@/application/common/interfaces/event.interface";
 import { EventRegistry } from "@/application/common/events/event-registry";
 
@@ -9,10 +16,16 @@ export interface NotificationPayload {
 	actorUsername?: string;
 	actorHandle?: string;
 	actorAvatar?: string;
-	targetId?: PostPublicId | ImagePublicId | UserPublicId | MongoId;
+	targetId?:
+		| PostPublicId
+		| ImagePublicId
+		| UserPublicId
+		| ConversationPublicId
+		| MongoId;
 	targetType?: string;
 	targetPreview?: string;
 	idempotencyKey?: string;
+	messagePublicId?: MessagePublicId;
 }
 
 export class NotificationRequestedEvent implements IEvent {

@@ -31,7 +31,7 @@ export class LeaveCommunityCommandHandler implements ICommandHandler<
     private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Repositories.UserWrite)
     private readonly userWriteRepository: IUserWriteRepository,
-    @inject(UnitOfWork) private uow: UnitOfWork,
+    @inject(TOKENS.Repositories.UnitOfWork) private uow: UnitOfWork,
   ) {}
 
   async execute(command: LeaveCommunityCommand): Promise<void> {
@@ -53,20 +53,37 @@ export class LeaveCommunityCommandHandler implements ICommandHandler<
     }
     const communityId = community._id as Types.ObjectId;
 
-    const member = await this.communityMemberRepository.findByCommunityAndUser(
-      communityId,
-      userId,
-    );
-    if (!member) {
-      throw Errors.validation("User is not a member of this community");
-    }
-
     await this.uow.executeInTransaction(async () => {
+      const member =
+        await this.communityMemberRepository.findByCommunityAndUser(
+          communityId,
+          userId,
+        );
+      if (!member) {
+        throw Errors.validation("User is not a member of this community");
+      }
+
+      if (member.role === "admin") {
+        const adminCount = await this.communityMemberRepository.countDocuments({
+          communityId,
+          role: "admin",
+        });
+        if (adminCount <= 1) {
+          throw Errors.validation(
+            "The last community admin cannot leave; delete the community instead",
+          );
+        }
+      }
+
       // 1. Remove Member
-      await this.communityMemberRepository.deleteByCommunityAndUser(
-        communityId,
-        userId,
-      );
+      const deleted =
+        await this.communityMemberRepository.deleteByCommunityAndUser(
+          communityId,
+          userId,
+        );
+      if (!deleted) {
+        throw Errors.validation("User is not a member of this community");
+      }
 
       // 2. Update User Cache (Remove from array)
       await this.userWriteRepository.update(asMongoId(userId.toString()), {
