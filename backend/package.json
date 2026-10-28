@@ -15,9 +15,6 @@
     "start:trending-worker": "ts-node -r tsconfig-paths/register ./src/workers/trending.worker.ts",
     "start:trending-worker:dev": "ts-node-dev -r tsconfig-paths/register --respawn --transpile-only --pretty ./src/workers/trending.worker.ts",
     "start:trending-worker:prod": "node --enable-source-maps -r tsconfig-paths/register ./dist/workers/trending.worker.js",
-    "start:profile-sync-worker": "ts-node -r tsconfig-paths/register ./src/workers/profile-sync.worker.ts",
-    "start:profile-sync-worker:dev": "ts-node-dev -r tsconfig-paths/register --respawn --transpile-only --pretty ./src/workers/profile-sync.worker.ts",
-    "start:profile-sync-worker:prod": "node --enable-source-maps -r tsconfig-paths/register ./dist/workers/profile-sync.worker.js",
     "start:newFeedWarmCache-worker": "ts-node -r tsconfig-paths/register ./src/workers/newFeedWarmCache.worker.ts",
     "start:newFeedWarmCache-worker:dev": "ts-node-dev -r tsconfig-paths/register --respawn --transpile-only --pretty ./src/workers/newFeedWarmCache.worker.ts",
     "start:newFeedWarmCache-worker:prod": "node --enable-source-maps -r tsconfig-paths/register ./dist/workers/newFeedWarmCache.worker.js",
@@ -33,6 +30,7 @@
     "audit:seal": "ts-node -r tsconfig-paths/register ./src/scripts/seal-audit-archive.ts",
     "repair:integrity": "ts-node --files -r tsconfig-paths/register ./src/scripts/repair-data-integrity.ts",
     "backfill:image-dimensions": "ts-node -r tsconfig-paths/register ./src/scripts/backfill-image-dimensions.ts",
+    "repair:communities": "ts-node -r tsconfig-paths/register ./src/scripts/reconcile-communities.ts",
     "build": "npm run build:ts7",
     "build:ts6": "tsc6 && tsc-alias",
     "build:ts7": "tsc && tsc-alias"

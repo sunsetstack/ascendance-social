@@ -30,11 +30,6 @@ const createLooseMock = (): any => {
 					return stubs[prop];
 				}
 
-				if (prop === "executeOrQueue") {
-					stubs[prop] = sinon.stub().callsFake(async (op: any) => (typeof op === "function" ? op() : undefined));
-					return stubs[prop];
-				}
-
 				stubs[prop] = sinon.stub().resolves(undefined);
 				return stubs[prop];
 			},
