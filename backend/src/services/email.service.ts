@@ -152,7 +152,7 @@ export class EmailService {
         to: recipientEmail,
         subject: "Your password was changed",
         replyTo: "support@ascendance.social",
-        html: "<p>Your Ascendance password was changed.</p><p>If you did not make this change, reset your password immediately and contact support.</p>",
+        html: "<p>Your Ascendance password was changed.</p><p>If you did not make this change, please immediately contact support at support@ascendance.social.</p>",
       });
       if (error) throw error;
       logger.info("Email sent", {
