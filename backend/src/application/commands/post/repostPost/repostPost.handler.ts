@@ -12,7 +12,10 @@ import { NotificationRequestedEvent } from "@/application/events/notification/no
 import { DTOService } from "@/services/dto.service";
 import { AttachmentTransactionService } from "@/services/image/attachment-transaction.service";
 import { FeedPreferenceRepository } from "@/repositories/feed-preference.repository";
-import { classifyContent, classifyRepostContent } from "@/services/feed/interests.policy";
+import {
+  classifyContent,
+  classifyRepostContent,
+} from "@/services/feed/interests.policy";
 import { extractTagNames } from "@/utils/post-helpers";
 import { Errors, createError } from "@/utils/errors";
 import {
@@ -111,7 +114,10 @@ export class RepostPostCommandHandler implements ICommandHandler<
   }
 
   private normalizeBody(body?: string): string {
-    return sanitizeTextInput(body ?? "", { maxLength: MAX_BODY_LENGTH, allowEmpty: true });
+    return sanitizeTextInput(body ?? "", {
+      maxLength: MAX_BODY_LENGTH,
+      allowEmpty: true,
+    });
   }
 
   private async createRepost(
@@ -133,17 +139,29 @@ export class RepostPostCommandHandler implements ICommandHandler<
             username: user.username,
             avatarUrl: user.avatar ?? "",
             displayName: user.username,
+            profileRevision: user.profileRevision ?? 0,
           },
           body: normalizedBody,
           image: image?.docId ?? null,
-          contentFeatures: classifyRepostContent(normalizedBody, Boolean(image),
-            targetPost.contentFeatures ?? classifyContent(targetPost.body ?? "", extractTagNames(targetPost.tags), Boolean(targetPost.image))),
+          contentFeatures: classifyRepostContent(
+            normalizedBody,
+            Boolean(image),
+            targetPost.contentFeatures ??
+              classifyContent(
+                targetPost.body ?? "",
+                extractTagNames(targetPost.tags),
+                Boolean(targetPost.image),
+              ),
+          ),
           slug: `${postPublicId}`,
           type: "repost" as const,
           repostOf: targetPost._id,
           tags: Array.isArray(targetPost.tags)
             ? (
-                targetPost.tags as (mongoose.Types.ObjectId | PopulatedPostTag)[]
+                targetPost.tags as (
+                  | mongoose.Types.ObjectId
+                  | PopulatedPostTag
+                )[]
               ).map((t) =>
                 typeof t === "object" && "_id" in t
                   ? (t as PopulatedPostTag)._id || t
@@ -157,8 +175,18 @@ export class RepostPostCommandHandler implements ICommandHandler<
 
         const newPost = await this.postWriteRepository.create(payload);
         if (!normalizedBody && !image) {
-          await this.preferences.setSignal(String(user._id), String(targetPost._id), "repost",
-            targetPost.contentFeatures ?? classifyContent(targetPost.body ?? "", extractTagNames(targetPost.tags), Boolean(targetPost.image)), true);
+          await this.preferences.setSignal(
+            String(user._id),
+            String(targetPost._id),
+            "repost",
+            targetPost.contentFeatures ??
+              classifyContent(
+                targetPost.body ?? "",
+                extractTagNames(targetPost.tags),
+                Boolean(targetPost.image),
+              ),
+            true,
+          );
         }
         await this.postWriteRepository.updateRepostCount(
           asMongoId(targetPost._id!.toString()),
@@ -237,11 +265,7 @@ export class RepostPostCommandHandler implements ICommandHandler<
     }
 
     const pattern = keyPattern as Record<string, unknown>;
-    if (
-      pattern.user !== 1 ||
-      pattern.repostOf !== 1 ||
-      pattern.type !== 1
-    ) {
+    if (pattern.user !== 1 || pattern.repostOf !== 1 || pattern.type !== 1) {
       return false;
     }
 
@@ -249,10 +273,7 @@ export class RepostPostCommandHandler implements ICommandHandler<
       return false;
     }
     if (
-      !this.hasExactKeySequence(
-        duplicate.keyValue,
-        REPOST_UNIQUE_INDEX_KEYS,
-      )
+      !this.hasExactKeySequence(duplicate.keyValue, REPOST_UNIQUE_INDEX_KEYS)
     ) {
       return false;
     }

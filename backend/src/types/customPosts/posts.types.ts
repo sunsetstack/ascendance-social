@@ -18,6 +18,7 @@ export interface IPost extends Document {
     username: string;
     avatarUrl?: string;
     displayName?: string;
+    profileRevision?: number;
   };
   body?: string;
   editedAt?: Date;
@@ -31,6 +32,7 @@ export interface IPost extends Document {
   image?: mongoose.Types.ObjectId | null;
   tags: mongoose.Types.ObjectId[];
   likesCount: number;
+  likesRevision?: number;
   commentsCount: number;
   viewsCount: number;
   createdAt: Date;
@@ -129,6 +131,7 @@ export type PopulatedRepostRead = Pick<
   | "body"
   | "slug"
   | "likesCount"
+  | "likesRevision"
   | "repostCount"
   | "commentsCount"
   | "author"
@@ -145,6 +148,7 @@ export type PostReadSource = Pick<
   | "type"
   | "repostCount"
   | "likesCount"
+  | "likesRevision"
   | "commentsCount"
   | "viewsCount"
   | "createdAt"

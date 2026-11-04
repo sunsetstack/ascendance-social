@@ -4,7 +4,10 @@ import { UserAvatarChangedEvent } from "./user-interaction.event";
 import { RedisService } from "@/services/redis.service";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
-import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
+import {
+  EventRegistry,
+  buildRealtimeEventId,
+} from "@/application/common/events/event-registry";
 import type { IUserReadRepository } from "@/repositories/interfaces";
 
 @injectable()
@@ -43,13 +46,6 @@ export class UserAvatarChangedHandler implements IEventHandler<UserAvatarChanged
         timestamp: event.timestamp.toISOString(),
       }),
     );
-
-    await this.redis.publish(EventRegistry.redisChannels.profileSnapshotUpdates, {
-      type: EventRegistry.realtimeMessageTypes.avatarChanged,
-      userPublicId: event.userPublicId,
-      avatarUrl: event.newAvatarUrl ?? "",
-      timestamp: event.timestamp.toISOString(),
-    });
 
     logger.info(
       `Smart cache invalidation completed for avatar change of user ${event.userPublicId}`,

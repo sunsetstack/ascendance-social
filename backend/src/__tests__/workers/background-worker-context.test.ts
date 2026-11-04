@@ -1,15 +1,11 @@
 import "reflect-metadata";
 import { expect } from "chai";
 import sinon from "sinon";
-import {
-  ClientClosedError,
-  SocketClosedUnexpectedlyError,
-} from "redis";
+import { ClientClosedError, SocketClosedUnexpectedlyError } from "redis";
 import { getRequestContext } from "@/runtime/request-context";
 import { errorLogger, logger } from "@/utils/winston";
 import { FeedReadService } from "@/services/feed/feed-read.service";
 import { NewFeedWarmCacheWorker } from "@/workers/_impl/newFeedWarmCache.worker.impl";
-import { ProfileSyncWorker } from "@/workers/_impl/profile-sync.worker.impl";
 import { createTrendingWorker } from "./trending-worker.test-helper";
 
 type RootWorker = {
@@ -210,9 +206,7 @@ describe("background worker request-context roots", () => {
         .stub(worker as any, "readLoopIteration")
         .rejects(failure);
       sinon.stub(worker as any, "fullRefresh").resolves();
-      const flushPending = sinon
-        .stub(worker as any, "flushPending")
-        .resolves();
+      const flushPending = sinon.stub(worker as any, "flushPending").resolves();
       const terminal = sinon.stub(errorLogger, "error");
 
       worker.start();
@@ -347,9 +341,7 @@ describe("background worker request-context roots", () => {
       metrics as any,
     );
     (worker as any).redisClient = {};
-    sinon
-      .stub(worker as any, "runReadLoopInContext")
-      .throws(failure);
+    sinon.stub(worker as any, "runReadLoopInContext").throws(failure);
     sinon.stub(worker as any, "fullRefresh").resolves();
     const terminal = sinon.stub(errorLogger, "error");
     const unhandled: unknown[] = [];
@@ -393,9 +385,7 @@ describe("background worker request-context roots", () => {
         .stub(worker as any, "readLoopIteration")
         .callsFake(() => activeIteration.promise);
       sinon.stub(worker as any, "fullRefresh").resolves();
-      const flushPending = sinon
-        .stub(worker as any, "flushPending")
-        .resolves();
+      const flushPending = sinon.stub(worker as any, "flushPending").resolves();
       const terminal = sinon.stub(errorLogger, "error");
 
       worker.start();
@@ -618,133 +608,7 @@ describe("background worker request-context roots", () => {
     );
   });
 
-  it("gives unexpected profile message-handler failures one terminal owner and retains failed snapshots", async () => {
-    let messageCallback:
-      | ((channel: string, message: Record<string, unknown>) => void)
-      | undefined;
-    const subscribe = sinon.stub().callsFake(async (_channels, callback) => {
-      messageCallback = callback;
-      return true;
-    });
-    let resolveUpdateStarted: (() => void) | undefined;
-    const updateStarted = new Promise<void>((resolve) => {
-      resolveUpdateStarted = resolve;
-    });
-    let rejectFirstUpdate: ((error: Error) => void) | undefined;
-    const updateAuthorSnapshot = sinon.stub().callsFake(() => {
-      if (updateAuthorSnapshot.callCount === 1) {
-        resolveUpdateStarted?.();
-        return new Promise<void>((_resolve, reject) => {
-          rejectFirstUpdate = reject;
-        });
-      }
-      return Promise.resolve(1);
-    });
-    const worker = new ProfileSyncWorker(
-      { subscribe } as any,
-      { updateAuthorSnapshot } as any,
-      {
-        findByPublicId: sinon
-          .stub()
-          .resolves({ id: "507f1f77bcf86cd799439011" }),
-      } as any,
-    );
-    await worker.start();
-
-    expectFreshContexts(
-      await captureOverlappingRoots(worker as unknown as RootWorker),
-      "worker.profile_sync.callback.started",
-    );
-
-    const terminal = sinon.stub(errorLogger, "error");
-    const messageFailure = new Error("message handler failure");
-    sinon.stub(worker as any, "handleMessage").rejects(messageFailure);
-    messageCallback?.("profile_snapshot_updates", {} as any);
-    await Promise.resolve();
-    await Promise.resolve();
-
-    sinon.assert.calledOnce(terminal);
-    const terminalRecord = terminal.firstCall.args[0] as any;
-    expect(terminalRecord.worker).to.equal("ProfileSyncWorker");
-    expect(terminalRecord.operation).to.equal(
-      "worker.profile_sync.handle_message",
-    );
-    expect(terminalRecord.error.message).to.equal(messageFailure.message);
-
-    terminal.resetHistory();
-    (worker as any).handleMessage.restore();
-    (worker as any).pendingUpdates.set("user-1", {
-      avatarUrl: "older-avatar",
-      username: "older-name",
-      lastSeen: 1,
-    });
-    const firstFlush = (worker as any).flushPendingUpdates();
-    await updateStarted;
-    (worker as any).pendingUpdates.set("user-1", {
-      avatarUrl: "newer-avatar",
-      handle: "newer-handle",
-      lastSeen: 2,
-    });
-    rejectFirstUpdate?.(new Error("Mongo unavailable"));
-    await firstFlush;
-
-    expect((worker as any).pendingUpdates.get("user-1")).to.deep.equal({
-      avatarUrl: "newer-avatar",
-      username: "older-name",
-      handle: "newer-handle",
-      lastSeen: 2,
-    });
-    await (worker as any).flushPendingUpdates();
-    expect(updateAuthorSnapshot.callCount).to.equal(2);
-    expect((worker as any).pendingUpdates.size).to.equal(0);
-    sinon.assert.notCalled(terminal);
-    await worker.stop();
-  });
-
-  it("keeps profile and trending callbacks in flight until their final shutdown flush completes", async () => {
-    let profileCallback:
-      | ((channel: string, message: Record<string, unknown>) => void)
-      | undefined;
-    const profileSubscribe = sinon
-      .stub()
-      .callsFake(async (_channels, callback) => {
-        profileCallback = callback;
-        return true;
-      });
-    const profile = new ProfileSyncWorker(
-      { subscribe: profileSubscribe } as any,
-      {} as any,
-      {} as any,
-    );
-    const profileFlush = sinon
-      .stub(profile as any, "flushPendingUpdates")
-      .resolves();
-    let releaseProfileMessage: (() => void) | undefined;
-    let resolveProfileMessageStarted: (() => void) | undefined;
-    const profileMessageStarted = new Promise<void>((resolve) => {
-      resolveProfileMessageStarted = resolve;
-    });
-    sinon.stub(profile as any, "handleMessage").callsFake(async () => {
-      resolveProfileMessageStarted?.();
-      await new Promise<void>((resolve) => {
-        releaseProfileMessage = resolve;
-      });
-    });
-    await profile.start();
-    profileCallback?.("profile_snapshot_updates", {} as any);
-    await profileMessageStarted;
-
-    const profileStop = profile.stop();
-    await Promise.resolve();
-    sinon.assert.notCalled(profileFlush);
-    releaseProfileMessage?.();
-    await profileStop;
-    sinon.assert.calledOnce(profileFlush);
-    profileCallback?.("profile_snapshot_updates", {} as any);
-    await Promise.resolve();
-    await Promise.resolve();
-    sinon.assert.calledOnce((profile as any).handleMessage);
-
+  it("keeps trending callbacks in flight until their final shutdown flush completes", async () => {
     const trending = createTrendingWorker({} as any, {} as any, {} as any);
     (trending as any).running = true;
     (trending as any).redisClient = {
@@ -958,23 +822,6 @@ describe("background worker request-context roots", () => {
       sinon.assert.calledOnce(flushPending);
       sinon.assert.calledOnce(readLoop);
       await trending.stop();
-
-      const subscribe = sinon.stub().resolves(true);
-      const profile = new ProfileSyncWorker(
-        { subscribe } as any,
-        {} as any,
-        {} as any,
-      );
-      const flushPendingUpdates = sinon
-        .stub(profile as any, "flushPendingUpdates")
-        .resolves();
-      (profile as any).FLUSH_INTERVAL_MS = 2_000;
-      await profile.start();
-      await clock.tickAsync(1_999);
-      sinon.assert.notCalled(flushPendingUpdates);
-      await clock.tickAsync(1);
-      sinon.assert.calledOnce(flushPendingUpdates);
-      await profile.stop();
     } finally {
       clock.restore();
     }

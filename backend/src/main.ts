@@ -24,7 +24,6 @@ import { RealTimeFeedService } from "./services/feed/real-time-feed.service";
 import { MetricsService } from "./metrics/metrics.service";
 import { startMetricsHttpServer } from "./metrics/metrics-http.server";
 import { TrendingWorker } from "./workers/_impl/trending.worker.impl";
-import { ProfileSyncWorker } from "./workers/_impl/profile-sync.worker.impl";
 import { NewFeedWarmCacheWorker } from "./workers/_impl/newFeedWarmCache.worker.impl";
 import { IpMonitorWorker } from "./workers/_impl/ip-monitor.worker.impl";
 import { OutboxWorker } from "./workers/outbox.worker";
@@ -187,15 +186,6 @@ async function startInProcessWorkers(
           const trendingWorker = container.resolve(TrendingWorker);
           await trendingWorker.init();
           await trendingWorker.start();
-        },
-      });
-
-      await startWorker(metricsService, {
-        metricName: "profile-sync.worker",
-        displayName: "profile-sync",
-        start: async () => {
-          const profileSyncWorker = container.resolve(ProfileSyncWorker);
-          await profileSyncWorker.start();
         },
       });
 

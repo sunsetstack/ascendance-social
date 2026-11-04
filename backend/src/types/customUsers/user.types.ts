@@ -7,6 +7,7 @@ export interface IUser extends Document {
   handle: string;
   handleNormalized: string;
   username: string;
+  profileRevision?: number;
   email: string;
   joinedCommunities: ICommunityCacheItem[];
   avatar: string;

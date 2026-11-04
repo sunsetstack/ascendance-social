@@ -4,7 +4,6 @@ import { UserUsernameChangedEvent } from "./user-interaction.event";
 import { RedisService } from "@/services/redis.service";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
-import { EventRegistry } from "@/application/common/events/event-registry";
 import type { IUserReadRepository } from "@/repositories/interfaces";
 
 @injectable()
@@ -27,13 +26,6 @@ export class UserUsernameChangedHandler implements IEventHandler<UserUsernameCha
 
     const userTags = [`user_data:${event.userPublicId}`];
     await this.redis.invalidateByTags(userTags);
-
-    await this.redis.publish(EventRegistry.redisChannels.profileSnapshotUpdates, {
-      type: EventRegistry.socketPayloadTypes.usernameChanged,
-      userPublicId: event.userPublicId,
-      username: event.newUsername,
-      timestamp: event.timestamp.toISOString(),
-    });
 
     logger.info(
       `Cache invalidation completed for username change of user ${event.userPublicId}`,

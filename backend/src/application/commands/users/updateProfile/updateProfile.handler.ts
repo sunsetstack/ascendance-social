@@ -71,7 +71,10 @@ export class UpdateProfileCommandHandler implements ICommandHandler<
     await this.unitOfWork.executeInTransaction(async () => {
       const userId = asMongoId(user._id.toString());
 
-      await this.userWriteRepository.update(userId, { $set: allowedUpdates });
+      await this.userWriteRepository.update(userId, {
+        $set: allowedUpdates,
+        ...(usernameChanged ? { $inc: { profileRevision: 1 } } : {}),
+      });
       await this.userActionRepository.logAction(
         userId,
         "profile_update",

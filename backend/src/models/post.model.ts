@@ -5,111 +5,116 @@ import { contentFeaturesSchema } from "./feed-profile.model";
 import { sanitizedTextLength } from "@/utils/sanitizers";
 
 const authorSchema = new Schema(
-	{
-		_id: { type: Schema.Types.ObjectId, ref: "User", required: true },
-		publicId: { type: String, required: true },
-		handle: { type: String, required: true },
-		username: { type: String, required: true },
-		avatarUrl: { type: String, default: "" },
-		displayName: { type: String, default: "" },
-	},
-	{ _id: false },
+  {
+    _id: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    publicId: { type: String, required: true },
+    handle: { type: String, required: true },
+    username: { type: String, required: true },
+    avatarUrl: { type: String, default: "" },
+    displayName: { type: String, default: "" },
+    profileRevision: { type: Number, default: 0, min: 0 },
+  },
+  { _id: false },
 );
 
 const postSchema = new Schema<IPost>(
-	{
-		publicId: {
-			type: String,
-			default: uuidv4,
-			unique: true,
-			immutable: true,
-		},
-		user: {
-			type: Schema.Types.ObjectId,
-			ref: "User",
-			required: true,
-		},
-		author: {
-			type: authorSchema,
-			required: true,
-		},
-		body: {
-			type: String,
-			trim: true,
-			validate: {
-				validator: (body: string | null | undefined): boolean => !body || sanitizedTextLength(body) <= 600,
-				message: "Post cannot exceed 600 characters",
-			},
-		},
-		editedAt: { type: Date },
+  {
+    publicId: {
+      type: String,
+      default: uuidv4,
+      unique: true,
+      immutable: true,
+    },
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    author: {
+      type: authorSchema,
+      required: true,
+    },
+    body: {
+      type: String,
+      trim: true,
+      validate: {
+        validator: (body: string | null | undefined): boolean =>
+          !body || sanitizedTextLength(body) <= 600,
+        message: "Post cannot exceed 600 characters",
+      },
+    },
+    editedAt: { type: Date },
     contentFeatures: { type: contentFeaturesSchema },
-		slug: {
-			type: String,
-			trim: true,
-		},
-		image: {
-			type: Schema.Types.ObjectId,
-			ref: "Image",
-			default: null,
-		},
-		tags: [
-			{
-				type: Schema.Types.ObjectId,
-				ref: "Tag",
-			},
-		],
-		likesCount: {
-			type: Number,
-			default: 0,
-			required: true,
-		},
-		commentsCount: {
-			type: Number,
-			default: 0,
-			required: true,
-		},
-		viewsCount: {
-			type: Number,
-			default: 0,
-			required: true,
-		},
-		type: {
-			type: String,
-			enum: ["original", "repost"],
-			default: "original",
-			required: true,
-		},
-		status: {
-			type: String,
-			enum: ["pending", "active", "failed"],
-			default: "active",
-			required: true,
-			index: true,
-		},
-		failureReason: {
-			type: String,
-			trim: true,
-		},
-		repostOf: {
-			type: Schema.Types.ObjectId,
-			ref: "Post",
-			default: null,
-		},
-		repostCount: {
-			type: Number,
-			default: 0,
-			required: true,
-		},
-		communityId: {
-			type: Schema.Types.ObjectId,
-			ref: "Community",
-			required: false,
-		},
-	},
-	{ timestamps: true },
+    slug: {
+      type: String,
+      trim: true,
+    },
+    image: {
+      type: Schema.Types.ObjectId,
+      ref: "Image",
+      default: null,
+    },
+    tags: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: "Tag",
+      },
+    ],
+    likesCount: {
+      type: Number,
+      default: 0,
+      required: true,
+    },
+    likesRevision: { type: Number, default: 0, min: 0 },
+    commentsCount: {
+      type: Number,
+      default: 0,
+      required: true,
+    },
+    viewsCount: {
+      type: Number,
+      default: 0,
+      required: true,
+    },
+    type: {
+      type: String,
+      enum: ["original", "repost"],
+      default: "original",
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ["pending", "active", "failed"],
+      default: "active",
+      required: true,
+      index: true,
+    },
+    failureReason: {
+      type: String,
+      trim: true,
+    },
+    repostOf: {
+      type: Schema.Types.ObjectId,
+      ref: "Post",
+      default: null,
+    },
+    repostCount: {
+      type: Number,
+      default: 0,
+      required: true,
+    },
+    communityId: {
+      type: Schema.Types.ObjectId,
+      ref: "Community",
+      required: false,
+    },
+  },
+  { timestamps: true },
 );
 
 postSchema.index({ user: 1, createdAt: -1 }); // profile feed queries
+postSchema.index({ communityId: 1, createdAt: -1, _id: -1 });
+postSchema.index({ "author._id": 1, _id: 1 });
 postSchema.index({ tags: 1, createdAt: -1 }); // tag discovery
 postSchema.index({ "contentFeatures.topics.id": 1, createdAt: -1 });
 postSchema.index({ body: "text" }); // text search on body
@@ -121,64 +126,64 @@ postSchema.index({ createdAt: -1 }, { background: true }); // recent posts
 postSchema.index({ createdAt: -1, _id: -1 }, { background: true }); // cursor-based feed sort
 postSchema.index({ createdAt: -1, tags: 1 }, { background: true }); // trending tags window with tag filter
 postSchema.index(
-	{ createdAt: -1, likesCount: -1 },
-	{
-		partialFilterExpression: { likesCount: { $gte: 1 } }, // trending mix: recent and likes
-	},
+  { createdAt: -1, likesCount: -1 },
+  {
+    partialFilterExpression: { likesCount: { $gte: 1 } }, // trending mix: recent and likes
+  },
 );
 postSchema.index({ repostOf: 1, createdAt: -1 }); // fetch reposts of a given post
 postSchema.index(
-	{ user: 1, repostOf: 1, type: 1 },
-	{
-		unique: true,
-		partialFilterExpression: { type: "repost", repostOf: { $exists: true } },
-	},
+  { user: 1, repostOf: 1, type: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { type: "repost", repostOf: { $exists: true } },
+  },
 );
 
 postSchema.set("toJSON", {
-	transform: (_doc, raw) => {
-		const ret: any = raw;
-		if (ret._id) {
-			ret.id = ret._id.toString();
-			delete ret._id;
-		}
+  transform: (_doc, raw) => {
+    const ret: any = raw;
+    if (ret._id) {
+      ret.id = ret._id.toString();
+      delete ret._id;
+    }
 
-		if (ret.user && typeof ret.user === "object" && ret.user._id) {
-			ret.user = {
-				id: ret.user._id.toString(),
-				handle: ret.user.handle,
-				username: ret.user.username,
-				publicId: ret.user.publicId,
-			};
-		}
+    if (ret.user && typeof ret.user === "object" && ret.user._id) {
+      ret.user = {
+        id: ret.user._id.toString(),
+        handle: ret.user.handle,
+        username: ret.user.username,
+        publicId: ret.user.publicId,
+      };
+    }
 
-		if (!ret.user && ret.author) {
-			ret.user = {
-				publicId: ret.author.publicId,
-				handle: ret.author.handle,
-				username: ret.author.username,
-				avatarUrl: ret.author.avatarUrl,
-			};
-		}
+    if (!ret.user && ret.author) {
+      ret.user = {
+        publicId: ret.author.publicId,
+        handle: ret.author.handle,
+        username: ret.author.username,
+        avatarUrl: ret.author.avatarUrl,
+      };
+    }
 
-		if (ret.author && ret.author._id) {
-			ret.author._id = ret.author._id.toString();
-		}
+    if (ret.author && ret.author._id) {
+      ret.author._id = ret.author._id.toString();
+    }
 
-		if (Array.isArray(ret.tags)) {
-			ret.tags = ret.tags.map((tag: any) => {
-				if (tag && typeof tag === "object" && tag._id) {
-					return { id: tag._id.toString(), tag: tag.tag };
-				}
-				return tag;
-			});
-		}
+    if (Array.isArray(ret.tags)) {
+      ret.tags = ret.tags.map((tag: any) => {
+        if (tag && typeof tag === "object" && tag._id) {
+          return { id: tag._id.toString(), tag: tag.tag };
+        }
+        return tag;
+      });
+    }
 
-		if (ret.__v !== undefined) {
-			delete ret.__v;
-		}
-		return ret;
-	},
+    if (ret.__v !== undefined) {
+      delete ret.__v;
+    }
+    return ret;
+  },
 });
 
 const Post = mongoose.model<IPost>("Post", postSchema);

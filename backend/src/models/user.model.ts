@@ -4,236 +4,240 @@ import { IUser } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 import { hashPassword } from "@/application/common/policies/password.policy";
 import {
-	isReservedHandle,
-	normalizeHandle,
+  isReservedHandle,
+  normalizeHandle,
 } from "@/application/common/policies/user-handle.policy";
 
 const userSchema = new Schema<IUser>(
-	{
-		publicId: {
-			type: String,
-			unique: true,
-			immutable: true,
-			default: uuidv4,
-			index: true, // explicit index for frequent publicId queries (follows, feeds, lookups)
-		},
-		handle: {
-			type: String,
-			required: [true, "Handle is required"],
-			immutable: true,
-			trim: true,
-			index: true,
-			validate: {
-				validator: function (v) {
-					return /^[a-zA-Z0-9._-]+$/.test(v);
-				},
-				message: "Handle can only contain letters, numbers, dots, hyphens and underscores.",
-			},
-		},
-		handleNormalized: {
-			type: String,
-			required: [true, "Handle is required"],
-			unique: true,
-			immutable: true,
-			trim: true,
-			index: true,
-			sparse: true,
-		},
-		username: {
-			type: String,
-			required: [true, "Username is required"],
-			unique: true,
-		},
-		avatar: {
-			type: String,
-			required: false,
-			default: "https://res.cloudinary.com/dfyqaqnj7/image/upload/v1737562142/defaultAvatar_evsmmj.jpg",
-		},
-		cover: {
-			type: String,
-			required: false,
-			default: "",
-		},
-		email: {
-			type: String,
-			required: [true, "Email is required"],
-			unique: true,
-			validate: [validator.isEmail, "Please provide a valid email"],
-		},
-		joinedCommunities: [
-			{
-				_id: { type: Schema.Types.ObjectId, ref: "Community" },
-				name: { type: String },
-				slug: { type: String },
-				icon: { type: String },
-			},
-		],
-		password: {
-			type: String,
-			required: [true, "Password is required"],
-			select: false,
-		},
-		authVersion: {
-			type: Number,
-			required: true,
-			default: 0,
-			min: 0,
-		},
-		bio: {
-			type: String,
-			required: false,
-			default: "",
-		},
-		registrationIp: {
-			type: String,
-			required: false,
-		},
-		lastActive: {
-			type: Date,
-			required: false,
-			index: true,
-		},
-		lastIp: {
-			type: String,
-			required: false,
-		},
-		isAdmin: {
-			type: Boolean,
-			default: false,
-			required: true,
-		},
-		isBanned: {
-			type: Boolean,
-			default: false,
-			required: true,
-		},
-		bannedAt: {
-			type: Date,
-			required: false,
-		},
-		bannedReason: {
-			type: String,
-			required: false,
-		},
-		bannedBy: {
-			type: Schema.Types.ObjectId,
-			ref: "User",
-			required: false,
-		},
-		followerCount: {
-			type: Number,
-			default: 0,
-			required: true,
-			index: true,
-		},
-		followingCount: {
-			type: Number,
-			default: 0,
-			required: true,
-		},
-		postCount: {
-			type: Number,
-			default: 0,
-			required: true,
-			index: true,
-		},
-		resetToken: { type: String, select: false },
-		resetTokenExpires: { type: Date, select: false },
-		isEmailVerified: {
-			type: Boolean,
-			default: false,
-			required: true,
-		},
-		emailVerificationToken: { type: String, select: false },
-		emailVerificationExpires: { type: Date, select: false },
-	},
-	{
-		timestamps: true,
-	},
+  {
+    publicId: {
+      type: String,
+      unique: true,
+      immutable: true,
+      default: uuidv4,
+      index: true, // explicit index for frequent publicId queries (follows, feeds, lookups)
+    },
+    handle: {
+      type: String,
+      required: [true, "Handle is required"],
+      immutable: true,
+      trim: true,
+      index: true,
+      validate: {
+        validator: function (v) {
+          return /^[a-zA-Z0-9._-]+$/.test(v);
+        },
+        message:
+          "Handle can only contain letters, numbers, dots, hyphens and underscores.",
+      },
+    },
+    handleNormalized: {
+      type: String,
+      required: [true, "Handle is required"],
+      unique: true,
+      immutable: true,
+      trim: true,
+      index: true,
+      sparse: true,
+    },
+    username: {
+      type: String,
+      required: [true, "Username is required"],
+      unique: true,
+    },
+    avatar: {
+      type: String,
+      required: false,
+      default:
+        "https://res.cloudinary.com/dfyqaqnj7/image/upload/v1737562142/defaultAvatar_evsmmj.jpg",
+    },
+    profileRevision: { type: Number, default: 0, min: 0 },
+    cover: {
+      type: String,
+      required: false,
+      default: "",
+    },
+    email: {
+      type: String,
+      required: [true, "Email is required"],
+      unique: true,
+      validate: [validator.isEmail, "Please provide a valid email"],
+    },
+    joinedCommunities: [
+      {
+        _id: { type: Schema.Types.ObjectId, ref: "Community" },
+        name: { type: String },
+        slug: { type: String },
+        icon: { type: String },
+      },
+    ],
+    password: {
+      type: String,
+      required: [true, "Password is required"],
+      select: false,
+    },
+    authVersion: {
+      type: Number,
+      required: true,
+      default: 0,
+      min: 0,
+    },
+    bio: {
+      type: String,
+      required: false,
+      default: "",
+    },
+    registrationIp: {
+      type: String,
+      required: false,
+    },
+    lastActive: {
+      type: Date,
+      required: false,
+      index: true,
+    },
+    lastIp: {
+      type: String,
+      required: false,
+    },
+    isAdmin: {
+      type: Boolean,
+      default: false,
+      required: true,
+    },
+    isBanned: {
+      type: Boolean,
+      default: false,
+      required: true,
+    },
+    bannedAt: {
+      type: Date,
+      required: false,
+    },
+    bannedReason: {
+      type: String,
+      required: false,
+    },
+    bannedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: false,
+    },
+    followerCount: {
+      type: Number,
+      default: 0,
+      required: true,
+      index: true,
+    },
+    followingCount: {
+      type: Number,
+      default: 0,
+      required: true,
+    },
+    postCount: {
+      type: Number,
+      default: 0,
+      required: true,
+      index: true,
+    },
+    resetToken: { type: String, select: false },
+    resetTokenExpires: { type: Date, select: false },
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+      required: true,
+    },
+    emailVerificationToken: { type: String, select: false },
+    emailVerificationExpires: { type: Date, select: false },
+  },
+  {
+    timestamps: true,
+  },
 );
 
 userSchema.index({ createdAt: 1 });
+userSchema.index({ "joinedCommunities._id": 1 });
 
 // Hash pasword when a new user is registered
 userSchema.pre("save", async function (next) {
-	if (!this.isModified("password")) return next();
+  if (!this.isModified("password")) return next();
 
-	try {
-		this.password = await hashPassword(this.password);
-		next();
-	} catch (error) {
-		next(error as CallbackError);
-	}
+  try {
+    this.password = await hashPassword(this.password);
+    next();
+  } catch (error) {
+    next(error as CallbackError);
+  }
 });
 
 userSchema.pre("validate", function (next) {
-	if (this.isModified("handle") || this.isNew) {
-		const rawHandle = typeof this.handle === "string" ? this.handle.trim() : "";
-		if (rawHandle) {
-			const normalized = normalizeHandle(rawHandle);
-			this.handle = normalized.handle;
-			this.handleNormalized = normalized.handleNormalized;
-		}
-		if (isReservedHandle(this.handleNormalized)) {
-			this.invalidate("handle", "Can't use that handle.");
-		}
-	}
-	next();
+  if (this.isModified("handle") || this.isNew) {
+    const rawHandle = typeof this.handle === "string" ? this.handle.trim() : "";
+    if (rawHandle) {
+      const normalized = normalizeHandle(rawHandle);
+      this.handle = normalized.handle;
+      this.handleNormalized = normalized.handleNormalized;
+    }
+    if (isReservedHandle(this.handleNormalized)) {
+      this.invalidate("handle", "Can't use that handle.");
+    }
+  }
+  next();
 });
 
 // Hash password when user changes it.
 // This might be redundant now
 userSchema.pre("findOneAndUpdate", async function (next) {
-	const update = this.getUpdate();
+  const update = this.getUpdate();
 
-	// Update doesn't work on aggregation pipelines
-	//check if it's not an array aka aggr pipeline
-	if (update && typeof update === "object" && !Array.isArray(update)) {
-		const password = update.password || update.$set?.password;
-		if (password) {
-			try {
-				const hashedPassword = await hashPassword(password);
+  // Update doesn't work on aggregation pipelines
+  //check if it's not an array aka aggr pipeline
+  if (update && typeof update === "object" && !Array.isArray(update)) {
+    const password = update.password || update.$set?.password;
+    if (password) {
+      try {
+        const hashedPassword = await hashPassword(password);
 
-				if (update.password) {
-					update.password = hashedPassword;
-				} else if (update.$set && update.$set.password) {
-					update.$set.password = hashedPassword;
-				} else {
-					//If $set doesn't exist then create it and set the password
-					update.$set = { ...update.$set, password: hashedPassword };
-				}
+        if (update.password) {
+          update.password = hashedPassword;
+        } else if (update.$set && update.$set.password) {
+          update.$set.password = hashedPassword;
+        } else {
+          //If $set doesn't exist then create it and set the password
+          update.$set = { ...update.$set, password: hashedPassword };
+        }
 
-				this.setUpdate(update);
-				next();
-			} catch (error) {
-				next(error as CallbackError);
-			}
-			//do nothing if user isn't updating password
-		} else {
-			next();
-		}
-		//skip if it's an aggregation pipeline
-	} else {
-		next();
-	}
+        this.setUpdate(update);
+        next();
+      } catch (error) {
+        next(error as CallbackError);
+      }
+      //do nothing if user isn't updating password
+    } else {
+      next();
+    }
+    //skip if it's an aggregation pipeline
+  } else {
+    next();
+  }
 });
 
 // Transform the user object when serialized to JSON
 userSchema.set("toJSON", {
-	transform: (_doc, ret: any) => {
-		// 1. Handle ID (Safe to assume _id exists on the object)
-		if (ret._id) {
-			ret.id = ret._id.toString();
-			delete ret._id;
-		}
+  transform: (_doc, ret: any) => {
+    // 1. Handle ID (Safe to assume _id exists on the object)
+    if (ret._id) {
+      ret.id = ret._id.toString();
+      delete ret._id;
+    }
 
-		// 2. Delete the junk
-		delete ret.__v;
-		delete ret.password;
-		delete ret.email;
+    // 2. Delete the junk
+    delete ret.__v;
+    delete ret.password;
+    delete ret.email;
 
-		return ret;
-	},
+    return ret;
+  },
 });
 const User = model<IUser>("User", userSchema);
 export default User;

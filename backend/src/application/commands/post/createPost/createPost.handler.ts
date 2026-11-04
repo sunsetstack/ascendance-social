@@ -14,7 +14,13 @@ import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRep
 import type { IPostWriteRepository } from "@/repositories/interfaces/IPostWriteRepository";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
 import type { IUserWriteRepository } from "@/repositories/interfaces/IUserWriteRepository";
-import type { AttachmentSummary, ImageUploadResult, IPost, IUser, PostDTO } from "@/types";
+import type {
+  AttachmentSummary,
+  ImageUploadResult,
+  IPost,
+  IUser,
+  PostDTO,
+} from "@/types";
 import { CommunityRepository } from "@/repositories/community.repository";
 import { CommunityMemberRepository } from "@/repositories/communityMember.repository";
 import { TagService } from "@/services/tag.service";
@@ -93,7 +99,10 @@ export class CreatePostCommandHandler implements ICommandHandler<
       // ── Phase 1: pre-commit work ──────────────────────────────────────────
       const user = await this.validateUser(command.userPublicId);
       const normalizedBody = this.normalizeBody(command.body);
-      const tagNames = this.tagService.collectTagNames(normalizedBody, command.tags);
+      const tagNames = this.tagService.collectTagNames(
+        normalizedBody,
+        command.tags,
+      );
       if (!normalizedBody && !tagNames.length) {
         throw Errors.validation("Add a description or hashtag to your post");
       }
@@ -220,6 +229,7 @@ export class CreatePostCommandHandler implements ICommandHandler<
         username: user.username,
         avatarUrl: user.avatar ?? "",
         displayName: user.username,
+        profileRevision: user.profileRevision ?? 0,
       },
       body: normalizedBody,
       image: null,
@@ -340,7 +350,11 @@ export class CreatePostCommandHandler implements ICommandHandler<
         image: imageSummary.docId,
         tags: tagIds,
         slug: postSlug,
-        contentFeatures: classifyContent(normalizedBody, tagNames, Boolean(imageSummary.docId)),
+        contentFeatures: classifyContent(
+          normalizedBody,
+          tagNames,
+          Boolean(imageSummary.docId),
+        ),
       },
     );
   }
@@ -413,7 +427,9 @@ export class CreatePostCommandHandler implements ICommandHandler<
     return this.dtoService.toPostDTO(hydratedPost);
   }
 
-  private async requestUploadedAssetCleanup(storagePublicId: string): Promise<void> {
+  private async requestUploadedAssetCleanup(
+    storagePublicId: string,
+  ): Promise<void> {
     await this.eventBus
       .queueDurable(
         new ImageAssetCleanupRequestedEvent(
@@ -435,7 +451,8 @@ export class CreatePostCommandHandler implements ICommandHandler<
     postId: mongoose.Types.ObjectId,
     error: unknown,
   ): Promise<void> {
-    const failureReason = error instanceof Error ? error.message : String(error);
+    const failureReason =
+      error instanceof Error ? error.message : String(error);
     await this.unitOfWork
       .executeInTransaction(() =>
         this.postWriteRepository.updatePostStatus(
@@ -453,6 +470,9 @@ export class CreatePostCommandHandler implements ICommandHandler<
   }
 
   private normalizeBody(body?: string): string {
-    return sanitizeTextInput(body ?? "", { maxLength: MAX_BODY_LENGTH, allowEmpty: true });
+    return sanitizeTextInput(body ?? "", {
+      maxLength: MAX_BODY_LENGTH,
+      allowEmpty: true,
+    });
   }
 }

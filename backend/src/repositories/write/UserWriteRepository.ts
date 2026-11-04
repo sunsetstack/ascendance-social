@@ -143,7 +143,10 @@ export class UserWriteRepository
 
   async updateAvatar(userId: MongoId, avatarUrl: string): Promise<void> {
     try {
-      await this.updateUserById(userId, { $set: { avatar: avatarUrl } });
+      await this.updateUserById(userId, {
+        $set: { avatar: avatarUrl },
+        $inc: { profileRevision: 1 },
+      });
     } catch (error) {
       this.throwDatabaseError("updateAvatar", error);
     }

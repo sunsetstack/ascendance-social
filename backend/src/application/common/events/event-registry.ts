@@ -13,6 +13,7 @@ import type { NotificationRequestedEvent } from "@/application/events/notificati
 import type {
   PostDeletedEvent,
   PostLikeCountReconciledEvent,
+  PostViewRecordedEvent,
   PostUploadedEvent,
   PostUpdatedEvent,
 } from "@/application/events/post/post.event";
@@ -37,6 +38,7 @@ export const EventRegistry = {
     NotificationRequested: "NotificationRequestedEvent",
     PostDeleted: "PostDeletedEvent",
     PostLikeCountReconciled: "PostLikeCountReconciledEvent",
+    PostViewRecorded: "PostViewRecordedEvent",
     PostUploaded: "PostUploadedEvent",
     PostUpdated: "PostUpdatedEvent",
     UserAvatarChanged: "UserAvatarChangedEvent",
@@ -50,7 +52,6 @@ export const EventRegistry = {
     feedUpdates: "feed_updates",
     messagingUpdates: "messaging_updates",
     notificationUpdates: "notification_updates",
-    profileSnapshotUpdates: "profile_snapshot_updates",
     sessionRevocations: "session_revocations",
   },
   socketClientEvents: {
@@ -116,6 +117,7 @@ export interface EventPayloadRegistry {
   NotificationRequestedEvent: NotificationRequestedEvent;
   PostDeletedEvent: PostDeletedEvent;
   PostLikeCountReconciledEvent: PostLikeCountReconciledEvent;
+  PostViewRecordedEvent: PostViewRecordedEvent;
   PostUploadedEvent: PostUploadedEvent;
   PostUpdatedEvent: PostUpdatedEvent;
   UserAvatarChangedEvent: UserAvatarChangedEvent;

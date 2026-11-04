@@ -1,7 +1,12 @@
 import mongoose from "mongoose";
 import { IPost, PostStatus } from "@/types";
-import { MongoId } from "@/types/branded";
+import { MongoId, PostPublicId } from "@/types/branded";
 import type { ContentFeatures } from "@/services/feed/interests.policy";
+
+export type AuthorSnapshot = Pick<IPost["author"], "publicId" | "handle" | "username"> & {
+  avatarUrl: string;
+  displayName: string;
+};
 
 /**
  * Write-only repository interface for post mutations
@@ -16,7 +21,7 @@ export interface IPostWriteRepository {
   // counter updates
   incrementViewCount(postId: mongoose.Types.ObjectId): Promise<void>;
   updateCommentCount(postId: MongoId, increment: number): Promise<void>;
-  updateLikeCount(postId: MongoId, increment: number): Promise<void>;
+  updateLikeCount(postId: MongoId, increment: number): Promise<boolean>;
   updateRepostCount(postId: MongoId, increment: number): Promise<void>;
   activatePendingPost(
     postId: MongoId,
@@ -39,12 +44,8 @@ export interface IPostWriteRepository {
   // author snapshot sync
   updateAuthorSnapshot(
     userObjectId: mongoose.Types.ObjectId,
-    updates: {
-      username?: string;
-      avatarUrl?: string;
-      displayName?: string;
-      publicId?: string;
-      handle?: string;
-    },
+    snapshot: AuthorSnapshot,
+    profileRevision: number,
+    postPublicId?: PostPublicId,
   ): Promise<number>;
 }

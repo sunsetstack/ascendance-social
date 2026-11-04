@@ -1,10 +1,10 @@
-import mongoose, { Model } from "mongoose";
+import mongoose, { FilterQuery, Model } from "mongoose";
 import { inject, injectable } from "tsyringe";
 import { IPost, PostStatus } from "@/types";
-import type { IPostWriteRepository } from "../interfaces/IPostWriteRepository";
+import type { AuthorSnapshot, IPostWriteRepository } from "../interfaces/IPostWriteRepository";
 import { BaseRepository } from "../base.repository";
 import { TOKENS } from "@/types/tokens";
-import { MongoId } from "@/types/branded";
+import { MongoId, PostPublicId } from "@/types/branded";
 import { Errors } from "@/utils/errors";
 import type { ContentFeatures } from "@/services/feed/interests.policy";
 
@@ -123,15 +123,15 @@ export class PostWriteRepository
     }
   }
 
-  async updateLikeCount(postId: MongoId, increment: number): Promise<void> {
+  async updateLikeCount(postId: MongoId, increment: number): Promise<boolean> {
     try {
       const session = this.getSession();
-      const query = this.model.findByIdAndUpdate(
-        postId,
-        { $inc: { likesCount: increment } },
+      const result = await this.model.updateOne(
+        { _id: postId },
+        { $inc: { likesCount: increment, likesRevision: 1 } },
         { session },
-      );
-      await query.exec();
+      ).exec();
+      return result.matchedCount === 1;
     } catch (error: unknown) {
       throw Errors.database(
         error instanceof Error ? error.message : String(error),
@@ -157,41 +157,47 @@ export class PostWriteRepository
 
   async updateAuthorSnapshot(
     userObjectId: mongoose.Types.ObjectId,
-    updates: {
-      username?: string;
-      avatarUrl?: string;
-      displayName?: string;
-      publicId?: string;
-      handle?: string;
-    },
+    snapshot: AuthorSnapshot,
+    profileRevision: number,
+    postPublicId?: PostPublicId,
   ): Promise<number> {
     try {
-      const setFields: Record<string, string> = {};
-      if (updates.username !== undefined) {
-        setFields["author.username"] = updates.username;
-      }
-      if (updates.handle !== undefined) {
-        setFields["author.handle"] = updates.handle;
-      }
-      if (updates.avatarUrl !== undefined) {
-        setFields["author.avatarUrl"] = updates.avatarUrl;
-      }
-      if (updates.displayName !== undefined) {
-        setFields["author.displayName"] = updates.displayName;
-      }
-      if (updates.publicId !== undefined) {
-        setFields["author.publicId"] = updates.publicId;
-      }
+      const setFields = {
+        "author.profileRevision": profileRevision,
+        "author.username": snapshot.username,
+        "author.handle": snapshot.handle,
+        "author.avatarUrl": snapshot.avatarUrl,
+        "author.displayName": snapshot.displayName,
+        "author.publicId": snapshot.publicId,
+      };
 
-      if (Object.keys(setFields).length === 0) {
-        return 0;
+      const filter: FilterQuery<IPost> = {
+        "author._id": userObjectId,
+        ...(postPublicId ? { publicId: postPublicId } : {}),
+        $or: [
+          { "author.profileRevision": { $lt: profileRevision } },
+          { "author.profileRevision": { $exists: false } },
+        ],
+      };
+      let lastId: mongoose.Types.ObjectId | undefined;
+      let modifiedCount = 0;
+      while (true) {
+        const posts = await this.model
+          .find({ ...filter, ...(lastId ? { _id: { $gt: lastId } } : {}) })
+          .select("_id")
+          .sort({ _id: 1 })
+          .limit(500)
+          .lean()
+          .exec();
+        if (posts.length === 0) return modifiedCount;
+
+        const result = await this.model.updateMany(
+          { ...filter, _id: { $in: posts.map((post) => post._id) } },
+          { $set: setFields },
+        ).exec();
+        modifiedCount += result.modifiedCount;
+        lastId = posts[posts.length - 1]!._id;
       }
-
-      const result = await this.model
-        .updateMany({ "author._id": userObjectId }, { $set: setFields })
-        .exec();
-
-      return result.modifiedCount || 0;
     } catch (error: unknown) {
       throw Errors.database(
         error instanceof Error ? error.message : String(error),
