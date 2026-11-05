@@ -480,6 +480,7 @@ describe("AuthenticationMiddleware", () => {
         sid: "22222222-2222-4222-8222-222222222222",
       },
       secret,
+      { expiresIn: "5m" },
     );
     const request = {
       method: "GET",
@@ -574,6 +575,7 @@ describe("AuthenticationMiddleware", () => {
         sid: "22222222-2222-4222-8222-222222222222",
       },
       secret,
+      { expiresIn: "5m" },
     );
     const request = {
       method: "GET",

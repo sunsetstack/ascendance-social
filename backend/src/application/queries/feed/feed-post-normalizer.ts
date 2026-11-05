@@ -90,6 +90,10 @@ function normalizeRepostOf(repostOf: unknown): FeedPost["repostOf"] {
     body: (repost.body as string) ?? "",
     slug: (repost.slug as string) ?? "",
     likes: ((repost.likesCount ?? repost.likes) as number) ?? 0,
+    likesRevision:
+      typeof repost.likesRevision === "number"
+        ? repost.likesRevision
+        : undefined,
     repostCount: (repost.repostCount as number) ?? 0,
     commentsCount: (repost.commentsCount as number) ?? 0,
     user: {
@@ -113,12 +117,15 @@ export function normalizeFeedPost(post: FeedPostSource): FeedPost {
     editedAt: plainPost.editedAt as Date | undefined,
     contentFeatures: plainPost.contentFeatures as FeedPost["contentFeatures"],
     slug: (plainPost.slug as string) ?? "",
-    type:
-      plainPost.type === "repost" || repostOf ? "repost" : "original",
+    type: plainPost.type === "repost" || repostOf ? "repost" : "original",
     repostCount: (plainPost.repostCount as number) ?? 0,
     repostOf,
     createdAt: plainPost.createdAt as Date,
     likes: ((plainPost.likesCount ?? plainPost.likes) as number) ?? 0,
+    likesRevision:
+      typeof plainPost.likesRevision === "number"
+        ? plainPost.likesRevision
+        : undefined,
     commentsCount: (plainPost.commentsCount as number) ?? 0,
     viewsCount: (plainPost.viewsCount as number) ?? 0,
     userPublicId: asUserPublicId(user.publicId as string),

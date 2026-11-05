@@ -5,6 +5,7 @@ import {
   removePostDetailAndCommentCaches,
   removePostFromFeedCaches,
   updatePostCaches,
+  applyLikeCounterUpdate,
 } from "../posts/postCache";
 import { useRecentEventIds } from "../socket/useRecentEventIds";
 import { useAuth } from "../context/useAuth";
@@ -112,13 +113,12 @@ export const useFeedSocketIntegration = () => {
       eventId?: string;
       imageId: string;
       newLikes: number;
+      likesRevision?: number;
       timestamp: string;
     }) => {
       if (!shouldHandleEvent(data.eventId)) return;
 
-      updatePostCaches(queryClient, data.imageId, (post) => ({
-        ...post, likes: data.newLikes,
-      }));
+      updatePostCaches(queryClient, data.imageId, (post) => applyLikeCounterUpdate(post, data.newLikes, data.likesRevision));
 
       // Update specific image queries
       queryClient.invalidateQueries({ queryKey: ["image", data.imageId] });

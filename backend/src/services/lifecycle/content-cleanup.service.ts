@@ -238,7 +238,7 @@ export class ContentCleanupService {
       ids.map((id) => ({
         updateOne: {
           filter: { _id: id },
-          update: { $set: { likesCount: byId.get(id.toHexString()) ?? 0 } },
+          update: { $set: { likesCount: byId.get(id.toHexString()) ?? 0 }, $inc: { likesRevision: 1 } },
         },
       })),
       { session },

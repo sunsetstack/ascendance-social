@@ -4,34 +4,34 @@ import { PostLikeCountReconciledEvent } from "@/application/events/post/post.eve
 import { FeedMetaService } from "@/services/feed/feed-meta.service";
 import { TOKENS } from "@/types/tokens";
 import { buildRealtimeEventId } from "@/application/common/events/event-registry";
+import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRepository";
 
 @injectable()
-export class PostLikeCountReconciledHandler
-  implements IEventHandler<PostLikeCountReconciledEvent>
-{
+export class PostLikeCountReconciledHandler implements IEventHandler<PostLikeCountReconciledEvent> {
   constructor(
     @inject(TOKENS.Services.FeedMeta)
     private readonly feedMetaService: FeedMetaService,
+    @inject(TOKENS.Repositories.PostRead)
+    private readonly posts: IPostReadRepository,
   ) {}
 
   async handle(event: PostLikeCountReconciledEvent): Promise<void> {
-    const persistedTimestamp: unknown = event.timestamp;
+    const post = await this.posts.findOneByPublicId(event.postId);
+    if (!post) return;
     const sourceEventId =
       typeof event.eventId === "string" && event.eventId.length > 0
         ? event.eventId
         : buildRealtimeEventId(
             event.type,
             event.postId,
-            event.likesCount,
-            persistedTimestamp instanceof Date
-              ? persistedTimestamp.toISOString()
-              : String(persistedTimestamp),
+            post.likesRevision ?? 0,
           );
 
     await this.feedMetaService.updatePostLikeMeta(
       event.postId,
-      event.likesCount,
+      post.likesCount ?? 0,
       sourceEventId,
+      post.likesRevision ?? 0,
     );
   }
 }

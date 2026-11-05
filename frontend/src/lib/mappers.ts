@@ -133,6 +133,7 @@ export function mapPost(rawInput: unknown): IPost {
 							? repostSource.likesCount
 							: 0,
 				repostCount: typeof repostSource.repostCount === "number" ? repostSource.repostCount : 0,
+				likesRevision: typeof repostSource.likesRevision === "number" ? repostSource.likesRevision : undefined,
 				commentsCount: typeof repostSource.commentsCount === "number" ? repostSource.commentsCount : 0,
 			};
 		}
@@ -170,6 +171,7 @@ export function mapPost(rawInput: unknown): IPost {
 		community: mapCommunity(raw.community),
 
 		likes: typeof raw.likes === "number" ? raw.likes : 0,
+		likesRevision: typeof raw.likesRevision === "number" ? raw.likesRevision : undefined,
 		commentsCount: typeof raw.commentsCount === "number" ? raw.commentsCount : 0,
 		viewsCount: typeof raw.viewsCount === "number" ? raw.viewsCount : 0,
 		createdAt: new Date(String(raw.createdAt)),

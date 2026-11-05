@@ -237,6 +237,7 @@ describe("User read and write repositories", () => {
 			expect(filter.resetTokenExpires.$gt).to.be.instanceOf(Date);
 			expect(update).to.deep.equal({
 				$set: { password: "new-password" },
+				$inc: { authVersion: 1 },
 				$unset: { resetToken: 1, resetTokenExpires: 1 },
 			});
 			expect(options).to.deep.equal({ new: true });

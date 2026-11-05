@@ -1,7 +1,6 @@
 import { injectable, inject } from "tsyringe";
 import type { RedisClientType } from "redis";
-import { INotification } from "@/types";
-import { NotificationPlain } from "@/types/customNotifications/notifications.types";
+import type { NotificationRecord } from "@/types/customNotifications/notifications.types";
 import { MetricsService } from "../metrics/metrics.service";
 import { RedisNotificationModule } from "./redis/redis-notification.module";
 import { RedisFeedModule } from "./redis/redis-feed.module";
@@ -190,15 +189,6 @@ export class RedisService {
     return this.taggedCacheModule.setWithTags(key, value, tags, ttl);
   }
 
-  async patchWithTags(
-    key: string,
-    patch: Readonly<Record<string, unknown>>,
-    tags: readonly string[],
-    ttl?: number,
-  ): Promise<void> {
-    return this.taggedCacheModule.patchWithTags(key, patch, tags, ttl);
-  }
-
   async setManyWithTags<T>(
     entries: Array<TaggedCacheEntry<T>>,
     ttl?: number,
@@ -214,60 +204,24 @@ export class RedisService {
     return this.taggedCacheModule.getWithTags<T>(key);
   }
 
-  async pushNotification(
-    userId: string,
-    notification: INotification,
-    maxCount = 200,
-  ): Promise<void> {
-    return this.notificationModule.pushNotification(
-      userId,
-      notification,
-      maxCount,
-    );
+  async getUserNotifications(userId: string): Promise<NotificationRecord[] | null> {
+    return this.notificationModule.getUserNotifications(userId);
+  }
+
+  async beginNotificationBackfill(userId: string): Promise<string | null> {
+    return this.notificationModule.beginNotificationBackfill(userId);
   }
 
   async backfillNotifications(
     userId: string,
-    notifications: INotification[],
-    maxCount = 200,
+    token: string,
+    notifications: NotificationRecord[],
   ): Promise<void> {
-    return this.notificationModule.backfillNotifications(
-      userId,
-      notifications,
-      maxCount,
-    );
+    return this.notificationModule.backfillNotifications(userId, token, notifications);
   }
 
-  async getUserNotifications(
-    userId: string,
-    page = 1,
-    limit = 20,
-  ): Promise<NotificationPlain[]> {
-    return this.notificationModule.getUserNotifications(userId, page, limit);
-  }
-
-  async getUserNotificationIds(
-    userId: string,
-    start = 0,
-    end = -1,
-  ): Promise<string[]> {
-    return this.notificationModule.getUserNotificationIds(userId, start, end);
-  }
-
-  async clearNotificationCaches(userIds: string[], notificationIds: string[]): Promise<void> {
+  async clearNotificationCaches(userIds: string[], notificationIds?: string[]): Promise<void> {
     return this.notificationModule.clearNotificationCaches(userIds, notificationIds);
-  }
-
-  async markNotificationRead(notificationId: string): Promise<void> {
-    return this.notificationModule.markNotificationRead(notificationId);
-  }
-
-  async markNotificationsRead(notificationIds: string[]): Promise<void> {
-    return this.notificationModule.markNotificationsRead(notificationIds);
-  }
-
-  async getUnreadNotificationCount(userId: string): Promise<number> {
-    return this.notificationModule.getUnreadNotificationCount(userId);
   }
 
   async cleanupOrphanedTags(): Promise<void> {

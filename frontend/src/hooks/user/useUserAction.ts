@@ -18,7 +18,7 @@ import {
   WhoToFollowResponse,
 } from "../../types";
 import { devError } from "@/lib/devLogger";
-import { postInteractionQueryFilter, updatePostInCache, updatePostCaches } from "../posts/postCache";
+import { postInteractionQueryFilter, updatePostInCache, updatePostCaches, applyLikeCounterUpdate } from "../posts/postCache";
 import { latestFeedAction, traceFeedClient } from "@/features/feed/feedTrace";
 
 /**All hooks use public ids */
@@ -293,8 +293,8 @@ export const useLikePost = () => {
       return { previousPosts };
     },
     onSuccess: (updated, postPublicId) => {
-      updatePostCaches(queryClient, postPublicId, (post) => ({ ...post,
-        likes: updated.likes, isLikedByViewer: updated.isLikedByViewer, viewerLikeStateKnown: true,
+      updatePostCaches(queryClient, postPublicId, (post) => ({ ...applyLikeCounterUpdate(post, updated.likes, updated.likesRevision),
+        isLikedByViewer: updated.isLikedByViewer, viewerLikeStateKnown: true,
       }));
     },
     onError: (_error, postPublicId, context) => {
@@ -303,7 +303,9 @@ export const useLikePost = () => {
         queryClient.setQueryData(queryKey, (data: unknown) =>
           updatePostInCache(data, postPublicId, (post) => ({
             ...post,
-            likes: previous.likes,
+            ...((post.likesRevision ?? -1) > (previous.likesRevision ?? -1) ? {} : {
+              likes: previous.likes, likesRevision: previous.likesRevision,
+            }),
             isLikedByViewer: previous.isLikedByViewer,
           })),
         );

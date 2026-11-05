@@ -42,6 +42,7 @@ function feedPostToDTO(post: FeedPost): PostDTO {
     imagePublicId,
     tags,
     likes: post.likes,
+    likesRevision: post.likesRevision ?? 0,
     isLikedByViewer: post.isLikedByViewer,
     isRepostedByViewer: post.isRepostedByViewer,
     commentsCount: post.commentsCount,
@@ -105,6 +106,7 @@ function iPostToDTO(post: IPost): PostDTO {
     imagePublicId,
     tags: tags.filter(Boolean),
     likes: rawObj.likesCount ?? 0,
+    likesRevision: rawObj.likesRevision ?? 0,
     commentsCount: rawObj.commentsCount ?? 0,
     viewsCount: rawObj.viewsCount ?? 0,
     createdAt: rawObj.createdAt,
@@ -155,6 +157,7 @@ function buildFeedPostRepostOf(
     slug: repost.slug,
     image,
     likes: repost.likes ?? repost.likesCount ?? 0,
+    likesRevision: repost.likesRevision ?? 0,
     repostCount: repost.repostCount ?? 0,
     commentsCount: repost.commentsCount ?? 0,
   };
@@ -216,6 +219,7 @@ function buildIPostRepostOf(rawObj: PostReadSource): PostDTO["repostOf"] {
     slug: repost.slug,
     image,
     likes: repost.likesCount ?? 0,
+    likesRevision: repost.likesRevision ?? 0,
     repostCount: repost.repostCount ?? 0,
     commentsCount: repost.commentsCount ?? 0,
   };

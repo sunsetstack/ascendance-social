@@ -155,7 +155,7 @@ export class PostReadRepository
       const query = this.model
         .findOne(withActivePostFilter(filter))
         .select(
-          "publicId user author body contentFeatures slug type repostOf repostCount image tags likesCount commentsCount viewsCount createdAt editedAt updatedAt communityId",
+          "publicId user author body contentFeatures slug type repostOf repostCount image tags likesCount likesRevision commentsCount viewsCount createdAt editedAt updatedAt communityId",
         )
         .populate("tags", "tag")
         .populate({ path: "image", select: "_id url publicId slug width height createdAt" })
@@ -167,6 +167,7 @@ export class PostReadRepository
             body: 1,
             slug: 1,
             likesCount: 1,
+            likesRevision: 1,
             repostCount: 1,
             commentsCount: 1,
             author: 1,

@@ -24,58 +24,55 @@ export class FeedInteractionHandler implements IEventHandler<UserInteractedWithP
   ) {}
 
   async handle(event: UserInteractedWithPostEvent): Promise<void> {
-    try {
-      const [actor, post] = await Promise.all([
-        this.userRepository.findByPublicId(event.userId),
-        this.postRepository.findByPublicId(event.postId),
-      ]);
-      if (!actor || actor.isBanned || !post) {
-        logger.info("Skipping interaction from an unavailable account or post", {
-          userPublicId: event.userId,
-          postPublicId: event.postId,
-        });
-        return;
-      }
-
-      const timestamp = new Date(event.timestamp);
-      const eventId =
-        event.eventId ??
-        buildRealtimeEventId(
-          event.type,
-          event.userId,
-          event.postId,
-          event.interactionType,
-          timestamp.toISOString(),
-        );
-      await this.feedInteractionService.recordInteraction(
-        event.userId,
-        event.interactionType,
-        event.postId,
-        event.tags,
-        { eventId, timestamp, activityId: event.activityId },
-      );
-
-      await this.redis.pushToStream("stream:interactions", {
-        postId: event.postId,
-        userId: event.userId,
-        type: event.interactionType,
-        eventId,
-        timestamp: timestamp.getTime().toString(),
-        tags: event.tags ? JSON.stringify(event.tags) : undefined,
+    const [actor, post] = await Promise.all([
+      this.userRepository.findByPublicId(event.userId),
+      this.postRepository.findByPublicId(event.postId),
+    ]);
+    if (!actor || actor.isBanned || !post) {
+      logger.info("Skipping interaction from an unavailable account or post", {
+        userPublicId: event.userId,
+        postPublicId: event.postId,
       });
-      if (
-        (event.interactionType === "like" || event.interactionType === "unlike") &&
-        post.publicId
-      ) {
-        await this.feedMetaService.updatePostLikeMeta(
-          post.publicId,
-          post.likesCount || 0,
-          eventId,
-        );
-      }
-    } catch (error) {
-      logger.error("Feed update failed", { error });
-      throw error;
+      return;
+    }
+
+    const timestamp = new Date(event.timestamp);
+    const eventId =
+      event.eventId ??
+      buildRealtimeEventId(
+        event.type,
+        event.userId,
+        event.postId,
+        event.interactionType,
+        timestamp.toISOString(),
+      );
+    await this.feedInteractionService.recordInteraction(
+      event.userId,
+      event.interactionType,
+      event.postId,
+      event.tags,
+      { eventId, timestamp, activityId: event.activityId },
+    );
+
+    await this.redis.pushToStream("stream:interactions", {
+      postId: event.postId,
+      userId: event.userId,
+      type: event.interactionType,
+      eventId,
+      timestamp: timestamp.getTime().toString(),
+      tags: event.tags ? JSON.stringify(event.tags) : undefined,
+    });
+    if (
+      (event.interactionType === "like" ||
+        event.interactionType === "unlike") &&
+      post.publicId
+    ) {
+      await this.feedMetaService.updatePostLikeMeta(
+        post.publicId,
+        post.likesCount || 0,
+        eventId,
+        post.likesRevision ?? 0,
+      );
     }
   }
 }

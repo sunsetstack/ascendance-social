@@ -15,7 +15,7 @@ import { Errors, handleMongoError } from "@/utils/errors";
 import { logger } from "@/utils/winston";
 import { escapeRegex } from "@/utils/sanitizers";
 import { getTransactionSession } from "@/database/UnitOfWork";
-import { addRequestContextBreadcrumb } from "@/runtime/request-context";
+import { addRequestContextBreadcrumb, getRequestContext, type ReadonlyRequestContext } from "@/runtime/request-context";
 import type { UserAuthenticationLookup } from "@/application/ports/user-authentication-lookup";
 import type { UserDirectoryLookup } from "@/application/ports/user-directory-lookup";
 import type { UserIdentityLookup } from "@/application/ports/user-identity-lookup";
@@ -50,6 +50,7 @@ export class UserReadRepository
     UserSuggestionsLookup
 {
   private readonly model: Model<IUser>;
+  private readonly requestReads = new WeakMap<ReadonlyRequestContext, Map<UserPublicId, Promise<IUser | null>>>();
 
   constructor(
     @inject(TOKENS.Models.User) model: Model<IUser>,
@@ -158,7 +159,26 @@ export class UserReadRepository
   }
 
   async findByPublicId(publicId: UserPublicId): Promise<IUser | null> {
-    return await this.findUser({ publicId });
+    const context = getRequestContext();
+    if (!context || context.method !== "GET" || this.getSession()) {
+      if (context) this.requestReads.delete(context);
+      return await this.findUser({ publicId });
+    }
+    let reads = this.requestReads.get(context);
+    if (!reads) {
+      reads = new Map();
+      this.requestReads.set(context, reads);
+    }
+    const pending = reads.get(publicId);
+    if (pending) return await pending;
+    const read = this.findUser({ publicId });
+    reads.set(publicId, read);
+    try {
+      return await read;
+    } catch (error) {
+      reads.delete(publicId);
+      throw error;
+    }
   }
 
   async findInternalIdByPublicId(

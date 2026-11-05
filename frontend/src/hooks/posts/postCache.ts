@@ -117,3 +117,15 @@ export const updatePostCaches = (
 		updatePostInCache(data, postPublicId, updater),
 	);
 };
+
+export const applyLikeCounterUpdate = (
+	post: IPost,
+	likes: number,
+	likesRevision?: number,
+): IPost => {
+	if (!Number.isSafeInteger(likes) || likes < 0) return post;
+	if (likesRevision === undefined) return post.likesRevision === undefined ? { ...post, likes } : post;
+	if (!Number.isSafeInteger(likesRevision) || likesRevision < 0 ||
+		(post.likesRevision !== undefined && likesRevision <= post.likesRevision)) return post;
+	return { ...post, likes, likesRevision };
+};

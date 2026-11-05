@@ -31,6 +31,7 @@ export interface PostDTO {
       height?: number;
     } | null;
     likes?: number;
+    likesRevision?: number;
     repostCount?: number;
     commentsCount?: number;
   };
@@ -49,6 +50,7 @@ export interface PostDTO {
 
   tags: string[];
   likes: number;
+  likesRevision?: number;
   commentsCount: number;
   viewsCount: number;
   createdAt: Date;

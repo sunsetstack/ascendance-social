@@ -85,6 +85,7 @@ export interface IPost {
       height?: number;
     } | null;
     likes?: number;
+    likesRevision?: number;
     repostCount?: number;
     commentsCount?: number;
   };
@@ -119,6 +120,7 @@ export interface IPost {
   } | null;
 
   likes: number;
+  likesRevision?: number;
   commentsCount: number;
   viewsCount: number;
   createdAt: Date;

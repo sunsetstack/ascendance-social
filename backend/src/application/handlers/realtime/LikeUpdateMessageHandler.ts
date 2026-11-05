@@ -10,6 +10,7 @@ import {
 } from "@/application/common/events/event-registry";
 import { MetricsService } from "@/metrics/metrics.service";
 import { TOKENS } from "@/types/tokens";
+import { randomUUID } from "node:crypto";
 
 @injectable()
 export class LikeUpdateMessageHandler implements IRealtimeMessageHandler {
@@ -25,20 +26,25 @@ export class LikeUpdateMessageHandler implements IRealtimeMessageHandler {
     if (!targetId || message.newLikes === undefined) return;
 
     // broadcast like count update to all connected users
-    await broadcastToAuthenticatedSockets(io, EventRegistry.socketServerEvents.likeUpdate, {
-      eventId:
-        message.eventId ??
-        buildRealtimeEventId(
-          EventRegistry.realtimeMessageTypes.likeUpdate,
-          targetId,
-          message.newLikes,
-        ),
-      type: EventRegistry.socketPayloadTypes.likeCountChanged,
-      postId: targetId,
-      imageId: targetId,
-      newLikes: message.newLikes,
-      timestamp: message.timestamp,
-    });
+    await broadcastToAuthenticatedSockets(
+      io,
+      EventRegistry.socketServerEvents.likeUpdate,
+      {
+        eventId:
+          message.eventId ??
+          buildRealtimeEventId(
+            EventRegistry.realtimeMessageTypes.likeUpdate,
+            targetId,
+            message.likesRevision ?? randomUUID(),
+          ),
+        type: EventRegistry.socketPayloadTypes.likeCountChanged,
+        postId: targetId,
+        imageId: targetId,
+        newLikes: message.newLikes,
+        likesRevision: message.likesRevision,
+        timestamp: message.timestamp,
+      },
+    );
     this.metricsService.recordSocketEventEmitted(
       EventRegistry.socketServerEvents.likeUpdate,
       "broadcast",

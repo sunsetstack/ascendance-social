@@ -15,72 +15,47 @@ export type TaggedCacheEntry<T> = {
   tags: string[];
 };
 
-const PATCH_WITH_TAGS_SCRIPT = `
-local ttlSeconds = nil
-if ARGV[2] ~= "" then
-  ttlSeconds = tonumber(ARGV[2])
-  if not ttlSeconds then
-    return redis.error_reply("Invalid tagged cache TTL")
+const INVALIDATE_TAGS_SCRIPT = `
+local function members(key)
+  if redis.call("TYPE", key).ok == "set" then
+    return redis.call("SMEMBERS", key)
+  end
+  return {}
+end
+
+local keys = {}
+for _, tagKey in ipairs(KEYS) do
+  for _, key in ipairs(members(tagKey)) do
+    keys[key] = true
   end
 end
 
-if ttlSeconds and ttlSeconds <= 0 then
-  redis.call("DEL", KEYS[1])
-  if #KEYS > 2 then
-    redis.call("DEL", KEYS[2])
-    for index = 3, #KEYS do
-      redis.call("SREM", KEYS[index], KEYS[1])
+local count = 0
+for key in pairs(keys) do
+  local keyTags = "key_tags:" .. key
+  for _, tag in ipairs(members(keyTags)) do
+    local tagKey = "tag:" .. tag
+    if redis.call("TYPE", tagKey).ok == "set" then
+      redis.call("SREM", tagKey, key)
     end
   end
-  return 0
+  redis.call("DEL", key, keyTags)
+  count = count + 1
 end
+for _, tagKey in ipairs(KEYS) do
+  redis.call("DEL", tagKey)
+end
+return count
+`;
 
-local raw = redis.call("GET", KEYS[1])
-local value = {}
-
-if raw then
-  local decoded, cached = pcall(cjson.decode, raw)
-  if decoded and type(cached) == "table" then
-    value = cached
+const REMOVE_INVALID_SET_KEYS_SCRIPT = `
+local count = 0
+for _, key in ipairs(KEYS) do
+  if redis.call("TYPE", key).ok ~= "set" then
+    count = count + redis.call("DEL", key)
   end
 end
-
-local patchDecoded, patch = pcall(cjson.decode, ARGV[1])
-if not patchDecoded or type(patch) ~= "table" then
-  return redis.error_reply("Invalid tagged cache patch")
-end
-
-for field, fieldValue in pairs(patch) do
-  value[field] = fieldValue
-end
-
-local encoded = cjson.encode(value)
-if ttlSeconds then
-  redis.call("SET", KEYS[1], encoded, "EX", ttlSeconds)
-else
-  redis.call("SET", KEYS[1], encoded)
-end
-
-if #KEYS > 2 then
-  for index = 3, #KEYS do
-    redis.call("SADD", KEYS[index], KEYS[1])
-    if ttlSeconds then
-      redis.call("EXPIRE", KEYS[index], ttlSeconds, "NX")
-      redis.call("EXPIRE", KEYS[index], ttlSeconds, "GT")
-    else
-      redis.call("PERSIST", KEYS[index])
-    end
-    redis.call("SADD", KEYS[2], ARGV[index])
-  end
-
-  if ttlSeconds then
-    redis.call("EXPIRE", KEYS[2], ttlSeconds)
-  else
-    redis.call("PERSIST", KEYS[2])
-  end
-end
-
-return 1
+return count
 `;
 
 export class RedisTaggedCacheModule {
@@ -118,10 +93,9 @@ export class RedisTaggedCacheModule {
           return;
         }
 
-        await Promise.all([
-          ...uniqueTags.map((tag) => this.ensureSetKey(`tag:${tag}`)),
-          this.ensureSetKey(`key_tags:${key}`),
-        ]);
+        await this.client.eval(REMOVE_INVALID_SET_KEYS_SCRIPT, {
+          keys: [...uniqueTags.map((tag) => `tag:${tag}`), `key_tags:${key}`],
+        });
 
         const pipeline = this.client.multi();
 
@@ -156,45 +130,6 @@ export class RedisTaggedCacheModule {
         const durationMs = performance.now() - start;
         redisLogger.info(
           `[Redis] setWithTags key=${key} tags=${uniqueTags.length} duration=${durationMs.toFixed(2)}ms`,
-        );
-      },
-      { maxAttempts: 3 },
-    );
-  }
-
-  async patchWithTags(
-    key: string,
-    patch: Readonly<Record<string, unknown>>,
-    tags: readonly string[],
-    ttl?: number,
-  ): Promise<void> {
-    return this.resilienceModule.withResilience(
-      async () => {
-        const uniqueTags = [...new Set(tags)];
-        const keyTagsKey = `key_tags:${key}`;
-        const tagKeys = uniqueTags.map((tag) => `tag:${tag}`);
-
-        if (uniqueTags.length > 0) {
-          await Promise.all(
-            [keyTagsKey, ...tagKeys].map((keyToEnsure) =>
-              this.ensureSetKey(keyToEnsure),
-            ),
-          );
-        }
-
-        const start = performance.now();
-        await this.client.eval(PATCH_WITH_TAGS_SCRIPT, {
-          keys: [key, keyTagsKey, ...tagKeys],
-          arguments: [
-            JSON.stringify(patch),
-            ttl === undefined ? "" : String(ttl),
-            ...uniqueTags,
-          ],
-        });
-
-        const durationMs = performance.now() - start;
-        redisLogger.info(
-          `[Redis] patchWithTags key=${key} tags=${uniqueTags.length} duration=${durationMs.toFixed(2)}ms`,
         );
       },
       { maxAttempts: 3 },
@@ -239,11 +174,11 @@ export class RedisTaggedCacheModule {
           }
         }
 
-        await Promise.all(
-          [...setKeysToEnsure].map((keyToEnsure) =>
-            this.ensureSetKey(keyToEnsure),
-          ),
-        );
+        if (setKeysToEnsure.size > 0) {
+          await this.client.eval(REMOVE_INVALID_SET_KEYS_SCRIPT, {
+            keys: [...setKeysToEnsure],
+          });
+        }
 
         const start = performance.now();
         const pipeline = this.client.multi();
@@ -298,68 +233,13 @@ export class RedisTaggedCacheModule {
         const uniqueTags = [...new Set(tags)];
         const start = performance.now();
 
-        const fetchPipeline = this.client.multi();
-        for (const tag of uniqueTags) {
-          fetchPipeline.sMembers(`tag:${tag}`);
-        }
-        const tagResults = await fetchPipeline.exec();
-
-        const keysToDelete = new Set<string>();
-        const tagKeysToDelete: string[] = [];
-        const requestedTags = new Set(uniqueTags);
-
-        uniqueTags.forEach((tag, idx) => {
-          const tagKey = `tag:${tag}`;
-          tagKeysToDelete.push(tagKey);
-          const membersResult = tagResults?.[idx];
-          if (Array.isArray(membersResult)) {
-            for (const member of membersResult) {
-              if (typeof member === "string") {
-                keysToDelete.add(member);
-              }
-            }
-          }
+        const count = await this.client.eval(INVALIDATE_TAGS_SCRIPT, {
+          keys: uniqueTags.map((tag) => `tag:${tag}`),
         });
-
-        const keys = [...keysToDelete];
-        const keyTagsPipeline = this.client.multi();
-        for (const key of keys) {
-          keyTagsPipeline.sMembers(`key_tags:${key}`);
-        }
-        const keyTagResults =
-          keys.length > 0 ? await keyTagsPipeline.exec() : [];
-
-        const deletePipeline = this.client.multi();
-        let commandCount = 0;
-
-        keys.forEach((key, idx) => {
-          const keyTags = keyTagResults?.[idx];
-          if (Array.isArray(keyTags)) {
-            for (const tag of keyTags) {
-              if (typeof tag === "string" && !requestedTags.has(tag)) {
-                deletePipeline.sRem(`tag:${tag}`, key);
-                commandCount++;
-              }
-            }
-          }
-
-          deletePipeline.del(key);
-          deletePipeline.del(`key_tags:${key}`);
-          commandCount += 2;
-        });
-
-        for (const tagKey of tagKeysToDelete) {
-          deletePipeline.del(tagKey);
-          commandCount++;
-        }
-
-        if (commandCount > 0) {
-          await deletePipeline.exec();
-        }
 
         const durationMs = performance.now() - start;
         redisLogger.info(
-          `[Redis] invalidateByTags tags=${uniqueTags.length} keys=${keysToDelete.size} commands=${commandCount} duration=${durationMs.toFixed(2)}ms`,
+          `[Redis] invalidateByTags tags=${uniqueTags.length} keys=${count} duration=${durationMs.toFixed(2)}ms`,
         );
       },
       { maxAttempts: 3 },
@@ -379,38 +259,14 @@ export class RedisTaggedCacheModule {
 
       cursor = result.cursor;
 
-      if (result.keys.length === 0) {
-        continue;
-      }
-
-      const countPipeline = this.client.multi();
-      for (const tagKey of result.keys) {
-        countPipeline.sCard(tagKey);
-      }
-      const counts = await countPipeline.exec();
-
-      const emptyTagKeys: string[] = [];
-      result.keys.forEach((tagKey, idx) => {
-        const count = Number(counts?.[idx] ?? 0);
-        if (count === 0) {
-          emptyTagKeys.push(tagKey);
-        }
-      });
-
-      if (emptyTagKeys.length > 0) {
-        await this.client.del(emptyTagKeys);
-        cleaned += emptyTagKeys.length;
+      if (result.keys.length > 0) {
+        cleaned += Number(await this.client.eval(REMOVE_INVALID_SET_KEYS_SCRIPT, {
+          keys: result.keys,
+        }));
       }
     } while (cursor !== 0);
 
-    redisLogger.info(`[Redis] Cleaned ${cleaned} empty tag sets`);
-  }
-
-  private async ensureSetKey(key: string): Promise<void> {
-    const type = await this.client.type(key);
-    if (type !== "none" && type !== "set") {
-      await this.client.del(key);
-    }
+    redisLogger.info(`[Redis] Cleaned ${cleaned} invalid tag keys`);
   }
 
   private async scanKeys(

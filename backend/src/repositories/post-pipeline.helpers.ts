@@ -92,6 +92,7 @@ export function getStandardProjectionFields(): Record<string, unknown> {
     repostCount: 1,
     createdAt: 1,
     likes: "$likesCount",
+    likesRevision: { $ifNull: ["$likesRevision", 0] },
     viewsCount: { $ifNull: ["$viewsCount", 0] },
     commentsCount: 1,
     userPublicId: "$author.publicId",
@@ -134,6 +135,7 @@ export function getStandardProjectionFields(): Record<string, unknown> {
           body: "$repostDoc.body",
           slug: "$repostDoc.slug",
           likesCount: "$repostDoc.likesCount",
+          likesRevision: { $ifNull: ["$repostDoc.likesRevision", 0] },
           commentsCount: "$repostDoc.commentsCount",
           repostCount: "$repostDoc.repostCount",
           user: {

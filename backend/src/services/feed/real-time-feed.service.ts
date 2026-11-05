@@ -28,6 +28,7 @@ export interface FeedUpdateMessage {
   tags?: string[];
   affectedUsers?: string[];
   newLikes?: number;
+  likesRevision?: number;
   oldAvatar?: string;
   newAvatar?: string;
   timestamp: string;

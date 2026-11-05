@@ -11,9 +11,12 @@ import type { IFeedReadDao } from "@/repositories/interfaces";
 import { decodeFeedCursor, FEED_CURSOR_ORDER } from "@/utils/feedCursor";
 
 type CachedNewFeed = CoreFeed & { headCursor?: string };
+type NewFeedCacheResult = { core: CachedNewFeed; cacheHit: boolean };
 
 @injectable()
 export class FeedReadService {
+  private readonly newFeedLoads = new Map<string, Promise<NewFeedCacheResult>>();
+
   constructor(
     @inject(TOKENS.Repositories.FeedReadDao)
     private readonly feedReadDao: IFeedReadDao,
@@ -32,6 +35,7 @@ export class FeedReadService {
     const cacheKey = CacheKeyBuilder.getTrendingFeedKey(safePage, safeLimit);
 
     let cached = await this.redisService.getWithTags<CoreFeed>(cacheKey);
+    const cacheHit = cached !== null;
     if (!cached) {
       const skip = (safePage - 1) * safeLimit;
       const core = await this.feedReadDao.getTrendingFeed(
@@ -57,6 +61,7 @@ export class FeedReadService {
 
     const enriched = await this.feedEnrichmentService.enrichFeedWithCurrentData(
       cached.data,
+      { refreshCounters: cacheHit },
     );
 
     return {
@@ -92,68 +97,85 @@ export class FeedReadService {
       ? CacheKeyBuilder.getNewFeedCursorKey(cursor, safeLimit)
       : CacheKeyBuilder.getNewFeedKey(safePage, safeLimit);
 
-    let cached = await this.redisService.getWithTags<CachedNewFeed>(key);
-
-    if (!cached) {
-      let core: CachedNewFeed;
-      const useCursorFlow = Boolean(cursor) || safePage === 1;
-
-      if (useCursorFlow) {
-        const coreCursor = await this.feedReadDao.getNewFeedWithCursor({
-          limit: safeLimit,
-          cursor,
-        });
-        core = {
-          data: coreCursor.data as FeedPost[],
-          limit: safeLimit,
-          hasMore: coreCursor.hasMore,
-          nextCursor: coreCursor.nextCursor,
-          prevCursor: coreCursor.prevCursor,
-          total: 0,
-          page: safePage,
-          totalPages: 0,
-          headCursor: coreCursor.prevCursor,
-        };
-      } else {
-        const skip = (safePage - 1) * safeLimit;
-        const corePage = await this.feedReadDao.getNewFeed(safeLimit, skip);
-        core = {
-          data: corePage.data as FeedPost[],
-          limit: corePage.limit ?? safeLimit,
-          total: corePage.total ?? 0,
-          page: corePage.page ?? safePage,
-          totalPages: corePage.totalPages ?? 0,
-        };
-      }
-
-      await this.redisService.setWithTags(
-        key,
-        core,
-        [
-          CacheKeyBuilder.getNewFeedTag(),
-          ...(cursor
-            ? []
-            : [
-                CacheKeyBuilder.getFeedPageTag(safePage),
-                CacheKeyBuilder.getFeedLimitTag(safeLimit),
-              ]),
-        ],
-        CacheConfig.FEED.NEW_FEED,
-      );
-      cached = core;
+    let load = this.newFeedLoads.get(key);
+    if (!load) {
+      load = this.loadNewFeed(key, safePage, safeLimit, cursor).finally(() => {
+        this.newFeedLoads.delete(key);
+      });
+      this.newFeedLoads.set(key, load);
     }
-
+    const { core, cacheHit } = await load;
     const enriched = await this.feedEnrichmentService.enrichFeedWithCurrentData(
-      cached.data,
+      core.data,
+      { refreshCounters: cacheHit },
     );
 
     return {
-      ...this.withoutHeadCursor(cached),
+      ...this.withoutHeadCursor(core),
       data: this.mapToPostDTOArray(enriched),
-      total: cached.total ?? 0,
-      page: cached.page ?? safePage,
-      totalPages: cached.totalPages ?? 0,
+      total: core.total ?? 0,
+      page: core.page ?? safePage,
+      totalPages: core.totalPages ?? 0,
     };
+  }
+
+  private async loadNewFeed(
+    key: string,
+    safePage: number,
+    safeLimit: number,
+    cursor?: string,
+  ): Promise<NewFeedCacheResult> {
+    const cached = await this.redisService.getWithTags<CachedNewFeed>(key);
+    if (cached) {
+      return { core: cached, cacheHit: true };
+    }
+
+    let core: CachedNewFeed;
+    const useCursorFlow = Boolean(cursor) || safePage === 1;
+
+    if (useCursorFlow) {
+      const coreCursor = await this.feedReadDao.getNewFeedWithCursor({
+        limit: safeLimit,
+        cursor,
+      });
+      core = {
+        data: coreCursor.data as FeedPost[],
+        limit: safeLimit,
+        hasMore: coreCursor.hasMore,
+        nextCursor: coreCursor.nextCursor,
+        prevCursor: coreCursor.prevCursor,
+        total: 0,
+        page: safePage,
+        totalPages: 0,
+        headCursor: coreCursor.prevCursor,
+      };
+    } else {
+      const skip = (safePage - 1) * safeLimit;
+      const corePage = await this.feedReadDao.getNewFeed(safeLimit, skip);
+      core = {
+        data: corePage.data as FeedPost[],
+        limit: corePage.limit ?? safeLimit,
+        total: corePage.total ?? 0,
+        page: corePage.page ?? safePage,
+        totalPages: corePage.totalPages ?? 0,
+      };
+    }
+
+    await this.redisService.setWithTags(
+      key,
+      core,
+      [
+        CacheKeyBuilder.getNewFeedTag(),
+        ...(cursor
+          ? []
+          : [
+              CacheKeyBuilder.getFeedPageTag(safePage),
+              CacheKeyBuilder.getFeedLimitTag(safeLimit),
+            ]),
+      ],
+      CacheConfig.FEED.NEW_FEED,
+    );
+    return { core, cacheHit: false };
   }
 
   public async prewarmNewFeed(): Promise<void> {

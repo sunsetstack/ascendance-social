@@ -6,6 +6,7 @@ export interface FeedPostRepost {
   slug?: string;
   likes?: number;
   likesCount?: number;
+  likesRevision?: number;
   repostCount?: number;
   commentsCount?: number;
   user: {
@@ -37,6 +38,7 @@ export interface FeedPost {
   repostOf?: FeedPostRepost | null;
   createdAt: Date;
   likes: number;
+  likesRevision?: number;
   commentsCount: number;
   viewsCount: number;
   userPublicId: UserPublicId;
@@ -74,12 +76,6 @@ export interface PaginatedFeedResult {
   nextCursor?: string;
   prevCursor?: string;
   hasMore?: boolean;
-}
-
-export interface PostMeta {
-  likes?: number;
-  commentsCount?: number;
-  viewsCount?: number;
 }
 
 export interface CoreFeed {
