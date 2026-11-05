@@ -4,8 +4,6 @@ import sinon from "sinon";
 import mongoose from "mongoose";
 import { RecordPostViewCommandHandler } from "@/application/commands/post/recordPostView/recordPostView.handler";
 import { RecordPostViewCommand } from "@/application/commands/post/recordPostView/recordPostView.command";
-import { TransactionQueueService } from "@/services/transaction-queue.service";
-import { FeedMetaService } from "@/services/feed/feed-meta.service";
 import { PostViewRepository } from "@/repositories/postView.repository";
 import { BloomFilterService } from "@/services/redis/bloom-filter.service";
 import { asPostPublicId, asUserPublicId } from "@/types/branded";
@@ -15,8 +13,6 @@ describe("RecordPostViewCommandHandler", () => {
   let postWriteRepoStub: any;
   let postViewRepoStub: any;
   let userReadRepoStub: any;
-  let feedMetaServiceStub: any;
-  let transactionQueueStub: any;
   let bloomFilterServiceStub: any;
   let unitOfWorkStub: any;
 
@@ -37,8 +33,6 @@ describe("RecordPostViewCommandHandler", () => {
     userReadRepoStub = {
       findByPublicId: sinon.stub(),
     };
-    feedMetaServiceStub = sinon.createStubInstance(FeedMetaService);
-    transactionQueueStub = sinon.createStubInstance(TransactionQueueService);
     bloomFilterServiceStub = sinon.createStubInstance(BloomFilterService);
     unitOfWorkStub = {
       executeInTransaction: sinon.stub().callsFake(async (fn) => await fn()),
@@ -61,15 +55,11 @@ describe("RecordPostViewCommandHandler", () => {
     bloomFilterServiceStub.mightContain.resolves(false);
     bloomFilterServiceStub.add.resolves();
 
-    transactionQueueStub.executeOrQueue.resolves();
-
     handler = new RecordPostViewCommandHandler(
       postReadRepoStub,
       postWriteRepoStub,
       postViewRepoStub,
       userReadRepoStub,
-      feedMetaServiceStub,
-      transactionQueueStub,
       bloomFilterServiceStub,
       unitOfWorkStub,
     );
@@ -79,19 +69,22 @@ describe("RecordPostViewCommandHandler", () => {
     sinon.restore();
   });
 
-  it("should record a new view and queue view count increment", async () => {
+  it("records a new view and its count inside the same transaction", async () => {
     const command = new RecordPostViewCommand(postPublicId, userPublicId);
+    let insideTransaction = false;
+    unitOfWorkStub.executeInTransaction.callsFake(async (work: () => Promise<boolean>) => {
+      insideTransaction = true;
+      try { return await work(); } finally { insideTransaction = false; }
+    });
+    postWriteRepoStub.incrementViewCount.callsFake(async () => { expect(insideTransaction).to.equal(true); });
 
     const result = await handler.execute(command);
 
     expect(result).to.be.true;
     expect(postViewRepoStub.recordView.calledWith(postId, userId)).to.be.true;
+    expect(postWriteRepoStub.incrementViewCount.calledOnceWithExactly(postId)).to.be.true;
     expect(bloomFilterServiceStub.add.calledOnce).to.be.true;
 
-    // Verify transaction queue usage
-    expect(transactionQueueStub.executeOrQueue.calledOnce).to.be.true;
-    const args = transactionQueueStub.executeOrQueue.firstCall.args;
-    expect(args[2]).to.deep.include({ priority: "low", loadThreshold: 30 });
   });
 
   it("should not increment view count if view is not new", async () => {
@@ -102,7 +95,6 @@ describe("RecordPostViewCommandHandler", () => {
     const result = await handler.execute(command);
 
     expect(result).to.be.false;
-    expect(transactionQueueStub.executeOrQueue.called).to.be.false;
     expect(bloomFilterServiceStub.add.calledOnce).to.be.true;
   });
 
@@ -114,7 +106,6 @@ describe("RecordPostViewCommandHandler", () => {
 
     expect(result).to.be.false;
     expect(postViewRepoStub.recordView.called).to.be.false;
-    expect(transactionQueueStub.executeOrQueue.called).to.be.false;
   });
 
   it("resolves a confirmed duplicate only after the transaction has rejected", async () => {
@@ -128,7 +119,6 @@ describe("RecordPostViewCommandHandler", () => {
     expect(await handler.execute(new RecordPostViewCommand(postPublicId, userPublicId))).to.equal(false);
     expect(postViewRepoStub.hasViewed.calledOnceWithExactly(postId, userId)).to.equal(true);
     expect(postWriteRepoStub.incrementViewCount.called).to.equal(false);
-    expect(transactionQueueStub.executeOrQueue.called).to.equal(false);
     expect(bloomFilterServiceStub.add.calledOnce).to.equal(true);
   });
 
@@ -160,7 +150,6 @@ describe("RecordPostViewCommandHandler", () => {
     }
     expect(failure).to.be.instanceOf(Error);
     expect(bloomFilterServiceStub.add.called).to.equal(false);
-    expect(transactionQueueStub.executeOrQueue.called).to.equal(false);
   });
 
   it("should throw error if post not found", async () => {

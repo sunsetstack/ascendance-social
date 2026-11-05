@@ -1,4 +1,3 @@
-import { PostPublicId } from "@/types/branded";
 import { inject, injectable } from "tsyringe";
 import mongoose from "mongoose";
 import { RecordPostViewCommand } from "./recordPostView.command";
@@ -7,8 +6,6 @@ import type { IPostReadRepository } from "@/repositories/interfaces/IPostReadRep
 import type { IPostWriteRepository } from "@/repositories/interfaces/IPostWriteRepository";
 import { PostViewRepository } from "@/repositories/postView.repository";
 import type { IUserReadRepository } from "@/repositories/interfaces/IUserReadRepository";
-import { FeedMetaService } from "@/services/feed/feed-meta.service";
-import { TransactionQueueService } from "@/services/transaction-queue.service";
 import { BloomFilterService } from "@/services/redis/bloom-filter.service";
 import { UnitOfWork } from "@/database/UnitOfWork";
 import { Errors, isMongoDBDuplicateKeyError } from "@/utils/errors";
@@ -46,30 +43,11 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
     private readonly postViewRepository: PostViewRepository,
     @inject(TOKENS.Repositories.UserRead)
     private readonly userReadRepository: IUserReadRepository,
-    @inject(TOKENS.Services.FeedMeta)
-    private readonly feedMetaService: FeedMetaService,
-    @inject(TOKENS.Services.TransactionQueue)
-    private readonly transactionQueue: TransactionQueueService,
     @inject(TOKENS.Services.BloomFilter)
     private readonly bloomFilterService: BloomFilterService,
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
-  ) {
-    this.transactionQueue.registerHandler(
-      "UPDATE_VIEW_COUNT_METADATA",
-      async (payload: { postPublicId: PostPublicId }) => {
-        const updatedPost = await this.postReadRepository.findOneByPublicId(
-          payload.postPublicId,
-        );
-        if (updatedPost?.viewsCount !== undefined) {
-          await this.feedMetaService.updatePostViewMeta(
-            payload.postPublicId,
-            updatedPost.viewsCount,
-          );
-        }
-      },
-    );
-  }
+  ) {}
 
   async execute(command: RecordPostViewCommand): Promise<boolean> {
     try {
@@ -127,7 +105,10 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
       let isNewView: boolean;
       try {
         isNewView = await this.unitOfWork.executeInTransaction(async () => {
-          const recorded = await this.postViewRepository.recordView(postId, userId);
+          const recorded = await this.postViewRepository.recordView(
+            postId,
+            userId,
+          );
           if (recorded) {
             await this.postWriteRepository.incrementViewCount(postId);
           }
@@ -148,25 +129,6 @@ export class RecordPostViewCommandHandler implements ICommandHandler<
       }
 
       await this.markViewSeenInBloom(bloomKey, bloomItem);
-
-      if (isNewView) {
-        // Queue redis and cache updates separately from DB transaction
-        this.transactionQueue
-          .executeOrQueue(
-            "UPDATE_VIEW_COUNT_METADATA",
-            { postPublicId: command.postPublicId },
-            { priority: "low", loadThreshold: 30 },
-          )
-          .catch((err) => {
-            logger.warn(
-              "[RecordPostView] Failed to update view count metadata in feed (non-critical)",
-              {
-                postPublicId: command.postPublicId,
-                error: err instanceof Error ? err.message : String(err),
-              },
-            );
-          });
-      }
 
       return isNewView;
     } catch (error) {

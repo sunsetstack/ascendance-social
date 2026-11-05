@@ -44,9 +44,20 @@ export class PostLikeCountReconciledEvent implements IEvent {
   ) {}
 }
 
+export class PostViewRecordedEvent implements IEvent {
+  static readonly type = EventRegistry.domain.PostViewRecorded;
+  readonly type = PostViewRecordedEvent.type;
+  readonly timestamp: Date = new Date();
+
+  constructor(public readonly postId: PostPublicId) {}
+}
+
 export class PostUpdatedEvent implements IEvent {
   static readonly type = EventRegistry.domain.PostUpdated;
   readonly type = PostUpdatedEvent.type;
   readonly timestamp: Date = new Date();
-  constructor(public readonly postId: PostPublicId, public readonly authorPublicId: UserPublicId) {}
+  constructor(
+    public readonly postId: PostPublicId,
+    public readonly authorPublicId: UserPublicId,
+  ) {}
 }

@@ -24,7 +24,6 @@ const databaseName = `ascendance_view_regression_${randomUUID().replaceAll("-", 
   let postId: Types.ObjectId;
   let unitOfWork: UnitOfWork;
   let writes: PostWriteRepository;
-  let metadataUpdates: number;
 
   before(async () => {
     if (!mongoUri!.startsWith("mongodb://127.0.0.1:")) {
@@ -40,7 +39,6 @@ const databaseName = `ascendance_view_regression_${randomUUID().replaceAll("-", 
   beforeEach(async () => {
     await PostView.deleteMany({});
     await Post.deleteMany({});
-    metadataUpdates = 0;
     const post = await Post.create({
       publicId: postPublicId,
       user: authorId,
@@ -66,11 +64,6 @@ const databaseName = `ascendance_view_regression_${randomUUID().replaceAll("-", 
       postWrites,
       new PostViewRepository(),
       { findByPublicId: async () => viewer } as never,
-      {} as never,
-      {
-        registerHandler: () => undefined,
-        executeOrQueue: async () => { metadataUpdates += 1; },
-      } as never,
       { mightContain: async () => false, add: async () => undefined } as never,
       unitOfWork,
     );
@@ -81,7 +74,6 @@ const databaseName = `ascendance_view_regression_${randomUUID().replaceAll("-", 
   async function expectSingleView(): Promise<void> {
     expect(await PostView.countDocuments({ post: postId, user: viewerId })).to.equal(1);
     expect((await Post.findById(postId))?.viewsCount).to.equal(1);
-    expect(metadataUpdates).to.equal(1);
   }
 
   it("records the first view and its count atomically", async () => {
@@ -117,7 +109,6 @@ const databaseName = `ascendance_view_regression_${randomUUID().replaceAll("-", 
     }
     expect(await PostView.countDocuments({ post: postId })).to.equal(viewers.length);
     expect((await Post.findById(postId))?.viewsCount).to.equal(viewers.length);
-    expect(metadataUpdates).to.equal(viewers.length);
   });
 
   it("rolls back the view when its counter write fails and permits a later retry", async () => {
@@ -133,7 +124,6 @@ const databaseName = `ascendance_view_regression_${randomUUID().replaceAll("-", 
     expect(failure).to.be.instanceOf(Error);
     expect(await PostView.countDocuments({ post: postId })).to.equal(0);
     expect((await Post.findById(postId))?.viewsCount).to.equal(0);
-    expect(metadataUpdates).to.equal(0);
     expect(await handler().execute(command())).to.equal(true);
     await expectSingleView();
   });

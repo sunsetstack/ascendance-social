@@ -6,7 +6,6 @@ import {
   adminRateLimit,
 } from "../middleware/authentication.middleware";
 import { UnitOfWork } from "@/database/UnitOfWork";
-import { TransactionQueueService } from "@/services/transaction-queue.service";
 import { TOKENS } from "@/types/tokens";
 
 @injectable()
@@ -20,8 +19,6 @@ export class MetricsRoutes {
     private readonly metricsService: MetricsService,
     @inject(TOKENS.Repositories.UnitOfWork)
     private readonly unitOfWork: UnitOfWork,
-    @inject(TOKENS.Services.TransactionQueue)
-    private readonly transactionQueue: TransactionQueueService,
     @inject(TOKENS.Services.AuthMiddleware)
     authMiddlewareService: AuthMiddlewareService,
   ) {
@@ -45,41 +42,37 @@ export class MetricsRoutes {
     // transaction health endpoint for monitoring high-concurrency scenarios
     this.router.get("/transactions", async (_req, res) => {
       const uowMetrics = this.unitOfWork.getMetrics();
-      const queueMetrics = await this.transactionQueue.getMetrics();
-
       res.json({
         unitOfWork: uowMetrics,
-        transactionQueue: queueMetrics,
-        health: this.calculateHealth(uowMetrics, queueMetrics),
+        // Keep the diagnostics contract; refresh delivery is tracked by the outbox.
+        transactionQueue: {
+          totalEnqueued: 0,
+          totalProcessed: 0,
+          totalFailed: 0,
+          totalDropped: 0,
+          queueSizes: { critical: 0, high: 0, normal: 0, low: 0 },
+        },
+        health: this.calculateHealth(uowMetrics),
       });
     });
   }
 
   private calculateHealth(
     uowMetrics: ReturnType<UnitOfWork["getMetrics"]>,
-    queueMetrics: Awaited<ReturnType<TransactionQueueService["getMetrics"]>>,
   ): "healthy" | "degraded" | "unhealthy" {
     const failureRate =
       uowMetrics.totalAttempts > 0
         ? uowMetrics.failedTransactions / uowMetrics.totalAttempts
         : 0;
 
-    const queueSize =
-      queueMetrics.queueSizes.critical +
-      queueMetrics.queueSizes.high +
-      queueMetrics.queueSizes.normal +
-      queueMetrics.queueSizes.low;
-
     if (
       failureRate > 0.2 ||
-      queueSize > 500 ||
       uowMetrics.availablePermits < 5
     ) {
       return "unhealthy";
     }
     if (
       failureRate > 0.05 ||
-      queueSize > 100 ||
       uowMetrics.availablePermits < 20
     ) {
       return "degraded";

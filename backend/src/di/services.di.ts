@@ -26,7 +26,6 @@ import { NotificationMessageHandler } from "@/application/handlers/realtime/Noti
 import { logger } from "@/utils/winston";
 import { MetricsService } from "../metrics/metrics.service";
 import { RetryService } from "@/services/retry.service";
-import { TransactionQueueService } from "@/services/transaction-queue.service";
 import { TelemetryService } from "@/services/telemetry.service";
 import { EmailService } from "@/services/email.service";
 import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
@@ -50,7 +49,7 @@ import { EventBusAccountOutboxParticipant } from "@/services/lifecycle/account-o
 import { MongoAccountRecordCleanupParticipant } from "@/services/lifecycle/account-record-cleanup.participant";
 import { MongoAccountSocialCleanupParticipant } from "@/services/lifecycle/account-social-cleanup.participant";
 import { RedisSessionModule } from "@/services/redis/redis-session.module";
-import { RedisFeedCache } from "@/services/redis/capabilities/redis-feed-cache";
+import { PostCountersRepository } from "@/repositories/read/PostCountersRepository";
 import { RedisUserLookup } from "@/services/redis/capabilities/redis-user-lookup";
 import { RedisUserSuggestions } from "@/services/redis/capabilities/redis-user-suggestions";
 import {
@@ -66,7 +65,7 @@ import type {
   ITrendingStreamStore,
 } from "@/workers/trending/trending.ports";
 import type { AuthSessionStore } from "@/application/ports/auth-session-store";
-import type { FeedCache } from "@/application/ports/feed-cache";
+import type { PostCounters } from "@/application/ports/post-counters";
 import type { UserLookup } from "@/application/ports/user-lookup";
 import type { UserSuggestions } from "@/application/ports/user-suggestions";
 import type {
@@ -79,7 +78,10 @@ import type {
 } from "@/services/lifecycle/account-lifecycle.ports";
 
 export function registerServices(): void {
-  container.registerSingleton(TOKENS.Services.AttachmentTransaction, AttachmentTransactionService);
+  container.registerSingleton(
+    TOKENS.Services.AttachmentTransaction,
+    AttachmentTransactionService,
+  );
   const isCloudinaryConfigured = [
     process.env.CLOUDINARY_CLOUD_NAME,
     process.env.CLOUDINARY_API_KEY,
@@ -167,19 +169,17 @@ export function registerServices(): void {
   );
   container.registerSingleton(TOKENS.Services.FeedMeta, FeedMetaService);
   container.registerSingleton(TOKENS.Services.Redis, RedisService);
-  container.register<AuthSessionStore>(
-    TOKENS.Services.AuthSessionStore,
-    {
-      useFactory: instanceCachingFactory((c) =>
+  container.register<AuthSessionStore>(TOKENS.Services.AuthSessionStore, {
+    useFactory: instanceCachingFactory(
+      (c) =>
         new RedisSessionModule(
           c.resolve<RedisService>(TOKENS.Services.Redis).clientInstance,
         ),
-      ),
-    },
-  );
-  container.registerSingleton<FeedCache>(
-    TOKENS.Services.FeedCache,
-    RedisFeedCache,
+    ),
+  });
+  container.registerSingleton<PostCounters>(
+    TOKENS.Services.PostCounters,
+    PostCountersRepository,
   );
   container.registerSingleton<UserLookup>(
     TOKENS.Services.UserLookup,
@@ -219,10 +219,6 @@ export function registerServices(): void {
     UserActivityService,
   );
   container.registerSingleton(TOKENS.Services.Retry, RetryService);
-  container.registerSingleton(
-    TOKENS.Services.TransactionQueue,
-    TransactionQueueService,
-  );
   if (process.env.ENABLE_API === "false") {
     container.registerSingleton(TOKENS.Services.Email, EmailService);
   } else {

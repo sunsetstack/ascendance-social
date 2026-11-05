@@ -6,10 +6,11 @@ import sinon from "sinon";
 import { MetricsRoutes } from "@/routes/metrics.routes";
 
 describe("MetricsRoutes", () => {
-  function buildApp() {
+  function buildApp(authenticated = false) {
     const authRequired: RequestHandler = sinon
       .stub()
-      .callsFake((_req, res, _next) => {
+      .callsFake((_req, res, next) => {
+        if (authenticated) { next(); return; }
         res.status(401).json({ error: "auth required" });
       });
 
@@ -35,17 +36,6 @@ describe("MetricsRoutes", () => {
       }),
     };
 
-    const transactionQueue = {
-      getMetrics: sinon.stub().resolves({
-        queueSizes: {
-          critical: 0,
-          high: 0,
-          normal: 0,
-          low: 0,
-        },
-      }),
-    };
-
     const authMiddlewareService = {
       required: () => authRequired,
       adminOnly: () => adminOnly,
@@ -54,7 +44,6 @@ describe("MetricsRoutes", () => {
     const routes = new MetricsRoutes(
       metricsService as any,
       unitOfWork as any,
-      transactionQueue as any,
       authMiddlewareService as any,
     );
 
@@ -80,5 +69,15 @@ describe("MetricsRoutes", () => {
     await request(app).get("/metrics/transactions").expect(401);
 
     expect((authRequired as sinon.SinonStub).calledOnce).to.equal(true);
+  });
+
+  it("preserves the transaction diagnostics response after retiring the Redis queue", async () => {
+    const { app } = buildApp(true);
+    const response = await request(app).get("/metrics/transactions").expect(200);
+    expect(response.body.health).to.equal("healthy");
+    expect(response.body.transactionQueue).to.deep.equal({
+      totalEnqueued: 0, totalProcessed: 0, totalFailed: 0, totalDropped: 0,
+      queueSizes: { critical: 0, high: 0, normal: 0, low: 0 },
+    });
   });
 });
