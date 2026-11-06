@@ -36,3 +36,7 @@ scripts/audit/pull-*
 *ascendance-audit-seal.service
 *ascendance-audit-seal.timer
 */pdfs
+*/performance/
+/backend/audit/performance*/
+/backend/audit/repairs/
+/backend/audit/performance*
