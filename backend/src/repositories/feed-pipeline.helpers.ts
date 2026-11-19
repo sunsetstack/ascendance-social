@@ -12,14 +12,22 @@ import {
 import { MAX_FEED_CURSOR_SNAPSHOT_ITEMS, type NewFeedCursorPayload } from "@/utils/feedCursor";
 import { Errors } from "@/utils/errors";
 
+const isBareRepost = {
+  $and: [
+    { $eq: [{ $ifNull: ["$body", ""] }, ""] },
+    { $eq: [{ $ifNull: ["$image", null] }, null] },
+  ],
+};
+
+const visibleIdentity = {
+  $cond: [isBareRepost, { $ifNull: ["$repostOf", "$_id"] }, "$_id"],
+};
+
 export function getVisibleIdentityStages(): PipelineStage[] {
   return [
     {
       $group: {
-        _id: { $cond: [
-          { $and: [{ $eq: [{ $ifNull: ["$body", ""] }, ""] }, { $eq: [{ $ifNull: ["$image", null] }, null] }] },
-          { $ifNull: ["$repostOf", "$_id"] }, "$_id",
-        ] },
+        _id: visibleIdentity,
         post: { $first: "$$ROOT" },
       },
     },
@@ -68,15 +76,66 @@ export function buildNewFeedPipeline(
   seenIdentityIds: mongoose.Types.ObjectId[] = [],
 ): PipelineStage[] {
   const sortDirection = direction === "forward" ? -1 : 1;
+  const newerThanCandidate = {
+    $and: [
+      { $gte: ["$createdAt", "$$candidateDate"] },
+      {
+        $or: [
+          { $gt: ["$createdAt", "$$candidateDate"] },
+          { $gt: ["$_id", "$$candidateId"] },
+        ],
+      },
+    ],
+  };
+
   return [
-    { $match: ACTIVE_POST_FILTER },
-    { $sort: { createdAt: -1, _id: -1 } },
-    ...getVisibleIdentityStages(),
+    { $match: withActivePostFilter(cursorFilter ?? {}) },
+    { $sort: { createdAt: sortDirection, _id: sortDirection } },
+    { $set: { visibleIdentityId: visibleIdentity } },
     ...(seenIdentityIds.length > 0
       ? [{ $match: { visibleIdentityId: { $nin: seenIdentityIds } } }]
       : []),
-    ...(cursorFilter ? [{ $match: cursorFilter }] : []),
-    { $sort: { createdAt: sortDirection, _id: sortDirection } },
+    // A candidate must be the newest member of its identity across all active posts.
+    // The lookups deliberately ignore the page cursor, including on backward reads.
+    {
+      $lookup: {
+        from: "posts",
+        localField: "visibleIdentityId",
+        foreignField: "repostOf",
+        let: { candidateDate: "$createdAt", candidateId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              ...ACTIVE_POST_FILTER,
+              $expr: { $and: [newerThanCandidate, isBareRepost] },
+            },
+          },
+          { $limit: 1 },
+          { $project: { _id: 1 } },
+        ],
+        as: "newerWrapper",
+      },
+    },
+    { $match: { "newerWrapper.0": { $exists: false } } },
+    {
+      $lookup: {
+        from: "posts",
+        localField: "visibleIdentityId",
+        foreignField: "_id",
+        let: { candidateDate: "$createdAt", candidateId: "$_id" },
+        pipeline: [
+          {
+            $match: {
+              ...ACTIVE_POST_FILTER,
+              $expr: { $and: [newerThanCandidate, { $eq: [visibleIdentity, "$_id"] }] },
+            },
+          },
+          { $project: { _id: 1 } },
+        ],
+        as: "newerIdentityPost",
+      },
+    },
+    { $match: { "newerIdentityPost.0": { $exists: false } } },
     { $limit: limit + 1 },
     ...getStandardLookups(),
     {
