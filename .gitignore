@@ -29,7 +29,8 @@ tsconfig.tsbuildinfo
 backend/src/scripts/stress-test.ts
 notes.md
 tsconfig.test.tsbuildinfo
-docs/
+docs/*
+
 scripts/audit/pull-*
 
 .vscode
