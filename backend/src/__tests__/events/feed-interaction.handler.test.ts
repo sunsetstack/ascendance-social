@@ -68,10 +68,10 @@ describe("FeedInteractionHandler", () => {
     container.clearInstances();
   });
 
-  it("records a like and updates metadata without structural cache invalidation", async () => {
+  it("records a like and publishes its current counter without structural cache invalidation", async () => {
     // Arrange
     const event = new UserInteractedWithPostEvent(ACTOR_PUBLIC_ID, "like", POST_PUBLIC_ID, ["tag1"], OWNER_PUBLIC_ID);
-    const mockPost = { publicId: "postABC", likesCount: 10 } as IPost;
+    const mockPost = { publicId: "postABC", likesCount: 10, likesRevision: 7 } as IPost;
 
     postRepositoryMock.findByPublicId.resolves(mockPost);
     feedInteractionServiceMock.recordInteraction.resolves();
@@ -87,9 +87,9 @@ describe("FeedInteractionHandler", () => {
     // 1. It should record the base interaction
     expect(feedInteractionServiceMock.recordInteraction.calledOnceWith("user123", "like", "postABC", ["tag1"])).to.be.true;
 
-    // 2. It should update the post's like metadata cache
+    // Publish the current counter revision without invalidating feed membership.
     expect(postRepositoryMock.findByPublicId.calledOnceWith("postABC")).to.be.true;
-    expect(feedMetaServiceMock.updatePostLikeMeta.calledOnceWith("postABC", 10)).to.be.true;
+    expect(feedMetaServiceMock.updatePostLikeMeta.calledOnceWithExactly(POST_PUBLIC_ID, 10, event.eventId, 7)).to.be.true;
 
     expect(redisServiceMock.invalidateByTags.called).to.be.false;
 
