@@ -236,6 +236,7 @@ async function main() {
       TS_NODE_PROJECT: "tsconfig.test.json",
       REDIS_AUTOCONNECT: "true",
       REDIS_URL: `redis://127.0.0.1:${redisPort}`,
+      INTEGRATION_REDIS_URL: `redis://127.0.0.1:${redisPort}`,
       MONGODB_URI: `mongodb://127.0.0.1:${mongoPort}/ascendance_integration?replicaSet=rs0&directConnection=true`,
       INTEGRATION_MONGODB_URI: `mongodb://127.0.0.1:${mongoPort}/ascendance_integration?replicaSet=rs0&directConnection=true`,
     };
