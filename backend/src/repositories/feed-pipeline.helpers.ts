@@ -109,7 +109,7 @@ export function buildTrendingSnapshotPipeline(
     { $sort: { trendScore: -1, _id: -1 } },
     ...getVisibleIdentityStages(),
     { $sort: { trendScore: -1, _id: -1 } },
-    { $limit: MAX_FEED_CURSOR_SNAPSHOT_ITEMS + 1 },
+    { $limit: MAX_FEED_CURSOR_SNAPSHOT_ITEMS },
     {
       $project: {
         _id: 1,

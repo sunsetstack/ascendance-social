@@ -510,8 +510,6 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
    * Cursor-based pagination for the new chronological feed
    * @recommended Use this for infinite scroll; much more efficient than skip-based pagination
    * @pattern Cursor Pagination with Compound Sort Key
-   * @complexity O(1) lookup using index-backed cursor filtering instead of O(skip) scan
-   * @performance ~1ms per page vs ~100ms+ for skip-based pagination on deep pages
    * @param options - Cursor options including cursor token, limit, and navigation direction
    * @returns {Promise<CursorPaginationResult<FeedPost>>} Posts with hasMore flag and next/prev cursors
    * @throws {DatabaseError} if cursor decoding or aggregation fails
@@ -601,8 +599,6 @@ export class FeedReadDao extends BaseRepository<IPost> implements IFeedReadDao {
    * Cursor-based pagination for trending feed
    * @recommended Preferred over getTrendingFeed for production infinite scroll
    * @pattern Cursor Pagination with Computed Field Filtering
-   * @complexity O(1) cursor lookup vs O(skip) scan in getTrendingFeed
-   * @performance Ideal for deep pagination (page 100+) where skip becomes expensive
    * @param options - Cursor options with time window, min likes, weights, and cursor navigation
    * @returns {Promise<CursorPaginationResult<FeedPost>>} Trending posts with trend scores and cursors
    * @throws {DatabaseError} if cursor decoding or score computation fails

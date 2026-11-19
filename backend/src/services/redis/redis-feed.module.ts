@@ -191,12 +191,9 @@ export class RedisFeedModule {
     const items = await this.client.zRangeWithScores(
       key,
       0,
-      MAX_FEED_CURSOR_SNAPSHOT_ITEMS,
+      MAX_FEED_CURSOR_SNAPSHOT_ITEMS - 1,
       { REV: true },
     );
-    if (items.length > MAX_FEED_CURSOR_SNAPSHOT_ITEMS) {
-      throw Errors.internal("Feed cursor snapshot contains too many items");
-    }
     return {
       version: 1,
       feed: "trending",
