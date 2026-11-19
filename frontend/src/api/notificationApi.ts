@@ -22,7 +22,7 @@ const errorMessage = (err: unknown): string => {
  * Fetch notifications for the current authenticated user with cursor-based pagination
  * Maps backend shape to strongly typed Notification objects.
  * @param signal - AbortSignal for cancellation
- * @param before - ISO timestamp cursor for pagination (fetch notifications older than this)
+ * @param before - Cursor returned by the previous page
  */
 export const fetchNotifications = async (
   signal?: AbortSignal,

@@ -32,22 +32,16 @@ export class MarkAllAsReadCommandHandler
       const modifiedCount =
         await this.notificationRepository.markAllAsRead(userPublicId);
 
-      if (modifiedCount > 0) {
-        const notificationIds =
-          await this.redisService.getUserNotificationIds(userPublicId);
-        if (notificationIds.length > 0) {
-          await this.redisService.markNotificationsRead(notificationIds);
-        }
-        await emitToAuthenticatedUser(
-          this.webSocketServer.getIO(),
-          userPublicId,
-          EventRegistry.socketServerEvents.allNotificationsRead,
-        );
-        this.metricsService.recordSocketEventEmitted(
-          EventRegistry.socketServerEvents.allNotificationsRead,
-          "room",
-        );
-      }
+      await this.redisService.clearNotificationCaches([userPublicId]);
+      await emitToAuthenticatedUser(
+        this.webSocketServer.getIO(),
+        userPublicId,
+        EventRegistry.socketServerEvents.allNotificationsRead,
+      );
+      this.metricsService.recordSocketEventEmitted(
+        EventRegistry.socketServerEvents.allNotificationsRead,
+        "room",
+      );
 
       return modifiedCount;
     } catch (error) {

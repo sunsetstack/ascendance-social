@@ -6,5 +6,6 @@ export class GetNotificationsQuery implements IQuery {
     public readonly userId: string,
     public readonly limit?: number,
     public readonly before?: number,
+    public readonly beforeId?: string,
   ) {}
 }

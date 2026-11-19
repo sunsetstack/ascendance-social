@@ -38,10 +38,10 @@ export class NotificationController {
 
     // cursor-based pagination support
     const { before, limit } = req.query;
-    const beforeTimestamp = before?.getTime();
+    const beforeTimestamp = before?.timestamp.getTime();
 
     const notifications = await this.queryBus.execute(
-      new GetNotificationsQuery(userPublicId, limit, beforeTimestamp)
+      new GetNotificationsQuery(userPublicId, limit, beforeTimestamp, before?.id)
     );
 
     logger.info(
@@ -53,17 +53,10 @@ export class NotificationController {
 
     // Determine if there are more notifications (heuristic: if we got exactly limit, there may be more)
     const hasMore = notifications.length === limit;
-    // Generate next cursor from the oldest notification's timestamp.
-    // timestamp may be a Date (MongoDB document) or a string (Redis-cached plain object),
-    // so coerce to Date before calling toISOString().
-    const lastTimestamp =
-      notifications.length > 0
-        ? notifications[notifications.length - 1]?.timestamp
-        : undefined;
-    const nextCursor =
-      hasMore && lastTimestamp !== undefined
-        ? new Date(lastTimestamp).toISOString()
-        : undefined;
+    const last = notifications[notifications.length - 1];
+    const nextCursor = hasMore && last
+      ? `${new Date(last.timestamp).toISOString()}~${last.id}`
+      : undefined;
 
     res.status(200).json({
       data: notifications,

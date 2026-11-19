@@ -4,19 +4,18 @@ import { NotificationRepository } from "@/repositories/notification.repository";
 import { RedisService } from "@/services/redis.service";
 import { WebSocketServer } from "@/server/socketServer";
 import { emitToAuthenticatedUser } from "@/server/socket-security";
-import { INotification, NotificationPlain } from "@/types";
+import { INotification } from "@/types";
 import { Errors, isErrorWithStatusCode, wrapError } from "@/utils/errors";
-import { normalizeNotificationPlain } from "@/utils/notification-plain";
+import { requireNotificationRecord } from "@/utils/notification-plain";
 import { logger } from "@/utils/winston";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 import { asMongoId } from "@/types/branded";
-import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
+import {
+  EventRegistry,
+  buildRealtimeEventId,
+} from "@/application/common/events/event-registry";
 import { MetricsService } from "@/metrics/metrics.service";
-
-type NotificationWithToJSON = INotification & {
-  toJSON?: () => NotificationPlain;
-};
 
 @injectable()
 export class MarkAsReadCommandHandler implements ICommandHandler<
@@ -33,20 +32,6 @@ export class MarkAsReadCommandHandler implements ICommandHandler<
     @inject(TOKENS.Services.Metrics)
     private readonly metricsService: MetricsService,
   ) {}
-
-  private toPlainNotification(
-    notification: INotification | NotificationPlain,
-  ): NotificationPlain {
-    const notificationWithToJSON = notification as NotificationWithToJSON;
-    const raw =
-      typeof notification === "object" &&
-      notification !== null &&
-      typeof notificationWithToJSON.toJSON === "function"
-        ? notificationWithToJSON.toJSON()
-        : notification;
-
-    return normalizeNotificationPlain(raw) ?? {};
-  }
 
   async execute(command: MarkAsReadCommand): Promise<INotification> {
     try {
@@ -74,8 +59,10 @@ export class MarkAsReadCommandHandler implements ICommandHandler<
         userPublicId,
       });
 
+      const plain = requireNotificationRecord(updatedNotification);
+
       try {
-        await this.redisService.markNotificationRead(notificationId);
+        await this.redisService.clearNotificationCaches([userPublicId]);
       } catch (error) {
         logger.warn("Error syncing notification read state to Redis cache", {
           notificationId,
@@ -85,12 +72,11 @@ export class MarkAsReadCommandHandler implements ICommandHandler<
       }
 
       try {
-        const plain = this.toPlainNotification(updatedNotification);
         const payload = {
           ...plain,
           eventId: buildRealtimeEventId(
             EventRegistry.socketServerEvents.notificationRead,
-            plain.id ?? plain._id ?? notificationId,
+            plain.id,
           ),
         };
         logger.info("Sending notification-read update", {

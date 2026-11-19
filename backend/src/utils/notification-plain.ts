@@ -1,4 +1,5 @@
-import { NotificationPlain } from "@/types/customNotifications/notifications.types";
+import type { NotificationRecord } from "@/types/customNotifications/notifications.types";
+import { Types } from "mongoose";
 import { asUserPublicId } from "@/types/branded";
 import type {
   PostPublicId,
@@ -10,23 +11,26 @@ type UnknownRecord = Record<string, unknown>;
 
 export function normalizeNotificationPlain(
   value: unknown,
-): NotificationPlain | null {
+): NotificationRecord | null {
   if (typeof value !== "object" || value === null) {
     return null;
   }
 
-  const raw = value as UnknownRecord;
-  const plain: NotificationPlain = {};
-
-  const id = raw.id ?? raw._id;
-  if (id !== undefined && id !== null) {
-    plain.id = String(id);
-  }
-
-  if (typeof raw.userId === "string") plain.userId = asUserPublicId(raw.userId);
-  if (typeof raw.actionType === "string") plain.actionType = raw.actionType;
-  if (typeof raw.actorId === "string")
-    plain.actorId = asUserPublicId(raw.actorId);
+  const serialized = "toJSON" in value && typeof value.toJSON === "function" ? value.toJSON() : value;
+  if (typeof serialized !== "object" || serialized === null || Array.isArray(serialized)) return null;
+  const raw = serialized as UnknownRecord;
+  const rawId = raw.id ?? raw._id;
+  const id = rawId instanceof Types.ObjectId ? rawId.toHexString() : rawId;
+  const timestamp = raw.timestamp instanceof Date ? raw.timestamp :
+    typeof raw.timestamp === "string" || typeof raw.timestamp === "number" ? new Date(raw.timestamp) : null;
+  const isRead = typeof raw.isRead === "boolean" ? raw.isRead : raw.isRead === "1" ? true : raw.isRead === "0" ? false : null;
+  if (typeof id !== "string" || !id.trim() || typeof raw.userId !== "string" || !raw.userId.trim() ||
+    typeof raw.actorId !== "string" || !raw.actorId.trim() || typeof raw.actionType !== "string" || !raw.actionType.trim() ||
+    isRead === null || !timestamp || Number.isNaN(timestamp.getTime())) return null;
+  const plain: NotificationRecord = {
+    id, userId: asUserPublicId(raw.userId), actionType: raw.actionType,
+    actorId: asUserPublicId(raw.actorId), isRead, timestamp,
+  };
   if (typeof raw.actorUsername === "string")
     plain.actorUsername = raw.actorUsername;
   if (typeof raw.actorHandle === "string") plain.actorHandle = raw.actorHandle;
@@ -40,25 +44,11 @@ export function normalizeNotificationPlain(
   if (typeof raw.targetPreview === "string")
     plain.targetPreview = raw.targetPreview;
 
-  if (typeof raw.isRead === "boolean") {
-    plain.isRead = raw.isRead;
-  } else if (raw.isRead === "1") {
-    plain.isRead = true;
-  } else if (raw.isRead === "0") {
-    plain.isRead = false;
-  }
-
-  if (raw.timestamp instanceof Date) {
-    plain.timestamp = raw.timestamp;
-  } else if (
-    typeof raw.timestamp === "string" ||
-    typeof raw.timestamp === "number"
-  ) {
-    const parsedDate = new Date(raw.timestamp);
-    if (!Number.isNaN(parsedDate.getTime())) {
-      plain.timestamp = parsedDate;
-    }
-  }
-
   return plain;
+}
+
+export function requireNotificationRecord(value: unknown): NotificationRecord {
+  const record = normalizeNotificationPlain(value);
+  if (!record) throw new TypeError("Invalid persisted notification record");
+  return record;
 }

@@ -16,12 +16,10 @@ export interface INotification extends Document {
   timestamp: Date;
 }
 
-// interface for notification plain object after toJSON()
-// all fields optional except the base ones that should always exist
+// Legacy serialized input; normalized records require the base fields below.
 export interface NotificationPlain {
   id?: string;
   _id?: string;
-  $__?: unknown;
   userId?: UserPublicId;
   actionType?: string;
   actorId?: UserPublicId;
@@ -34,4 +32,13 @@ export interface NotificationPlain {
   idempotencyKey?: string;
   isRead?: boolean;
   timestamp?: Date;
+}
+
+export interface NotificationRecord extends NotificationPlain {
+  id: string;
+  userId: UserPublicId;
+  actionType: string;
+  actorId: UserPublicId;
+  isRead: boolean;
+  timestamp: Date;
 }

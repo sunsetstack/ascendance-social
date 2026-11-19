@@ -10,6 +10,7 @@ export class CacheKeyBuilder {
     TRENDING_FEED: "trending_feed",
     NEW_FEED: "new_feed",
     TRENDING_TAGS: "trending_tags",
+    NOTIFICATION_SNAPSHOT: "notifications:snapshot",
     NOTIFICATION_LIST: "notifications:user",
     NOTIFICATION_HASH: "notification",
   };
@@ -78,6 +79,10 @@ export class CacheKeyBuilder {
 
   static getTrendingTagsTag(): string {
     return this.PREFIXES.TRENDING_TAGS;
+  }
+
+  static getNotificationSnapshotKey(userId: string): string {
+    return `${CacheKeyBuilder.PREFIXES.NOTIFICATION_SNAPSHOT}:${userId}`;
   }
 
   static getNotificationListKey(userId: string): string {

@@ -192,22 +192,7 @@ export const useNotifications = () => {
     };
 
     const handleAllRead = () => {
-      queryClient.setQueryData<InfiniteData<NotificationPage>>(
-        ["notifications"],
-        (old) => {
-          if (!old?.pages) return old;
-          return {
-            ...old,
-            pages: old.pages.map((page) => ({
-              ...page,
-              data: page.data.map((notification) => ({
-                ...notification,
-                isRead: true,
-              })),
-            })),
-          };
-        },
-      );
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
     };
 
     socket.on("new_notification", handleNew);

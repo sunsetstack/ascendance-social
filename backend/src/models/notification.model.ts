@@ -17,7 +17,7 @@ const notificationSchema = new Schema<INotification>({
 });
 
 // index for efficient queries
-notificationSchema.index({ userId: 1, timestamp: -1 });
+notificationSchema.index({ userId: 1, timestamp: -1, _id: -1 });
 notificationSchema.index({ userId: 1, isRead: 1 });
 notificationSchema.index(
 	{ idempotencyKey: 1 },

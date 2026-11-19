@@ -42,9 +42,9 @@ describe("GetNotificationsQueryHandler", () => {
 	});
 
 	it("falls back to the repository on a partial cache hit and backfills Redis", async () => {
-		const cachedNotifications = [{ id: "cached-1" }];
+		const cachedNotifications = [{ id: "cached-1", userId: "user-123", actorId: "actor", actionType: "follow", isRead: false, timestamp: new Date() }];
 		const dbNotifications = Array.from({ length: 25 }, (_, index) => ({
-			_id: `notif-${index}`,
+			id: `notif-${index}`, userId: "user-123", actorId: "actor", actionType: "follow", isRead: false, timestamp: new Date(),
 		}));
 
 		redisService.getUserNotifications.resolves(cachedNotifications);
@@ -58,15 +58,13 @@ describe("GetNotificationsQueryHandler", () => {
 		expect(notificationRepository.getNotifications.calledOnceWith("user-123", 200, 0)).to.be.true;
 		expect(redisService.backfillNotifications.calledOnceWith("user-123", dbNotifications, 200)).to.be.true;
 		expect(result).to.deep.equal(
-			dbNotifications.slice(0, 20).map((notification) => ({
-				id: notification._id,
-			})),
+			dbNotifications.slice(0, 20),
 		);
 	});
 
 	it("returns cached notifications when Redis has enough data", async () => {
 		const cachedNotifications = Array.from({ length: 5 }, (_, index) => ({
-			id: `cached-${index}`,
+			id: `cached-${index}`, userId: "user-123", actorId: "actor", actionType: "follow", isRead: false, timestamp: new Date(),
 		}));
 		redisService.getUserNotifications.resolves(cachedNotifications);
 

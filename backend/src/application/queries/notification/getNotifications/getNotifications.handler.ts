@@ -2,10 +2,9 @@ import { IQueryHandler } from "@/application/common/interfaces/query-handler.int
 import { GetNotificationsQuery } from "./getNotifications.query";
 import { NotificationRepository } from "@/repositories/notification.repository";
 import { RedisService } from "@/services/redis.service";
-import { NotificationPlain } from "@/types";
+import { NotificationRecord } from "@/types";
 import { wrapError } from "@/utils/errors";
-import { normalizeNotificationPlain } from "@/utils/notification-plain";
-import { errorLogger, redisLogger } from "@/utils/winston";
+import { errorLogger } from "@/utils/winston";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
 import { asUserPublicId } from "@/types/branded";
@@ -13,7 +12,7 @@ import { asUserPublicId } from "@/types/branded";
 @injectable()
 export class GetNotificationsQueryHandler implements IQueryHandler<
   GetNotificationsQuery,
-  NotificationPlain[]
+  NotificationRecord[]
 > {
   private readonly MAX_NOTIFICATIONS_PER_USER = 200;
 
@@ -24,107 +23,59 @@ export class GetNotificationsQueryHandler implements IQueryHandler<
     private readonly redisService: RedisService,
   ) {}
 
-  private toPlainNotification(notification: any): NotificationPlain {
-    const raw =
-      typeof notification === "object" &&
-      notification !== null &&
-      "toJSON" in notification &&
-      typeof notification.toJSON === "function"
-        ? notification.toJSON()
-        : notification;
-
-    return normalizeNotificationPlain(raw) ?? {};
-  }
-
-  async execute(query: GetNotificationsQuery): Promise<NotificationPlain[]> {
-    const { userId, limit = 20, before } = query;
-    redisLogger.debug(`getNotifications called`, { userId, before, limit });
+  async execute(query: GetNotificationsQuery): Promise<NotificationRecord[]> {
+    const { userId, limit = 20, before, beforeId } = query;
+    const userPublicId = asUserPublicId(userId);
 
     try {
-      if (before) {
-        redisLogger.info(`Cursor-based pagination, fetching from DB`, {
-          userId,
-          before,
-        });
-        const beforeDate = new Date(before);
-        const dbNotifications =
-          await this.notificationRepository.getNotificationsBeforeTimestamp(
-            asUserPublicId(userId),
-            beforeDate,
-            limit,
-          );
-        redisLogger.debug(`DB returned notifications`, {
-          userId,
-          count: dbNotifications.length,
-        });
-        return dbNotifications.map((notification) =>
-          this.toPlainNotification(notification),
+      if (before !== undefined) {
+        return await this.notificationRepository.getNotificationsBeforeTimestamp(
+          userPublicId,
+          new Date(before),
+          limit,
+          beforeId,
         );
       }
 
-      const notifications = await this.redisService.getUserNotifications(
-        userId,
-        1,
-        limit,
+      let cached: NotificationRecord[] | null = null;
+      let token: string | null = null;
+      try {
+        cached = await this.redisService.getUserNotifications(userId);
+      } catch (error) {
+        errorLogger.warn("Failed to read notification snapshot", { userId, error });
+      }
+
+      if (cached) {
+        const page = cached.slice(0, limit);
+        const targetIds = page
+          .filter(({ targetType }) =>
+            targetType === "post" || targetType === "comment" || targetType === "conversation")
+          .map(({ id }) => id);
+        const existingIds = await this.notificationRepository.findExistingIds(userPublicId, targetIds);
+        if (targetIds.every((id) => existingIds.has(id))) return page;
+      }
+
+      try {
+        if (cached) await this.redisService.clearNotificationCaches([userId]);
+        token = await this.redisService.beginNotificationBackfill(userId);
+      } catch (error) {
+        errorLogger.warn("Failed to start notification backfill", { userId, error });
+      }
+
+      const notifications = await this.notificationRepository.getNotifications(
+        userPublicId,
+        token ? this.MAX_NOTIFICATIONS_PER_USER : limit,
+        0,
       );
 
-      if (notifications.length >= limit) {
-        const messageNotificationIds = notifications
-          .filter((notification) => notification.targetType === "conversation")
-          .map((notification) => notification.id ?? notification._id ?? "");
-        const validIds = messageNotificationIds.filter((id) =>
-          /^[0-9a-f]{24}$/i.test(id),
-        );
-        const existingIds = await this.notificationRepository.findExistingIds(
-          asUserPublicId(userId),
-          validIds,
-        );
-        if (messageNotificationIds.some((id) => !existingIds.has(id))) {
-          await this.redisService.clearNotificationCaches([userId], validIds);
-        } else {
-          redisLogger.info(`Notification Redis HIT`, {
-            userId,
-            count: notifications.length,
-          });
-          return notifications;
-        }
+      if (token) {
+        await this.redisService.backfillNotifications(userId, token, notifications)
+          .catch((error) => errorLogger.warn("Failed to backfill notifications", { userId, error }));
       }
-
-      redisLogger.info(`Notification Redis MISS, fetching from DB`, { userId });
-
-      const allRecentNotifications =
-        await this.notificationRepository.getNotifications(
-          asUserPublicId(userId),
-          this.MAX_NOTIFICATIONS_PER_USER,
-          0,
-        );
-
-      redisLogger.debug(`DB returned notifications for backfill`, {
-        userId,
-        count: allRecentNotifications.length,
-      });
-
-      if (allRecentNotifications.length > 0) {
-        this.redisService
-          .backfillNotifications(
-            userId,
-            allRecentNotifications,
-            this.MAX_NOTIFICATIONS_PER_USER,
-          )
-          .catch((err: Error) => {
-            errorLogger.error(`Failed to backfill notification cache`, {
-              userId,
-              error: err,
-            });
-          });
-      }
-
-      return allRecentNotifications
-        .slice(0, limit)
-        .map((notification) => this.toPlainNotification(notification));
+      return notifications.slice(0, limit);
     } catch (error) {
       throw wrapError(error, "InternalServerError", {
-        context: { operation: "getNotifications", userId: query.userId },
+        context: { operation: "getNotifications", userId },
       });
     }
   }

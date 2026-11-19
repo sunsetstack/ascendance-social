@@ -5,6 +5,7 @@ import { CreateNotificationCommand } from "@/application/commands/notification/c
 import { CreateNotificationCommandHandler } from "@/application/commands/notification/createNotification/createNotification.handler";
 import { EventRegistry } from "@/application/common/events/event-registry";
 import { NotificationMessageHandler } from "@/application/handlers/realtime/NotificationMessageHandler";
+import { registerSocketSessionValidator } from "@/server/socket-security";
 
 describe("CreateNotificationCommandHandler", () => {
   afterEach(() => sinon.restore());
@@ -18,6 +19,7 @@ describe("CreateNotificationCommandHandler", () => {
         actionType: "follow",
         actorId: "actor-id",
         isRead: false,
+        timestamp: new Date(),
       }),
     };
     const notificationRepository = {
@@ -61,17 +63,65 @@ describe("CreateNotificationCommandHandler", () => {
   });
 });
 
+describe("Notification record validation", () => {
+  it("rejects a malformed repository result before caching or publishing it", async () => {
+    const redis = {
+      pushNotification: sinon.stub().resolves(),
+      publish: sinon.stub().resolves(),
+    };
+    const handler = new CreateNotificationCommandHandler(
+      { create: sinon.stub().resolves({}) } as never,
+      {} as never,
+      redis as never,
+    );
+    let failure: unknown;
+    try {
+      await handler.execute(
+        new CreateNotificationCommand({
+          receiverId: "receiver",
+          actorId: "actor",
+          actionType: "follow",
+          actorUsername: "Actor",
+          actorHandle: "actor",
+          actorAvatar: "avatar",
+        }),
+      );
+    } catch (error) {
+      failure = error;
+    }
+    expect(failure).to.be.instanceOf(Error);
+    sinon.assert.notCalled(redis.pushNotification);
+    sinon.assert.notCalled(redis.publish);
+  });
+});
+
 describe("NotificationMessageHandler", () => {
   afterEach(() => sinon.restore());
 
   it("delivers worker-created notifications through the API websocket room", async () => {
     const emit = sinon.stub();
-    const to = sinon.stub().returns({ emit });
+    const socket = {
+      emit,
+      disconnect: sinon.stub(),
+      data: {
+        authenticated: true,
+        user: {
+          publicId: "receiver-id",
+          exp: Math.floor(Date.now() / 1000) + 60,
+        },
+      },
+    };
+    const room = sinon
+      .stub()
+      .returns({ fetchSockets: sinon.stub().resolves([socket]) });
+    const io = { in: room };
+    const validate = sinon.stub().resolves();
+    registerSocketSessionValidator(io as never, validate);
     const metrics = { recordSocketEventEmitted: sinon.stub() };
     const handler = new NotificationMessageHandler(metrics as any);
 
     await handler.handle(
-      { to } as any,
+      io as never,
       {
         type: EventRegistry.realtimeMessageTypes.newNotification,
         eventId: "new_notification:notification-id",
@@ -88,7 +138,8 @@ describe("NotificationMessageHandler", () => {
       EventRegistry.redisChannels.notificationUpdates,
     );
 
-    expect(to.calledOnceWith("receiver-id")).to.equal(true);
+    expect(room.calledOnceWith("receiver-id")).to.equal(true);
+    expect(validate.calledOnceWithExactly(socket.data.user)).to.equal(true);
     expect(
       emit.calledOnceWith(
         EventRegistry.socketServerEvents.newNotification,

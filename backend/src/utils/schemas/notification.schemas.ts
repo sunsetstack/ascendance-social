@@ -1,9 +1,20 @@
 import { z } from "zod";
 
+const compoundCursor = z.string().regex(/^.+~[0-9a-f]{24}$/i)
+  .transform((value) => {
+    const [timestamp, id] = value.split("~");
+    return { timestamp: new Date(timestamp!), id };
+  })
+  .refine(({ timestamp, id }) => !!id && Number.isFinite(timestamp.getTime()),
+    "Invalid notification cursor");
+
 export const notificationQuerySchema = z
   .object({
     limit: z.coerce.number().int().positive().max(100).optional().default(20),
-    before: z.coerce.date().optional(),
+    before: z.union([
+      compoundCursor,
+      z.coerce.date().transform((timestamp) => ({ timestamp, id: undefined })),
+    ]).optional(),
   })
   .strict();
 

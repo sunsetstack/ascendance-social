@@ -3,14 +3,18 @@ import { CreateNotificationCommand } from "./createNotification.command";
 import { NotificationRepository } from "@/repositories/notification.repository";
 import type { IUserReadRepository } from "@/repositories/interfaces";
 import { RedisService } from "@/services/redis.service";
-import { INotification, NotificationPlain } from "@/types";
+import { INotification } from "@/types";
 import { Errors, wrapError } from "@/utils/errors";
-import { normalizeNotificationPlain } from "@/utils/notification-plain";
+import { requireNotificationRecord } from "@/utils/notification-plain";
 import { SystemActor } from "@/utils/actors/SystemActor";
 import { logger } from "@/utils/winston";
 import { inject, injectable } from "tsyringe";
 import { TOKENS } from "@/types/tokens";
-import { EventRegistry, buildRealtimeEventId } from "@/application/common/events/event-registry";
+import { UnitOfWork } from "@/database/UnitOfWork";
+import {
+  EventRegistry,
+  buildRealtimeEventId,
+} from "@/application/common/events/event-registry";
 import {
   asUserPublicId,
   PostPublicId,
@@ -21,10 +25,8 @@ import {
 @injectable()
 export class CreateNotificationCommandHandler implements ICommandHandler<
   CreateNotificationCommand,
-  INotification
+  INotification | null
 > {
-  private readonly MAX_NOTIFICATIONS_PER_USER = 200;
-
   constructor(
     @inject(TOKENS.Repositories.Notification)
     private readonly notificationRepository: NotificationRepository,
@@ -32,23 +34,11 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
     private readonly userReadRepository: IUserReadRepository,
     @inject(TOKENS.Services.Redis)
     private readonly redisService: RedisService,
+    @inject(TOKENS.Repositories.UnitOfWork)
+    private readonly unitOfWork: UnitOfWork,
   ) {}
 
-  private toPlainNotification(
-    notification: INotification | NotificationPlain,
-  ): NotificationPlain {
-    const raw =
-      typeof notification === "object" &&
-      notification !== null &&
-      "toJSON" in notification &&
-      typeof (notification as any).toJSON === "function"
-        ? (notification as any).toJSON()
-        : notification;
-
-    return normalizeNotificationPlain(raw) ?? {};
-  }
-
-  async execute(command: CreateNotificationCommand): Promise<INotification> {
+  async execute(command: CreateNotificationCommand): Promise<INotification | null> {
     const data = command.payload;
     if (!data.receiverId || !data.actionType || !data.actorId) {
       throw Errors.validation("Missing required notification fields");
@@ -108,24 +98,33 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
         timestamp: new Date(),
       };
 
-      const notification = idempotencyKey
-        ? await this.notificationRepository.createOnce(
+      const persist = (): Promise<INotification> => idempotencyKey
+        ? this.notificationRepository.createOnce(
             notificationData,
             idempotencyKey,
           )
-        : await this.notificationRepository.create(notificationData);
+        : this.notificationRepository.create(notificationData);
 
-      await this.redisService.pushNotification(
-        userPublicId,
-        notification,
-        this.MAX_NOTIFICATIONS_PER_USER,
-      );
+      // Comment replies use the containing post as their navigation target.
+      const guardedTargetType = targetType === "comment" && data.actionType === "comment_reply"
+        ? "post"
+        : targetType;
+      const notification = guardedTargetType === "post" || guardedTargetType === "comment"
+        ? await this.unitOfWork.executeInTransaction(async () => {
+            if (!(await this.notificationRepository.guardContentTarget(guardedTargetType, targetPublicId))) {
+              return null;
+            }
+            return persist();
+          })
+        : await persist();
 
-      const plain = this.toPlainNotification(notification);
-      const notificationId = plain.id ?? plain._id ?? String(notification._id);
+      if (!notification) return null;
+      const plain = requireNotificationRecord(notification);
+      await this.redisService.clearNotificationCaches([userPublicId]);
+
       const eventId = buildRealtimeEventId(
         EventRegistry.socketServerEvents.newNotification,
-        notificationId,
+        plain.id,
       );
       await this.redisService.publish(
         EventRegistry.redisChannels.notificationUpdates,
@@ -142,9 +141,8 @@ export class CreateNotificationCommandHandler implements ICommandHandler<
         userPublicId,
       });
 
-      return notification as any;
+      return notification;
     } catch (error) {
-      logger.error(`notificationRepository.create error:`, { error });
       throw wrapError(error, "InternalServerError", {
         context: { operation: "createNotification" },
       });

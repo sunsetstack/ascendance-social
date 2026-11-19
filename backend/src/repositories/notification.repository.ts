@@ -1,10 +1,12 @@
-import { Model } from "mongoose";
-import { INotification } from "@/types";
+import { Model, Types } from "mongoose";
+import { INotification, NotificationRecord } from "@/types";
+import { requireNotificationRecord } from "@/utils/notification-plain";
 import { inject, injectable } from "tsyringe";
 import { BaseRepository } from "./base.repository";
 import { logger } from "@/utils/winston";
 import { TOKENS } from "@/types/tokens";
 import { MongoId, UserPublicId } from "@/types/branded";
+import { requireTransactionSession } from "@/database/UnitOfWork";
 
 @injectable()
 export class NotificationRepository extends BaseRepository<INotification> {
@@ -17,6 +19,20 @@ export class NotificationRepository extends BaseRepository<INotification> {
 		const notifications = await this.model.find({ userId, _id: { $in: ids } })
 			.select("_id").lean().exec();
 		return new Set(notifications.map((notification) => String(notification._id)));
+	}
+
+	async guardContentTarget(targetType: "post" | "comment", targetId?: string): Promise<boolean> {
+		const session = requireTransactionSession();
+		if (!targetId || (targetType === "comment" && !/^[0-9a-f]{24}$/i.test(targetId))) {
+			return false;
+		}
+		const collection = this.model.db.collection(targetType === "post" ? "posts" : "comments");
+		const filter = targetType === "post"
+			? { publicId: targetId }
+			: { _id: new Types.ObjectId(targetId), isDeleted: { $ne: true } };
+		// A write makes concurrent deletion conflict with the transaction that inserts the notification.
+		const result = await collection.updateOne(filter, { $inc: { notificationFence: 1 } }, { session });
+		return result.matchedCount === 1;
 	}
 
 	async create(notificationData: Partial<INotification>): Promise<INotification> {
@@ -46,7 +62,9 @@ export class NotificationRepository extends BaseRepository<INotification> {
 			},
 		);
 		if (session) query.session(session);
-		return await query.exec() as INotification;
+		const notification = await query.exec();
+		if (!notification) throw new Error("Notification upsert returned no record");
+		return notification;
 	}
 
 	/**
@@ -55,37 +73,46 @@ export class NotificationRepository extends BaseRepository<INotification> {
 	 * @param limit - number of notifications to fetch (default: 50)
 	 * @param skip - number of notifications to skip for pagination (default: 0)
 	 */
-	async getNotifications(userId: UserPublicId, limit: number = 50, skip: number = 0): Promise<INotification[]> {
-		return await this.model
+	async getNotifications(userId: UserPublicId, limit: number = 50, skip: number = 0): Promise<NotificationRecord[]> {
+		const notifications = await this.model
 			.find({ userId })
-			.sort({ timestamp: -1 })
+			.sort({ timestamp: -1, _id: -1 })
 			.skip(skip)
 			.limit(limit)
-			.lean<INotification[]>()
+			.lean()
 			.exec();
+		return notifications.map(requireNotificationRecord);
 	}
 
 	/**
-	 * Get notifications older than a specific timestamp (cursor-based pagination)
-	 * Used for infinite scroll - always returns older notifications than the cursor
+	 * Get notifications after a descending timestamp and ID cursor.
+	 * Timestamp-only cursors retain the legacy strictly older behavior.
 	 * @param userId - user publicId
 	 * @param beforeTimestamp - fetch notifications older than this timestamp
 	 * @param limit - number of notifications to fetch (default: 20)
+	 * @param beforeId - ID of the last notification on the previous page
 	 */
 	async getNotificationsBeforeTimestamp(
 		userId: UserPublicId,
 		beforeTimestamp: Date,
 		limit: number = 20,
-	): Promise<INotification[]> {
-		return await this.model
+		beforeId?: string,
+	): Promise<NotificationRecord[]> {
+		const notifications = await this.model
 			.find({
 				userId,
-				timestamp: { $lt: beforeTimestamp }, // older than cursor
+				...(beforeId
+					? { $or: [
+						{ timestamp: { $lt: beforeTimestamp } },
+						{ timestamp: beforeTimestamp, _id: { $lt: new Types.ObjectId(beforeId) } },
+					] }
+					: { timestamp: { $lt: beforeTimestamp } }),
 			})
-			.sort({ timestamp: -1 }) // most recent first (within the older set)
+			.sort({ timestamp: -1, _id: -1 })
 			.limit(limit)
-			.lean<INotification[]>()
+			.lean()
 			.exec();
+		return notifications.map(requireNotificationRecord);
 	}
 
 	/**
