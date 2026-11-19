@@ -90,6 +90,7 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
         activity = await this.handleLike(
           command,
           userMongoId,
+          postInternalId,
           existingPost,
           postOwnerPublicId,
         );
@@ -124,21 +125,23 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
   private async handleLike(
     command: LikeActionByPublicIdCommand,
     userMongoId: string,
+    postId: string,
     post: IPost,
     postOwnerPublicId: string,
   ): Promise<IUserAction> {
-    const postId = post._id?.toString();
     const added = await this.postLikeRepository.addLike(postId, userMongoId);
     if (!added) {
       throw Errors.validation("like already exists for user and post");
     }
 
-    await this.postWriteRepository.updateLikeCount(asMongoId(postId!), 1);
+    if (!(await this.postWriteRepository.updateLikeCount(asMongoId(postId), 1))) {
+      throw Errors.notFound("Post");
+    }
 
     const activity = await this.userActionRepository.logAction(
       userMongoId,
       "like",
-      post._id?.toString(),
+      postId,
     );
 
     if (postOwnerPublicId && postOwnerPublicId !== command.userPublicId) {
@@ -179,7 +182,9 @@ export class LikeActionByPublicIdCommandHandler implements ICommandHandler<
       "unlike",
       postId,
     );
-    await this.postWriteRepository.updateLikeCount(asMongoId(postId), -1);
+    if (!(await this.postWriteRepository.updateLikeCount(asMongoId(postId), -1))) {
+      throw Errors.notFound("Post");
+    }
     return activity;
   }
 
