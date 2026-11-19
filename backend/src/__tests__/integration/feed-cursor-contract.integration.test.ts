@@ -40,7 +40,7 @@ import { DTOService } from "@/services/dto.service";
 import { FeedEnrichmentService } from "@/services/feed/feed-enrichment.service";
 import { FeedReadService } from "@/services/feed/feed-read.service";
 import { RedisService } from "@/services/redis.service";
-import { RedisFeedCache } from "@/services/redis/capabilities/redis-feed-cache";
+import { PostCountersRepository } from "@/repositories/read/PostCountersRepository";
 import { RedisUserLookup } from "@/services/redis/capabilities/redis-user-lookup";
 import type { CoreFeed, FeedPost, PostDTO } from "@/types";
 import { asPostPublicId, asUserPublicId } from "@/types/branded";
@@ -381,7 +381,7 @@ describe("Feed cursor/source contract integration", function () {
       redisService,
       userReadRepository as unknown as IUserReadRepository,
     );
-    const feedCache = new RedisFeedCache(redisService);
+    const feedCache = new PostCountersRepository(Post);
     feedEnrichmentService = new FeedEnrichmentService(userLookup, feedCache);
     feedReadService = new FeedReadService(
       feedReadDao,
@@ -1418,7 +1418,8 @@ describe("Feed cursor/source contract integration", function () {
     );
   });
 
-  it("keeps mixed Redis metadata hits and misses from changing a warm New page sequence", async () => {
+  it("ignores stale Redis counter overlays on both cold and cached feed pages", async () => {
+    const counterReads = sinon.spy(Post, "find");
     await seedPosts(
       Array.from({ length: 3 }, (_, index) => ({ order: index + 1 })),
     );
@@ -1428,28 +1429,33 @@ describe("Feed cursor/source contract integration", function () {
       300,
     );
     const cold = await feedReadService.getNewFeed(1, 3, false);
+    expect(counterReads.callCount).to.equal(0);
+    await Post.updateOne({ publicId: publicIdFor(3) }, { $set: { likesCount: 5 }, $inc: { likesRevision: 1 } });
     await redisService.set(
       CacheKeyBuilder.getPostMetaKey(asPostPublicId(publicIdFor(2))),
       { likes: 77, commentsCount: 0, viewsCount: 0 },
       300,
     );
     const warm = await feedReadService.getNewFeed(1, 3, false);
+    expect(counterReads.callCount).to.equal(1);
     const observed = {
       coldIds: cold.data.map((post) => post.publicId),
       warmIds: warm.data.map((post) => post.publicId),
       coldLikes: cold.data.map((post) => post.likes),
       warmLikes: warm.data.map((post) => post.likes),
+      warmLikeRevisions: warm.data.map((post) => post.likesRevision),
     };
     const expected = {
       coldIds: descendingPublicIds(3),
       warmIds: descendingPublicIds(3),
-      coldLikes: [99, 0, 0],
-      warmLikes: [99, 77, 0],
+      coldLikes: [0, 0, 0],
+      warmLikes: [5, 0, 0],
+      warmLikeRevisions: [1, 0, 0],
     };
 
     assertContract(
       "F08 enrichment equivalence",
-      "Batched metadata cache hits and misses may refresh counts but must not alter page membership or order.",
+      "Authoritative counter reads ignore Redis overlays without changing page membership or order.",
       expected,
       observed,
     );
