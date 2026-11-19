@@ -94,28 +94,13 @@ export class RedisTrendingCacheStore implements ITrendingCacheStore {
     updates: readonly TrendingProjectionUpdate[],
   ): Promise<void> {
     await Promise.all(
-      updates.flatMap(({ comments, likes, postId, score, views }) => [
+      updates.map(({ postId, score }) =>
         this.redisService.updateTrendingScore(
           postId,
           score,
           "trending:posts",
         ),
-        this.redisService.patchWithTags(
-          `post_meta:${postId}`,
-          {
-            likes,
-            commentsCount: comments,
-            viewsCount: views,
-            lastUpdated: Date.now(),
-          },
-          [
-            `post_meta:${postId}`,
-            `post_likes:${postId}`,
-            `post_comments:${postId}`,
-          ],
-          300,
-        ),
-      ]),
+      ),
     );
   }
 }
